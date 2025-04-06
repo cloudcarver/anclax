@@ -1,0 +1,9 @@
+BEGIN;
+
+DROP TABLE IF EXISTS organization_owners;
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS organizations;
+DROP TABLE IF EXISTS ed25519_keys;
+DROP TABLE IF EXISTS refresh_tokens;
+
+COMMIT;

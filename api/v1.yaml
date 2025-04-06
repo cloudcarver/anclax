@@ -1,0 +1,177 @@
+openapi: 3.0.0
+
+info:
+  title: AI Agent API
+  version: "1.0"
+  description: API for interacting with AI models and managing settings
+
+servers:
+  - url: /api/v1
+    description: Base API path
+
+paths:
+  /auth/sign-in:
+    post:
+      summary: Sign in user
+      description: Authenticate user and return access token
+      operationId: signIn
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignInRequest"
+      responses:
+        "200":
+          description: Successfully authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Credentials"
+        "401":
+          description: Invalid credentials
+
+  /auth/refresh:
+    post:
+      summary: Refresh access token
+      description: Get a new access token using a refresh token
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshTokenRequest"
+      responses:
+        "200":
+          description: Successfully refreshed token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Credentials"
+        "401":
+          description: Invalid or expired refresh token
+
+  /jwks:
+    get:
+      summary: Get JWKS
+      description: Get the JWKS for the anchor server
+      operationId: getJWKS
+      responses:
+        "200":
+          description: JWKS
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JWKS"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    JWKS:
+      type: object
+      required: [keys]
+      properties:
+        keys:
+          type: array
+          items:
+            $ref: "#/components/schemas/JWK"
+
+    JWK:
+      type: object
+      required: [kid, kty, use, alg, x, exp]
+      properties:
+        kid:
+          type: string
+          description: Key ID
+        kty:
+          type: string
+          description: Key type
+        use:
+          type: string
+          description: Key use
+        alg:
+          type: string
+          description: Algorithm
+        x:
+          type: string
+          description: X coordinate
+        exp:
+          type: string
+          format: date-time
+          description: Expiration time
+
+    SignInRequest:
+      type: object
+      required:
+        - name
+        - password
+      properties:
+        name:
+          type: string
+          description: User's name
+        password:
+          type: string
+          format: password
+          description: User's password
+
+    Credentials:
+      type: object
+      required:
+        - accessToken
+        - refreshToken
+        - tokenType
+      properties:
+        accessToken:
+          type: string
+          description: JWT access token
+        refreshToken:
+          type: string
+          description: JWT refresh token for obtaining new access tokens
+        tokenType:
+          type: string
+          enum: ["Bearer"]
+          description: Token type
+
+    RefreshTokenRequest:
+      type: object
+      required:
+        - refreshToken
+      properties:
+        refreshToken:
+          type: string
+          description: Refresh token obtained from sign-in
+
+    User:
+      type: object
+      required:
+        - ID
+        - name
+        - organizationID
+        - createdAt
+        - updatedAt
+      properties:
+        ID:
+          type: integer
+          format: int32
+          description: Unique identifier of the user
+        name:
+          type: string
+          description: User's name
+        organizationID:
+          type: integer
+          format: int32
+          description: ID of the organization this user belongs to
+        createdAt:
+          type: string
+          format: date-time
+          description: Creation timestamp
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last update timestamp
