@@ -3,9 +3,10 @@
 /* tslint:disable */
 /* eslint-disable */
 import type { Credentials } from '../models/Credentials';
-import type { JWKS } from '../models/JWKS';
+import type { Event } from '../models/Event';
 import type { RefreshTokenRequest } from '../models/RefreshTokenRequest';
 import type { SignInRequest } from '../models/SignInRequest';
+import type { Task } from '../models/Task';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
@@ -31,6 +32,18 @@ export class DefaultService {
         });
     }
     /**
+     * Sign out user
+     * Sign out user and invalidate all tokens
+     * @returns any Successfully signed out
+     * @throws ApiError
+     */
+    public static signOut(): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/auth/sign-out',
+        });
+    }
+    /**
      * Refresh access token
      * Get a new access token using a refresh token
      * @param requestBody
@@ -51,15 +64,27 @@ export class DefaultService {
         });
     }
     /**
-     * Get JWKS
-     * Get the JWKS for the anchor server
-     * @returns JWKS JWKS
+     * Get all tasks
+     * Get all tasks
+     * @returns Task Successfully retrieved tasks
      * @throws ApiError
      */
-    public static getJwks(): CancelablePromise<JWKS> {
+    public static listTasks(): CancelablePromise<Array<Task>> {
         return __request(OpenAPI, {
             method: 'GET',
-            url: '/jwks',
+            url: '/tasks',
+        });
+    }
+    /**
+     * Get all events
+     * Get all events
+     * @returns Event Successfully retrieved events
+     * @throws ApiError
+     */
+    public static listEvents(): CancelablePromise<Array<Event>> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/events',
         });
     }
 }

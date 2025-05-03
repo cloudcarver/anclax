@@ -14,12 +14,10 @@ type Controller struct {
 	auth auth.AuthInterface
 }
 
-var _ apigen.ServerInterface = &Controller{}
-
 func NewController(
 	s service.ServiceInterface,
 	auth auth.AuthInterface,
-) *Controller {
+) apigen.ServerInterface {
 	return &Controller{
 		svc:  s,
 		auth: auth,
@@ -43,18 +41,26 @@ func (controller *Controller) SignIn(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(credentials)
 }
 
+func (controller *Controller) SignOut(c *fiber.Ctx) error {
+	userID, err := auth.GetUserID(c)
+	if err != nil {
+		return c.SendStatus(fiber.StatusUnauthorized)
+	}
+	return controller.auth.InvalidateUserTokens(c.Context(), userID)
+}
+
 func (controller *Controller) RefreshToken(c *fiber.Ctx) error {
 	var params apigen.RefreshTokenRequest
 	if err := c.BodyParser(&params); err != nil {
 		return c.SendStatus(fiber.StatusBadRequest)
 	}
 
-	userID, err := controller.auth.ValidateRefreshToken(c.Context(), params.RefreshToken)
+	userID, err := controller.auth.ParseRefreshToken(c.Context(), params.RefreshToken)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).SendString(err.Error())
 	}
 
-	credentials, err := controller.svc.CreateToken(c.Context(), userID)
+	credentials, err := controller.svc.RefreshToken(c.Context(), userID, params.RefreshToken)
 	if err != nil {
 		if errors.Is(err, service.ErrRefreshTokenExpired) {
 			return c.SendStatus(fiber.StatusUnauthorized)
@@ -65,10 +71,18 @@ func (controller *Controller) RefreshToken(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(credentials)
 }
 
-func (controller *Controller) GetJWKS(c *fiber.Ctx) error {
-	jwks, err := controller.auth.GetJWKS()
+func (controller *Controller) ListTasks(c *fiber.Ctx) error {
+	ret, err := controller.svc.ListTasks(c.Context())
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
+		return err
 	}
-	return c.Status(fiber.StatusOK).JSON(jwks)
+	return c.Status(fiber.StatusOK).JSON(ret)
+}
+
+func (controller *Controller) ListEvents(c *fiber.Ctx) error {
+	ret, err := controller.svc.ListEvents(c.Context())
+	if err != nil {
+		return err
+	}
+	return c.Status(fiber.StatusOK).JSON(ret)
 }

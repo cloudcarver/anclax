@@ -1,65 +1,109 @@
 BEGIN;
 
-CREATE TABLE IF NOT EXISTS organizations (
-    id            SERIAL,
-    name          TEXT        NOT NULL,
-    created_at    TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at    TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
-
-    UNIQUE (name),
-    PRIMARY KEY (id)
+CREATE TABLE IF NOT EXISTS orgs (
+    id         SERIAL      PRIMARY KEY,
+    name       TEXT        NOT NULL,
+    tz         TEXT        NOT NULL DEFAULT 'Asia/Shanghai',
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS users (
-    id              SERIAL,
+    id              SERIAL      PRIMARY KEY,
     name            TEXT        NOT NULL,
     password_hash   TEXT        NOT NULL,
     password_salt   TEXT        NOT NULL,
-    organization_id INTEGER     NOT NULL REFERENCES organizations(id),
+    created_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS org_users (
+    org_id     INTEGER NOT NULL REFERENCES orgs(id) ON UPDATE CASCADE,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON UPDATE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
+    PRIMARY KEY (org_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS org_owners (
+    org_id     INTEGER NOT NULL REFERENCES orgs(id)  ON UPDATE CASCADE,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON UPDATE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
+    PRIMARY KEY (org_id)
+);
+
+CREATE TABLE IF NOT EXISTS opaque_keys (
+    id              BIGSERIAL   PRIMARY KEY,
+    key             BYTEA       NOT NULL,
+    user_id         INT         NOT NULL REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    created_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS access_key_pairs (
+    access_key      VARCHAR(20) NOT NULL,
+    secret_key      VARCHAR(40) NOT NULL,
     created_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
 
-    UNIQUE (name),
-    PRIMARY KEY (id)
+    PRIMARY KEY (access_key)
 );
 
-CREATE TABLE IF NOT EXISTS organization_owners (
-    user_id         INTEGER     NOT NULL REFERENCES users(id),
-    organization_id INTEGER     NOT NULL REFERENCES organizations(id),
-    created_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+CREATE TABLE access_rules (
+    name        VARCHAR(255) NOT NULL,
+    description TEXT         NOT NULL,
+    created_at  TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at  TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
 
-    PRIMARY KEY (user_id, organization_id)
+    PRIMARY KEY (name)
 );
 
-CREATE TABLE IF NOT EXISTS refresh_tokens (
-    token           TEXT        NOT NULL,
-    expired_at      TIMESTAMPTZ NOT NULL,
-    created_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
-
-    UNIQUE (token)
+CREATE TABLE roles (
+    id          SERIAL PRIMARY KEY,
+    org_id      INTEGER      NOT NULL REFERENCES orgs(id) ON UPDATE CASCADE,
+    name        VARCHAR(255) NOT NULL,
+    description TEXT         NOT NULL,
+    created_at  TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at  TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS org_settings (
-    organization_id INTEGER     NOT NULL REFERENCES organizations(id),
-    timezone        TEXT        NOT NULL DEFAULT 'UTC',
+CREATE TABLE role_access_rules (
+    role_id          INTEGER NOT NULL,
+    access_rule_name VARCHAR(255) NOT NULL REFERENCES access_rules(name) ON UPDATE CASCADE,
+    created_at       TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at       TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
 
-    created_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
-
-    PRIMARY KEY (organization_id)
+    PRIMARY KEY (role_id, access_rule_name)
 );
 
-CREATE TABLE IF NOT EXISTS keys (
-    id              UUID        NOT NULL DEFAULT gen_random_uuid(),
-    public_key      TEXT        NOT NULL,
-    private_key     TEXT        NOT NULL,
-    expired_at      TIMESTAMPTZ NOT NULL,
-    created_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+CREATE TABLE users_roles (
+    user_id    INTEGER NOT NULL,
+    role_id    INTEGER NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
 
-    PRIMARY KEY (kid)
+    PRIMARY KEY (user_id, role_id)
 );
+
+
+CREATE TABLE tasks (
+    id          SERIAL PRIMARY KEY,
+    attributes  JSONB NOT NULL,
+    spec        JSONB NOT NULL,
+    status      VARCHAR(255) NOT NULL,
+    started_at  TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE events (
+    id         SERIAL PRIMARY KEY,
+    spec       JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 
 COMMIT;

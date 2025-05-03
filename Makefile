@@ -1,8 +1,6 @@
 SHELL := /bin/zsh
 PROJECT_DIR=$(shell pwd)
 
-EE ?= false
-
 ###################################################
 ### OpenAPI         
 ###################################################
@@ -16,7 +14,7 @@ install-oapi-codegen:
 	@DIR=$(PROJECT_DIR)/bin VERSION=${OAPI_CODEGEN_VERSION} ./scripts/install-oapi-codegen.sh
 	
 install-oapi-codegen-fiber:
-	@GOBIN=$(PROJECT_DIR)/bin go install github.com/cloudcarver/oapi-codegen-fiber@v0.5.1
+	@GOBIN=$(PROJECT_DIR)/bin go install github.com/cloudcarver/oapi-codegen-fiber@v0.7.0
 
 prune-spec:
 	@rm -f $(OAPI_GEN_DIR)/spec_gen.go
@@ -69,6 +67,13 @@ gen-querier: install-sqlc clean-querier
 	$(SQLC_BIN) generate
 
 ###################################################
+### task handler
+###################################################
+
+gen-task-handler:
+	go run cmd/anchor/main.go gen task --package-name runner --out-path internal/task/runner/runner_gen.go
+
+###################################################
 ### mock 
 ###################################################
 
@@ -80,13 +85,18 @@ install-mockgen:
 
 gen-mock: install-mockgen
 	$(MOCKGEN_BIN) -source=internal/model/model.go -destination=internal/model/mock_gen.go -package=model
+	$(MOCKGEN_BIN) -source=internal/macaroons/interfaces.go -destination=internal/macaroons/mock_gen.go -package=macaroons
+	$(MOCKGEN_BIN) -source=internal/macaroons/store/interfaces.go -destination=internal/macaroons/store/mock/mock_gen.go -package=mock
 	$(MOCKGEN_BIN) -source=internal/auth/auth.go -destination=internal/auth/mock_gen.go -package=auth
+	$(MOCKGEN_BIN) -source=internal/task/interfaces.go -destination=internal/task/mock_gen.go -package=task
+	$(MOCKGEN_BIN) -source=internal/task/worker/interfaces.go -destination=internal/task/worker/mock/mock_gen.go -package=mock
+	$(MOCKGEN_BIN) -source=internal/task/runner/runner_gen.go -destination=internal/task/runner/runner_gen_mock.go -package=runner
 
 ###################################################
 ### Common
 ###################################################
 
-gen: gen-spec gen-querier gen-wire gen-mock gen-frontend-client
+gen: gen-spec gen-querier gen-task-handler gen-wire gen-mock gen-frontend-client
 	@go mod tidy
 
 
@@ -118,8 +128,8 @@ build-web:
 
 
 build-server:
-	GOOS=linux GOARCH=amd64 go build -o ./bin/anchor-server-amd64 cmd/anchor/main.go
-	GOOS=linux GOARCH=arm64 go build -o ./bin/anchor-server-arm64 cmd/anchor/main.go
+	GOOS=linux GOARCH=amd64 go build -o ./bin/anchor-server-amd64 cmd/server/main.go
+	GOOS=linux GOARCH=arm64 go build -o ./bin/anchor-server-arm64 cmd/server/main.go
 
 IMG_TAG=$(VERSION)
 DOCKER_REPO=cloudcarver/anchor

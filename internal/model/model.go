@@ -23,6 +23,22 @@ var (
 	ErrAlreadyInTransaction = errors.New("already in transaction")
 )
 
+type Context struct {
+	context.Context
+	ModelInterface
+}
+
+func NewContext(ctx context.Context, model ModelInterface) *Context {
+	return &Context{
+		Context:        ctx,
+		ModelInterface: model,
+	}
+}
+
+func (c *Context) Model() ModelInterface {
+	return c.ModelInterface
+}
+
 type ModelInterface interface {
 	querier.Querier
 	RunTransaction(ctx context.Context, f func(model ModelInterface) error) error
@@ -38,6 +54,10 @@ type Model struct {
 
 func (m *Model) InTransaction() bool {
 	return m.inTransaction
+}
+
+func (m *Model) BeginTx(ctx context.Context) (pgx.Tx, error) {
+	return m.beginTx(ctx)
 }
 
 func (m *Model) RunTransaction(ctx context.Context, f func(model ModelInterface) error) error {

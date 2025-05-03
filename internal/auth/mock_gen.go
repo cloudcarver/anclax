@@ -13,79 +13,10 @@ import (
 	context "context"
 	reflect "reflect"
 
-	apigen "github.com/cloudcarver/anchor/internal/apigen"
+	querier "github.com/cloudcarver/anchor/internal/model/querier"
 	fiber "github.com/gofiber/fiber/v2"
 	gomock "go.uber.org/mock/gomock"
 )
-
-// MockAuthStoreInterface is a mock of AuthStoreInterface interface.
-type MockAuthStoreInterface struct {
-	ctrl     *gomock.Controller
-	recorder *MockAuthStoreInterfaceMockRecorder
-	isgomock struct{}
-}
-
-// MockAuthStoreInterfaceMockRecorder is the mock recorder for MockAuthStoreInterface.
-type MockAuthStoreInterfaceMockRecorder struct {
-	mock *MockAuthStoreInterface
-}
-
-// NewMockAuthStoreInterface creates a new mock instance.
-func NewMockAuthStoreInterface(ctrl *gomock.Controller) *MockAuthStoreInterface {
-	mock := &MockAuthStoreInterface{ctrl: ctrl}
-	mock.recorder = &MockAuthStoreInterfaceMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockAuthStoreInterface) EXPECT() *MockAuthStoreInterfaceMockRecorder {
-	return m.recorder
-}
-
-// GetKeyByID mocks base method.
-func (m *MockAuthStoreInterface) GetKeyByID(ctx context.Context, id string) (*Key, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetKeyByID", ctx, id)
-	ret0, _ := ret[0].(*Key)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetKeyByID indicates an expected call of GetKeyByID.
-func (mr *MockAuthStoreInterfaceMockRecorder) GetKeyByID(ctx, id any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKeyByID", reflect.TypeOf((*MockAuthStoreInterface)(nil).GetKeyByID), ctx, id)
-}
-
-// GetKeys mocks base method.
-func (m *MockAuthStoreInterface) GetKeys(ctx context.Context) (*apigen.JWKS, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetKeys", ctx)
-	ret0, _ := ret[0].(*apigen.JWKS)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetKeys indicates an expected call of GetKeys.
-func (mr *MockAuthStoreInterfaceMockRecorder) GetKeys(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKeys", reflect.TypeOf((*MockAuthStoreInterface)(nil).GetKeys), ctx)
-}
-
-// GetLatestKey mocks base method.
-func (m *MockAuthStoreInterface) GetLatestKey(ctx context.Context) (*Key, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetLatestKey", ctx)
-	ret0, _ := ret[0].(*Key)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetLatestKey indicates an expected call of GetLatestKey.
-func (mr *MockAuthStoreInterfaceMockRecorder) GetLatestKey(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLatestKey", reflect.TypeOf((*MockAuthStoreInterface)(nil).GetLatestKey), ctx)
-}
 
 // MockAuthInterface is a mock of AuthInterface interface.
 type MockAuthInterface struct {
@@ -112,95 +43,75 @@ func (m *MockAuthInterface) EXPECT() *MockAuthInterfaceMockRecorder {
 }
 
 // Authfunc mocks base method.
-func (m *MockAuthInterface) Authfunc(c *fiber.Ctx, rules ...string) error {
+func (m *MockAuthInterface) Authfunc(c *fiber.Ctx) error {
 	m.ctrl.T.Helper()
-	varargs := []any{c}
-	for _, a := range rules {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "Authfunc", varargs...)
+	ret := m.ctrl.Call(m, "Authfunc", c)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Authfunc indicates an expected call of Authfunc.
-func (mr *MockAuthInterfaceMockRecorder) Authfunc(c any, rules ...any) *gomock.Call {
+func (mr *MockAuthInterfaceMockRecorder) Authfunc(c any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{c}, rules...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Authfunc", reflect.TypeOf((*MockAuthInterface)(nil).Authfunc), varargs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Authfunc", reflect.TypeOf((*MockAuthInterface)(nil).Authfunc), c)
 }
 
 // CreateRefreshToken mocks base method.
-func (m *MockAuthInterface) CreateRefreshToken(ctx context.Context, userID int32) (string, error) {
+func (m *MockAuthInterface) CreateRefreshToken(ctx context.Context, accessKeyID int64, userID int32) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateRefreshToken", ctx, userID)
+	ret := m.ctrl.Call(m, "CreateRefreshToken", ctx, accessKeyID, userID)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateRefreshToken indicates an expected call of CreateRefreshToken.
-func (mr *MockAuthInterfaceMockRecorder) CreateRefreshToken(ctx, userID any) *gomock.Call {
+func (mr *MockAuthInterfaceMockRecorder) CreateRefreshToken(ctx, accessKeyID, userID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateRefreshToken", reflect.TypeOf((*MockAuthInterface)(nil).CreateRefreshToken), ctx, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateRefreshToken", reflect.TypeOf((*MockAuthInterface)(nil).CreateRefreshToken), ctx, accessKeyID, userID)
 }
 
 // CreateToken mocks base method.
-func (m *MockAuthInterface) CreateToken(ctx context.Context, userID int32) (string, error) {
+func (m *MockAuthInterface) CreateToken(ctx context.Context, user *querier.User, rules []string) (int64, string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateToken", ctx, userID)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret := m.ctrl.Call(m, "CreateToken", ctx, user, rules)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(string)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // CreateToken indicates an expected call of CreateToken.
-func (mr *MockAuthInterfaceMockRecorder) CreateToken(ctx, userID any) *gomock.Call {
+func (mr *MockAuthInterfaceMockRecorder) CreateToken(ctx, user, rules any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateToken", reflect.TypeOf((*MockAuthInterface)(nil).CreateToken), ctx, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateToken", reflect.TypeOf((*MockAuthInterface)(nil).CreateToken), ctx, user, rules)
 }
 
-// GetJWKS mocks base method.
-func (m *MockAuthInterface) GetJWKS() (*apigen.JWKS, error) {
+// InvalidateUserTokens mocks base method.
+func (m *MockAuthInterface) InvalidateUserTokens(ctx context.Context, userID int32) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetJWKS")
-	ret0, _ := ret[0].(*apigen.JWKS)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret := m.ctrl.Call(m, "InvalidateUserTokens", ctx, userID)
+	ret0, _ := ret[0].(error)
+	return ret0
 }
 
-// GetJWKS indicates an expected call of GetJWKS.
-func (mr *MockAuthInterfaceMockRecorder) GetJWKS() *gomock.Call {
+// InvalidateUserTokens indicates an expected call of InvalidateUserTokens.
+func (mr *MockAuthInterfaceMockRecorder) InvalidateUserTokens(ctx, userID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetJWKS", reflect.TypeOf((*MockAuthInterface)(nil).GetJWKS))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InvalidateUserTokens", reflect.TypeOf((*MockAuthInterface)(nil).InvalidateUserTokens), ctx, userID)
 }
 
-// ValidateRefreshToken mocks base method.
-func (m *MockAuthInterface) ValidateRefreshToken(ctx context.Context, signedRefreshToken string) (int32, error) {
+// ParseRefreshToken mocks base method.
+func (m *MockAuthInterface) ParseRefreshToken(ctx context.Context, refreshToken string) (int32, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ValidateRefreshToken", ctx, signedRefreshToken)
+	ret := m.ctrl.Call(m, "ParseRefreshToken", ctx, refreshToken)
 	ret0, _ := ret[0].(int32)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ValidateRefreshToken indicates an expected call of ValidateRefreshToken.
-func (mr *MockAuthInterfaceMockRecorder) ValidateRefreshToken(ctx, signedRefreshToken any) *gomock.Call {
+// ParseRefreshToken indicates an expected call of ParseRefreshToken.
+func (mr *MockAuthInterfaceMockRecorder) ParseRefreshToken(ctx, refreshToken any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateRefreshToken", reflect.TypeOf((*MockAuthInterface)(nil).ValidateRefreshToken), ctx, signedRefreshToken)
-}
-
-// ValidateToken mocks base method.
-func (m *MockAuthInterface) ValidateToken(ctx context.Context, tokenString string) (*User, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ValidateToken", ctx, tokenString)
-	ret0, _ := ret[0].(*User)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ValidateToken indicates an expected call of ValidateToken.
-func (mr *MockAuthInterfaceMockRecorder) ValidateToken(ctx, tokenString any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateToken", reflect.TypeOf((*MockAuthInterface)(nil).ValidateToken), ctx, tokenString)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ParseRefreshToken", reflect.TypeOf((*MockAuthInterface)(nil).ParseRefreshToken), ctx, refreshToken)
 }

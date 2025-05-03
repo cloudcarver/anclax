@@ -2,10 +2,9 @@
 INSERT INTO users (
     name,
     password_hash,
-    password_salt,
-    organization_id
+    password_salt
 ) VALUES (
-    $1, $2, $3, $4
+    $1, $2, $3
 ) ON CONFLICT (name) DO UPDATE 
     SET updated_at = CURRENT_TIMESTAMP, 
         name = EXCLUDED.name, 

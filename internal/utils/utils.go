@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -132,3 +133,48 @@ func RenderProgressBar(progress float64) string {
 func Base64URLEncode(data []byte) string {
 	return base64.RawURLEncoding.EncodeToString(data)
 }
+
+// RetrieveFromJSON uses json.Decoder to parse only one field in a streaming way
+func RetrieveFromJSON[T any](s string, targetKey string) (*T, error) {
+	decoder := json.NewDecoder(strings.NewReader(s))
+
+	// Read opening brace
+	if _, err := decoder.Token(); err != nil {
+		return nil, err
+	}
+
+	var ret *T
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return nil, err
+		}
+
+		if key, ok := token.(string); ok && key == targetKey {
+			if token, err = decoder.Token(); err != nil {
+				return nil, err
+			}
+			if val, ok := token.(T); ok {
+				ret = &val
+				break
+			}
+		} else {
+			// Skip the value for this field
+			if _, err := decoder.Token(); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	if ret == nil {
+		return nil, errors.Errorf("missing attribute: %s", targetKey)
+	}
+
+	return ret, nil
+}
+
+func UpperFirst(name string) string {
+	return strings.ToUpper(name[:1]) + name[1:]
+}
+
+func Noop() {}

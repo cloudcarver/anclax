@@ -7,38 +7,58 @@
 package wire
 
 import (
-	"github.com/cloudcarver/anchor/internal/apps/server"
+	"github.com/cloudcarver/anchor/internal/app"
 	"github.com/cloudcarver/anchor/internal/auth"
 	"github.com/cloudcarver/anchor/internal/config"
 	"github.com/cloudcarver/anchor/internal/controller"
+	"github.com/cloudcarver/anchor/internal/globalctx"
+	"github.com/cloudcarver/anchor/internal/macaroons"
+	"github.com/cloudcarver/anchor/internal/macaroons/store"
+	"github.com/cloudcarver/anchor/internal/metrics"
 	"github.com/cloudcarver/anchor/internal/model"
+	"github.com/cloudcarver/anchor/internal/server"
 	"github.com/cloudcarver/anchor/internal/service"
+	"github.com/cloudcarver/anchor/internal/task"
+	"github.com/cloudcarver/anchor/internal/task/runner"
+	"github.com/cloudcarver/anchor/internal/task/worker"
 )
 
 // Injectors from wire.go:
 
-func InitializeServer() (*server.Server, error) {
+func InitializeApplication() (*app.Application, error) {
 	configConfig, err := config.NewConfig()
 	if err != nil {
 		return nil, err
 	}
+	globalContext := globalctx.New()
 	modelInterface, err := model.NewModel(configConfig)
 	if err != nil {
 		return nil, err
 	}
-	authStoreInterface, err := auth.NewAuthStore(modelInterface, configConfig)
-	if err != nil {
-		return nil, err
-	}
-	authInterface, err := auth.NewAuth(configConfig, authStoreInterface, modelInterface)
+	taskStoreInterface := task.NewTaskStore()
+	taskRunner := runner.NewTaskRunner(taskStoreInterface)
+	keyStore := store.NewStore(modelInterface, taskRunner)
+	caveatParser := auth.NewCaveatParser()
+	macaroonManagerInterface := macaroons.NewMacaroonManager(keyStore, caveatParser)
+	authInterface, err := auth.NewAuth(macaroonManagerInterface)
 	if err != nil {
 		return nil, err
 	}
 	serviceInterface := service.NewService(configConfig, modelInterface, authInterface)
-	controllerController := controller.NewController(serviceInterface, authInterface)
-	serverServer, err := server.NewServer(configConfig, controllerController, authInterface)
+	serverInterface := controller.NewController(serviceInterface, authInterface)
+	validator := controller.NewValidator(modelInterface, authInterface)
+	serverServer, err := server.NewServer(configConfig, globalContext, authInterface, serverInterface, validator)
 	if err != nil {
 		return nil, err
 	}
-	return serverServer, nil
+	metricsServer := metrics.NewMetricsServer(configConfig, globalContext)
+	executorInterface := runner.NewExecutor()
+	taskHandler := runner.NewTaskHandler(executorInterface)
+	workerWorker, err := worker.NewWorker(globalContext, modelInterface, taskHandler)
+	if err != nil {
+		return nil, err
+	}
+	debugServer := app.NewDebugServer(configConfig, globalContext)
+	application := app.NewApplication(configConfig, serverServer, metricsServer, workerWorker, debugServer)
+	return application, nil
 }

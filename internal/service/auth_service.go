@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/cloudcarver/anchor/internal/apigen"
-	"github.com/cloudcarver/anchor/internal/model"
 	"github.com/cloudcarver/anchor/internal/model/querier"
 	"github.com/cloudcarver/anchor/internal/utils"
 	"github.com/jackc/pgx/v5"
@@ -27,11 +26,17 @@ func (s *Service) SignIn(ctx context.Context, params apigen.SignInRequest) (*api
 	if input != user.PasswordHash {
 		return nil, ErrInvalidPassword
 	}
-	token, err := s.auth.CreateToken(ctx, user, nil)
+
+	if err := s.auth.InvalidateUserTokens(ctx, user.ID); err != nil {
+		return nil, errors.Wrapf(err, "failed to invalidate user tokens")
+	}
+
+	keyID, token, err := s.auth.CreateToken(ctx, user, nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create token")
 	}
-	refreshToken, err := s.auth.CreateRefreshToken(ctx, user.ID)
+
+	refreshToken, err := s.auth.CreateRefreshToken(ctx, keyID, user.ID)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to generate refresh token")
 	}
@@ -43,19 +48,23 @@ func (s *Service) SignIn(ctx context.Context, params apigen.SignInRequest) (*api
 	}, nil
 }
 
-func (s *Service) CreateToken(ctx context.Context, userID int32) (*apigen.Credentials, error) {
-	newRefreshToken, err := s.auth.CreateRefreshToken(ctx, userID)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to generate refresh token")
-	}
+func (s *Service) RefreshToken(ctx context.Context, userID int32, refreshToken string) (*apigen.Credentials, error) {
 	user, err := s.m.GetUser(ctx, userID)
 	if err != nil {
-		return nil, errors.Wrapf(err, "")
+		return nil, errors.Wrapf(err, "failed to get user by id: %d", userID)
+	}
+	if err := s.auth.InvalidateUserTokens(ctx, userID); err != nil {
+		return nil, errors.Wrapf(err, "failed to invalidate user tokens")
 	}
 
-	accessToken, err := s.auth.CreateToken(ctx, user, nil)
+	keyID, accessToken, err := s.auth.CreateToken(ctx, user, nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create token")
+	}
+
+	newRefreshToken, err := s.auth.CreateRefreshToken(ctx, keyID, userID)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to generate refresh token")
 	}
 
 	return &apigen.Credentials{
@@ -70,31 +79,42 @@ func (s *Service) CreateNewUser(ctx context.Context, username, password string) 
 	if err != nil {
 		return 0, errors.Wrapf(err, "failed to generate hash and salt")
 	}
-	var orgID int32
-	if err := s.m.RunTransaction(ctx, func(txm model.ModelInterface) error {
-		org, err := txm.CreateOrganization(ctx, fmt.Sprintf("%s's Org", username))
-		if err != nil {
-			return errors.Wrapf(err, "failed to create organization")
-		}
-		user, err := txm.CreateUser(ctx, querier.CreateUserParams{
-			Name:           username,
-			PasswordHash:   hash,
-			PasswordSalt:   salt,
-			OrganizationID: org.ID,
-		})
-		if err := txm.CreateOrganizationOwner(ctx, querier.CreateOrganizationOwnerParams{
-			UserID:         user.ID,
-			OrganizationID: org.ID,
-		}); err != nil {
-			return errors.Wrapf(err, "failed to create organization owner")
-		}
-		if err != nil {
-			return errors.Wrapf(err, "failed to create user")
-		}
-		orgID = org.ID
-		return nil
-	}); err != nil {
-		return 0, err
+
+	org, err := s.m.CreateOrg(ctx, fmt.Sprintf("%s's Org", username))
+	if err != nil {
+		return 0, errors.Wrapf(err, "failed to create organization")
 	}
-	return orgID, nil
+
+	user, err := s.m.CreateUser(ctx, querier.CreateUserParams{
+		Name:         username,
+		PasswordHash: hash,
+		PasswordSalt: salt,
+	})
+	if err != nil {
+		return 0, errors.Wrapf(err, "failed to create user")
+	}
+
+	if _, err := s.m.InsertOrgOwner(ctx, querier.InsertOrgOwnerParams{
+		UserID: user.ID,
+		OrgID:  org.ID,
+	}); err != nil {
+		return 0, errors.Wrapf(err, "failed to create organization owner")
+	}
+
+	if _, err := s.m.InsertOrgUser(ctx, querier.InsertOrgUserParams{
+		UserID: user.ID,
+		OrgID:  org.ID,
+	}); err != nil {
+		return 0, errors.Wrapf(err, "failed to create organization user")
+	}
+
+	return org.ID, nil
+}
+
+func (s *Service) ListTasks(ctx context.Context) ([]apigen.Task, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *Service) ListEvents(ctx context.Context) ([]apigen.Event, error) {
+	return nil, errors.New("not implemented")
 }

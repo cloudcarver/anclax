@@ -13,39 +13,31 @@ const createUser = `-- name: CreateUser :one
 INSERT INTO users (
     name,
     password_hash,
-    password_salt,
-    organization_id
+    password_salt
 ) VALUES (
-    $1, $2, $3, $4
+    $1, $2, $3
 ) ON CONFLICT (name) DO UPDATE 
     SET updated_at = CURRENT_TIMESTAMP, 
         name = EXCLUDED.name, 
         password_hash = EXCLUDED.password_hash,
         password_salt = EXCLUDED.password_salt
-RETURNING id, name, password_hash, password_salt, organization_id, created_at, updated_at
+RETURNING id, name, password_hash, password_salt, created_at, updated_at
 `
 
 type CreateUserParams struct {
-	Name           string
-	PasswordHash   string
-	PasswordSalt   string
-	OrganizationID int32
+	Name         string
+	PasswordHash string
+	PasswordSalt string
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (*User, error) {
-	row := q.db.QueryRow(ctx, createUser,
-		arg.Name,
-		arg.PasswordHash,
-		arg.PasswordSalt,
-		arg.OrganizationID,
-	)
+	row := q.db.QueryRow(ctx, createUser, arg.Name, arg.PasswordHash, arg.PasswordSalt)
 	var i User
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
 		&i.PasswordHash,
 		&i.PasswordSalt,
-		&i.OrganizationID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -63,7 +55,7 @@ func (q *Queries) DeleteUserByName(ctx context.Context, name string) error {
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id, name, password_hash, password_salt, organization_id, created_at, updated_at FROM users
+SELECT id, name, password_hash, password_salt, created_at, updated_at FROM users
 WHERE id = $1
 `
 
@@ -75,7 +67,6 @@ func (q *Queries) GetUser(ctx context.Context, id int32) (*User, error) {
 		&i.Name,
 		&i.PasswordHash,
 		&i.PasswordSalt,
-		&i.OrganizationID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -83,7 +74,7 @@ func (q *Queries) GetUser(ctx context.Context, id int32) (*User, error) {
 }
 
 const getUserByName = `-- name: GetUserByName :one
-SELECT id, name, password_hash, password_salt, organization_id, created_at, updated_at FROM users
+SELECT id, name, password_hash, password_salt, created_at, updated_at FROM users
 WHERE name = $1
 `
 
@@ -95,7 +86,6 @@ func (q *Queries) GetUserByName(ctx context.Context, name string) (*User, error)
 		&i.Name,
 		&i.PasswordHash,
 		&i.PasswordSalt,
-		&i.OrganizationID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

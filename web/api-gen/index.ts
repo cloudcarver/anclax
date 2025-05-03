@@ -8,10 +8,16 @@ export { OpenAPI } from './core/OpenAPI';
 export type { OpenAPIConfig } from './core/OpenAPI';
 
 export { Credentials } from './models/Credentials';
-export type { JWK } from './models/JWK';
-export type { JWKS } from './models/JWKS';
+export type { Event } from './models/Event';
+export { EventSpec } from './models/EventSpec';
+export type { EventTaskCompleted } from './models/EventTaskCompleted';
+export type { EventTaskError } from './models/EventTaskError';
 export type { RefreshTokenRequest } from './models/RefreshTokenRequest';
 export type { SignInRequest } from './models/SignInRequest';
-export type { User } from './models/User';
+export { Task } from './models/Task';
+export type { TaskAttributes } from './models/TaskAttributes';
+export type { TaskCronjob } from './models/TaskCronjob';
+export type { TaskRetryPolicy } from './models/TaskRetryPolicy';
+export type { TaskSpec } from './models/TaskSpec';
 
 export { DefaultService } from './services/DefaultService';

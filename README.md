@@ -1,0 +1,96 @@
+# Anchor 
+
+Anchor is a framework for building serverless and reliable applications in speed of light with confidence.
+
+Anchor provides the following features:
+
+- [x] Authentication & Authorization with Macaroons
+- [x] Asynchronous task management with at-least-once delivery
+- [x] Database query interface with sqlc
+- [x] HTTP API server with Fiber
+- [x] Plugin system for easily extending the framework
+
+The core philosophy of Anchor is to provide confidence in the codebase by:
+
+- Use YAML to define schema and generate interfaces to avoid runtime errors of missing implementation, meaning you can catch errors at compile time.
+- Use event-driven architecture to build a system that is easy to reason about and easy to extend.
+- All modules are mockable and can be tested with ease.
+
+## Quick Start
+
+```bash
+go install github.com/cloudcarver/anchor@latest
+anchor init .
+```
+
+1. Define the HTTP schema `api/openapi.yaml` with YAML format.
+
+  ```yaml
+  openapi: 3.0.0
+  info:
+    title: Anchor API
+    version: 1.0.0
+    description: Anchor API
+
+  paths:
+    /api/v1/counter:
+      get:
+        operationId: getCounter
+        summary: Get the counter value
+        responses:
+          "200":
+            description: The counter value
+  ```
+
+2. Define the database schema `sql/migrations/0001_init.up.sql` with SQL format.
+
+  ```sql
+  CREATE TABLE IF NOT EXISTS counter (
+    value INTEGER NOT NULL DEFAULT 0
+  );
+  ```
+
+  ```sql
+  -- name: GetCounter :one
+  SELECT value FROM counter LIMIT 1;
+
+  -- name: IncrementCounter :exec
+  UPDATE counter SET value = value + 1;
+  ```
+
+3. Define the task schema `api/tasks.yaml` with YAML format.
+
+  ```yaml
+  tasks:
+    incrementCounter:
+      description: Increment the counter value
+      cron: "*/1 * * * *" # every 1 seconds
+  ```
+
+4. Run code generation.
+
+```
+anchor generate
+```
+
+5. Implement the interfaces.
+
+  ```go
+  func (ct *Controller) GetCounter(c *fiber.Ctx) error {
+    value, err := ct.model.GetCounter()
+    if err != nil {
+      return err
+    }
+    return c.JSON(fiber.Map{"value": value})
+  }
+  ```
+
+  ```go
+  func (th *TaskHandler) IncrementCounter(ctx anchor.Context) error {
+    return ctx.Model().IncrementCounter()
+  }
+  ```
+
+6. Configure the application using environment variables.
+
+7. Build and run the application.

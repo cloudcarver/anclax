@@ -2,8 +2,11 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
-import type { JWK } from './JWK';
-export type JWKS = {
-    keys: Array<JWK>;
+export type TaskSpec = {
+    type: string;
+    /**
+     * The JSONB of the spec of the task
+     */
+    payload: string;
 };
 

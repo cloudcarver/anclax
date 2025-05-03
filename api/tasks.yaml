@@ -1,0 +1,14 @@
+tasks:
+  - name: deleteOpaqueKey
+    description: Delete an opaque key
+    parameters:
+      type: object
+      required: [keyID]
+      properties:
+        keyID:
+          type: integer
+          format: int64
+          description: The ID of the opaque key to delete
+    retryPolicy:
+      interval: 30m
+      always_retry_on_failure: true

@@ -62,7 +62,17 @@ sql:
           go_type: "github.com/google/uuid.NullUUID"
           nullable: true
 
-        - column: "jwks.params"
+        - column: "tasks.spec"
           go_type:
             import: "github.com/cloudcarver/anchor/internal/apigen"
-            type: "JWKParams"
+            type: "TaskSpec"
+
+        - column: "events.spec"
+          go_type:
+            import: "github.com/cloudcarver/anchor/internal/apigen"
+            type: "EventSpec"
+
+        - column: "tasks.attributes"
+          go_type:
+            import: "github.com/cloudcarver/anchor/internal/apigen"
+            type: "TaskAttributes"

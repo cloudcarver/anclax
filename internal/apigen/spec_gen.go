@@ -17,9 +17,27 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
+const (
+	BearerAuthScopes = "BearerAuth.Scopes"
+)
+
 // Defines values for CredentialsTokenType.
 const (
 	Bearer CredentialsTokenType = "Bearer"
+)
+
+// Defines values for EventSpecType.
+const (
+	TaskCompleted EventSpecType = "TaskCompleted"
+	TaskError     EventSpecType = "TaskError"
+)
+
+// Defines values for TaskStatus.
+const (
+	Completed TaskStatus = "completed"
+	Failed    TaskStatus = "failed"
+	Paused    TaskStatus = "paused"
+	Pending   TaskStatus = "pending"
 )
 
 // Credentials defines model for Credentials.
@@ -37,30 +55,32 @@ type Credentials struct {
 // CredentialsTokenType Token type
 type CredentialsTokenType string
 
-// JWK defines model for JWK.
-type JWK struct {
-	// Alg Algorithm
-	Alg string `json:"alg"`
-
-	// Exp Expiration time
-	Exp time.Time `json:"exp"`
-
-	// Kid Key ID
-	Kid string `json:"kid"`
-
-	// Kty Key type
-	Kty string `json:"kty"`
-
-	// Use Key use
-	Use string `json:"use"`
-
-	// X X coordinate
-	X string `json:"x"`
+// Event defines model for Event.
+type Event struct {
+	ID        int32     `json:"ID"`
+	CreatedAt time.Time `json:"createdAt"`
+	Spec      EventSpec `json:"spec"`
 }
 
-// JWKS defines model for JWKS.
-type JWKS struct {
-	Keys []JWK `json:"keys"`
+// EventSpec defines model for EventSpec.
+type EventSpec struct {
+	TaskCompleted *EventTaskCompleted `json:"taskCompleted,omitempty"`
+	TaskError     *EventTaskError     `json:"taskError,omitempty"`
+	Type          EventSpecType       `json:"type"`
+}
+
+// EventSpecType defines model for EventSpec.Type.
+type EventSpecType string
+
+// EventTaskCompleted defines model for EventTaskCompleted.
+type EventTaskCompleted struct {
+	TaskID int32 `json:"taskID"`
+}
+
+// EventTaskError defines model for EventTaskError.
+type EventTaskError struct {
+	Error  string `json:"error"`
+	TaskID int32  `json:"taskID"`
 }
 
 // RefreshTokenRequest defines model for RefreshTokenRequest.
@@ -76,6 +96,50 @@ type SignInRequest struct {
 
 	// Password User's password
 	Password string `json:"password"`
+}
+
+// Task defines model for Task.
+type Task struct {
+	ID         int32          `json:"ID"`
+	Attributes TaskAttributes `json:"attributes"`
+	CreatedAt  time.Time      `json:"createdAt"`
+	Spec       TaskSpec       `json:"spec"`
+	StartedAt  *time.Time     `json:"startedAt,omitempty"`
+	Status     TaskStatus     `json:"status"`
+	UpdatedAt  time.Time      `json:"updatedAt"`
+}
+
+// TaskStatus defines model for Task.Status.
+type TaskStatus string
+
+// TaskAttributes defines model for TaskAttributes.
+type TaskAttributes struct {
+	Cronjob     *TaskCronjob     `json:"cronjob,omitempty"`
+	RetryPolicy *TaskRetryPolicy `json:"retryPolicy,omitempty"`
+
+	// Timeout Timeout of the task, e.g. 1h, 1d, 1w, 1m
+	Timeout *string `json:"timeout,omitempty"`
+}
+
+// TaskCronjob defines model for TaskCronjob.
+type TaskCronjob struct {
+	CronExpression string `json:"cronExpression"`
+}
+
+// TaskRetryPolicy defines model for TaskRetryPolicy.
+type TaskRetryPolicy struct {
+	// AlwaysRetryOnFailure Whether to always retry the task on failure
+	AlwaysRetryOnFailure bool `json:"always_retry_on_failure"`
+
+	// Interval Interval of the retry policy, e.g. 1h, 1d, 1w, 1m
+	Interval string `json:"interval"`
+}
+
+// TaskSpec defines model for TaskSpec.
+type TaskSpec struct {
+	// Payload The JSONB of the spec of the task
+	Payload []byte `json:"payload"`
+	Type    string `json:"type"`
 }
 
 // RefreshTokenJSONRequestBody defines body for RefreshToken for application/json ContentType.
@@ -167,8 +231,14 @@ type ClientInterface interface {
 
 	SignIn(ctx context.Context, body SignInJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetJWKS request
-	GetJWKS(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// SignOut request
+	SignOut(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListEvents request
+	ListEvents(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListTasks request
+	ListTasks(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) RefreshTokenWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -219,8 +289,32 @@ func (c *Client) SignIn(ctx context.Context, body SignInJSONRequestBody, reqEdit
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetJWKS(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetJWKSRequest(c.Server)
+func (c *Client) SignOut(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSignOutRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListEvents(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListEventsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListTasks(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListTasksRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -311,8 +405,8 @@ func NewSignInRequestWithBody(server string, contentType string, body io.Reader)
 	return req, nil
 }
 
-// NewGetJWKSRequest generates requests for GetJWKS
-func NewGetJWKSRequest(server string) (*http.Request, error) {
+// NewSignOutRequest generates requests for SignOut
+func NewSignOutRequest(server string) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -320,7 +414,61 @@ func NewGetJWKSRequest(server string) (*http.Request, error) {
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/jwks")
+	operationPath := fmt.Sprintf("/auth/sign-out")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListEventsRequest generates requests for ListEvents
+func NewListEventsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/events")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListTasksRequest generates requests for ListTasks
+func NewListTasksRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/tasks")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -391,8 +539,14 @@ type ClientWithResponsesInterface interface {
 
 	SignInWithResponse(ctx context.Context, body SignInJSONRequestBody, reqEditors ...RequestEditorFn) (*SignInResponse, error)
 
-	// GetJWKSWithResponse request
-	GetJWKSWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetJWKSResponse, error)
+	// SignOutWithResponse request
+	SignOutWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*SignOutResponse, error)
+
+	// ListEventsWithResponse request
+	ListEventsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListEventsResponse, error)
+
+	// ListTasksWithResponse request
+	ListTasksWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListTasksResponse, error)
 }
 
 type RefreshTokenResponse struct {
@@ -439,14 +593,13 @@ func (r SignInResponse) StatusCode() int {
 	return 0
 }
 
-type GetJWKSResponse struct {
+type SignOutResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *JWKS
 }
 
 // Status returns HTTPResponse.Status
-func (r GetJWKSResponse) Status() string {
+func (r SignOutResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -454,7 +607,51 @@ func (r GetJWKSResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r GetJWKSResponse) StatusCode() int {
+func (r SignOutResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListEventsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]Event
+}
+
+// Status returns HTTPResponse.Status
+func (r ListEventsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListEventsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListTasksResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]Task
+}
+
+// Status returns HTTPResponse.Status
+func (r ListTasksResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListTasksResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -495,13 +692,31 @@ func (c *ClientWithResponses) SignInWithResponse(ctx context.Context, body SignI
 	return ParseSignInResponse(rsp)
 }
 
-// GetJWKSWithResponse request returning *GetJWKSResponse
-func (c *ClientWithResponses) GetJWKSWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetJWKSResponse, error) {
-	rsp, err := c.GetJWKS(ctx, reqEditors...)
+// SignOutWithResponse request returning *SignOutResponse
+func (c *ClientWithResponses) SignOutWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*SignOutResponse, error) {
+	rsp, err := c.SignOut(ctx, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseGetJWKSResponse(rsp)
+	return ParseSignOutResponse(rsp)
+}
+
+// ListEventsWithResponse request returning *ListEventsResponse
+func (c *ClientWithResponses) ListEventsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListEventsResponse, error) {
+	rsp, err := c.ListEvents(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListEventsResponse(rsp)
+}
+
+// ListTasksWithResponse request returning *ListTasksResponse
+func (c *ClientWithResponses) ListTasksWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListTasksResponse, error) {
+	rsp, err := c.ListTasks(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListTasksResponse(rsp)
 }
 
 // ParseRefreshTokenResponse parses an HTTP response from a RefreshTokenWithResponse call
@@ -556,22 +771,64 @@ func ParseSignInResponse(rsp *http.Response) (*SignInResponse, error) {
 	return response, nil
 }
 
-// ParseGetJWKSResponse parses an HTTP response from a GetJWKSWithResponse call
-func ParseGetJWKSResponse(rsp *http.Response) (*GetJWKSResponse, error) {
+// ParseSignOutResponse parses an HTTP response from a SignOutWithResponse call
+func ParseSignOutResponse(rsp *http.Response) (*SignOutResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &GetJWKSResponse{
+	response := &SignOutResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParseListEventsResponse parses an HTTP response from a ListEventsWithResponse call
+func ParseListEventsResponse(rsp *http.Response) (*ListEventsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListEventsResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest JWKS
+		var dest []Event
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListTasksResponse parses an HTTP response from a ListTasksWithResponse call
+func ParseListTasksResponse(rsp *http.Response) (*ListTasksResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListTasksResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []Task
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -590,9 +847,15 @@ type ServerInterface interface {
 	// Sign in user
 	// (POST /auth/sign-in)
 	SignIn(c *fiber.Ctx) error
-	// Get JWKS
-	// (GET /jwks)
-	GetJWKS(c *fiber.Ctx) error
+	// Sign out user
+	// (POST /auth/sign-out)
+	SignOut(c *fiber.Ctx) error
+	// Get all events
+	// (GET /events)
+	ListEvents(c *fiber.Ctx) error
+	// Get all tasks
+	// (GET /tasks)
+	ListTasks(c *fiber.Ctx) error
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -614,10 +877,28 @@ func (siw *ServerInterfaceWrapper) SignIn(c *fiber.Ctx) error {
 	return siw.Handler.SignIn(c)
 }
 
-// GetJWKS operation middleware
-func (siw *ServerInterfaceWrapper) GetJWKS(c *fiber.Ctx) error {
+// SignOut operation middleware
+func (siw *ServerInterfaceWrapper) SignOut(c *fiber.Ctx) error {
 
-	return siw.Handler.GetJWKS(c)
+	c.Context().SetUserValue(BearerAuthScopes, []string{})
+
+	return siw.Handler.SignOut(c)
+}
+
+// ListEvents operation middleware
+func (siw *ServerInterfaceWrapper) ListEvents(c *fiber.Ctx) error {
+
+	c.Context().SetUserValue(BearerAuthScopes, []string{})
+
+	return siw.Handler.ListEvents(c)
+}
+
+// ListTasks operation middleware
+func (siw *ServerInterfaceWrapper) ListTasks(c *fiber.Ctx) error {
+
+	c.Context().SetUserValue(BearerAuthScopes, []string{})
+
+	return siw.Handler.ListTasks(c)
 }
 
 // FiberServerOptions provides options for the Fiber server.
@@ -645,6 +926,10 @@ func RegisterHandlersWithOptions(router fiber.Router, si ServerInterface, option
 
 	router.Post(options.BaseURL+"/auth/sign-in", wrapper.SignIn)
 
-	router.Get(options.BaseURL+"/jwks", wrapper.GetJWKS)
+	router.Post(options.BaseURL+"/auth/sign-out", wrapper.SignOut)
+
+	router.Get(options.BaseURL+"/events", wrapper.ListEvents)
+
+	router.Get(options.BaseURL+"/tasks", wrapper.ListTasks)
 
 }

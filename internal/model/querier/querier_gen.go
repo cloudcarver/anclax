@@ -7,28 +7,33 @@ package querier
 import (
 	"context"
 
-	"github.com/google/uuid"
+	"github.com/cloudcarver/anchor/internal/apigen"
 )
 
 type Querier interface {
-	CleanUpKeys(ctx context.Context) error
-	CreateOrganization(ctx context.Context, name string) (*Organization, error)
-	CreateOrganizationOwner(ctx context.Context, arg CreateOrganizationOwnerParams) error
+	CreateKeyPair(ctx context.Context, arg CreateKeyPairParams) (*AccessKeyPair, error)
+	CreateOpaqueKey(ctx context.Context, arg CreateOpaqueKeyParams) (int64, error)
+	CreateOrg(ctx context.Context, name string) (*Org, error)
+	CreateTask(ctx context.Context, arg CreateTaskParams) (*Task, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (*User, error)
-	DeleteOrganization(ctx context.Context, id int32) error
-	DeleteRefreshToken(ctx context.Context, token string) error
+	DeleteKeyPair(ctx context.Context, accessKey string) error
+	DeleteOpaqueKey(ctx context.Context, id int64) error
+	DeleteOpaqueKeys(ctx context.Context, userID int32) error
 	DeleteUserByName(ctx context.Context, name string) error
-	GetKeyByID(ctx context.Context, id uuid.UUID) (*Key, error)
-	GetKeys(ctx context.Context) ([]*Key, error)
-	GetLatestKey(ctx context.Context) (*Key, error)
-	GetOrganization(ctx context.Context, id int32) (*Organization, error)
-	GetRefreshToken(ctx context.Context, token string) (*RefreshToken, error)
+	GetKeyPair(ctx context.Context, accessKey string) (*AccessKeyPair, error)
+	GetOpaqueKey(ctx context.Context, id int64) ([]byte, error)
+	GetOrg(ctx context.Context, id int32) (*Org, error)
+	GetOrgByName(ctx context.Context, name string) (*Org, error)
+	GetTaskByID(ctx context.Context, id int32) (*Task, error)
 	GetUser(ctx context.Context, id int32) (*User, error)
 	GetUserByName(ctx context.Context, name string) (*User, error)
-	ListOrganizations(ctx context.Context) ([]*Organization, error)
-	StoreKey(ctx context.Context, arg StoreKeyParams) (*Key, error)
-	StoreRefreshToken(ctx context.Context, arg StoreRefreshTokenParams) error
-	UpdateOrganization(ctx context.Context, arg UpdateOrganizationParams) (*Organization, error)
+	InsertEvent(ctx context.Context, spec apigen.EventSpec) (*Event, error)
+	InsertOrgOwner(ctx context.Context, arg InsertOrgOwnerParams) (*OrgOwner, error)
+	InsertOrgUser(ctx context.Context, arg InsertOrgUserParams) (*OrgUser, error)
+	PullTask(ctx context.Context) (*Task, error)
+	UpdateTask(ctx context.Context, arg UpdateTaskParams) error
+	UpdateTaskStartedAt(ctx context.Context, arg UpdateTaskStartedAtParams) error
+	UpdateTaskStatus(ctx context.Context, arg UpdateTaskStatusParams) error
 }
 
 var _ Querier = (*Queries)(nil)

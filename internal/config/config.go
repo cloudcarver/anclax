@@ -22,6 +22,19 @@ type Root struct {
 	Password string `yaml:"password"`
 }
 
+type Worker struct {
+	// (Optional) Whether to disable the worker, default is false
+	Disable bool `yaml:"disable,omitempty"`
+}
+
+type Debug struct {
+	// (Optional) Whether to enable the debug server, default is false
+	Enable bool `yaml:"enable,omitempty"`
+
+	// (Optional) The port of the debug server, default is 8080
+	Port int `yaml:"port,omitempty"`
+}
+
 type Config struct {
 	// (Optional) The path of file to store the initialization data, if not set, skip the initialization
 	Init string `yaml:"init,omitempty"`
@@ -47,6 +60,13 @@ type Config struct {
 
 	// (Optional) The path of the directory to store the risectl files, default is "$HOME/.risectl"
 	RisectlDir string `yaml:"risectldir,omitempty"`
+
+	// (Optional) The port of the metrics server, default is 9020
+	MetricsPort int `yaml:"metricsport,omitempty"`
+
+	Worker Worker `yaml:"worker,omitempty"`
+
+	Debug Debug `yaml:"debug,omitempty"`
 }
 
 func NewConfig() (*Config, error) {
