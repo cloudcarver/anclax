@@ -1,0 +1,47 @@
+externals:
+  oapi-codegen: v2.1.0
+  wire: v0.6.0
+  sqlc: v1.27.0
+  mockgen: v0.5.0
+
+oapi-codegen:
+  path: api/v1.yaml
+  out: internal/apigen/spec_gen.go
+  package: apigen
+
+wire:
+  path: ./wire
+
+xware:
+  path: api/v1.yaml
+  out: internal/apigen/scopes_extend_gen.go
+  package: apigen
+
+task-handler:
+  path: api/tasks.yaml
+  package: runner
+  out: internal/task/runner/runner_gen.go
+
+mockgen:
+  files:
+    - source: internal/model/model.go
+      destination: internal/model/mock_gen.go
+      package: model
+    - source: internal/macaroons/interfaces.go
+      destination: internal/macaroons/mock_gen.go
+      package: macaroons
+    - source: internal/macaroons/store/interfaces.go
+      destination: internal/macaroons/store/mock_gen.go
+      package: mock
+    - source: internal/auth/auth.go
+      destination: internal/auth/mock_gen.go
+      package: auth
+    - source: internal/task/interfaces.go
+      destination: internal/task/mock_gen.go
+      package: task
+    - source: internal/task/worker/interfaces.go
+      destination: internal/task/worker/mock_gen.go
+      package: mock
+    - source: internal/task/runner/runner_gen.go
+      destination: internal/task/runner/runner_gen_mock.go
+      package: runner

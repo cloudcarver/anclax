@@ -8,6 +8,7 @@ import (
 	"github.com/cloudcarver/anchor/internal/apigen"
 	"github.com/cloudcarver/anchor/internal/model"
 	"github.com/cloudcarver/anchor/internal/model/querier"
+	"github.com/cloudcarver/anchor/internal/utils"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -17,9 +18,11 @@ func TestUpdateCronJob(t *testing.T) {
 	defer ctrl.Finish()
 
 	var (
-		taskID           = int32(1)
-		cronExpression   = "0 0 * * *"
-		taskSpec         = apigen.TaskSpec{}
+		taskID         = int32(1)
+		cronExpression = "0 0 * * *"
+		taskSpec       = apigen.TaskSpec{
+			Payload: []byte{},
+		}
 		currentTime      = time.Date(2025, 3, 31, 12, 0, 0, 0, time.UTC)
 		expectedNextTime = time.Date(2025, 4, 1, 0, 0, 0, 0, time.UTC)
 	)
@@ -31,7 +34,7 @@ func TestUpdateCronJob(t *testing.T) {
 		Context:        context.Background(),
 	}
 
-	mockModel.EXPECT().GetTaskByID(c, taskID).Return(&apigen.Task{
+	mockModel.EXPECT().GetTaskByID(c, taskID).Return(&querier.Task{
 		ID: taskID,
 		Attributes: apigen.TaskAttributes{
 			Cronjob: &apigen.TaskCronjob{
@@ -40,7 +43,7 @@ func TestUpdateCronJob(t *testing.T) {
 		},
 	}, nil)
 
-	mockModel.EXPECT().UpdateTask(c, querier.UpdateTaskParams{
+	mockModel.EXPECT().UpdateTask(c, utils.NewJSONValueMatcher(t, querier.UpdateTaskParams{
 		ID: taskID,
 		Attributes: apigen.TaskAttributes{
 			Cronjob: &apigen.TaskCronjob{
@@ -49,7 +52,7 @@ func TestUpdateCronJob(t *testing.T) {
 		},
 		Spec:      taskSpec,
 		StartedAt: &expectedNextTime,
-	})
+	}))
 
 	taskStore := &TaskStore{
 		now: func() time.Time {

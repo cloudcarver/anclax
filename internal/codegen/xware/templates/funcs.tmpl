@@ -1,0 +1,9 @@
+type Validator interface { 
+    PreValidate(*fiber.Ctx) error
+    
+    PostValidate(*fiber.Ctx) error
+{{range .CheckRules}}
+    {{.Name}}({{if .UseContext}}c *fiber.Ctx{{else}}ctx context.Context{{end}}{{if .Params}}, {{end}}{{genXParamArgs .Params}}) error
+{{end}} {{range .Functions}}
+    {{.Name}}({{if .UseContext}}c *fiber.Ctx{{else}}ctx context.Context{{end}}{{if .Params}}, {{end}}{{genXParamArgs .Params}}) {{.Return.Schema.GoType}}
+{{end}}}

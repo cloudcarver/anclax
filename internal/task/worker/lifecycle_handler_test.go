@@ -25,8 +25,6 @@ func TestHandleCronjob(t *testing.T) {
 	require.NoError(t, err)
 
 	var (
-		orgID = int32(1)
-
 		currTime = time.Date(2025, 3, 27, 0, 0, 1, 0, location)
 		cronExpr = "0 0 * * *"
 		nextTime = time.Date(2025, 3, 28, 0, 0, 0, 0, location)
@@ -39,10 +37,6 @@ func TestHandleCronjob(t *testing.T) {
 			return currTime
 		},
 	}
-
-	txm.EXPECT().GetOrg(context.Background(), orgID).Return(&querier.Org{
-		Tz: tz,
-	}, nil)
 
 	txm.EXPECT().UpdateTaskStartedAt(context.Background(), querier.UpdateTaskStartedAtParams{
 		ID:        taskID,

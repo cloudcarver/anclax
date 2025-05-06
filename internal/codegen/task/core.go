@@ -5,16 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"text/template"
 	"time"
 
 	"github.com/cloudcarver/anchor/internal/utils"
+	"gopkg.in/yaml.v3"
 )
 
 var globalTypeNameCounter = map[string]int{}
 
-func ResetGlobalTypeNameCounter() {
+func resetGlobalTypeNameCounter() {
 	globalTypeNameCounter = map[string]int{}
 }
 
@@ -158,7 +160,31 @@ func indent(s string, spaces int) string {
 	return indent + strings.ReplaceAll(s, "\n", "\n"+indent)
 }
 
-func GenerateToolInterfaces(packageName string, data map[string]any) (string, error) {
+func Generate(packageName, taskDefPath, outPath string) error {
+	raw, err := os.ReadFile(taskDefPath)
+	if err != nil {
+		return err
+	}
+	var data map[string]any
+	if err := yaml.Unmarshal(raw, &data); err != nil {
+		return err
+	}
+
+	resetGlobalTypeNameCounter()
+
+	result, err := generateToolInterfaces(packageName, data)
+	if err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(outPath, []byte(result), 0644); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func generateToolInterfaces(packageName string, data map[string]any) (string, error) {
 	var structDef string
 	functions := []Function{}
 

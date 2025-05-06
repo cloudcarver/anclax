@@ -1,0 +1,29 @@
+type XMiddleware struct {
+	Handler ServerInterface
+	Validator
+}
+
+func NewXMiddleware(handler ServerInterface, validator Validator) ServerInterface {
+	return &XMiddleware{Handler: handler, Validator: validator}
+}
+
+{{range .}}{{.SummaryAsComment }}
+// ({{.Method}} {{.Path}})
+func (x *XMiddleware) {{.OperationId}}(c *fiber.Ctx{{genParamArgs .PathParams}}{{if .RequiresParamObject}}, params {{.OperationId}}Params{{end}}) error {
+    {{if ne (len .SecurityDefinitions) 0}}if c.Get("Authorization") == "" {
+		return c.Status(fiber.StatusUnauthorized).SendString("Authorization header is required")
+	} {{end}}
+	if err := x.PreValidate(c); err != nil {
+		return c.Status(fiber.StatusForbidden).SendString(err.Error())
+	}
+	{{$needsOperationID := false}}{{range .SecurityDefinitions}}{{range .Scopes}}{{if contains . "operationID"}}{{$needsOperationID = true}}{{end}}{{end}}{{end}}{{if $needsOperationID}}operationID := "{{.OperationId}}"{{end}}
+	{{range .SecurityDefinitions}} {{range .Scopes}}
+	if err := {{.}}; err != nil {
+	    return c.Status(fiber.StatusForbidden).SendString(err.Error())
+	} {{end}} {{end}}
+	if err := x.PostValidate(c); err != nil {
+		return c.Status(fiber.StatusForbidden).SendString(err.Error())
+	}
+    return x.Handler.{{.OperationId}}(c{{genParamNames .PathParams}}{{if .RequiresParamObject}}, params{{end}})
+}
+{{end}}
