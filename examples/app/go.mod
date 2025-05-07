@@ -2,17 +2,14 @@ module github.com/cloudcarver/anchor/example-app
 
 go 1.24.1
 
-replace github.com/cloudcarver/anchor => ../../
-
 require (
-	github.com/cloudcarver/anchor v0.0.0-00010101000000-000000000000
+	github.com/cloudcarver/anchor v0.1.1
 	github.com/gofiber/fiber/v2 v2.52.6
 	github.com/golang-migrate/migrate/v4 v4.18.3
 	github.com/google/wire v0.6.0
 	github.com/jackc/pgx/v5 v5.7.4
 	github.com/pkg/errors v0.9.1
 	go.uber.org/mock v0.5.2
-	go.uber.org/zap v1.27.0
 )
 
 require (
@@ -42,6 +39,7 @@ require (
 	github.com/valyala/tcplisten v1.0.0 // indirect
 	go.uber.org/atomic v1.7.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
+	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/crypto v0.36.0 // indirect
 	golang.org/x/sync v0.12.0 // indirect
 	golang.org/x/sys v0.31.0 // indirect

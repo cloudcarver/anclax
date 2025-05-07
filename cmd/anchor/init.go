@@ -56,7 +56,7 @@ var goModules = []string{
 	"github.com/jackc/pgx/v5",
 	"github.com/gofiber/fiber/v2",
 	"github.com/google/wire",
-	"go.uber.org/zap",
+	"github.com/cloudcarver/anchor",
 }
 
 func runGenInit(c *cli.Context) error {
@@ -140,6 +140,15 @@ func runGenInit(c *cli.Context) error {
 	// run codegen
 	if err := codegen(configName, projectDir); err != nil {
 		return errors.Wrap(err, "failed to run codegen")
+	}
+
+	// go mod tidy
+	cmd = exec.Command("go", "mod", "tidy")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Dir = projectDir
+	if err := cmd.Run(); err != nil {
+		return errors.Wrap(err, "failed to run go mod tidy")
 	}
 
 	fmt.Printf("Project initialized successfully in %s\n", projectDir)
