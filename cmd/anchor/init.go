@@ -1,10 +1,14 @@
 package main
 
 import (
+	"bytes"
+	"embed"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/urfave/cli/v2"
@@ -17,7 +21,8 @@ const (
 	Sqlc        = "sqlc"
 	Mockgen     = "mockgen"
 
-	binDir = "bin"
+	binDir     = "bin"
+	configName = "anchor.yaml"
 )
 
 var installMap = map[string]string{
@@ -28,15 +33,8 @@ var installMap = map[string]string{
 }
 
 var initCmd = &cli.Command{
-	Name:  "init",
-	Usage: "Initialize a new project in the current directory",
-	Flags: []cli.Flag{
-		&cli.StringFlag{
-			Name:  "config",
-			Usage: "Path to the config file",
-			Value: "anchor.yaml",
-		},
-	},
+	Name:   "init",
+	Usage:  "Initialize a new project in the current directory",
 	Action: runGenInit,
 }
 
@@ -54,18 +52,54 @@ func parseConfig(configPath string) (*Config, error) {
 	return &config, nil
 }
 
+var goModules = []string{
+	"github.com/jackc/pgx/v5",
+	"github.com/gofiber/fiber/v2",
+	"github.com/google/wire",
+	"go.uber.org/zap",
+}
+
 func runGenInit(c *cli.Context) error {
-	configPath := c.String("config")
-	if configPath == "" {
-		return errors.New("config path is required")
-	}
-
-	projectDir := c.Args().First()
+	projectDir := c.Args().Get(0)
 	if projectDir == "" {
-		return errors.New("missing project directory, use `anchor init <project-dir>`")
+		return errors.New("missing project directory, use `anchor init <project-dir> <go-module-name>`")
 	}
 
-	config, err := parseConfig(configPath)
+	goModule := c.Args().Get(1)
+	if goModule == "" {
+		return errors.New("missing go module name, use `anchor init <project-dir> <go-module-name>`")
+	}
+
+	// Copy template files to the project directory
+	if err := initFiles(projectDir, goModule); err != nil {
+		return errors.Wrap(err, "failed to initialize project files")
+	}
+
+	// init go modules
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		return errors.Wrap(err, "failed to create project directory")
+	}
+
+	cmd := exec.Command("go", "mod", "init", goModule)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Dir = projectDir
+	if err := cmd.Run(); err != nil {
+		return errors.Wrap(err, "failed to initialize go module")
+	}
+
+	for _, module := range goModules {
+		cmd = exec.Command("go", "get", module)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Dir = projectDir
+		if err := cmd.Run(); err != nil {
+			return errors.Wrap(err, "failed to get go module")
+		}
+	}
+
+	// install external tools
+	config, err := parseConfig(configName)
 	if err != nil {
 		return errors.Wrap(err, "failed to parse config")
 	}
@@ -101,8 +135,14 @@ func runGenInit(c *cli.Context) error {
 				return errors.Wrap(err, "failed to persist external tool version")
 			}
 		}
-
 	}
+
+	// run codegen
+	if err := codegen(configName, projectDir); err != nil {
+		return errors.Wrap(err, "failed to run codegen")
+	}
+
+	fmt.Printf("Project initialized successfully in %s\n", projectDir)
 	return nil
 }
 
@@ -113,4 +153,55 @@ func installExternal(dir, url, version string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+//go:embed all:initFiles
+var files embed.FS
+
+func initFiles(dir, goModule string) error {
+	// create go.mod file
+
+	// replicate all necessary files
+	return fs.WalkDir(files, "initFiles", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Get the relative path from the embedded root
+		relPath, err := filepath.Rel("initFiles", path)
+		if err != nil {
+			return errors.Wrap(err, "failed to get relative path")
+		}
+
+		// Skip the root directory
+		if relPath == "." {
+			return nil
+		}
+
+		// Destination path
+		dstPath := filepath.Join(dir, relPath)
+
+		if d.IsDir() {
+			// Create directory
+			if err := os.MkdirAll(dstPath, 0755); err != nil {
+				return errors.Wrap(err, "failed to create directory")
+			}
+		} else {
+			// Read and write file
+			content, err := files.ReadFile(path)
+			if err != nil {
+				return errors.Wrap(err, "failed to read file")
+			}
+
+			if strings.HasSuffix(dstPath, ".go") {
+				content = bytes.ReplaceAll(content, []byte("github.com/cloudcarver/anchor/example-app"), []byte(goModule))
+			}
+
+			if err := os.WriteFile(dstPath, content, 0644); err != nil {
+				return errors.Wrap(err, "failed to write file")
+			}
+		}
+
+		return nil
+	})
 }

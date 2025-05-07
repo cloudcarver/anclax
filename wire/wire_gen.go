@@ -7,20 +7,20 @@
 package wire
 
 import (
-	"github.com/cloudcarver/anchor/internal/app"
-	"github.com/cloudcarver/anchor/internal/auth"
-	"github.com/cloudcarver/anchor/internal/config"
-	"github.com/cloudcarver/anchor/internal/controller"
-	"github.com/cloudcarver/anchor/internal/globalctx"
-	"github.com/cloudcarver/anchor/internal/macaroons"
-	"github.com/cloudcarver/anchor/internal/macaroons/store"
-	"github.com/cloudcarver/anchor/internal/metrics"
-	"github.com/cloudcarver/anchor/internal/model"
-	"github.com/cloudcarver/anchor/internal/server"
-	"github.com/cloudcarver/anchor/internal/service"
-	"github.com/cloudcarver/anchor/internal/task"
-	"github.com/cloudcarver/anchor/internal/task/runner"
-	"github.com/cloudcarver/anchor/internal/task/worker"
+	"github.com/cloudcarver/anchor/pkg/app"
+	"github.com/cloudcarver/anchor/pkg/auth"
+	"github.com/cloudcarver/anchor/pkg/config"
+	"github.com/cloudcarver/anchor/pkg/controller"
+	"github.com/cloudcarver/anchor/pkg/globalctx"
+	"github.com/cloudcarver/anchor/pkg/macaroons"
+	"github.com/cloudcarver/anchor/pkg/macaroons/store"
+	"github.com/cloudcarver/anchor/pkg/metrics"
+	"github.com/cloudcarver/anchor/pkg/model"
+	"github.com/cloudcarver/anchor/pkg/server"
+	"github.com/cloudcarver/anchor/pkg/service"
+	"github.com/cloudcarver/anchor/pkg/task"
+	"github.com/cloudcarver/anchor/pkg/task/runner"
+	"github.com/cloudcarver/anchor/pkg/task/worker"
 )
 
 // Injectors from wire.go:
@@ -52,7 +52,7 @@ func InitializeApplication() (*app.Application, error) {
 		return nil, err
 	}
 	metricsServer := metrics.NewMetricsServer(configConfig, globalContext)
-	executorInterface := runner.NewExecutor()
+	executorInterface := runner.NewExecutor(modelInterface)
 	taskHandler := runner.NewTaskHandler(executorInterface)
 	workerWorker, err := worker.NewWorker(globalContext, modelInterface, taskHandler)
 	if err != nil {

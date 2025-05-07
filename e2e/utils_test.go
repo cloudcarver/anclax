@@ -6,7 +6,7 @@ package e2e
 import (
 	"testing"
 
-	"github.com/cloudcarver/anchor/internal/apigen"
+	"github.com/cloudcarver/anchor/pkg/apigen"
 )
 
 func loginAccount(t *testing.T, name, password string) apigen.Credentials {

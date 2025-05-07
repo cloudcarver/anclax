@@ -14,6 +14,7 @@ func main() {
 		Commands: []*cli.Command{
 			genCmd,
 			initCmd,
+			docsCmd,
 		},
 	}
 

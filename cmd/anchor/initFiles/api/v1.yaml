@@ -1,0 +1,36 @@
+openapi: 3.0.0
+
+info:
+  title: My Anchor Project
+  version: "1.0"
+  description: API for interacting with my anchor project
+
+servers:
+  - url: /api/v1
+    description: Base API path
+
+paths:
+  /counter:
+    get:
+      summary: Get Counter
+      description: Retrieve the current counter value
+      operationId: getCounter
+      responses:
+        "200":
+          description: The current counter value
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Counter"
+
+components:
+  schemas:
+    Counter:
+      type: object
+      required: [count]
+      properties:
+        count:
+          type: integer
+          format: int32

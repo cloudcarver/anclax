@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cloudcarver/anchor/internal/apigen"
-	"github.com/cloudcarver/anchor/internal/model"
-	"github.com/cloudcarver/anchor/internal/task"
-	"github.com/cloudcarver/anchor/internal/task/worker"
-	"github.com/cloudcarver/anchor/internal/utils"
+	"github.com/cloudcarver/anchor/pkg/apigen"
+	"github.com/cloudcarver/anchor/pkg/model"
+	"github.com/cloudcarver/anchor/pkg/task"
+	"github.com/cloudcarver/anchor/pkg/task/worker"
+	"github.com/cloudcarver/anchor/pkg/utils"
+	"github.com/pkg/errors"
 )
 
 func init() {
@@ -34,6 +35,7 @@ type Client struct {
 func NewTaskRunner(taskStore task.TaskStoreInterface) TaskRunner {
 	return &Client{
 		taskStore: taskStore,
+		now:       time.Now,
 	}
 }
 
@@ -88,6 +90,8 @@ type ExecutorInterface interface {
 
 type TaskHandler struct {
 	executor ExecutorInterface
+
+	externalTaskHandler []worker.TaskHandler
 }
 
 func NewTaskHandler(executor ExecutorInterface) worker.TaskHandler {
@@ -96,16 +100,30 @@ func NewTaskHandler(executor ExecutorInterface) worker.TaskHandler {
 	}
 }
 
-func (f *TaskHandler) HandleTask(c *model.Context, spec *apigen.TaskSpec) error {
-	switch spec.Type { 
+func (f *TaskHandler) RegisterTaskHandler(handler worker.TaskHandler) {
+	f.externalTaskHandler = append(f.externalTaskHandler, handler)
+}
+
+func (f *TaskHandler) HandleTask(c *model.Context, spec worker.TaskSpec) error {
+	for _, handler := range f.externalTaskHandler {
+		if err := handler.HandleTask(c, spec); err != nil {
+			if errors.Is(err, worker.ErrUnknownTaskType) {
+				continue
+			}
+			return err
+		}
+		return nil
+	}
+
+	switch spec.GetType() { 
 	case DeleteOpaqueKey:
 		var params DeleteOpaqueKeyParameters
-		if err := params.Parse(spec.Payload); err != nil {
+		if err := params.Parse(spec.GetPayload()); err != nil {
 			return fmt.Errorf("failed to parse deleteOpaqueKey parameters: %w", err)
 		}
 		return f.executor.DeleteOpaqueKey(&params)
 		
 	default:
-		return fmt.Errorf("unknown handler %s", spec.Type)
+		return fmt.Errorf("unknown handler %s", spec.GetType())
 	}
 }

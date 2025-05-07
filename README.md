@@ -23,7 +23,7 @@ go install github.com/cloudcarver/anchor@latest
 anchor init .
 ```
 
-1. Define the HTTP schema `api/openapi.yaml` with YAML format.
+1. Define the HTTP schema `api/v1.yaml` with YAML format.
 
   ```yaml
   openapi: 3.0.0
@@ -76,18 +76,14 @@ anchor generate
 5. Implement the interfaces.
 
   ```go
-  func (ct *Controller) GetCounter(c *fiber.Ctx) error {
-    value, err := ct.model.GetCounter()
-    if err != nil {
-      return err
-    }
-    return c.JSON(fiber.Map{"value": value})
+  func (h *Handler) GetCounter(c *fiber.Ctx) error {
+    return c.JSON(apigen.Counter{Count: 0})
   }
   ```
 
   ```go
-  func (th *TaskHandler) IncrementCounter(ctx anchor.Context) error {
-    return ctx.Model().IncrementCounter()
+  func (e *Executor) IncrementCounter(ctx context.Context, params *IncrementCounterParameters) error {
+    return e.model.IncrementCounter(ctx)
   }
   ```
 

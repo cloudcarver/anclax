@@ -4,8 +4,8 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/cloudcarver/anchor/internal/logger"
-	"github.com/cloudcarver/anchor/internal/utils"
+	"github.com/cloudcarver/anchor/pkg/logger"
+	"github.com/cloudcarver/anchor/pkg/utils"
 	"github.com/cloudcarver/anchor/wire"
 	"go.uber.org/zap"
 )

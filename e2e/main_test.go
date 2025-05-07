@@ -10,8 +10,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/cloudcarver/anchor/internal/apigen"
-	"github.com/cloudcarver/anchor/internal/server"
+	"github.com/cloudcarver/anchor/pkg/apigen"
+	"github.com/cloudcarver/anchor/pkg/server"
 	"github.com/cloudcarver/anchor/wire"
 	"github.com/gavv/httpexpect/v2"
 	"github.com/gofiber/fiber/v2/middleware/adaptor"

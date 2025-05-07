@@ -64,15 +64,15 @@ sql:
 
         - column: "tasks.spec"
           go_type:
-            import: "github.com/cloudcarver/anchor/internal/apigen"
+            import: "github.com/cloudcarver/anchor/pkg/apigen"
             type: "TaskSpec"
 
         - column: "events.spec"
           go_type:
-            import: "github.com/cloudcarver/anchor/internal/apigen"
+            import: "github.com/cloudcarver/anchor/pkg/apigen"
             type: "EventSpec"
 
         - column: "tasks.attributes"
           go_type:
-            import: "github.com/cloudcarver/anchor/internal/apigen"
+            import: "github.com/cloudcarver/anchor/pkg/apigen"
             type: "TaskAttributes"
