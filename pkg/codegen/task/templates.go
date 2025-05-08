@@ -32,7 +32,7 @@ const ( {{range .Functions}}
 
 type TaskRunner interface { {{range .Functions}}
 {{.Description}}
-	{{upperFirst .Name}}(ctx *model.Context, params *{{.ParameterType}}) error
+	{{upperFirst .Name}}(ctx *model.Context, params *{{.ParameterType}}) (int32, error)
 {{end}}}
 
 type Client struct {
@@ -48,10 +48,10 @@ func NewTaskRunner(taskStore task.TaskStoreInterface) TaskRunner {
 }
 
 {{range .Functions}}
-func (c *Client) {{upperFirst .Name}}(ctx *model.Context, params *{{.ParameterType}}) error {
+func (c *Client) {{upperFirst .Name}}(ctx *model.Context, params *{{.ParameterType}}) (int32, error) {
 	payload, err := params.Marshal()
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	spec := apigen.TaskSpec{
@@ -77,10 +77,11 @@ func (c *Client) {{upperFirst .Name}}(ctx *model.Context, params *{{.ParameterTy
 		return fmt.Errorf("failed to parse delay: %w", err)
 	}
 	task.StartedAt = utils.Ptr(c.now().Add(delay)){{end}}
-	if _, err := c.taskStore.PushTask(ctx, task); err != nil {
-		return err
+	taskID, err := c.taskStore.PushTask(ctx, task)
+	if err != nil {
+		return 0, err
 	}
-	return nil
+	return taskID, nil
 }{{end}}
 
 {{.StructDefs}}{{range .Functions}}

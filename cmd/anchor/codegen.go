@@ -138,7 +138,9 @@ func genMock(workdir string, config *MockgenConfig) error {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		cmd.Dir = workdir
-		return cmd.Run()
+		if err := cmd.Run(); err != nil {
+			return errors.Wrap(err, "failed to generate mockgen")
+		}
 	}
 	return nil
 }

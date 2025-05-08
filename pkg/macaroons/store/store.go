@@ -44,7 +44,7 @@ func (s *Store) Create(ctx context.Context, userID int32, key []byte, ttl time.D
 
 		if ttl > 0 {
 			c := model.NewContext(ctx, txm)
-			if err := s.taskRunner.DeleteOpaqueKey(c, &runner.DeleteOpaqueKeyParameters{
+			if _, err := s.taskRunner.DeleteOpaqueKey(c, &runner.DeleteOpaqueKeyParameters{
 				KeyID: keyID,
 			}); err != nil {
 				return errors.Wrap(err, "failed to create task")

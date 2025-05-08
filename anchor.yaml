@@ -32,7 +32,7 @@ mockgen:
       package: macaroons
     - source: pkg/macaroons/store/interfaces.go
       destination: pkg/macaroons/store/mock_gen.go
-      package: mock
+      package: store
     - source: pkg/auth/auth.go
       destination: pkg/auth/mock_gen.go
       package: auth
@@ -41,7 +41,7 @@ mockgen:
       package: task
     - source: pkg/task/worker/interfaces.go
       destination: pkg/task/worker/mock_gen.go
-      package: mock
+      package: worker
     - source: pkg/task/runner/runner_gen.go
       destination: pkg/task/runner/runner_gen_mock.go
       package: runner

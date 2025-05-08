@@ -25,7 +25,7 @@ const (
 
 type TaskRunner interface { 
     // Delete an opaque key
-	DeleteOpaqueKey(ctx *model.Context, params *DeleteOpaqueKeyParameters) error
+	DeleteOpaqueKey(ctx *model.Context, params *DeleteOpaqueKeyParameters) (int32, error)
 }
 
 type Client struct {
@@ -41,10 +41,10 @@ func NewTaskRunner(taskStore task.TaskStoreInterface) TaskRunner {
 }
 
 
-func (c *Client) DeleteOpaqueKey(ctx *model.Context, params *DeleteOpaqueKeyParameters) error {
+func (c *Client) DeleteOpaqueKey(ctx *model.Context, params *DeleteOpaqueKeyParameters) (int32, error) {
 	payload, err := params.Marshal()
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	spec := apigen.TaskSpec{
@@ -64,10 +64,11 @@ func (c *Client) DeleteOpaqueKey(ctx *model.Context, params *DeleteOpaqueKeyPara
 		Status:     apigen.Pending,
 	}
 	
-	if _, err := c.taskStore.PushTask(ctx, task); err != nil {
-		return err
+	taskID, err := c.taskStore.PushTask(ctx, task)
+	if err != nil {
+		return 0, err
 	}
-	return nil
+	return taskID, nil
 }
 
 
