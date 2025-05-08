@@ -18,6 +18,7 @@ func TestUpdateCronJob(t *testing.T) {
 	defer ctrl.Finish()
 
 	var (
+		ctx            = context.Background()
 		taskID         = int32(1)
 		cronExpression = "0 0 * * *"
 		taskSpec       = apigen.TaskSpec{
@@ -29,12 +30,7 @@ func TestUpdateCronJob(t *testing.T) {
 
 	mockModel := model.NewMockModelInterface(ctrl)
 
-	c := &model.Context{
-		ModelInterface: mockModel,
-		Context:        context.Background(),
-	}
-
-	mockModel.EXPECT().GetTaskByID(c, taskID).Return(&querier.Task{
+	mockModel.EXPECT().GetTaskByID(ctx, taskID).Return(&querier.Task{
 		ID: taskID,
 		Attributes: apigen.TaskAttributes{
 			Cronjob: &apigen.TaskCronjob{
@@ -43,7 +39,7 @@ func TestUpdateCronJob(t *testing.T) {
 		},
 	}, nil)
 
-	mockModel.EXPECT().UpdateTask(c, utils.NewJSONValueMatcher(t, querier.UpdateTaskParams{
+	mockModel.EXPECT().UpdateTask(ctx, utils.NewJSONValueMatcher(t, querier.UpdateTaskParams{
 		ID: taskID,
 		Attributes: apigen.TaskAttributes{
 			Cronjob: &apigen.TaskCronjob{
@@ -55,11 +51,12 @@ func TestUpdateCronJob(t *testing.T) {
 	}))
 
 	taskStore := &TaskStore{
+		model: mockModel,
 		now: func() time.Time {
 			return currentTime
 		},
 	}
-	err := taskStore.UpdateCronJob(c, taskID, cronExpression, []byte{})
+	err := taskStore.UpdateCronJob(ctx, taskID, cronExpression, []byte{})
 	require.NoError(t, err)
 }
 
@@ -68,23 +65,22 @@ func TestPauseCronJob(t *testing.T) {
 	defer ctrl.Finish()
 
 	var (
+		ctx    = context.Background()
 		taskID = int32(1)
 	)
 
 	mockModel := model.NewMockModelInterface(ctrl)
 
-	c := &model.Context{
-		ModelInterface: mockModel,
-		Context:        context.Background(),
-	}
-
-	mockModel.EXPECT().UpdateTaskStatus(c, querier.UpdateTaskStatusParams{
+	mockModel.EXPECT().UpdateTaskStatus(ctx, querier.UpdateTaskStatusParams{
 		ID:     taskID,
 		Status: string(apigen.Paused),
 	}).Return(nil)
 
-	taskStore := &TaskStore{}
-	err := taskStore.PauseCronJob(c, taskID)
+	taskStore := &TaskStore{
+		model: mockModel,
+	}
+
+	err := taskStore.PauseCronJob(ctx, taskID)
 	require.NoError(t, err)
 }
 
@@ -93,22 +89,20 @@ func TestResumeCronJob(t *testing.T) {
 	defer ctrl.Finish()
 
 	var (
+		ctx    = context.Background()
 		taskID = int32(1)
 	)
 
 	mockModel := model.NewMockModelInterface(ctrl)
 
-	c := &model.Context{
-		ModelInterface: mockModel,
-		Context:        context.Background(),
-	}
-
-	mockModel.EXPECT().UpdateTaskStatus(c, querier.UpdateTaskStatusParams{
+	mockModel.EXPECT().UpdateTaskStatus(ctx, querier.UpdateTaskStatusParams{
 		ID:     taskID,
 		Status: string(apigen.Pending),
 	}).Return(nil)
 
-	taskStore := &TaskStore{}
-	err := taskStore.ResumeCronJob(c, taskID)
+	taskStore := &TaskStore{
+		model: mockModel,
+	}
+	err := taskStore.ResumeCronJob(ctx, taskID)
 	require.NoError(t, err)
 }
