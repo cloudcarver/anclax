@@ -15,6 +15,7 @@ func main() {
 			genCmd,
 			initCmd,
 			docsCmd,
+			installCmd,
 		},
 	}
 
