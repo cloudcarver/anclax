@@ -7,8 +7,10 @@
 package wire
 
 import (
+	"github.com/cloudcarver/anchor/example-app/internal/config"
 	"github.com/cloudcarver/anchor/example-app/internal/handler"
 	"github.com/cloudcarver/anchor/example-app/internal/initapp"
+	"github.com/cloudcarver/anchor/example-app/internal/model"
 	"github.com/cloudcarver/anchor/example-app/internal/task"
 	"github.com/cloudcarver/anchor/wire"
 )
@@ -22,7 +24,15 @@ func InitApp() (*initapp.App, error) {
 	}
 	serverInterface := handler.NewHandler()
 	validator := handler.NewValidator()
-	executorInterface := task.NewExecutor()
+	configConfig, err := config.NewConfig()
+	if err != nil {
+		return nil, err
+	}
+	modelInterface, err := model.NewModel(configConfig)
+	if err != nil {
+		return nil, err
+	}
+	executorInterface := task.NewExecutor(modelInterface)
 	taskHandler := task.NewTaskHandler(executorInterface)
 	app := initapp.NewApp(application, serverInterface, validator, taskHandler)
 	return app, nil

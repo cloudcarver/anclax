@@ -25,7 +25,7 @@ const (
 
 type TaskRunner interface { 
     // Increment the counter
-	IncrementCounter(ctx *model.Context, params *IncrementCounterParameters) error
+	IncrementCounter(ctx *model.Context, params *IncrementCounterParameters) (int32, error)
 }
 
 type Client struct {
@@ -41,10 +41,10 @@ func NewTaskRunner(taskStore task.TaskStoreInterface) TaskRunner {
 }
 
 
-func (c *Client) IncrementCounter(ctx *model.Context, params *IncrementCounterParameters) error {
+func (c *Client) IncrementCounter(ctx *model.Context, params *IncrementCounterParameters) (int32, error) {
 	payload, err := params.Marshal()
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	spec := apigen.TaskSpec{
@@ -66,10 +66,11 @@ func (c *Client) IncrementCounter(ctx *model.Context, params *IncrementCounterPa
 		Status:     apigen.Pending,
 	}
 	
-	if _, err := c.taskStore.PushTask(ctx, task); err != nil {
-		return err
+	taskID, err := c.taskStore.PushTask(ctx, task)
+	if err != nil {
+		return 0, err
 	}
-	return nil
+	return taskID, nil
 }
 
 

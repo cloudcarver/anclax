@@ -132,7 +132,7 @@ func NewModel(cfg *config.Config) (ModelInterface, error) {
 		return nil, errors.Wrap(err, "failed to create migration source driver")
 	}
 
-	url := fmt.Sprintf("pgx5://%s:%s@%s:%d/%s",
+	url := fmt.Sprintf("pgx5://%s:%s@%s:%d/%s?x-migrations-table=app_migrations",
 		config.ConnConfig.User,
 		config.ConnConfig.Password,
 		config.ConnConfig.Host,

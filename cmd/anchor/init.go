@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/urfave/cli/v2"
@@ -26,7 +25,7 @@ const (
 )
 
 var installMap = map[string]string{
-	OapiCodegen: "github.com/deepmap/oapi-codegen/v2/cmd/oapi-codegen",
+	OapiCodegen: "github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen",
 	Wire:        "github.com/google/wire/cmd/wire",
 	Sqlc:        "github.com/sqlc-dev/sqlc/cmd/sqlc",
 	Mockgen:     "go.uber.org/mock/mockgen",
@@ -70,9 +69,19 @@ func runGenInit(c *cli.Context) error {
 		return errors.New("missing go module name, use `anchor init <project-dir> <go-module-name>`")
 	}
 
+	// create project directory
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		return errors.Wrap(err, "failed to create project directory")
+	}
+
 	// Copy template files to the project directory
 	if err := initFiles(projectDir, goModule); err != nil {
 		return errors.Wrap(err, "failed to initialize project files")
+	}
+
+	// rename go.mod.embded to go.mod
+	if err := os.Rename(filepath.Join(projectDir, "go.mod.embded"), filepath.Join(projectDir, "go.mod")); err != nil {
+		return errors.Wrap(err, "failed to rename go.mod.embded to go.mod")
 	}
 
 	// init go modules
@@ -80,16 +89,8 @@ func runGenInit(c *cli.Context) error {
 		return errors.Wrap(err, "failed to create project directory")
 	}
 
-	cmd := exec.Command("go", "mod", "init", goModule)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Dir = projectDir
-	if err := cmd.Run(); err != nil {
-		return errors.Wrap(err, "failed to initialize go module")
-	}
-
 	for _, module := range goModules {
-		cmd = exec.Command("go", "get", module)
+		cmd := exec.Command("go", "get", module)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		cmd.Dir = projectDir
@@ -109,7 +110,7 @@ func runGenInit(c *cli.Context) error {
 	}
 
 	// go mod tidy
-	cmd = exec.Command("go", "mod", "tidy")
+	cmd := exec.Command("go", "mod", "tidy")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Dir = projectDir
@@ -168,9 +169,7 @@ func initFiles(dir, goModule string) error {
 				return errors.Wrap(err, "failed to read file")
 			}
 
-			if strings.HasSuffix(dstPath, ".go") {
-				content = bytes.ReplaceAll(content, []byte("github.com/cloudcarver/anchor/example-app"), []byte(goModule))
-			}
+			content = bytes.ReplaceAll(content, []byte("github.com/cloudcarver/anchor/example-app"), []byte(goModule))
 
 			if err := os.WriteFile(dstPath, content, 0644); err != nil {
 				return errors.Wrap(err, "failed to write file")

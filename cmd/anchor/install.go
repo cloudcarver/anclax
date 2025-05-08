@@ -17,7 +17,7 @@ var installCmd = &cli.Command{
 func runInstall(c *cli.Context) error {
 	projectDir := c.Args().Get(0)
 	if projectDir == "" {
-		return errors.New("missing project directory, use `anchor init <project-dir> <go-module-name>`")
+		return errors.New("missing project directory, use `anchor install <project-dir>`")
 	}
 	return install(projectDir)
 }
