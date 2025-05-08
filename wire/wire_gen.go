@@ -35,7 +35,7 @@ func InitializeApplication() (*app.Application, error) {
 	if err != nil {
 		return nil, err
 	}
-	taskStoreInterface := task.NewTaskStore()
+	taskStoreInterface := task.NewTaskStore(modelInterface)
 	taskRunner := runner.NewTaskRunner(taskStoreInterface)
 	keyStore := store.NewStore(modelInterface, taskRunner)
 	caveatParser := auth.NewCaveatParser()

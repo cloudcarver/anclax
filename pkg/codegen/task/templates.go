@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/cloudcarver/anchor/pkg/apigen"
-	"github.com/cloudcarver/anchor/pkg/model"
 	"github.com/cloudcarver/anchor/pkg/task"
 	"github.com/cloudcarver/anchor/pkg/task/worker"
 	"github.com/cloudcarver/anchor/pkg/utils"
@@ -34,7 +33,7 @@ const ( {{range .Functions}}
 
 type TaskRunner interface { {{range .Functions}}
 {{.Description}}
-	{{upperFirst .Name}}(ctx *model.Context, params *{{.ParameterType}}, overrides ...TaskOverride) (int32, error)
+	{{upperFirst .Name}}(ctx context.Context, params *{{.ParameterType}}, overrides ...TaskOverride) (int32, error)
 {{end}}}
 
 type Client struct {
@@ -50,7 +49,7 @@ func NewTaskRunner(taskStore task.TaskStoreInterface) TaskRunner {
 }
 
 {{range .Functions}}
-func (c *Client) {{upperFirst .Name}}(ctx *model.Context, params *{{.ParameterType}}, overrides ...TaskOverride) (int32, error) {
+func (c *Client) {{upperFirst .Name}}(ctx context.Context, params *{{.ParameterType}}, overrides ...TaskOverride) (int32, error) {
 	payload, err := params.Marshal()
 	if err != nil {
 		return 0, err
@@ -121,9 +120,9 @@ func (f *TaskHandler) RegisterTaskHandler(handler worker.TaskHandler) {
 	f.externalTaskHandler = append(f.externalTaskHandler, handler)
 }
 
-func (f *TaskHandler) HandleTask(c *model.Context, spec worker.TaskSpec) error {
+func (f *TaskHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) error {
 	for _, handler := range f.externalTaskHandler {
-		if err := handler.HandleTask(c, spec); err != nil {
+		if err := handler.HandleTask(ctx, spec); err != nil {
 			if errors.Is(err, worker.ErrUnknownTaskType) {
 				continue
 			}
@@ -138,7 +137,7 @@ func (f *TaskHandler) HandleTask(c *model.Context, spec worker.TaskSpec) error {
 		if err := params.Parse(spec.GetPayload()); err != nil {
 			return fmt.Errorf("failed to parse {{.Name}} parameters: %w", err)
 		}
-		return f.executor.{{upperFirst .Name}}(c.Context, &params)
+		return f.executor.{{upperFirst .Name}}(ctx, &params)
 		{{end}}
 	default:
 		return fmt.Errorf("unknown handler %s", spec.GetType())

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/cloudcarver/anchor/pkg/apigen"
-	"github.com/cloudcarver/anchor/pkg/model"
 	"github.com/cloudcarver/anchor/pkg/task"
 	"github.com/cloudcarver/anchor/pkg/task/worker"
 	"github.com/cloudcarver/anchor/pkg/utils"
@@ -27,7 +26,7 @@ const (
 
 type TaskRunner interface { 
     // Delete an opaque key
-	DeleteOpaqueKey(ctx *model.Context, params *DeleteOpaqueKeyParameters, overrides ...TaskOverride) (int32, error)
+	DeleteOpaqueKey(ctx context.Context, params *DeleteOpaqueKeyParameters, overrides ...TaskOverride) (int32, error)
 }
 
 type Client struct {
@@ -43,7 +42,7 @@ func NewTaskRunner(taskStore task.TaskStoreInterface) TaskRunner {
 }
 
 
-func (c *Client) DeleteOpaqueKey(ctx *model.Context, params *DeleteOpaqueKeyParameters, overrides ...TaskOverride) (int32, error) {
+func (c *Client) DeleteOpaqueKey(ctx context.Context, params *DeleteOpaqueKeyParameters, overrides ...TaskOverride) (int32, error) {
 	payload, err := params.Marshal()
 	if err != nil {
 		return 0, err
@@ -113,9 +112,9 @@ func (f *TaskHandler) RegisterTaskHandler(handler worker.TaskHandler) {
 	f.externalTaskHandler = append(f.externalTaskHandler, handler)
 }
 
-func (f *TaskHandler) HandleTask(c *model.Context, spec worker.TaskSpec) error {
+func (f *TaskHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) error {
 	for _, handler := range f.externalTaskHandler {
-		if err := handler.HandleTask(c, spec); err != nil {
+		if err := handler.HandleTask(ctx, spec); err != nil {
 			if errors.Is(err, worker.ErrUnknownTaskType) {
 				continue
 			}
@@ -130,7 +129,7 @@ func (f *TaskHandler) HandleTask(c *model.Context, spec worker.TaskSpec) error {
 		if err := params.Parse(spec.GetPayload()); err != nil {
 			return fmt.Errorf("failed to parse deleteOpaqueKey parameters: %w", err)
 		}
-		return f.executor.DeleteOpaqueKey(c.Context, &params)
+		return f.executor.DeleteOpaqueKey(ctx, &params)
 		
 	default:
 		return fmt.Errorf("unknown handler %s", spec.GetType())

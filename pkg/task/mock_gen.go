@@ -10,11 +10,11 @@
 package task
 
 import (
+	context "context"
 	json "encoding/json"
 	reflect "reflect"
 
 	apigen "github.com/cloudcarver/anchor/pkg/apigen"
-	model "github.com/cloudcarver/anchor/pkg/model"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -43,58 +43,58 @@ func (m *MockTaskStoreInterface) EXPECT() *MockTaskStoreInterfaceMockRecorder {
 }
 
 // PauseCronJob mocks base method.
-func (m *MockTaskStoreInterface) PauseCronJob(c *model.Context, taskID int32) error {
+func (m *MockTaskStoreInterface) PauseCronJob(ctx context.Context, taskID int32) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PauseCronJob", c, taskID)
+	ret := m.ctrl.Call(m, "PauseCronJob", ctx, taskID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // PauseCronJob indicates an expected call of PauseCronJob.
-func (mr *MockTaskStoreInterfaceMockRecorder) PauseCronJob(c, taskID any) *gomock.Call {
+func (mr *MockTaskStoreInterfaceMockRecorder) PauseCronJob(ctx, taskID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PauseCronJob", reflect.TypeOf((*MockTaskStoreInterface)(nil).PauseCronJob), c, taskID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PauseCronJob", reflect.TypeOf((*MockTaskStoreInterface)(nil).PauseCronJob), ctx, taskID)
 }
 
 // PushTask mocks base method.
-func (m *MockTaskStoreInterface) PushTask(c *model.Context, task *apigen.Task) (int32, error) {
+func (m *MockTaskStoreInterface) PushTask(ctx context.Context, task *apigen.Task) (int32, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PushTask", c, task)
+	ret := m.ctrl.Call(m, "PushTask", ctx, task)
 	ret0, _ := ret[0].(int32)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // PushTask indicates an expected call of PushTask.
-func (mr *MockTaskStoreInterfaceMockRecorder) PushTask(c, task any) *gomock.Call {
+func (mr *MockTaskStoreInterfaceMockRecorder) PushTask(ctx, task any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PushTask", reflect.TypeOf((*MockTaskStoreInterface)(nil).PushTask), c, task)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PushTask", reflect.TypeOf((*MockTaskStoreInterface)(nil).PushTask), ctx, task)
 }
 
 // ResumeCronJob mocks base method.
-func (m *MockTaskStoreInterface) ResumeCronJob(c *model.Context, taskID int32) error {
+func (m *MockTaskStoreInterface) ResumeCronJob(ctx context.Context, taskID int32) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ResumeCronJob", c, taskID)
+	ret := m.ctrl.Call(m, "ResumeCronJob", ctx, taskID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // ResumeCronJob indicates an expected call of ResumeCronJob.
-func (mr *MockTaskStoreInterfaceMockRecorder) ResumeCronJob(c, taskID any) *gomock.Call {
+func (mr *MockTaskStoreInterfaceMockRecorder) ResumeCronJob(ctx, taskID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResumeCronJob", reflect.TypeOf((*MockTaskStoreInterface)(nil).ResumeCronJob), c, taskID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResumeCronJob", reflect.TypeOf((*MockTaskStoreInterface)(nil).ResumeCronJob), ctx, taskID)
 }
 
 // UpdateCronJob mocks base method.
-func (m *MockTaskStoreInterface) UpdateCronJob(c *model.Context, taskID int32, cronExpression string, spec json.RawMessage) error {
+func (m *MockTaskStoreInterface) UpdateCronJob(ctx context.Context, taskID int32, cronExpression string, spec json.RawMessage) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateCronJob", c, taskID, cronExpression, spec)
+	ret := m.ctrl.Call(m, "UpdateCronJob", ctx, taskID, cronExpression, spec)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UpdateCronJob indicates an expected call of UpdateCronJob.
-func (mr *MockTaskStoreInterfaceMockRecorder) UpdateCronJob(c, taskID, cronExpression, spec any) *gomock.Call {
+func (mr *MockTaskStoreInterfaceMockRecorder) UpdateCronJob(ctx, taskID, cronExpression, spec any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateCronJob", reflect.TypeOf((*MockTaskStoreInterface)(nil).UpdateCronJob), c, taskID, cronExpression, spec)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateCronJob", reflect.TypeOf((*MockTaskStoreInterface)(nil).UpdateCronJob), ctx, taskID, cronExpression, spec)
 }

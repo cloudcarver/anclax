@@ -13,7 +13,6 @@ import (
 	context "context"
 	reflect "reflect"
 
-	model "github.com/cloudcarver/anchor/pkg/model"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -42,7 +41,7 @@ func (m *MockTaskRunner) EXPECT() *MockTaskRunnerMockRecorder {
 }
 
 // DeleteOpaqueKey mocks base method.
-func (m *MockTaskRunner) DeleteOpaqueKey(ctx *model.Context, params *DeleteOpaqueKeyParameters, overrides ...TaskOverride) (int32, error) {
+func (m *MockTaskRunner) DeleteOpaqueKey(ctx context.Context, params *DeleteOpaqueKeyParameters, overrides ...TaskOverride) (int32, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, params}
 	for _, a := range overrides {

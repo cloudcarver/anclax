@@ -6,7 +6,6 @@ import (
 	"errors"
 
 	"github.com/cloudcarver/anchor/pkg/apigen"
-	"github.com/cloudcarver/anchor/pkg/model"
 )
 
 var ErrUnknownTaskType = errors.New("unknown task type")
@@ -17,7 +16,7 @@ type TaskSpec interface {
 }
 
 type TaskHandler interface {
-	HandleTask(c *model.Context, spec TaskSpec) error
+	HandleTask(ctx context.Context, spec TaskSpec) error
 	RegisterTaskHandler(handler TaskHandler)
 }
 
