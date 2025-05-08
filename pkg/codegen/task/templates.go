@@ -26,13 +26,15 @@ func init() {
 	utils.Noop()
 }
 
+type TaskOverride = func(task *apigen.Task) error
+
 const ( {{range .Functions}}
 	{{upperFirst .Name}} = "{{.Name}}" 
 {{end}})
 
 type TaskRunner interface { {{range .Functions}}
 {{.Description}}
-	{{upperFirst .Name}}(ctx *model.Context, params *{{.ParameterType}}) (int32, error)
+	{{upperFirst .Name}}(ctx *model.Context, params *{{.ParameterType}}, overrides ...TaskOverride) (int32, error)
 {{end}}}
 
 type Client struct {
@@ -48,7 +50,7 @@ func NewTaskRunner(taskStore task.TaskStoreInterface) TaskRunner {
 }
 
 {{range .Functions}}
-func (c *Client) {{upperFirst .Name}}(ctx *model.Context, params *{{.ParameterType}}) (int32, error) {
+func (c *Client) {{upperFirst .Name}}(ctx *model.Context, params *{{.ParameterType}}, overrides ...TaskOverride) (int32, error) {
 	payload, err := params.Marshal()
 	if err != nil {
 		return 0, err
@@ -77,6 +79,11 @@ func (c *Client) {{upperFirst .Name}}(ctx *model.Context, params *{{.ParameterTy
 		return fmt.Errorf("failed to parse delay: %w", err)
 	}
 	task.StartedAt = utils.Ptr(c.now().Add(delay)){{end}}
+	for _, override := range overrides {
+		if err := override(task); err != nil {
+			return 0, errors.Wrap(err, "failed to apply task override")
+		}
+	}
 	taskID, err := c.taskStore.PushTask(ctx, task)
 	if err != nil {
 		return 0, err

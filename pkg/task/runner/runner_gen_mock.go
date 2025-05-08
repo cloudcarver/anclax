@@ -42,18 +42,23 @@ func (m *MockTaskRunner) EXPECT() *MockTaskRunnerMockRecorder {
 }
 
 // DeleteOpaqueKey mocks base method.
-func (m *MockTaskRunner) DeleteOpaqueKey(ctx *model.Context, params *DeleteOpaqueKeyParameters) (int32, error) {
+func (m *MockTaskRunner) DeleteOpaqueKey(ctx *model.Context, params *DeleteOpaqueKeyParameters, overrides ...TaskOverride) (int32, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteOpaqueKey", ctx, params)
+	varargs := []any{ctx, params}
+	for _, a := range overrides {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "DeleteOpaqueKey", varargs...)
 	ret0, _ := ret[0].(int32)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // DeleteOpaqueKey indicates an expected call of DeleteOpaqueKey.
-func (mr *MockTaskRunnerMockRecorder) DeleteOpaqueKey(ctx, params any) *gomock.Call {
+func (mr *MockTaskRunnerMockRecorder) DeleteOpaqueKey(ctx, params any, overrides ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteOpaqueKey", reflect.TypeOf((*MockTaskRunner)(nil).DeleteOpaqueKey), ctx, params)
+	varargs := append([]any{ctx, params}, overrides...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteOpaqueKey", reflect.TypeOf((*MockTaskRunner)(nil).DeleteOpaqueKey), varargs...)
 }
 
 // MockExecutorInterface is a mock of ExecutorInterface interface.

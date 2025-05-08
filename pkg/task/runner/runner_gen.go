@@ -19,13 +19,15 @@ func init() {
 	utils.Noop()
 }
 
+type TaskOverride = func(task *apigen.Task) error
+
 const ( 
 	DeleteOpaqueKey = "deleteOpaqueKey" 
 )
 
 type TaskRunner interface { 
     // Delete an opaque key
-	DeleteOpaqueKey(ctx *model.Context, params *DeleteOpaqueKeyParameters) (int32, error)
+	DeleteOpaqueKey(ctx *model.Context, params *DeleteOpaqueKeyParameters, overrides ...TaskOverride) (int32, error)
 }
 
 type Client struct {
@@ -41,7 +43,7 @@ func NewTaskRunner(taskStore task.TaskStoreInterface) TaskRunner {
 }
 
 
-func (c *Client) DeleteOpaqueKey(ctx *model.Context, params *DeleteOpaqueKeyParameters) (int32, error) {
+func (c *Client) DeleteOpaqueKey(ctx *model.Context, params *DeleteOpaqueKeyParameters, overrides ...TaskOverride) (int32, error) {
 	payload, err := params.Marshal()
 	if err != nil {
 		return 0, err
@@ -64,6 +66,11 @@ func (c *Client) DeleteOpaqueKey(ctx *model.Context, params *DeleteOpaqueKeyPara
 		Status:     apigen.Pending,
 	}
 	
+	for _, override := range overrides {
+		if err := override(task); err != nil {
+			return 0, errors.Wrap(err, "failed to apply task override")
+		}
+	}
 	taskID, err := c.taskStore.PushTask(ctx, task)
 	if err != nil {
 		return 0, err
