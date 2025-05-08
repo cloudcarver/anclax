@@ -3,7 +3,6 @@ module github.com/cloudcarver/anchor
 go 1.24.1
 
 require (
-	github.com/cloudcarver/edc v0.3.3
 	github.com/gavv/httpexpect/v2 v2.17.0
 	github.com/getkin/kin-openapi v0.132.0
 	github.com/gofiber/fiber/v2 v2.52.6

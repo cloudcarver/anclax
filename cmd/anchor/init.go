@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/urfave/cli/v2"
@@ -77,11 +78,6 @@ func runGenInit(c *cli.Context) error {
 	// Copy template files to the project directory
 	if err := initFiles(projectDir, goModule); err != nil {
 		return errors.Wrap(err, "failed to initialize project files")
-	}
-
-	// rename go.mod.embded to go.mod
-	if err := os.Rename(filepath.Join(projectDir, "go.mod.embded"), filepath.Join(projectDir, "go.mod")); err != nil {
-		return errors.Wrap(err, "failed to rename go.mod.embded to go.mod")
 	}
 
 	// init go modules
@@ -169,6 +165,7 @@ func initFiles(dir, goModule string) error {
 				return errors.Wrap(err, "failed to read file")
 			}
 
+			dstPath = strings.TrimSuffix(dstPath, ".embed")
 			content = bytes.ReplaceAll(content, []byte("github.com/cloudcarver/anchor/example-app"), []byte(goModule))
 
 			if err := os.WriteFile(dstPath, content, 0644); err != nil {

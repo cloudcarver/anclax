@@ -1,34 +1,34 @@
 package codegen
 
 type Field struct {
-	Description string
-	Name        string
-	Type        string
-	Tag         string
+	Description string `yaml:"description"`
+	Name        string `yaml:"name"`
+	Type        string `yaml:"type"`
+	Tag         string `yaml:"tag"`
 }
 
 type StructTemplateVars struct {
-	StructName string
-	Fields     []Field
+	StructName string  `yaml:"structName"`
+	Fields     []Field `yaml:"fields"`
 }
 
 type Cronjob struct {
-	CronExpression string
+	CronExpression string `yaml:"cronExpression"`
 }
 
 type RetryPolicy struct {
-	Interval             string
-	AlwaysRetryOnFailure bool
+	Interval             string `yaml:"interval"`
+	AlwaysRetryOnFailure bool   `yaml:"alwaysRetryOnFailure"`
 }
 
 type Function struct {
-	Name          string
-	Description   string
-	ParameterType string
-	Timeout       *string
-	Cronjob       *Cronjob
-	RetryPolicy   *RetryPolicy
-	Delay         *string
+	Name          string       `yaml:"name"`
+	Description   string       `yaml:"description"`
+	ParameterType string       `yaml:"parameterType"`
+	Timeout       *string      `yaml:"timeout,omitempty"`
+	Cronjob       *Cronjob     `yaml:"cronjob,omitempty"`
+	RetryPolicy   *RetryPolicy `yaml:"retryPolicy,omitempty"`
+	Delay         *string      `yaml:"delay,omitempty"`
 }
 
 type CodeTemplateVars struct {

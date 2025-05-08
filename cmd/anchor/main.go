@@ -1,11 +1,21 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 
 	"github.com/urfave/cli/v2"
 )
+
+var versionCmd = &cli.Command{
+	Name:  "version",
+	Usage: "Show the version of anchor",
+	Action: func(c *cli.Context) error {
+		fmt.Println("v0.1.7")
+		return nil
+	},
+}
 
 func main() {
 	app := &cli.App{
@@ -16,6 +26,7 @@ func main() {
 			initCmd,
 			docsCmd,
 			installCmd,
+			versionCmd,
 		},
 	}
 

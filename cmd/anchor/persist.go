@@ -27,7 +27,8 @@ type Store struct {
 }
 
 func NewStore(projectDir string) (*Store, error) {
-	storePath := filepath.Join(projectDir, storePath)
+	storePath := getStorePath(projectDir)
+
 	if _, err := os.Stat(storePath); err != nil {
 		if os.IsNotExist(err) {
 			if err := initStore(storePath); err != nil {
