@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/cloudcarver/anchor/pkg/model"
-	"github.com/cloudcarver/anchor/pkg/task/runner"
+	"github.com/cloudcarver/anchor/pkg/taskcore/runner"
 	"github.com/jackc/pgx/v5"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -29,14 +29,9 @@ func TestCreate(t *testing.T) {
 		keyID    = int64(101)
 	)
 
-	c := &model.Context{
-		ModelInterface: mockModel,
-		Context:        ctx,
-	}
-
 	mockModel.EXPECT().CreateOpaqueKey(gomock.Any(), gomock.Any()).Return(keyID, nil)
-	taskRunner.EXPECT().DeleteOpaqueKey(
-		c,
+	taskRunner.EXPECT().RunDeleteOpaqueKey(
+		ctx,
 		&runner.DeleteOpaqueKeyParameters{
 			KeyID: keyID,
 		},

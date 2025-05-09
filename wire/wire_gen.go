@@ -18,9 +18,9 @@ import (
 	"github.com/cloudcarver/anchor/pkg/model"
 	"github.com/cloudcarver/anchor/pkg/server"
 	"github.com/cloudcarver/anchor/pkg/service"
-	"github.com/cloudcarver/anchor/pkg/task"
-	"github.com/cloudcarver/anchor/pkg/task/runner"
-	"github.com/cloudcarver/anchor/pkg/task/worker"
+	"github.com/cloudcarver/anchor/pkg/taskcore"
+	"github.com/cloudcarver/anchor/pkg/taskcore/runner"
+	"github.com/cloudcarver/anchor/pkg/taskcore/worker"
 )
 
 // Injectors from wire.go:
@@ -35,7 +35,7 @@ func InitializeApplication() (*app.Application, error) {
 	if err != nil {
 		return nil, err
 	}
-	taskStoreInterface := task.NewTaskStore(modelInterface)
+	taskStoreInterface := taskcore.NewTaskStore(modelInterface)
 	taskRunner := runner.NewTaskRunner(taskStoreInterface)
 	keyStore := store.NewStore(modelInterface, taskRunner)
 	caveatParser := auth.NewCaveatParser()

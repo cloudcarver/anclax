@@ -81,12 +81,8 @@ func runGenInit(c *cli.Context) error {
 	}
 
 	// init go modules
-	if err := os.MkdirAll(projectDir, 0755); err != nil {
-		return errors.Wrap(err, "failed to create project directory")
-	}
-
 	for _, module := range goModules {
-		cmd := exec.Command("go", "get", module)
+		cmd := exec.Command("go", "get", "-u", module)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		cmd.Dir = projectDir
@@ -166,7 +162,7 @@ func initFiles(dir, goModule string) error {
 			}
 
 			dstPath = strings.TrimSuffix(dstPath, ".embed")
-			content = bytes.ReplaceAll(content, []byte("github.com/cloudcarver/anchor/example-app"), []byte(goModule))
+			content = bytes.ReplaceAll(content, []byte("github.com/cloudcarver/test-app"), []byte(goModule))
 
 			if err := os.WriteFile(dstPath, content, 0644); err != nil {
 				return errors.Wrap(err, "failed to write file")

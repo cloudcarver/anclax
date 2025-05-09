@@ -1,4 +1,4 @@
-package task
+package taskcore
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"github.com/cloudcarver/anchor/pkg/apigen"
 	"github.com/cloudcarver/anchor/pkg/model"
 	"github.com/cloudcarver/anchor/pkg/model/querier"
+	"github.com/jackc/pgx/v5"
 	"github.com/pkg/errors"
 	"github.com/robfig/cron/v3"
 )
@@ -22,6 +23,13 @@ func NewTaskStore(model model.ModelInterface) TaskStoreInterface {
 	return &TaskStore{
 		now:   time.Now,
 		model: model,
+	}
+}
+
+func (s *TaskStore) WithTx(tx pgx.Tx) TaskStoreInterface {
+	return &TaskStore{
+		now:   s.now,
+		model: s.model.SpawnWithTx(tx),
 	}
 }
 

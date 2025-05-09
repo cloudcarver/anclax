@@ -14,6 +14,6 @@ func NewExecutor(model model.ModelInterface) ExecutorInterface {
 	return &Executor{model: model}
 }
 
-func (e *Executor) DeleteOpaqueKey(ctx context.Context, params *DeleteOpaqueKeyParameters) error {
+func (e *Executor) ExecuteDeleteOpaqueKey(ctx context.Context, params *DeleteOpaqueKeyParameters) error {
 	return e.model.DeleteOpaqueKey(ctx, params.KeyID)
 }

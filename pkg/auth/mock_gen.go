@@ -13,7 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	querier "github.com/cloudcarver/anchor/pkg/model/querier"
+	macaroons "github.com/cloudcarver/anchor/pkg/macaroons"
 	fiber "github.com/gofiber/fiber/v2"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -72,9 +72,13 @@ func (mr *MockAuthInterfaceMockRecorder) CreateRefreshToken(ctx, accessKeyID, us
 }
 
 // CreateToken mocks base method.
-func (m *MockAuthInterface) CreateToken(ctx context.Context, user *querier.User, rules []string) (int64, string, error) {
+func (m *MockAuthInterface) CreateToken(ctx context.Context, userID int32, caveats ...macaroons.Caveat) (int64, string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateToken", ctx, user, rules)
+	varargs := []any{ctx, userID}
+	for _, a := range caveats {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "CreateToken", varargs...)
 	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(string)
 	ret2, _ := ret[2].(error)
@@ -82,9 +86,10 @@ func (m *MockAuthInterface) CreateToken(ctx context.Context, user *querier.User,
 }
 
 // CreateToken indicates an expected call of CreateToken.
-func (mr *MockAuthInterfaceMockRecorder) CreateToken(ctx, user, rules any) *gomock.Call {
+func (mr *MockAuthInterfaceMockRecorder) CreateToken(ctx, userID any, caveats ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateToken", reflect.TypeOf((*MockAuthInterface)(nil).CreateToken), ctx, user, rules)
+	varargs := append([]any{ctx, userID}, caveats...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateToken", reflect.TypeOf((*MockAuthInterface)(nil).CreateToken), varargs...)
 }
 
 // InvalidateUserTokens mocks base method.

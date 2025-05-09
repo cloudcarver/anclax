@@ -4,7 +4,7 @@ import (
 	"github.com/cloudcarver/anchor/pkg/config"
 	"github.com/cloudcarver/anchor/pkg/metrics"
 	"github.com/cloudcarver/anchor/pkg/server"
-	"github.com/cloudcarver/anchor/pkg/task/worker"
+	"github.com/cloudcarver/anchor/pkg/taskcore/worker"
 )
 
 type Application struct {

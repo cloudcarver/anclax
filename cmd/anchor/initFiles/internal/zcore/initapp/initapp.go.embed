@@ -1,9 +1,10 @@
+// Code generate by anchor. DO NOT EDIT.
 package initapp
 
 import (
 	"github.com/cloudcarver/anchor/pkg/app"
-	"github.com/cloudcarver/anchor/pkg/task/worker"
-	"github.com/cloudcarver/test/internal/apigen"
+	"github.com/cloudcarver/anchor/pkg/taskcore/worker"
+	"github.com/cloudcarver/test-app/internal/zgen/apigen"
 )
 
 type App struct {

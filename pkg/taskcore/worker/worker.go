@@ -113,7 +113,7 @@ func (w *Worker) runTask(parentCtx context.Context) error {
 		}
 
 		// run task
-		err = w.taskHandler.HandleTask(model.NewContext(ctx, txm), &task.Spec)
+		err = w.taskHandler.HandleTask(ctx, &task.Spec)
 		if err != nil { // handle failed
 			log.Error("error executing task", zap.Int32("task_id", task.ID), zap.Error(err))
 			if err := lh.HandleFailed(ctx, task, err); err != nil {

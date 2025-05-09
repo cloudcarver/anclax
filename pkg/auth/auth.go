@@ -4,14 +4,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/cloudcarver/anchor/pkg/logger"
 	"github.com/cloudcarver/anchor/pkg/macaroons"
-	"github.com/cloudcarver/anchor/pkg/model/querier"
 	"github.com/gofiber/fiber/v2"
 	"github.com/pkg/errors"
 )
-
-var log = logger.NewLogAgent("auth")
 
 const (
 	ContextKeyUserID = iota
@@ -35,8 +31,9 @@ type User struct {
 type AuthInterface interface {
 	Authfunc(c *fiber.Ctx) error
 
-	// CreateToken creates a new JWT token for the given user with specified access rules
-	CreateToken(ctx context.Context, user *querier.User, rules []string) (int64, string, error)
+	// CreateToken creates a macaroon token for the given user, the userID is required to track all generated keys.
+	// When the user logout, all keys will be invalidated.
+	CreateToken(ctx context.Context, userID int32, caveats ...macaroons.Caveat) (int64, string, error)
 
 	// CreateRefreshToken returns a refresh token
 	CreateRefreshToken(ctx context.Context, accessKeyID int64, userID int32) (string, error)
@@ -87,10 +84,8 @@ func (a *Auth) Authfunc(c *fiber.Ctx) error {
 	return nil
 }
 
-func (a *Auth) CreateToken(ctx context.Context, user *querier.User, rules []string) (int64, string, error) {
-	token, err := a.macaroons.CreateToken(ctx, user.ID, []macaroons.Caveat{
-		NewUserContextCaveat(user.ID),
-	}, TimeoutAccessToken)
+func (a *Auth) CreateToken(ctx context.Context, userID int32, caveats ...macaroons.Caveat) (int64, string, error) {
+	token, err := a.macaroons.CreateToken(ctx, userID, append(caveats, NewUserContextCaveat(userID)), TimeoutAccessToken)
 	if err != nil {
 		return 0, "", errors.Wrap(err, "failed to create macaroon token")
 	}

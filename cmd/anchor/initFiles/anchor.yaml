@@ -6,7 +6,7 @@ externals:
 
 oapi-codegen:
   path: api/v1.yaml
-  out: internal/apigen/spec_gen.go
+  out: internal/zgen/apigen/spec_gen.go
   package: apigen
 
 wire:
@@ -14,19 +14,22 @@ wire:
 
 xware:
   path: api/v1.yaml
-  out: internal/apigen/scopes_extend_gen.go
+  out: internal/zgen/apigen/scopes_extend_gen.go
   package: apigen
 
 task-handler:
   path: api/tasks.yaml
-  package: task
-  out: internal/task/runner_gen.go
+  package: taskgen
+  out: internal/zgen/taskgen/taskgen_gen.go
 
 sqlc:
   path: sqlc.yaml
 
 mockgen:
   files:
-    - source: internal/model/model.go
-      destination: internal/model/mock_gen.go
+    - source: internal/zcore/model/model.go
+      destination: internal/zcore/model/mock_gen.go
       package: model
+    - source: internal/zgen/taskgen/taskgen_gen.go
+      destination: internal/zgen/taskgen/mock_gen.go
+      package: taskgen

@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/cloudcarver/anchor/pkg/apigen"
-	"github.com/cloudcarver/anchor/pkg/task"
-	"github.com/cloudcarver/anchor/pkg/task/worker"
+	"github.com/cloudcarver/anchor/pkg/taskcore"
+	"github.com/cloudcarver/anchor/pkg/taskcore/worker"
 	"github.com/cloudcarver/anchor/pkg/utils"
 	"github.com/pkg/errors"
 )
@@ -25,23 +25,21 @@ func init() {
 	utils.Noop()
 }
 
-type TaskOverride = func(task *apigen.Task) error
-
 const ( {{range .Functions}}
 	{{upperFirst .Name}} = "{{.Name}}" 
 {{end}})
 
 type TaskRunner interface { {{range .Functions}}
 {{.Description}}
-	{{upperFirst .Name}}(ctx context.Context, params *{{.ParameterType}}, overrides ...TaskOverride) (int32, error)
+	Run{{upperFirst .Name}}(ctx context.Context, params *{{.ParameterType}}, overrides ...taskcore.TaskOverride) (int32, error)
 {{end}}}
 
 type Client struct {
-	taskStore task.TaskStoreInterface
+	taskStore taskcore.TaskStoreInterface
 	now       func() time.Time
 }
 
-func NewTaskRunner(taskStore task.TaskStoreInterface) TaskRunner {
+func NewTaskRunner(taskStore taskcore.TaskStoreInterface) TaskRunner {
 	return &Client{
 		taskStore: taskStore,
 		now:       time.Now,
@@ -49,7 +47,7 @@ func NewTaskRunner(taskStore task.TaskStoreInterface) TaskRunner {
 }
 
 {{range .Functions}}
-func (c *Client) {{upperFirst .Name}}(ctx context.Context, params *{{.ParameterType}}, overrides ...TaskOverride) (int32, error) {
+func (c *Client) Run{{upperFirst .Name}}(ctx context.Context, params *{{.ParameterType}}, overrides ...taskcore.TaskOverride) (int32, error) {
 	payload, err := params.Marshal()
 	if err != nil {
 		return 0, err
@@ -101,7 +99,7 @@ func (r *{{.ParameterType}}) Marshal() (json.RawMessage, error) {
 
 type ExecutorInterface interface { {{range .Functions}}
 {{.Description}}
-	{{upperFirst .Name}}(ctx context.Context, params *{{.ParameterType}}) error
+	Execute{{upperFirst .Name}}(ctx context.Context, params *{{.ParameterType}}) error
 {{end}}}
 
 type TaskHandler struct {
@@ -137,7 +135,7 @@ func (f *TaskHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) erro
 		if err := params.Parse(spec.GetPayload()); err != nil {
 			return fmt.Errorf("failed to parse {{.Name}} parameters: %w", err)
 		}
-		return f.executor.{{upperFirst .Name}}(ctx, &params)
+		return f.executor.Execute{{upperFirst .Name}}(ctx, &params)
 		{{end}}
 	default:
 		return fmt.Errorf("unknown handler %s", spec.GetType())

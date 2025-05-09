@@ -1,3 +1,4 @@
+// Code generate by anchor. DO NOT EDIT.
 package model
 
 import (
@@ -5,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	root "github.com/cloudcarver/anchor/example-app"
-	"github.com/cloudcarver/anchor/example-app/internal/config"
-	"github.com/cloudcarver/anchor/example-app/internal/model/querier"
 	"github.com/cloudcarver/anchor/pkg/logger"
+	root "github.com/cloudcarver/test-app"
+	"github.com/cloudcarver/test-app/internal/config"
+	"github.com/cloudcarver/test-app/internal/zgen/querier"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
@@ -23,26 +24,12 @@ var (
 	ErrAlreadyInTransaction = errors.New("already in transaction")
 )
 
-type Context struct {
-	context.Context
-	ModelInterface
-}
-
-func NewContext(ctx context.Context, model ModelInterface) *Context {
-	return &Context{
-		Context:        ctx,
-		ModelInterface: model,
-	}
-}
-
-func (c *Context) Model() ModelInterface {
-	return c.ModelInterface
-}
-
 type ModelInterface interface {
 	querier.Querier
 	RunTransaction(ctx context.Context, f func(model ModelInterface) error) error
+	RunTransactionWithTx(ctx context.Context, f func(tx pgx.Tx, model ModelInterface) error) error
 	InTransaction() bool
+	SpawnWithTx(tx pgx.Tx) ModelInterface
 }
 
 type Model struct {
@@ -50,36 +37,43 @@ type Model struct {
 	beginTx       func(ctx context.Context) (pgx.Tx, error)
 	p             *pgxpool.Pool
 	inTransaction bool
+	now           func() time.Time
 }
 
 func (m *Model) InTransaction() bool {
 	return m.inTransaction
 }
 
-func (m *Model) BeginTx(ctx context.Context) (pgx.Tx, error) {
-	return m.beginTx(ctx)
+func (m *Model) SpawnWithTx(tx pgx.Tx) ModelInterface {
+	return &Model{
+		Querier: querier.New(tx),
+		beginTx: func(ctx context.Context) (pgx.Tx, error) {
+			return nil, ErrAlreadyInTransaction
+		},
+		inTransaction: true,
+	}
 }
 
-func (m *Model) RunTransaction(ctx context.Context, f func(model ModelInterface) error) error {
+func (m *Model) RunTransactionWithTx(ctx context.Context, f func(tx pgx.Tx, model ModelInterface) error) error {
 	tx, err := m.beginTx(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
 
-	if err := f(
-		&Model{
-			Querier: querier.New(tx),
-			beginTx: func(ctx context.Context) (pgx.Tx, error) {
-				return nil, ErrAlreadyInTransaction
-			},
-			inTransaction: true,
-		},
-	); err != nil {
+	txm := m.SpawnWithTx(tx)
+
+	if err := f(tx, txm); err != nil {
 		return err
 	}
 
 	return tx.Commit(ctx)
+}
+
+func (m *Model) RunTransaction(ctx context.Context, f func(model ModelInterface) error) error {
+	return m.RunTransactionWithTx(ctx, func(_ pgx.Tx, model ModelInterface) error {
+		return f(model)
+	})
 }
 
 func NewModel(cfg *config.Config) (ModelInterface, error) {
@@ -92,6 +86,8 @@ func NewModel(cfg *config.Config) (ModelInterface, error) {
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to parse pgxpool config: %s", dsn)
 	}
+	config.MaxConns = 30
+	config.MinConns = 5
 
 	var (
 		retryLimit = 10
@@ -132,7 +128,7 @@ func NewModel(cfg *config.Config) (ModelInterface, error) {
 		return nil, errors.Wrap(err, "failed to create migration source driver")
 	}
 
-	url := fmt.Sprintf("pgx5://%s:%s@%s:%d/%s?x-migrations-table=app_migrations",
+	url := fmt.Sprintf("pgx5://%s:%s@%s:%d/%s",
 		config.ConnConfig.User,
 		config.ConnConfig.Password,
 		config.ConnConfig.Host,
@@ -149,5 +145,5 @@ func NewModel(cfg *config.Config) (ModelInterface, error) {
 		}
 	}
 
-	return &Model{Querier: querier.New(p), beginTx: p.Begin, p: p}, nil
+	return &Model{Querier: querier.New(p), beginTx: p.Begin, p: p, now: time.Now}, nil
 }

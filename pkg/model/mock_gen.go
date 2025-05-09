@@ -15,6 +15,7 @@ import (
 
 	apigen "github.com/cloudcarver/anchor/pkg/apigen"
 	querier "github.com/cloudcarver/anchor/pkg/model/querier"
+	pgx "github.com/jackc/pgx/v5"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -364,6 +365,34 @@ func (m *MockModelInterface) RunTransaction(ctx context.Context, f func(ModelInt
 func (mr *MockModelInterfaceMockRecorder) RunTransaction(ctx, f any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunTransaction", reflect.TypeOf((*MockModelInterface)(nil).RunTransaction), ctx, f)
+}
+
+// RunTransactionWithTx mocks base method.
+func (m *MockModelInterface) RunTransactionWithTx(ctx context.Context, f func(pgx.Tx, ModelInterface) error) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RunTransactionWithTx", ctx, f)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RunTransactionWithTx indicates an expected call of RunTransactionWithTx.
+func (mr *MockModelInterfaceMockRecorder) RunTransactionWithTx(ctx, f any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunTransactionWithTx", reflect.TypeOf((*MockModelInterface)(nil).RunTransactionWithTx), ctx, f)
+}
+
+// SpawnWithTx mocks base method.
+func (m *MockModelInterface) SpawnWithTx(tx pgx.Tx) ModelInterface {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SpawnWithTx", tx)
+	ret0, _ := ret[0].(ModelInterface)
+	return ret0
+}
+
+// SpawnWithTx indicates an expected call of SpawnWithTx.
+func (mr *MockModelInterfaceMockRecorder) SpawnWithTx(tx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SpawnWithTx", reflect.TypeOf((*MockModelInterface)(nil).SpawnWithTx), tx)
 }
 
 // UpdateTask mocks base method.

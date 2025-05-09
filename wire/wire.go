@@ -15,9 +15,9 @@ import (
 	"github.com/cloudcarver/anchor/pkg/model"
 	"github.com/cloudcarver/anchor/pkg/server"
 	"github.com/cloudcarver/anchor/pkg/service"
-	"github.com/cloudcarver/anchor/pkg/task"
-	"github.com/cloudcarver/anchor/pkg/task/runner"
-	"github.com/cloudcarver/anchor/pkg/task/worker"
+	"github.com/cloudcarver/anchor/pkg/taskcore"
+	"github.com/cloudcarver/anchor/pkg/taskcore/runner"
+	"github.com/cloudcarver/anchor/pkg/taskcore/worker"
 	"github.com/google/wire"
 )
 
@@ -34,7 +34,7 @@ func InitializeApplication() (*app.Application, error) {
 		auth.NewAuth,
 		macaroons.NewMacaroonManager,
 		store.NewStore,
-		task.NewTaskStore,
+		taskcore.NewTaskStore,
 		auth.NewCaveatParser,
 		globalctx.New,
 		metrics.NewMetricsServer,

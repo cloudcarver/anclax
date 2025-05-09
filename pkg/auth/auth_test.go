@@ -144,16 +144,14 @@ func TestAuth_CreateToken(t *testing.T) {
 	testCases := []struct {
 		name          string
 		user          *querier.User
-		rules         []string
 		setupMock     func()
 		expectedKeyID int64
 		expectedToken string
 		expectedError error
 	}{
 		{
-			name:  "successful token creation",
-			user:  user,
-			rules: []string{"read", "write"},
+			name: "successful token creation",
+			user: user,
 			setupMock: func() {
 				mockMacaroons.EXPECT().CreateToken(
 					gomock.Any(),
@@ -167,9 +165,8 @@ func TestAuth_CreateToken(t *testing.T) {
 			expectedError: nil,
 		},
 		{
-			name:  "token creation failure",
-			user:  user,
-			rules: []string{"read"},
+			name: "token creation failure",
+			user: user,
 			setupMock: func() {
 				mockMacaroons.EXPECT().CreateToken(
 					gomock.Any(),
@@ -188,7 +185,7 @@ func TestAuth_CreateToken(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.setupMock()
 
-			gotKeyID, gotToken, err := auth.CreateToken(ctx, tc.user, tc.rules)
+			gotKeyID, gotToken, err := auth.CreateToken(ctx, tc.user.ID, NewUserContextCaveat(tc.user.ID))
 
 			if tc.expectedError != nil {
 				require.Error(t, err)

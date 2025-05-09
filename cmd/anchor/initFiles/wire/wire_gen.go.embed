@@ -7,12 +7,13 @@
 package wire
 
 import (
-	"github.com/cloudcarver/anchor/example-app/internal/config"
-	"github.com/cloudcarver/anchor/example-app/internal/handler"
-	"github.com/cloudcarver/anchor/example-app/internal/initapp"
-	"github.com/cloudcarver/anchor/example-app/internal/model"
-	"github.com/cloudcarver/anchor/example-app/internal/task"
 	"github.com/cloudcarver/anchor/wire"
+	"github.com/cloudcarver/test-app/internal/asynctask"
+	"github.com/cloudcarver/test-app/internal/config"
+	"github.com/cloudcarver/test-app/internal/handler"
+	"github.com/cloudcarver/test-app/internal/zcore/initapp"
+	"github.com/cloudcarver/test-app/internal/zcore/model"
+	"github.com/cloudcarver/test-app/internal/zgen/taskgen"
 )
 
 // Injectors from wire.go:
@@ -32,8 +33,8 @@ func InitApp() (*initapp.App, error) {
 	if err != nil {
 		return nil, err
 	}
-	executorInterface := task.NewExecutor(modelInterface)
-	taskHandler := task.NewTaskHandler(executorInterface)
+	executorInterface := asynctask.NewExecutor(modelInterface)
+	taskHandler := taskgen.NewTaskHandler(executorInterface)
 	app := initapp.NewApp(application, serverInterface, validator, taskHandler)
 	return app, nil
 }

@@ -1,7 +1,7 @@
 package handler
 
 import (
-	"github.com/cloudcarver/anchor/example-app/internal/apigen"
+	"github.com/cloudcarver/test-app/internal/zgen/apigen"
 	"github.com/gofiber/fiber/v2"
 )
 

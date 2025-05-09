@@ -20,7 +20,7 @@ xware:
 task-handler:
   path: api/tasks.yaml
   package: runner
-  out: pkg/task/runner/runner_gen.go
+  out: pkg/taskcore/runner/runner_gen.go
 
 mockgen:
   files:
@@ -36,12 +36,12 @@ mockgen:
     - source: pkg/auth/auth.go
       destination: pkg/auth/mock_gen.go
       package: auth
-    - source: pkg/task/interfaces.go
-      destination: pkg/task/mock_gen.go
-      package: task
-    - source: pkg/task/worker/interfaces.go
-      destination: pkg/task/worker/mock_gen.go
+    - source: pkg/taskcore/interfaces.go
+      destination: pkg/taskcore/mock_gen.go
+      package: taskcore
+    - source: pkg/taskcore/worker/interfaces.go
+      destination: pkg/taskcore/worker/mock_gen.go
       package: worker
-    - source: pkg/task/runner/runner_gen.go
-      destination: pkg/task/runner/runner_gen_mock.go
+    - source: pkg/taskcore/runner/runner_gen.go
+      destination: pkg/taskcore/runner/runner_gen_mock.go
       package: runner

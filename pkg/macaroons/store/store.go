@@ -6,7 +6,7 @@ import (
 
 	"github.com/cloudcarver/anchor/pkg/model"
 	"github.com/cloudcarver/anchor/pkg/model/querier"
-	"github.com/cloudcarver/anchor/pkg/task/runner"
+	"github.com/cloudcarver/anchor/pkg/taskcore/runner"
 	"github.com/jackc/pgx/v5"
 	"github.com/pkg/errors"
 )
@@ -43,8 +43,7 @@ func (s *Store) Create(ctx context.Context, userID int32, key []byte, ttl time.D
 		ret = keyID
 
 		if ttl > 0 {
-			c := model.NewContext(ctx, txm)
-			if _, err := s.taskRunner.DeleteOpaqueKey(c, &runner.DeleteOpaqueKeyParameters{
+			if _, err := s.taskRunner.RunDeleteOpaqueKey(ctx, &runner.DeleteOpaqueKeyParameters{
 				KeyID: keyID,
 			}); err != nil {
 				return errors.Wrap(err, "failed to create task")

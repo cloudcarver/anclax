@@ -1,4 +1,4 @@
-package task
+package taskcore
 
 import (
 	"context"

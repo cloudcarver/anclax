@@ -23,26 +23,12 @@ var (
 	ErrAlreadyInTransaction = errors.New("already in transaction")
 )
 
-type Context struct {
-	context.Context
-	ModelInterface
-}
-
-func NewContext(ctx context.Context, model ModelInterface) *Context {
-	return &Context{
-		Context:        ctx,
-		ModelInterface: model,
-	}
-}
-
-func (c *Context) Model() ModelInterface {
-	return c.ModelInterface
-}
-
 type ModelInterface interface {
 	querier.Querier
 	RunTransaction(ctx context.Context, f func(model ModelInterface) error) error
+	RunTransactionWithTx(ctx context.Context, f func(tx pgx.Tx, model ModelInterface) error) error
 	InTransaction() bool
+	SpawnWithTx(tx pgx.Tx) ModelInterface
 }
 
 type Model struct {
@@ -60,26 +46,36 @@ func (m *Model) BeginTx(ctx context.Context) (pgx.Tx, error) {
 	return m.beginTx(ctx)
 }
 
-func (m *Model) RunTransaction(ctx context.Context, f func(model ModelInterface) error) error {
+func (m *Model) SpawnWithTx(tx pgx.Tx) ModelInterface {
+	return &Model{
+		Querier: querier.New(tx),
+		beginTx: func(ctx context.Context) (pgx.Tx, error) {
+			return nil, ErrAlreadyInTransaction
+		},
+		inTransaction: true,
+	}
+}
+
+func (m *Model) RunTransactionWithTx(ctx context.Context, f func(tx pgx.Tx, model ModelInterface) error) error {
 	tx, err := m.beginTx(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
 
-	if err := f(
-		&Model{
-			Querier: querier.New(tx),
-			beginTx: func(ctx context.Context) (pgx.Tx, error) {
-				return nil, ErrAlreadyInTransaction
-			},
-			inTransaction: true,
-		},
-	); err != nil {
+	txm := m.SpawnWithTx(tx)
+
+	if err := f(tx, txm); err != nil {
 		return err
 	}
 
 	return tx.Commit(ctx)
+}
+
+func (m *Model) RunTransaction(ctx context.Context, f func(model ModelInterface) error) error {
+	return m.RunTransactionWithTx(ctx, func(_ pgx.Tx, model ModelInterface) error {
+		return f(model)
+	})
 }
 
 func NewModel(cfg *config.Config) (ModelInterface, error) {

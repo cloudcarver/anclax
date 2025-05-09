@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/cloudcarver/anchor/pkg/apigen"
+	"github.com/cloudcarver/anchor/pkg/auth"
 	"github.com/cloudcarver/anchor/pkg/model/querier"
 	"github.com/cloudcarver/anchor/pkg/utils"
 	"github.com/jackc/pgx/v5"
@@ -31,7 +32,7 @@ func (s *Service) SignIn(ctx context.Context, params apigen.SignInRequest) (*api
 		return nil, errors.Wrapf(err, "failed to invalidate user tokens")
 	}
 
-	keyID, token, err := s.auth.CreateToken(ctx, user, nil)
+	keyID, token, err := s.auth.CreateToken(ctx, user.ID, auth.NewUserContextCaveat(user.ID))
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create token")
 	}
@@ -57,7 +58,7 @@ func (s *Service) RefreshToken(ctx context.Context, userID int32, refreshToken s
 		return nil, errors.Wrapf(err, "failed to invalidate user tokens")
 	}
 
-	keyID, accessToken, err := s.auth.CreateToken(ctx, user, nil)
+	keyID, accessToken, err := s.auth.CreateToken(ctx, user.ID, auth.NewUserContextCaveat(user.ID))
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create token")
 	}
