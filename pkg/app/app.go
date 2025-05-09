@@ -1,9 +1,12 @@
 package app
 
 import (
+	"github.com/cloudcarver/anchor/pkg/auth"
 	"github.com/cloudcarver/anchor/pkg/config"
 	"github.com/cloudcarver/anchor/pkg/metrics"
 	"github.com/cloudcarver/anchor/pkg/server"
+	"github.com/cloudcarver/anchor/pkg/service"
+	"github.com/cloudcarver/anchor/pkg/taskcore"
 	"github.com/cloudcarver/anchor/pkg/taskcore/worker"
 )
 
@@ -13,15 +16,30 @@ type Application struct {
 	worker        *worker.Worker
 	disableWorker bool
 	debugServer   *DebugServer
+	auth          auth.AuthInterface
+	taskStore     taskcore.TaskStoreInterface
+	service       service.ServiceInterface
 }
 
-func NewApplication(cfg *config.Config, server *server.Server, prometheus *metrics.MetricsServer, worker *worker.Worker, debugServer *DebugServer) *Application {
+func NewApplication(
+	cfg *config.Config,
+	server *server.Server,
+	prometheus *metrics.MetricsServer,
+	worker *worker.Worker,
+	debugServer *DebugServer,
+	auth auth.AuthInterface,
+	taskStore taskcore.TaskStoreInterface,
+	service service.ServiceInterface,
+) *Application {
 	return &Application{
 		server:        server,
 		prometheus:    prometheus,
 		worker:        worker,
 		disableWorker: cfg.Worker.Disable,
 		debugServer:   debugServer,
+		auth:          auth,
+		taskStore:     taskStore,
+		service:       service,
 	}
 }
 
@@ -40,4 +58,16 @@ func (a *Application) GetServer() *server.Server {
 
 func (a *Application) GetWorker() *worker.Worker {
 	return a.worker
+}
+
+func (a *Application) GetAuth() auth.AuthInterface {
+	return a.auth
+}
+
+func (a *Application) GetTaskStore() taskcore.TaskStoreInterface {
+	return a.taskStore
+}
+
+func (a *Application) GetService() service.ServiceInterface {
+	return a.service
 }

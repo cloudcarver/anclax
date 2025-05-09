@@ -16,8 +16,7 @@ func (x *XMiddleware) {{.OperationId}}(c *fiber.Ctx{{genParamArgs .PathParams}}{
 	if err := x.PreValidate(c); err != nil {
 		return c.Status(fiber.StatusForbidden).SendString(err.Error())
 	}
-	{{$needsOperationID := false}}{{range .SecurityDefinitions}}{{range .Scopes}}{{if contains . "operationID"}}{{$needsOperationID = true}}{{end}}{{end}}{{end}}{{if $needsOperationID}}operationID := "{{.OperationId}}"{{end}}
-	{{range .SecurityDefinitions}} {{range .Scopes}}
+	{{$needsOperationID := false}}{{range .SecurityDefinitions}}{{range .Scopes}}{{if contains . "operationID"}}{{$needsOperationID = true}}{{end}}{{end}}{{end}}{{if $needsOperationID}}operationID := "{{.OperationId}}"{{end}} {{range .SecurityDefinitions}} {{range .Scopes}}
 	if err := {{.}}; err != nil {
 	    return c.Status(fiber.StatusForbidden).SendString(err.Error())
 	} {{end}} {{end}}

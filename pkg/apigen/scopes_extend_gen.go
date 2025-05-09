@@ -27,8 +27,7 @@ func (x *XMiddleware) RefreshToken(c *fiber.Ctx) error {
 	if err := x.PreValidate(c); err != nil {
 		return c.Status(fiber.StatusForbidden).SendString(err.Error())
 	}
-	
-	
+	 
 	if err := x.PostValidate(c); err != nil {
 		return c.Status(fiber.StatusForbidden).SendString(err.Error())
 	}
@@ -41,8 +40,7 @@ func (x *XMiddleware) SignIn(c *fiber.Ctx) error {
 	if err := x.PreValidate(c); err != nil {
 		return c.Status(fiber.StatusForbidden).SendString(err.Error())
 	}
-	
-	
+	 
 	if err := x.PostValidate(c); err != nil {
 		return c.Status(fiber.StatusForbidden).SendString(err.Error())
 	}
@@ -57,8 +55,7 @@ func (x *XMiddleware) SignOut(c *fiber.Ctx) error {
 	if err := x.PreValidate(c); err != nil {
 		return c.Status(fiber.StatusForbidden).SendString(err.Error())
 	}
-	
-	  
+	   
 	if err := x.PostValidate(c); err != nil {
 		return c.Status(fiber.StatusForbidden).SendString(err.Error())
 	}
@@ -73,8 +70,7 @@ func (x *XMiddleware) ListEvents(c *fiber.Ctx) error {
 	if err := x.PreValidate(c); err != nil {
 		return c.Status(fiber.StatusForbidden).SendString(err.Error())
 	}
-	
-	  
+	   
 	if err := x.PostValidate(c); err != nil {
 		return c.Status(fiber.StatusForbidden).SendString(err.Error())
 	}
@@ -89,8 +85,7 @@ func (x *XMiddleware) ListTasks(c *fiber.Ctx) error {
 	if err := x.PreValidate(c); err != nil {
 		return c.Status(fiber.StatusForbidden).SendString(err.Error())
 	}
-	
-	  
+	   
 	if err := x.PostValidate(c); err != nil {
 		return c.Status(fiber.StatusForbidden).SendString(err.Error())
 	}

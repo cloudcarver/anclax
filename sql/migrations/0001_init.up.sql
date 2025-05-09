@@ -88,7 +88,6 @@ CREATE TABLE users_roles (
     PRIMARY KEY (user_id, role_id)
 );
 
-
 CREATE TABLE tasks (
     id          SERIAL PRIMARY KEY,
     attributes  JSONB NOT NULL,
