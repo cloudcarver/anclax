@@ -7,7 +7,7 @@ services:
     command:
     - go
     - run
-    - cmd/main.go
+    - cmd/server/main.go
     environment:
       AC_PORT: 2910
       AC_PG_DSN: postgres://postgres:postgres@db:5432/postgres

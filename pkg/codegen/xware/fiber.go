@@ -90,7 +90,14 @@ func generateMiddlewares(doc *openapi3.T) (string, error) {
 		return "", errors.Wrap(err, "failed to get operation definitions")
 	}
 
-	code, err := codegen.GenerateTemplates([]string{"middlewares.tmpl"}, t, ops)
+	opsWithSecurity := make([]codegen.OperationDefinition, 0, len(ops))
+	for _, op := range ops {
+		if len(op.SecurityDefinitions) > 0 {
+			opsWithSecurity = append(opsWithSecurity, op)
+		}
+	}
+
+	code, err := codegen.GenerateTemplates([]string{"middlewares.tmpl"}, t, opsWithSecurity)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to generate templates")
 	}

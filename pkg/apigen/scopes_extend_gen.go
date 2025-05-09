@@ -12,40 +12,14 @@ type Validator interface {
 
 
 type XMiddleware struct {
-	Handler ServerInterface
+	ServerInterface
 	Validator
 }
 
 func NewXMiddleware(handler ServerInterface, validator Validator) ServerInterface {
-	return &XMiddleware{Handler: handler, Validator: validator}
+	return &XMiddleware{ServerInterface: handler, Validator: validator}
 }
 
-// Refresh access token
-// (POST /auth/refresh)
-func (x *XMiddleware) RefreshToken(c *fiber.Ctx) error {
-    
-	if err := x.PreValidate(c); err != nil {
-		return c.Status(fiber.StatusForbidden).SendString(err.Error())
-	}
-	 
-	if err := x.PostValidate(c); err != nil {
-		return c.Status(fiber.StatusForbidden).SendString(err.Error())
-	}
-    return x.Handler.RefreshToken(c)
-}
-// Sign in user
-// (POST /auth/sign-in)
-func (x *XMiddleware) SignIn(c *fiber.Ctx) error {
-    
-	if err := x.PreValidate(c); err != nil {
-		return c.Status(fiber.StatusForbidden).SendString(err.Error())
-	}
-	 
-	if err := x.PostValidate(c); err != nil {
-		return c.Status(fiber.StatusForbidden).SendString(err.Error())
-	}
-    return x.Handler.SignIn(c)
-}
 // Sign out user
 // (POST /auth/sign-out)
 func (x *XMiddleware) SignOut(c *fiber.Ctx) error {
@@ -59,7 +33,7 @@ func (x *XMiddleware) SignOut(c *fiber.Ctx) error {
 	if err := x.PostValidate(c); err != nil {
 		return c.Status(fiber.StatusForbidden).SendString(err.Error())
 	}
-    return x.Handler.SignOut(c)
+    return x.ServerInterface.SignOut(c)
 }
 // Get all events
 // (GET /events)
@@ -74,7 +48,7 @@ func (x *XMiddleware) ListEvents(c *fiber.Ctx) error {
 	if err := x.PostValidate(c); err != nil {
 		return c.Status(fiber.StatusForbidden).SendString(err.Error())
 	}
-    return x.Handler.ListEvents(c)
+    return x.ServerInterface.ListEvents(c)
 }
 // Get all tasks
 // (GET /tasks)
@@ -89,6 +63,6 @@ func (x *XMiddleware) ListTasks(c *fiber.Ctx) error {
 	if err := x.PostValidate(c); err != nil {
 		return c.Status(fiber.StatusForbidden).SendString(err.Error())
 	}
-    return x.Handler.ListTasks(c)
+    return x.ServerInterface.ListTasks(c)
 }
 

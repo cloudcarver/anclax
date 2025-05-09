@@ -1,10 +1,10 @@
 type XMiddleware struct {
-	Handler ServerInterface
+	ServerInterface
 	Validator
 }
 
 func NewXMiddleware(handler ServerInterface, validator Validator) ServerInterface {
-	return &XMiddleware{Handler: handler, Validator: validator}
+	return &XMiddleware{ServerInterface: handler, Validator: validator}
 }
 
 {{range .}}{{.SummaryAsComment }}
@@ -23,6 +23,6 @@ func (x *XMiddleware) {{.OperationId}}(c *fiber.Ctx{{genParamArgs .PathParams}}{
 	if err := x.PostValidate(c); err != nil {
 		return c.Status(fiber.StatusForbidden).SendString(err.Error())
 	}
-    return x.Handler.{{.OperationId}}(c{{genParamNames .PathParams}}{{if .RequiresParamObject}}, params{{end}})
+    return x.ServerInterface.{{.OperationId}}(c{{genParamNames .PathParams}}{{if .RequiresParamObject}}, params{{end}})
 }
 {{end}}
