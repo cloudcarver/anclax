@@ -5,12 +5,7 @@ INSERT INTO users (
     password_salt
 ) VALUES (
     $1, $2, $3
-) ON CONFLICT (name) DO UPDATE 
-    SET updated_at = CURRENT_TIMESTAMP, 
-        name = EXCLUDED.name, 
-        password_hash = EXCLUDED.password_hash,
-        password_salt = EXCLUDED.password_salt
-RETURNING *;
+) RETURNING *;
 
 -- name: GetUser :one
 SELECT * FROM users

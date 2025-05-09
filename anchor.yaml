@@ -22,6 +22,9 @@ task-handler:
   package: runner
   out: pkg/taskcore/runner/runner_gen.go
 
+sqlc:
+  path: sqlc.yaml
+
 mockgen:
   files:
     - source: pkg/model/model.go
