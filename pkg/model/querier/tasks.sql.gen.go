@@ -14,7 +14,7 @@ import (
 
 const createTask = `-- name: CreateTask :one
 INSERT INTO tasks (attributes, spec, status, started_at, unique_tag)
-VALUES ($1, $2, $3, $4, $5) ON CONFLICT (unique_tag) DO NOTHING
+VALUES ($1, $2, $3, $4, $5) ON CONFLICT (unique_tag) DO UPDATE SET unique_tag = EXCLUDED.unique_tag
 RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at
 `
 
