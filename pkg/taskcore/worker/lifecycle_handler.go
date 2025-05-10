@@ -120,7 +120,7 @@ func (a *TaskLifeCycleHandler) handleCronjob(ctx context.Context, task apigen.Ta
 	cronjob := task.Attributes.Cronjob
 
 	// schedule next task
-	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	parser := cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 	cron, err := parser.Parse(cronjob.CronExpression)
 	if err != nil {
 		return errors.Wrapf(err, "failed to parse cron expression: %s", cronjob.CronExpression)
