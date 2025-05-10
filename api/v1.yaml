@@ -160,6 +160,9 @@ components:
         status:
           type: string
           enum: ["pending", "completed", "failed", "paused"]
+        uniqueTag:
+          type: string
+          description: Unique tag of the task
         startedAt:
           type: string
           format: date-time

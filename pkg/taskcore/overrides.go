@@ -34,3 +34,10 @@ func WithStartedAt(startedAt time.Time) TaskOverride {
 		return nil
 	}
 }
+
+func WithUniqueTag(uniqueTag string) TaskOverride {
+	return func(task *apigen.Task) error {
+		task.UniqueTag = &uniqueTag
+		return nil
+	}
+}

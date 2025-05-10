@@ -39,6 +39,7 @@ func (s *TaskStore) PushTask(ctx context.Context, task *apigen.Task) (int32, err
 		Spec:       task.Spec,
 		StartedAt:  task.StartedAt,
 		Status:     string(task.Status),
+		UniqueTag:  task.UniqueTag,
 	})
 	if err != nil {
 		return 0, errors.Wrap(err, "failed to create task")

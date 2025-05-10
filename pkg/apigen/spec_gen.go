@@ -106,7 +106,10 @@ type Task struct {
 	Spec       TaskSpec       `json:"spec"`
 	StartedAt  *time.Time     `json:"startedAt,omitempty"`
 	Status     TaskStatus     `json:"status"`
-	UpdatedAt  time.Time      `json:"updatedAt"`
+
+	// UniqueTag Unique tag of the task
+	UniqueTag *string   `json:"uniqueTag,omitempty"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // TaskStatus defines model for Task.Status.
