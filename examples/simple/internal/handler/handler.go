@@ -7,7 +7,7 @@ import (
 	"myexampleapp/internal/zgen/taskgen"
 
 	anchor_svc "github.com/cloudcarver/anchor/pkg/service"
-	"github.com/cloudcarver/anchor/pkg/utils"
+	"github.com/cloudcarver/anchor/pkg/taskcore"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -18,6 +18,11 @@ type Handler struct {
 
 func NewHandler(model model.ModelInterface, taskrunner taskgen.TaskRunner, anchorSvc anchor_svc.ServiceInterface) (apigen.ServerInterface, error) {
 	if _, err := anchorSvc.CreateNewUser(context.Background(), "test", "test"); err != nil {
+		return nil, err
+	}
+	if _, err := taskrunner.RunAutoIncrementCounter(context.Background(), &taskgen.AutoIncrementCounterParameters{
+		Amount: 1,
+	}, taskcore.WithUniqueTag("auto-increment-counter")); err != nil {
 		return nil, err
 	}
 
@@ -34,7 +39,7 @@ func (h *Handler) GetCounter(c *fiber.Ctx) error {
 
 func (h *Handler) IncrementCounter(c *fiber.Ctx) error {
 	_, err := h.taskrunner.RunIncrementCounter(c.Context(), &taskgen.IncrementCounterParameters{
-		Amount: utils.Ptr[int32](1),
+		Amount: 1,
 	})
 	if err != nil {
 		return err

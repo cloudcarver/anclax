@@ -12,27 +12,14 @@ type Validator interface {
 
 
 type XMiddleware struct {
-	Handler ServerInterface
+	ServerInterface
 	Validator
 }
 
 func NewXMiddleware(handler ServerInterface, validator Validator) ServerInterface {
-	return &XMiddleware{Handler: handler, Validator: validator}
+	return &XMiddleware{ServerInterface: handler, Validator: validator}
 }
 
-// Get Counter
-// (GET /counter)
-func (x *XMiddleware) GetCounter(c *fiber.Ctx) error {
-    
-	if err := x.PreValidate(c); err != nil {
-		return c.Status(fiber.StatusForbidden).SendString(err.Error())
-	}
-	 
-	if err := x.PostValidate(c); err != nil {
-		return c.Status(fiber.StatusForbidden).SendString(err.Error())
-	}
-    return x.Handler.GetCounter(c)
-}
 // Increment Counter
 // (POST /counter)
 func (x *XMiddleware) IncrementCounter(c *fiber.Ctx) error {
@@ -49,6 +36,6 @@ func (x *XMiddleware) IncrementCounter(c *fiber.Ctx) error {
 	if err := x.PostValidate(c); err != nil {
 		return c.Status(fiber.StatusForbidden).SendString(err.Error())
 	}
-    return x.Handler.IncrementCounter(c)
+    return x.ServerInterface.IncrementCounter(c)
 }
 

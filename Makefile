@@ -22,3 +22,6 @@ ut:
 	@COLOR=ALWAYS go test -race -covermode=atomic -coverprofile=coverage.out -tags ut ./... 
 	@go tool cover -html coverage.out -o coverage.html
 	@go tool cover -func coverage.out | fgrep total | awk '{print "Coverage:", $$3}'
+
+gen:
+	go run cmd/dev/main.go copy-templates --src examples/simple --dst cmd/anchor/initFiles --exclude .anchor,go.sum

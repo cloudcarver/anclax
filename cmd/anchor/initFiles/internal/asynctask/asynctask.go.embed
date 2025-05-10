@@ -20,3 +20,7 @@ func NewExecutor(model model.ModelInterface) taskgen.ExecutorInterface {
 func (e *Executor) ExecuteIncrementCounter(ctx context.Context, params *taskgen.IncrementCounterParameters) error {
 	return e.model.IncrementCounter(ctx)
 }
+
+func (e *Executor) ExecuteAutoIncrementCounter(ctx context.Context, params *taskgen.AutoIncrementCounterParameters) error {
+	return e.model.IncrementCounter(ctx)
+}

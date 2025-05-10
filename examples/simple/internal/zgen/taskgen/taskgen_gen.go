@@ -19,10 +19,15 @@ func init() {
 }
 
 const ( 
-	IncrementCounter = "incrementCounter" 
+	AutoIncrementCounter = "AutoIncrementCounter" 
+
+	IncrementCounter = "IncrementCounter" 
 )
 
 type TaskRunner interface { 
+    // Increment the counter
+	RunAutoIncrementCounter(ctx context.Context, params *AutoIncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error)
+
     // Increment the counter
 	RunIncrementCounter(ctx context.Context, params *IncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error)
 }
@@ -40,6 +45,42 @@ func NewTaskRunner(taskStore taskcore.TaskStoreInterface) TaskRunner {
 }
 
 
+func (c *Client) RunAutoIncrementCounter(ctx context.Context, params *AutoIncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	payload, err := params.Marshal()
+	if err != nil {
+		return 0, err
+	}
+
+	spec := apigen.TaskSpec{
+		Type:    AutoIncrementCounter,
+		Payload: payload,
+	}
+	attributes := apigen.TaskAttributes{}
+	
+	attributes.RetryPolicy = &apigen.TaskRetryPolicy{
+		Interval:             "30m",
+		AlwaysRetryOnFailure: true,
+	}
+	attributes.Cronjob = &apigen.TaskCronjob{
+		CronExpression: "*/5 * * * * *",
+	}
+	task := &apigen.Task{
+		Attributes: attributes,
+		Spec:       spec,
+		Status:     apigen.Pending,
+	}
+	
+	for _, override := range overrides {
+		if err := override(task); err != nil {
+			return 0, errors.Wrap(err, "failed to apply task override")
+		}
+	}
+	taskID, err := c.taskStore.PushTask(ctx, task)
+	if err != nil {
+		return 0, err
+	}
+	return taskID, nil
+}
 func (c *Client) RunIncrementCounter(ctx context.Context, params *IncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 	payload, err := params.Marshal()
 	if err != nil {
@@ -56,9 +97,7 @@ func (c *Client) RunIncrementCounter(ctx context.Context, params *IncrementCount
 		Interval:             "30m",
 		AlwaysRetryOnFailure: true,
 	}
-	attributes.Cronjob = &apigen.TaskCronjob{
-		CronExpression: "0 10 * * *",
-	}
+	
 	task := &apigen.Task{
 		Attributes: attributes,
 		Spec:       spec,
@@ -78,11 +117,23 @@ func (c *Client) RunIncrementCounter(ctx context.Context, params *IncrementCount
 }
 
 
-type IncrementCounterParameters struct { 
+type AutoIncrementCounterParameters struct { 
     // 
-	Amount *int32 `json:"amount" yaml:"amount"`
+	Amount int32 `json:"amount" yaml:"amount"`
 }
 
+type IncrementCounterParameters struct { 
+    // 
+	Amount int32 `json:"amount" yaml:"amount"`
+}
+
+func (r *AutoIncrementCounterParameters) Parse(spec json.RawMessage) error {
+	return json.Unmarshal(spec, r)
+}
+
+func (r *AutoIncrementCounterParameters) Marshal() (json.RawMessage, error) {
+	return json.Marshal(r)
+}
 func (r *IncrementCounterParameters) Parse(spec json.RawMessage) error {
 	return json.Unmarshal(spec, r)
 }
@@ -92,6 +143,9 @@ func (r *IncrementCounterParameters) Marshal() (json.RawMessage, error) {
 }
 
 type ExecutorInterface interface { 
+    // Increment the counter
+	ExecuteAutoIncrementCounter(ctx context.Context, params *AutoIncrementCounterParameters) error
+
     // Increment the counter
 	ExecuteIncrementCounter(ctx context.Context, params *IncrementCounterParameters) error
 }
@@ -124,10 +178,17 @@ func (f *TaskHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) erro
 	}
 
 	switch spec.GetType() { 
+	case AutoIncrementCounter:
+		var params AutoIncrementCounterParameters
+		if err := params.Parse(spec.GetPayload()); err != nil {
+			return fmt.Errorf("failed to parse AutoIncrementCounter parameters: %w", err)
+		}
+		return f.executor.ExecuteAutoIncrementCounter(ctx, &params)
+		
 	case IncrementCounter:
 		var params IncrementCounterParameters
 		if err := params.Parse(spec.GetPayload()); err != nil {
-			return fmt.Errorf("failed to parse incrementCounter parameters: %w", err)
+			return fmt.Errorf("failed to parse IncrementCounter parameters: %w", err)
 		}
 		return f.executor.ExecuteIncrementCounter(ctx, &params)
 		

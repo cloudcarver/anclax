@@ -41,6 +41,26 @@ func (m *MockTaskRunner) EXPECT() *MockTaskRunnerMockRecorder {
 	return m.recorder
 }
 
+// RunAutoIncrementCounter mocks base method.
+func (m *MockTaskRunner) RunAutoIncrementCounter(ctx context.Context, params *AutoIncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, params}
+	for _, a := range overrides {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "RunAutoIncrementCounter", varargs...)
+	ret0, _ := ret[0].(int32)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RunAutoIncrementCounter indicates an expected call of RunAutoIncrementCounter.
+func (mr *MockTaskRunnerMockRecorder) RunAutoIncrementCounter(ctx, params any, overrides ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, params}, overrides...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunAutoIncrementCounter", reflect.TypeOf((*MockTaskRunner)(nil).RunAutoIncrementCounter), varargs...)
+}
+
 // RunIncrementCounter mocks base method.
 func (m *MockTaskRunner) RunIncrementCounter(ctx context.Context, params *IncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 	m.ctrl.T.Helper()
@@ -83,6 +103,20 @@ func NewMockExecutorInterface(ctrl *gomock.Controller) *MockExecutorInterface {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockExecutorInterface) EXPECT() *MockExecutorInterfaceMockRecorder {
 	return m.recorder
+}
+
+// ExecuteAutoIncrementCounter mocks base method.
+func (m *MockExecutorInterface) ExecuteAutoIncrementCounter(ctx context.Context, params *AutoIncrementCounterParameters) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExecuteAutoIncrementCounter", ctx, params)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ExecuteAutoIncrementCounter indicates an expected call of ExecuteAutoIncrementCounter.
+func (mr *MockExecutorInterfaceMockRecorder) ExecuteAutoIncrementCounter(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteAutoIncrementCounter", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteAutoIncrementCounter), ctx, params)
 }
 
 // ExecuteIncrementCounter mocks base method.
