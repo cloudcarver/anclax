@@ -1,0 +1,30 @@
+services:
+  dev:
+    build: 
+      dockerfile: ./dev/Dockerfile.dev
+    ports:
+      - "2910:2910"
+    command:
+    - go
+    - run
+    - cmd/main.go
+    environment:
+      AC_PORT: 2910
+      AC_PG_DSN: postgres://postgres:postgres@db:5432/postgres
+      ACP_PG_DSN: postgres://postgres:postgres@db:5432/postgres
+    volumes:
+      - ./:/app
+      - go-data:/go/pkg/mod
+      - go-build-data:/root/.cache/go-build
+
+  db: 
+    image: "postgres:latest"
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_PASSWORD: postgres
+
+volumes:
+  db-data:
+  go-data:
+  go-build-data:

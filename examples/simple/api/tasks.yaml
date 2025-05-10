@@ -1,0 +1,15 @@
+tasks:
+  - name: incrementCounter
+    description: Increment the counter
+    cronjob:
+      cronExpression: "0 10 * * *"
+    retryPolicy:
+      interval: 30m
+      always_retry_on_failure: true
+    parameters:
+      type: object
+      required: []
+      properties:
+        amount:
+          type: integer
+          format: int32

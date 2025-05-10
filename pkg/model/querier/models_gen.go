@@ -81,6 +81,7 @@ type Task struct {
 	Attributes apigen.TaskAttributes
 	Spec       apigen.TaskSpec
 	Status     string
+	UniqueTag  *string
 	StartedAt  *time.Time
 	CreatedAt  time.Time
 	UpdatedAt  time.Time

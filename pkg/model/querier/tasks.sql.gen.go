@@ -13,9 +13,9 @@ import (
 )
 
 const createTask = `-- name: CreateTask :one
-INSERT INTO tasks (attributes, spec, status, started_at)
-VALUES ($1, $2, $3, $4)
-RETURNING id, attributes, spec, status, started_at, created_at, updated_at
+INSERT INTO tasks (attributes, spec, status, started_at, unique_tag)
+VALUES ($1, $2, $3, $4, $5) ON CONFLICT (unique_tag) DO NOTHING
+RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at
 `
 
 type CreateTaskParams struct {
@@ -23,6 +23,7 @@ type CreateTaskParams struct {
 	Spec       apigen.TaskSpec
 	Status     string
 	StartedAt  *time.Time
+	UniqueTag  *string
 }
 
 func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (*Task, error) {
@@ -31,6 +32,7 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (*Task, 
 		arg.Spec,
 		arg.Status,
 		arg.StartedAt,
+		arg.UniqueTag,
 	)
 	var i Task
 	err := row.Scan(
@@ -38,6 +40,7 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (*Task, 
 		&i.Attributes,
 		&i.Spec,
 		&i.Status,
+		&i.UniqueTag,
 		&i.StartedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -46,7 +49,7 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (*Task, 
 }
 
 const getTaskByID = `-- name: GetTaskByID :one
-SELECT id, attributes, spec, status, started_at, created_at, updated_at FROM tasks
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at FROM tasks
 WHERE id = $1
 `
 
@@ -58,6 +61,7 @@ func (q *Queries) GetTaskByID(ctx context.Context, id int32) (*Task, error) {
 		&i.Attributes,
 		&i.Spec,
 		&i.Status,
+		&i.UniqueTag,
 		&i.StartedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -79,7 +83,7 @@ func (q *Queries) InsertEvent(ctx context.Context, spec apigen.EventSpec) (*Even
 }
 
 const pullTask = `-- name: PullTask :one
-SELECT id, attributes, spec, status, started_at, created_at, updated_at FROM tasks
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at FROM tasks
 WHERE 
     status = 'pending'
     AND (
@@ -98,6 +102,7 @@ func (q *Queries) PullTask(ctx context.Context) (*Task, error) {
 		&i.Attributes,
 		&i.Spec,
 		&i.Status,
+		&i.UniqueTag,
 		&i.StartedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,

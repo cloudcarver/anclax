@@ -91,6 +91,15 @@ func runGenInit(c *cli.Context) error {
 		}
 	}
 
+	// go mod tidy
+	cmd := exec.Command("go", "mod", "tidy")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Dir = projectDir
+	if err := cmd.Run(); err != nil {
+		return errors.Wrap(err, "failed to run go mod tidy")
+	}
+
 	// install external tools
 	if err := install(projectDir); err != nil {
 		return errors.Wrap(err, "failed to install external tools")
@@ -99,15 +108,6 @@ func runGenInit(c *cli.Context) error {
 	// run codegen
 	if err := codegen(configName, projectDir); err != nil {
 		return errors.Wrap(err, "failed to run codegen")
-	}
-
-	// go mod tidy
-	cmd := exec.Command("go", "mod", "tidy")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Dir = projectDir
-	if err := cmd.Run(); err != nil {
-		return errors.Wrap(err, "failed to run go mod tidy")
 	}
 
 	fmt.Printf("Project initialized successfully in %s\n", projectDir)
@@ -162,7 +162,7 @@ func initFiles(dir, goModule string) error {
 			}
 
 			dstPath = strings.TrimSuffix(dstPath, ".embed")
-			content = bytes.ReplaceAll(content, []byte("github.com/cloudcarver/test-app"), []byte(goModule))
+			content = bytes.ReplaceAll(content, []byte("myexampleapp"), []byte(goModule))
 
 			if err := os.WriteFile(dstPath, content, 0644); err != nil {
 				return errors.Wrap(err, "failed to write file")

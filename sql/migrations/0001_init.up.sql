@@ -93,6 +93,7 @@ CREATE TABLE tasks (
     attributes  JSONB NOT NULL,
     spec        JSONB NOT NULL,
     status      VARCHAR(255) NOT NULL,
+    unique_tag  VARCHAR(255), -- for unique task
     started_at  TIMESTAMPTZ,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
