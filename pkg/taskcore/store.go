@@ -48,10 +48,10 @@ func (s *TaskStore) PushTask(ctx context.Context, task *apigen.Task) (int32, err
 }
 
 func (s *TaskStore) UpdateCronJob(ctx context.Context, taskID int32, cronExpression string, spec json.RawMessage) error {
-	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	parser := cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 	cron, err := parser.Parse(cronExpression)
 	if err != nil {
-		return errors.Wrapf(err, "failed to parse cron expression")
+		return errors.Wrapf(err, "failed to parse cron expression, format should be like second minute hour dayOfMonth month dayOfWeek")
 	}
 	nextTime := cron.Next(s.now())
 
