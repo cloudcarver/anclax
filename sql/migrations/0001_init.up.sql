@@ -96,7 +96,9 @@ CREATE TABLE tasks (
     unique_tag  VARCHAR(255), -- for unique task
     started_at  TIMESTAMPTZ,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    UNIQUE (unique_tag)
 );
 
 CREATE TABLE events (
