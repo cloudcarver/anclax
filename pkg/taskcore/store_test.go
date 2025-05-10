@@ -20,12 +20,12 @@ func TestUpdateCronJob(t *testing.T) {
 	var (
 		ctx            = context.Background()
 		taskID         = int32(1)
-		cronExpression = "0 0 * * *"
+		cronExpression = "*/5 * * * * *"
 		taskSpec       = apigen.TaskSpec{
 			Payload: []byte{},
 		}
 		currentTime      = time.Date(2025, 3, 31, 12, 0, 0, 0, time.UTC)
-		expectedNextTime = time.Date(2025, 4, 1, 0, 0, 0, 0, time.UTC)
+		expectedNextTime = time.Date(2025, 3, 31, 12, 0, 5, 0, time.UTC)
 	)
 
 	mockModel := model.NewMockModelInterface(ctrl)
