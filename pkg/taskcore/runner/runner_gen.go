@@ -12,6 +12,7 @@ import (
 	"github.com/cloudcarver/anchor/pkg/taskcore/worker"
 	"github.com/cloudcarver/anchor/pkg/utils"
 	"github.com/pkg/errors"
+	"github.com/jackc/pgx/v5"
 )
 
 func init() {
@@ -25,6 +26,8 @@ const (
 type TaskRunner interface { 
     // Delete an opaque key
 	RunDeleteOpaqueKey(ctx context.Context, params *DeleteOpaqueKeyParameters, overrides ...taskcore.TaskOverride) (int32, error)
+    // Delete an opaque key
+	RunDeleteOpaqueKeyWithTx(ctx context.Context, tx pgx.Tx, params *DeleteOpaqueKeyParameters, overrides ...taskcore.TaskOverride) (int32, error)
 }
 
 type Client struct {
@@ -41,6 +44,14 @@ func NewTaskRunner(taskStore taskcore.TaskStoreInterface) TaskRunner {
 
 
 func (c *Client) RunDeleteOpaqueKey(ctx context.Context, params *DeleteOpaqueKeyParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runDeleteOpaqueKey(ctx, c.taskStore, params, overrides...)
+}
+
+func (c *Client) RunDeleteOpaqueKeyWithTx(ctx context.Context, tx pgx.Tx, params *DeleteOpaqueKeyParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runDeleteOpaqueKey(ctx, c.taskStore.WithTx(tx), params, overrides...)
+}
+
+func (c *Client) runDeleteOpaqueKey(ctx context.Context, taskstore taskcore.TaskStoreInterface, params *DeleteOpaqueKeyParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 	payload, err := params.Marshal()
 	if err != nil {
 		return 0, err
@@ -68,7 +79,7 @@ func (c *Client) RunDeleteOpaqueKey(ctx context.Context, params *DeleteOpaqueKey
 			return 0, errors.Wrap(err, "failed to apply task override")
 		}
 	}
-	taskID, err := c.taskStore.PushTask(ctx, task)
+	taskID, err := taskstore.PushTask(ctx, task)
 	if err != nil {
 		return 0, err
 	}

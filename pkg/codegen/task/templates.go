@@ -19,6 +19,7 @@ import (
 	"github.com/cloudcarver/anchor/pkg/taskcore/worker"
 	"github.com/cloudcarver/anchor/pkg/utils"
 	"github.com/pkg/errors"
+	"github.com/jackc/pgx/v5"
 )
 
 func init() {
@@ -32,6 +33,8 @@ const ( {{range .Functions}}
 type TaskRunner interface { {{range .Functions}}
 {{.Description}}
 	Run{{upperFirst .Name}}(ctx context.Context, params *{{.ParameterType}}, overrides ...taskcore.TaskOverride) (int32, error)
+{{.Description}}
+	Run{{upperFirst .Name}}WithTx(ctx context.Context, tx pgx.Tx, params *{{.ParameterType}}, overrides ...taskcore.TaskOverride) (int32, error)
 {{end}}}
 
 type Client struct {
@@ -48,6 +51,14 @@ func NewTaskRunner(taskStore taskcore.TaskStoreInterface) TaskRunner {
 
 {{range .Functions}}
 func (c *Client) Run{{upperFirst .Name}}(ctx context.Context, params *{{.ParameterType}}, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.run{{upperFirst .Name}}(ctx, c.taskStore, params, overrides...)
+}
+
+func (c *Client) Run{{upperFirst .Name}}WithTx(ctx context.Context, tx pgx.Tx, params *{{.ParameterType}}, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.run{{upperFirst .Name}}(ctx, c.taskStore.WithTx(tx), params, overrides...)
+}
+
+func (c *Client) run{{upperFirst .Name}}(ctx context.Context, taskstore taskcore.TaskStoreInterface, params *{{.ParameterType}}, overrides ...taskcore.TaskOverride) (int32, error) {
 	payload, err := params.Marshal()
 	if err != nil {
 		return 0, err
@@ -81,7 +92,7 @@ func (c *Client) Run{{upperFirst .Name}}(ctx context.Context, params *{{.Paramet
 			return 0, errors.Wrap(err, "failed to apply task override")
 		}
 	}
-	taskID, err := c.taskStore.PushTask(ctx, task)
+	taskID, err := taskstore.PushTask(ctx, task)
 	if err != nil {
 		return 0, err
 	}

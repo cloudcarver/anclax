@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 
 	taskcore "github.com/cloudcarver/anchor/pkg/taskcore"
+	pgx "github.com/jackc/pgx/v5"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -59,6 +60,26 @@ func (mr *MockTaskRunnerMockRecorder) RunDeleteOpaqueKey(ctx, params any, overri
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]any{ctx, params}, overrides...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunDeleteOpaqueKey", reflect.TypeOf((*MockTaskRunner)(nil).RunDeleteOpaqueKey), varargs...)
+}
+
+// RunDeleteOpaqueKeyWithTx mocks base method.
+func (m *MockTaskRunner) RunDeleteOpaqueKeyWithTx(ctx context.Context, tx pgx.Tx, params *DeleteOpaqueKeyParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, tx, params}
+	for _, a := range overrides {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "RunDeleteOpaqueKeyWithTx", varargs...)
+	ret0, _ := ret[0].(int32)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RunDeleteOpaqueKeyWithTx indicates an expected call of RunDeleteOpaqueKeyWithTx.
+func (mr *MockTaskRunnerMockRecorder) RunDeleteOpaqueKeyWithTx(ctx, tx, params any, overrides ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, tx, params}, overrides...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunDeleteOpaqueKeyWithTx", reflect.TypeOf((*MockTaskRunner)(nil).RunDeleteOpaqueKeyWithTx), varargs...)
 }
 
 // MockExecutorInterface is a mock of ExecutorInterface interface.
