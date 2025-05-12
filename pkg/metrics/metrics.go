@@ -20,21 +20,21 @@ var log = logger.NewLogAgent("metrics")
 
 var WorkerGoroutines = promauto.NewGauge(
 	prometheus.GaugeOpts{
-		Name: "wavekit_worker_goroutines",
+		Name: "anchor_worker_goroutines",
 		Help: "The number of goroutines that are running",
 	},
 )
 
 var PulledTasks = promauto.NewCounter(
 	prometheus.CounterOpts{
-		Name: "wavekit_pulled_tasks",
+		Name: "anchor_pulled_tasks",
 		Help: "The number of tasks that have been pulled",
 	},
 )
 
 var RunTaskErrors = promauto.NewCounter(
 	prometheus.CounterOpts{
-		Name: "wavekit_run_task_internal_errors",
+		Name: "anchor_run_task_internal_errors",
 		Help: "The number of internal errors during running tasks, not related to the task logic. This is expected to be 0.",
 	},
 )

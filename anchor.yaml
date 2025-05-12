@@ -23,7 +23,7 @@ task-handler:
   out: pkg/taskcore/runner/runner_gen.go
 
 sqlc:
-  path: sqlc.yaml
+  path: dev/sqlc.yaml
 
 mockgen:
   files:

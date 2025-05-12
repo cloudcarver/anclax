@@ -122,10 +122,7 @@ func genWire(workdir string, config *WireConfig) error {
 }
 
 func genSqlc(workdir string, config *SqlcConfig) error {
-	cmd := exec.Command(command("sqlc"), "generate")
-	if config.Path != "" {
-		cmd.Args = append(cmd.Args, config.Path)
-	}
+	cmd := exec.Command(command("sqlc"), "generate", "--file", config.Path)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Dir = workdir

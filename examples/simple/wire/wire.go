@@ -21,6 +21,9 @@ func InitApp() (*initapp.App, error) {
 	wire.Build(
 		anchor_wire.InitializeApplication,
 		initapp.NewApp,
+		injection.InjectAuth,
+		injection.InjectTaskStore,
+		injection.InjectAnchorSvc,
 		handler.NewHandler,
 		handler.NewValidator,
 		taskgen.NewTaskHandler,
@@ -28,9 +31,6 @@ func InitApp() (*initapp.App, error) {
 		asynctask.NewExecutor,
 		model.NewModel,
 		config.NewConfig,
-		injection.InjectAuth,
-		injection.InjectTaskStore,
-		injection.InjectAnchorSvc,
 	)
 	return nil, nil
 }

@@ -1,12 +1,12 @@
 version: "2"
 sql:
-  - schema: "sql/migrations"
-    queries: "sql/queries"
+  - schema: "../sql/migrations"
+    queries: "../sql/queries"
     engine: "postgresql"
     gen:
       go:
         package: "querier"
-        out: "pkg/model/querier"
+        out: "../pkg/model/querier"
         sql_package: "pgx/v5"
         output_files_suffix: ".gen.go"
         output_batch_file_name: "batch_gen.go"
