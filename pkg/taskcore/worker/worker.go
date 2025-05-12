@@ -40,7 +40,7 @@ func NewWorker(globalCtx *globalctx.GlobalContext, model model.ModelInterface, t
 	return w, nil
 }
 
-func taskToAPI(task *querier.Task) apigen.Task {
+func taskToAPI(task *querier.AnchorTask) apigen.Task {
 	return apigen.Task{
 		ID:         task.ID,
 		CreatedAt:  task.CreatedAt,

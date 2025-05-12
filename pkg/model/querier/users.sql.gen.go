@@ -10,7 +10,7 @@ import (
 )
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (
+INSERT INTO anchor.users (
     name,
     password_hash,
     password_salt
@@ -25,9 +25,9 @@ type CreateUserParams struct {
 	PasswordSalt string
 }
 
-func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (*User, error) {
+func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (*AnchorUser, error) {
 	row := q.db.QueryRow(ctx, createUser, arg.Name, arg.PasswordHash, arg.PasswordSalt)
-	var i User
+	var i AnchorUser
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -40,7 +40,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (*User, 
 }
 
 const deleteUserByName = `-- name: DeleteUserByName :exec
-DELETE FROM users
+DELETE FROM anchor.users
 WHERE name = $1
 `
 
@@ -50,13 +50,13 @@ func (q *Queries) DeleteUserByName(ctx context.Context, name string) error {
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id, name, password_hash, password_salt, created_at, updated_at FROM users
+SELECT id, name, password_hash, password_salt, created_at, updated_at FROM anchor.users
 WHERE id = $1
 `
 
-func (q *Queries) GetUser(ctx context.Context, id int32) (*User, error) {
+func (q *Queries) GetUser(ctx context.Context, id int32) (*AnchorUser, error) {
 	row := q.db.QueryRow(ctx, getUser, id)
-	var i User
+	var i AnchorUser
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -69,13 +69,13 @@ func (q *Queries) GetUser(ctx context.Context, id int32) (*User, error) {
 }
 
 const getUserByName = `-- name: GetUserByName :one
-SELECT id, name, password_hash, password_salt, created_at, updated_at FROM users
+SELECT id, name, password_hash, password_salt, created_at, updated_at FROM anchor.users
 WHERE name = $1
 `
 
-func (q *Queries) GetUserByName(ctx context.Context, name string) (*User, error) {
+func (q *Queries) GetUserByName(ctx context.Context, name string) (*AnchorUser, error) {
 	row := q.db.QueryRow(ctx, getUserByName, name)
-	var i User
+	var i AnchorUser
 	err := row.Scan(
 		&i.ID,
 		&i.Name,

@@ -13,7 +13,7 @@ import (
 )
 
 const createTask = `-- name: CreateTask :one
-INSERT INTO tasks (attributes, spec, status, started_at, unique_tag)
+INSERT INTO anchor.tasks (attributes, spec, status, started_at, unique_tag)
 VALUES ($1, $2, $3, $4, $5) ON CONFLICT (unique_tag) DO UPDATE SET unique_tag = EXCLUDED.unique_tag
 RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at
 `
@@ -26,7 +26,7 @@ type CreateTaskParams struct {
 	UniqueTag  *string
 }
 
-func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (*Task, error) {
+func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (*AnchorTask, error) {
 	row := q.db.QueryRow(ctx, createTask,
 		arg.Attributes,
 		arg.Spec,
@@ -34,7 +34,7 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (*Task, 
 		arg.StartedAt,
 		arg.UniqueTag,
 	)
-	var i Task
+	var i AnchorTask
 	err := row.Scan(
 		&i.ID,
 		&i.Attributes,
@@ -49,13 +49,13 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (*Task, 
 }
 
 const getTaskByID = `-- name: GetTaskByID :one
-SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at FROM tasks
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at FROM anchor.tasks
 WHERE id = $1
 `
 
-func (q *Queries) GetTaskByID(ctx context.Context, id int32) (*Task, error) {
+func (q *Queries) GetTaskByID(ctx context.Context, id int32) (*AnchorTask, error) {
 	row := q.db.QueryRow(ctx, getTaskByID, id)
-	var i Task
+	var i AnchorTask
 	err := row.Scan(
 		&i.ID,
 		&i.Attributes,
@@ -70,20 +70,20 @@ func (q *Queries) GetTaskByID(ctx context.Context, id int32) (*Task, error) {
 }
 
 const insertEvent = `-- name: InsertEvent :one
-INSERT INTO events (spec)
+INSERT INTO anchor.events (spec)
 VALUES ($1)
 RETURNING id, spec, created_at
 `
 
-func (q *Queries) InsertEvent(ctx context.Context, spec apigen.EventSpec) (*Event, error) {
+func (q *Queries) InsertEvent(ctx context.Context, spec apigen.EventSpec) (*AnchorEvent, error) {
 	row := q.db.QueryRow(ctx, insertEvent, spec)
-	var i Event
+	var i AnchorEvent
 	err := row.Scan(&i.ID, &i.Spec, &i.CreatedAt)
 	return &i, err
 }
 
 const pullTask = `-- name: PullTask :one
-SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at FROM tasks
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at FROM anchor.tasks
 WHERE 
     status = 'pending'
     AND (
@@ -94,9 +94,9 @@ FOR UPDATE SKIP LOCKED
 LIMIT 1
 `
 
-func (q *Queries) PullTask(ctx context.Context) (*Task, error) {
+func (q *Queries) PullTask(ctx context.Context) (*AnchorTask, error) {
 	row := q.db.QueryRow(ctx, pullTask)
-	var i Task
+	var i AnchorTask
 	err := row.Scan(
 		&i.ID,
 		&i.Attributes,
@@ -111,7 +111,7 @@ func (q *Queries) PullTask(ctx context.Context) (*Task, error) {
 }
 
 const updateTask = `-- name: UpdateTask :exec
-UPDATE tasks
+UPDATE anchor.tasks
 SET attributes = $2, spec = $3, started_at = $4, updated_at = CURRENT_TIMESTAMP
 WHERE id = $1
 `
@@ -134,7 +134,7 @@ func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) error {
 }
 
 const updateTaskStartedAt = `-- name: UpdateTaskStartedAt :exec
-UPDATE tasks
+UPDATE anchor.tasks
 SET started_at = $2, updated_at = CURRENT_TIMESTAMP
 WHERE id = $1
 `
@@ -150,7 +150,7 @@ func (q *Queries) UpdateTaskStartedAt(ctx context.Context, arg UpdateTaskStarted
 }
 
 const updateTaskStatus = `-- name: UpdateTaskStatus :exec
-UPDATE tasks
+UPDATE anchor.tasks
 SET 
     status = $2,
     updated_at = CURRENT_TIMESTAMP

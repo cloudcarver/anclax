@@ -27,6 +27,7 @@ func TestCreate(t *testing.T) {
 		userID   = int32(201)
 		currTime = time.Now()
 		keyID    = int64(101)
+		taskID   = int32(101)
 	)
 
 	mockModel.EXPECT().CreateOpaqueKey(gomock.Any(), gomock.Any()).Return(keyID, nil)
@@ -35,7 +36,7 @@ func TestCreate(t *testing.T) {
 		&runner.DeleteOpaqueKeyParameters{
 			KeyID: keyID,
 		},
-	).Return(nil)
+	).Return(taskID, nil)
 
 	store := &Store{
 		model:      mockModel,

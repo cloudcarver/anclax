@@ -10,7 +10,7 @@ import (
 )
 
 const createKeyPair = `-- name: CreateKeyPair :one
-INSERT INTO access_key_pairs (access_key, secret_key)
+INSERT INTO anchor.access_key_pairs (access_key, secret_key)
 VALUES ($1, $2)
 RETURNING access_key, secret_key, created_at, updated_at
 `
@@ -20,9 +20,9 @@ type CreateKeyPairParams struct {
 	SecretKey string
 }
 
-func (q *Queries) CreateKeyPair(ctx context.Context, arg CreateKeyPairParams) (*AccessKeyPair, error) {
+func (q *Queries) CreateKeyPair(ctx context.Context, arg CreateKeyPairParams) (*AnchorAccessKeyPair, error) {
 	row := q.db.QueryRow(ctx, createKeyPair, arg.AccessKey, arg.SecretKey)
-	var i AccessKeyPair
+	var i AnchorAccessKeyPair
 	err := row.Scan(
 		&i.AccessKey,
 		&i.SecretKey,
@@ -33,7 +33,7 @@ func (q *Queries) CreateKeyPair(ctx context.Context, arg CreateKeyPairParams) (*
 }
 
 const deleteKeyPair = `-- name: DeleteKeyPair :exec
-DELETE FROM access_key_pairs
+DELETE FROM anchor.access_key_pairs
 WHERE access_key = $1
 `
 
@@ -43,13 +43,13 @@ func (q *Queries) DeleteKeyPair(ctx context.Context, accessKey string) error {
 }
 
 const getKeyPair = `-- name: GetKeyPair :one
-SELECT access_key, secret_key, created_at, updated_at FROM access_key_pairs
+SELECT access_key, secret_key, created_at, updated_at FROM anchor.access_key_pairs
 WHERE access_key = $1
 `
 
-func (q *Queries) GetKeyPair(ctx context.Context, accessKey string) (*AccessKeyPair, error) {
+func (q *Queries) GetKeyPair(ctx context.Context, accessKey string) (*AnchorAccessKeyPair, error) {
 	row := q.db.QueryRow(ctx, getKeyPair, accessKey)
-	var i AccessKeyPair
+	var i AnchorAccessKeyPair
 	err := row.Scan(
 		&i.AccessKey,
 		&i.SecretKey,

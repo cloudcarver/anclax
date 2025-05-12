@@ -26,7 +26,7 @@ func TestHandleCronjob(t *testing.T) {
 
 	var (
 		currTime = time.Date(2025, 3, 27, 0, 0, 1, 0, location)
-		cronExpr = "0 0 * * *"
+		cronExpr = "0 0 0 * * *"
 		nextTime = time.Date(2025, 3, 28, 0, 0, 0, 0, location)
 		taskID   = int32(1)
 	)
@@ -79,7 +79,7 @@ func TestHandleCompleted(t *testing.T) {
 		TaskCompleted: &apigen.EventTaskCompleted{
 			TaskID: taskID,
 		},
-	}).Return(&querier.Event{}, nil)
+	}).Return(&querier.AnchorEvent{}, nil)
 
 	txm.EXPECT().UpdateTaskStatus(context.Background(), querier.UpdateTaskStatusParams{
 		ID:     taskID,
@@ -115,7 +115,7 @@ func TestHandleFailed(t *testing.T) {
 			TaskID: taskID,
 			Error:  err.Error(),
 		},
-	}).Return(&querier.Event{}, nil)
+	}).Return(&querier.AnchorEvent{}, nil)
 
 	txm.EXPECT().UpdateTaskStatus(context.Background(), querier.UpdateTaskStatusParams{
 		ID:     taskID,
@@ -163,7 +163,7 @@ func TestHandleFailedWithRetryPolicy(t *testing.T) {
 			TaskID: taskID,
 			Error:  err.Error(),
 		},
-	}).Return(&querier.Event{}, nil)
+	}).Return(&querier.AnchorEvent{}, nil)
 
 	txm.EXPECT().UpdateTaskStartedAt(context.Background(), querier.UpdateTaskStartedAtParams{
 		ID:        taskID,

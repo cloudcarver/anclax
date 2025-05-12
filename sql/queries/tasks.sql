@@ -1,5 +1,5 @@
 -- name: PullTask :one
-SELECT * FROM tasks
+SELECT * FROM anchor.tasks
 WHERE 
     status = 'pending'
     AND (
@@ -10,32 +10,32 @@ FOR UPDATE SKIP LOCKED
 LIMIT 1;
 
 -- name: UpdateTaskStatus :exec
-UPDATE tasks
+UPDATE anchor.tasks
 SET 
     status = $2,
     updated_at = CURRENT_TIMESTAMP
 WHERE id = $1;
 
 -- name: UpdateTask :exec
-UPDATE tasks
+UPDATE anchor.tasks
 SET attributes = $2, spec = $3, started_at = $4, updated_at = CURRENT_TIMESTAMP
 WHERE id = $1;
 
 -- name: UpdateTaskStartedAt :exec
-UPDATE tasks
+UPDATE anchor.tasks
 SET started_at = $2, updated_at = CURRENT_TIMESTAMP
 WHERE id = $1;
 
 -- name: CreateTask :one
-INSERT INTO tasks (attributes, spec, status, started_at, unique_tag)
+INSERT INTO anchor.tasks (attributes, spec, status, started_at, unique_tag)
 VALUES ($1, $2, $3, $4, $5) ON CONFLICT (unique_tag) DO UPDATE SET unique_tag = EXCLUDED.unique_tag
 RETURNING *;
 
 -- name: InsertEvent :one
-INSERT INTO events (spec)
+INSERT INTO anchor.events (spec)
 VALUES ($1)
 RETURNING *;
 
 -- name: GetTaskByID :one
-SELECT * FROM tasks
+SELECT * FROM anchor.tasks
 WHERE id = $1;

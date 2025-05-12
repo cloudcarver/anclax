@@ -11,26 +11,26 @@ import (
 )
 
 type Querier interface {
-	CreateKeyPair(ctx context.Context, arg CreateKeyPairParams) (*AccessKeyPair, error)
+	CreateKeyPair(ctx context.Context, arg CreateKeyPairParams) (*AnchorAccessKeyPair, error)
 	CreateOpaqueKey(ctx context.Context, arg CreateOpaqueKeyParams) (int64, error)
-	CreateOrg(ctx context.Context, name string) (*Org, error)
-	CreateTask(ctx context.Context, arg CreateTaskParams) (*Task, error)
-	CreateUser(ctx context.Context, arg CreateUserParams) (*User, error)
+	CreateOrg(ctx context.Context, name string) (*AnchorOrg, error)
+	CreateTask(ctx context.Context, arg CreateTaskParams) (*AnchorTask, error)
+	CreateUser(ctx context.Context, arg CreateUserParams) (*AnchorUser, error)
 	DeleteKeyPair(ctx context.Context, accessKey string) error
 	DeleteOpaqueKey(ctx context.Context, id int64) error
 	DeleteOpaqueKeys(ctx context.Context, userID int32) error
 	DeleteUserByName(ctx context.Context, name string) error
-	GetKeyPair(ctx context.Context, accessKey string) (*AccessKeyPair, error)
+	GetKeyPair(ctx context.Context, accessKey string) (*AnchorAccessKeyPair, error)
 	GetOpaqueKey(ctx context.Context, id int64) ([]byte, error)
-	GetOrg(ctx context.Context, id int32) (*Org, error)
-	GetOrgByName(ctx context.Context, name string) (*Org, error)
-	GetTaskByID(ctx context.Context, id int32) (*Task, error)
-	GetUser(ctx context.Context, id int32) (*User, error)
-	GetUserByName(ctx context.Context, name string) (*User, error)
-	InsertEvent(ctx context.Context, spec apigen.EventSpec) (*Event, error)
-	InsertOrgOwner(ctx context.Context, arg InsertOrgOwnerParams) (*OrgOwner, error)
-	InsertOrgUser(ctx context.Context, arg InsertOrgUserParams) (*OrgUser, error)
-	PullTask(ctx context.Context) (*Task, error)
+	GetOrg(ctx context.Context, id int32) (*AnchorOrg, error)
+	GetOrgByName(ctx context.Context, name string) (*AnchorOrg, error)
+	GetTaskByID(ctx context.Context, id int32) (*AnchorTask, error)
+	GetUser(ctx context.Context, id int32) (*AnchorUser, error)
+	GetUserByName(ctx context.Context, name string) (*AnchorUser, error)
+	InsertEvent(ctx context.Context, spec apigen.EventSpec) (*AnchorEvent, error)
+	InsertOrgOwner(ctx context.Context, arg InsertOrgOwnerParams) (*AnchorOrgOwner, error)
+	InsertOrgUser(ctx context.Context, arg InsertOrgUserParams) (*AnchorOrgUser, error)
+	PullTask(ctx context.Context) (*AnchorTask, error)
 	UpdateTask(ctx context.Context, arg UpdateTaskParams) error
 	UpdateTaskStartedAt(ctx context.Context, arg UpdateTaskStartedAtParams) error
 	UpdateTaskStatus(ctx context.Context, arg UpdateTaskStatusParams) error

@@ -1,2 +1,4 @@
 bin/*
 .anchor/*
+coverage.out
+coverage.html

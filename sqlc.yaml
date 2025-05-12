@@ -62,17 +62,17 @@ sql:
           go_type: "github.com/google/uuid.NullUUID"
           nullable: true
 
-        - column: "tasks.spec"
+        - column: "anchor.tasks.spec"
           go_type:
             import: "github.com/cloudcarver/anchor/pkg/apigen"
             type: "TaskSpec"
 
-        - column: "events.spec"
+        - column: "anchor.events.spec"
           go_type:
             import: "github.com/cloudcarver/anchor/pkg/apigen"
             type: "EventSpec"
 
-        - column: "tasks.attributes"
+        - column: "anchor.tasks.attributes"
           go_type:
             import: "github.com/cloudcarver/anchor/pkg/apigen"
             type: "TaskAttributes"

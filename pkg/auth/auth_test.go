@@ -135,7 +135,7 @@ func TestAuth_CreateToken(t *testing.T) {
 	userID := int32(1)
 	keyID := int64(123)
 
-	user := &querier.User{
+	user := &querier.AnchorUser{
 		ID: userID,
 	}
 
@@ -143,7 +143,7 @@ func TestAuth_CreateToken(t *testing.T) {
 	require.NoError(t, err)
 	testCases := []struct {
 		name          string
-		user          *querier.User
+		user          *querier.AnchorUser
 		setupMock     func()
 		expectedKeyID int64
 		expectedToken string

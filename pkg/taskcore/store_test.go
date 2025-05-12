@@ -30,7 +30,7 @@ func TestUpdateCronJob(t *testing.T) {
 
 	mockModel := model.NewMockModelInterface(ctrl)
 
-	mockModel.EXPECT().GetTaskByID(ctx, taskID).Return(&querier.Task{
+	mockModel.EXPECT().GetTaskByID(ctx, taskID).Return(&querier.AnchorTask{
 		ID: taskID,
 		Attributes: apigen.TaskAttributes{
 			Cronjob: &apigen.TaskCronjob{

@@ -10,27 +10,27 @@ import (
 	"github.com/cloudcarver/anchor/pkg/apigen"
 )
 
-type AccessKeyPair struct {
+type AnchorAccessKeyPair struct {
 	AccessKey string
 	SecretKey string
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
 
-type AccessRule struct {
+type AnchorAccessRule struct {
 	Name        string
 	Description string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
 
-type Event struct {
+type AnchorEvent struct {
 	ID        int32
 	Spec      apigen.EventSpec
 	CreatedAt time.Time
 }
 
-type OpaqueKey struct {
+type AnchorOpaqueKey struct {
 	ID        int64
 	Key       []byte
 	UserID    int32
@@ -38,7 +38,7 @@ type OpaqueKey struct {
 	UpdatedAt time.Time
 }
 
-type Org struct {
+type AnchorOrg struct {
 	ID        int32
 	Name      string
 	Tz        string
@@ -46,21 +46,21 @@ type Org struct {
 	UpdatedAt time.Time
 }
 
-type OrgOwner struct {
+type AnchorOrgOwner struct {
 	OrgID     int32
 	UserID    int32
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
 
-type OrgUser struct {
+type AnchorOrgUser struct {
 	OrgID     int32
 	UserID    int32
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
 
-type Role struct {
+type AnchorRole struct {
 	ID          int32
 	OrgID       int32
 	Name        string
@@ -69,14 +69,14 @@ type Role struct {
 	UpdatedAt   time.Time
 }
 
-type RoleAccessRule struct {
+type AnchorRoleAccessRule struct {
 	RoleID         int32
 	AccessRuleName string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }
 
-type Task struct {
+type AnchorTask struct {
 	ID         int32
 	Attributes apigen.TaskAttributes
 	Spec       apigen.TaskSpec
@@ -87,7 +87,7 @@ type Task struct {
 	UpdatedAt  time.Time
 }
 
-type User struct {
+type AnchorUser struct {
 	ID           int32
 	Name         string
 	PasswordHash string
@@ -96,7 +96,7 @@ type User struct {
 	UpdatedAt    time.Time
 }
 
-type UsersRole struct {
+type AnchorUsersRole struct {
 	UserID    int32
 	RoleID    int32
 	CreatedAt time.Time

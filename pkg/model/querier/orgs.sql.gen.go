@@ -10,12 +10,12 @@ import (
 )
 
 const createOrg = `-- name: CreateOrg :one
-INSERT INTO orgs (name) VALUES ($1) RETURNING id, name, tz, created_at, updated_at
+INSERT INTO anchor.orgs (name) VALUES ($1) RETURNING id, name, tz, created_at, updated_at
 `
 
-func (q *Queries) CreateOrg(ctx context.Context, name string) (*Org, error) {
+func (q *Queries) CreateOrg(ctx context.Context, name string) (*AnchorOrg, error) {
 	row := q.db.QueryRow(ctx, createOrg, name)
-	var i Org
+	var i AnchorOrg
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -27,12 +27,12 @@ func (q *Queries) CreateOrg(ctx context.Context, name string) (*Org, error) {
 }
 
 const getOrg = `-- name: GetOrg :one
-SELECT id, name, tz, created_at, updated_at FROM orgs WHERE id = $1
+SELECT id, name, tz, created_at, updated_at FROM anchor.orgs WHERE id = $1
 `
 
-func (q *Queries) GetOrg(ctx context.Context, id int32) (*Org, error) {
+func (q *Queries) GetOrg(ctx context.Context, id int32) (*AnchorOrg, error) {
 	row := q.db.QueryRow(ctx, getOrg, id)
-	var i Org
+	var i AnchorOrg
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -44,12 +44,12 @@ func (q *Queries) GetOrg(ctx context.Context, id int32) (*Org, error) {
 }
 
 const getOrgByName = `-- name: GetOrgByName :one
-SELECT id, name, tz, created_at, updated_at FROM orgs WHERE name = $1
+SELECT id, name, tz, created_at, updated_at FROM anchor.orgs WHERE name = $1
 `
 
-func (q *Queries) GetOrgByName(ctx context.Context, name string) (*Org, error) {
+func (q *Queries) GetOrgByName(ctx context.Context, name string) (*AnchorOrg, error) {
 	row := q.db.QueryRow(ctx, getOrgByName, name)
-	var i Org
+	var i AnchorOrg
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -61,7 +61,7 @@ func (q *Queries) GetOrgByName(ctx context.Context, name string) (*Org, error) {
 }
 
 const insertOrgOwner = `-- name: InsertOrgOwner :one
-INSERT INTO org_owners (org_id, user_id) VALUES ($1, $2) RETURNING org_id, user_id, created_at, updated_at
+INSERT INTO anchor.org_owners (org_id, user_id) VALUES ($1, $2) RETURNING org_id, user_id, created_at, updated_at
 `
 
 type InsertOrgOwnerParams struct {
@@ -69,9 +69,9 @@ type InsertOrgOwnerParams struct {
 	UserID int32
 }
 
-func (q *Queries) InsertOrgOwner(ctx context.Context, arg InsertOrgOwnerParams) (*OrgOwner, error) {
+func (q *Queries) InsertOrgOwner(ctx context.Context, arg InsertOrgOwnerParams) (*AnchorOrgOwner, error) {
 	row := q.db.QueryRow(ctx, insertOrgOwner, arg.OrgID, arg.UserID)
-	var i OrgOwner
+	var i AnchorOrgOwner
 	err := row.Scan(
 		&i.OrgID,
 		&i.UserID,
@@ -82,7 +82,7 @@ func (q *Queries) InsertOrgOwner(ctx context.Context, arg InsertOrgOwnerParams) 
 }
 
 const insertOrgUser = `-- name: InsertOrgUser :one
-INSERT INTO org_users (org_id, user_id) VALUES ($1, $2) RETURNING org_id, user_id, created_at, updated_at
+INSERT INTO anchor.org_users (org_id, user_id) VALUES ($1, $2) RETURNING org_id, user_id, created_at, updated_at
 `
 
 type InsertOrgUserParams struct {
@@ -90,9 +90,9 @@ type InsertOrgUserParams struct {
 	UserID int32
 }
 
-func (q *Queries) InsertOrgUser(ctx context.Context, arg InsertOrgUserParams) (*OrgUser, error) {
+func (q *Queries) InsertOrgUser(ctx context.Context, arg InsertOrgUserParams) (*AnchorOrgUser, error) {
 	row := q.db.QueryRow(ctx, insertOrgUser, arg.OrgID, arg.UserID)
-	var i OrgUser
+	var i AnchorOrgUser
 	err := row.Scan(
 		&i.OrgID,
 		&i.UserID,
