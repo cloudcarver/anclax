@@ -4,6 +4,7 @@
 package wire
 
 import (
+	"myexampleapp/internal"
 	"myexampleapp/internal/asynctask"
 	"myexampleapp/internal/config"
 	"myexampleapp/internal/handler"
@@ -31,6 +32,7 @@ func InitApp() (*initapp.App, error) {
 		asynctask.NewExecutor,
 		model.NewModel,
 		config.NewConfig,
+		internal.Init,
 	)
 	return nil, nil
 }

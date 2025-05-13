@@ -8,6 +8,7 @@ package wire
 
 import (
 	"github.com/cloudcarver/anchor/wire"
+	"myexampleapp/internal"
 	"myexampleapp/internal/asynctask"
 	"myexampleapp/internal/config"
 	"myexampleapp/internal/handler"
@@ -34,8 +35,7 @@ func InitApp() (*initapp.App, error) {
 	}
 	taskStoreInterface := injection.InjectTaskStore(application)
 	taskRunner := taskgen.NewTaskRunner(taskStoreInterface)
-	serviceInterface := injection.InjectAnchorSvc(application)
-	serverInterface, err := handler.NewHandler(modelInterface, taskRunner, serviceInterface)
+	serverInterface, err := handler.NewHandler(modelInterface, taskRunner)
 	if err != nil {
 		return nil, err
 	}
@@ -43,6 +43,11 @@ func InitApp() (*initapp.App, error) {
 	validator := handler.NewValidator(authInterface)
 	executorInterface := asynctask.NewExecutor(modelInterface)
 	taskHandler := taskgen.NewTaskHandler(executorInterface)
-	app := initapp.NewApp(application, serverInterface, validator, taskHandler)
+	serviceInterface := injection.InjectAnchorSvc(application)
+	v := internal.Init(serviceInterface, taskRunner)
+	app, err := initapp.NewApp(application, serverInterface, validator, taskHandler, v)
+	if err != nil {
+		return nil, err
+	}
 	return app, nil
 }

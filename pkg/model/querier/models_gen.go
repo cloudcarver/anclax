@@ -50,7 +50,6 @@ type AnchorOrgOwner struct {
 	OrgID     int32
 	UserID    int32
 	CreatedAt time.Time
-	UpdatedAt time.Time
 }
 
 type AnchorOrgUser struct {

@@ -138,3 +138,11 @@ func (s *Server) Shutdown() error {
 func (s *Server) GetApp() *fiber.App {
 	return s.app
 }
+
+func (s *Server) GetHost() string {
+	return s.host
+}
+
+func (s *Server) GetPort() int {
+	return s.port
+}

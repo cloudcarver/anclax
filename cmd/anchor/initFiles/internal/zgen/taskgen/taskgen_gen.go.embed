@@ -12,6 +12,7 @@ import (
 	"github.com/cloudcarver/anchor/pkg/taskcore/worker"
 	"github.com/cloudcarver/anchor/pkg/utils"
 	"github.com/pkg/errors"
+	"github.com/jackc/pgx/v5"
 )
 
 func init() {
@@ -27,9 +28,13 @@ const (
 type TaskRunner interface { 
     // Increment the counter
 	RunAutoIncrementCounter(ctx context.Context, params *AutoIncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error)
+    // Increment the counter
+	RunAutoIncrementCounterWithTx(ctx context.Context, tx pgx.Tx, params *AutoIncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error)
 
     // Increment the counter
 	RunIncrementCounter(ctx context.Context, params *IncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error)
+    // Increment the counter
+	RunIncrementCounterWithTx(ctx context.Context, tx pgx.Tx, params *IncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error)
 }
 
 type Client struct {
@@ -46,6 +51,14 @@ func NewTaskRunner(taskStore taskcore.TaskStoreInterface) TaskRunner {
 
 
 func (c *Client) RunAutoIncrementCounter(ctx context.Context, params *AutoIncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runAutoIncrementCounter(ctx, c.taskStore, params, overrides...)
+}
+
+func (c *Client) RunAutoIncrementCounterWithTx(ctx context.Context, tx pgx.Tx, params *AutoIncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runAutoIncrementCounter(ctx, c.taskStore.WithTx(tx), params, overrides...)
+}
+
+func (c *Client) runAutoIncrementCounter(ctx context.Context, taskstore taskcore.TaskStoreInterface, params *AutoIncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 	payload, err := params.Marshal()
 	if err != nil {
 		return 0, err
@@ -75,13 +88,21 @@ func (c *Client) RunAutoIncrementCounter(ctx context.Context, params *AutoIncrem
 			return 0, errors.Wrap(err, "failed to apply task override")
 		}
 	}
-	taskID, err := c.taskStore.PushTask(ctx, task)
+	taskID, err := taskstore.PushTask(ctx, task)
 	if err != nil {
 		return 0, err
 	}
 	return taskID, nil
 }
 func (c *Client) RunIncrementCounter(ctx context.Context, params *IncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runIncrementCounter(ctx, c.taskStore, params, overrides...)
+}
+
+func (c *Client) RunIncrementCounterWithTx(ctx context.Context, tx pgx.Tx, params *IncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runIncrementCounter(ctx, c.taskStore.WithTx(tx), params, overrides...)
+}
+
+func (c *Client) runIncrementCounter(ctx context.Context, taskstore taskcore.TaskStoreInterface, params *IncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 	payload, err := params.Marshal()
 	if err != nil {
 		return 0, err
@@ -109,7 +130,7 @@ func (c *Client) RunIncrementCounter(ctx context.Context, params *IncrementCount
 			return 0, errors.Wrap(err, "failed to apply task override")
 		}
 	}
-	taskID, err := c.taskStore.PushTask(ctx, task)
+	taskID, err := taskstore.PushTask(ctx, task)
 	if err != nil {
 		return 0, err
 	}

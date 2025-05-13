@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 
 	taskcore "github.com/cloudcarver/anchor/pkg/taskcore"
+	pgx "github.com/jackc/pgx/v5"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -61,6 +62,26 @@ func (mr *MockTaskRunnerMockRecorder) RunAutoIncrementCounter(ctx, params any, o
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunAutoIncrementCounter", reflect.TypeOf((*MockTaskRunner)(nil).RunAutoIncrementCounter), varargs...)
 }
 
+// RunAutoIncrementCounterWithTx mocks base method.
+func (m *MockTaskRunner) RunAutoIncrementCounterWithTx(ctx context.Context, tx pgx.Tx, params *AutoIncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, tx, params}
+	for _, a := range overrides {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "RunAutoIncrementCounterWithTx", varargs...)
+	ret0, _ := ret[0].(int32)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RunAutoIncrementCounterWithTx indicates an expected call of RunAutoIncrementCounterWithTx.
+func (mr *MockTaskRunnerMockRecorder) RunAutoIncrementCounterWithTx(ctx, tx, params any, overrides ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, tx, params}, overrides...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunAutoIncrementCounterWithTx", reflect.TypeOf((*MockTaskRunner)(nil).RunAutoIncrementCounterWithTx), varargs...)
+}
+
 // RunIncrementCounter mocks base method.
 func (m *MockTaskRunner) RunIncrementCounter(ctx context.Context, params *IncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 	m.ctrl.T.Helper()
@@ -79,6 +100,26 @@ func (mr *MockTaskRunnerMockRecorder) RunIncrementCounter(ctx, params any, overr
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]any{ctx, params}, overrides...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunIncrementCounter", reflect.TypeOf((*MockTaskRunner)(nil).RunIncrementCounter), varargs...)
+}
+
+// RunIncrementCounterWithTx mocks base method.
+func (m *MockTaskRunner) RunIncrementCounterWithTx(ctx context.Context, tx pgx.Tx, params *IncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, tx, params}
+	for _, a := range overrides {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "RunIncrementCounterWithTx", varargs...)
+	ret0, _ := ret[0].(int32)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RunIncrementCounterWithTx indicates an expected call of RunIncrementCounterWithTx.
+func (mr *MockTaskRunnerMockRecorder) RunIncrementCounterWithTx(ctx, tx, params any, overrides ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, tx, params}, overrides...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunIncrementCounterWithTx", reflect.TypeOf((*MockTaskRunner)(nil).RunIncrementCounterWithTx), varargs...)
 }
 
 // MockExecutorInterface is a mock of ExecutorInterface interface.

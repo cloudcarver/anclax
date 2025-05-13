@@ -61,7 +61,7 @@ func (q *Queries) GetOrgByName(ctx context.Context, name string) (*AnchorOrg, er
 }
 
 const insertOrgOwner = `-- name: InsertOrgOwner :one
-INSERT INTO anchor.org_owners (org_id, user_id) VALUES ($1, $2) RETURNING org_id, user_id, created_at, updated_at
+INSERT INTO anchor.org_owners (org_id, user_id) VALUES ($1, $2) RETURNING org_id, user_id, created_at
 `
 
 type InsertOrgOwnerParams struct {
@@ -72,12 +72,7 @@ type InsertOrgOwnerParams struct {
 func (q *Queries) InsertOrgOwner(ctx context.Context, arg InsertOrgOwnerParams) (*AnchorOrgOwner, error) {
 	row := q.db.QueryRow(ctx, insertOrgOwner, arg.OrgID, arg.UserID)
 	var i AnchorOrgOwner
-	err := row.Scan(
-		&i.OrgID,
-		&i.UserID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
+	err := row.Scan(&i.OrgID, &i.UserID, &i.CreatedAt)
 	return &i, err
 }
 

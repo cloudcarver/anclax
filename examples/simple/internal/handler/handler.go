@@ -1,13 +1,10 @@
 package handler
 
 import (
-	"context"
 	"myexampleapp/internal/zcore/model"
 	"myexampleapp/internal/zgen/apigen"
 	"myexampleapp/internal/zgen/taskgen"
 
-	anchor_svc "github.com/cloudcarver/anchor/pkg/service"
-	"github.com/cloudcarver/anchor/pkg/taskcore"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -16,16 +13,7 @@ type Handler struct {
 	taskrunner taskgen.TaskRunner
 }
 
-func NewHandler(model model.ModelInterface, taskrunner taskgen.TaskRunner, anchorSvc anchor_svc.ServiceInterface) (apigen.ServerInterface, error) {
-	if _, err := anchorSvc.CreateNewUser(context.Background(), "test", "test"); err != nil {
-		return nil, err
-	}
-	if _, err := taskrunner.RunAutoIncrementCounter(context.Background(), &taskgen.AutoIncrementCounterParameters{
-		Amount: 1,
-	}, taskcore.WithUniqueTag("auto-increment-counter")); err != nil {
-		return nil, err
-	}
-
+func NewHandler(model model.ModelInterface, taskrunner taskgen.TaskRunner) (apigen.ServerInterface, error) {
 	return &Handler{model, taskrunner}, nil
 }
 

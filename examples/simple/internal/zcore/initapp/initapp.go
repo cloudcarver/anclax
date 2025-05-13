@@ -11,7 +11,7 @@ type App struct {
 	anchorApp *app.Application
 }
 
-func NewApp(anchorApp *app.Application, serverInterface apigen.ServerInterface, validator apigen.Validator, taskHandler worker.TaskHandler) *App {
+func NewApp(anchorApp *app.Application, serverInterface apigen.ServerInterface, validator apigen.Validator, taskHandler worker.TaskHandler, init func(anchorApp *app.Application) error) (*App, error) {
 	app := &App{
 		anchorApp: anchorApp,
 	}
@@ -19,7 +19,13 @@ func NewApp(anchorApp *app.Application, serverInterface apigen.ServerInterface, 
 	app.RegisterServerInterface(serverInterface, validator)
 	app.RegisterTaskHandler(taskHandler)
 
-	return app
+	if init != nil {
+		if err := init(anchorApp); err != nil {
+			return nil, err
+		}
+	}
+
+	return app, nil
 }
 
 func (a *App) Start() error {

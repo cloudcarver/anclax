@@ -20,10 +20,7 @@ This project is initialized by `anchor init` command.
 ```
 docker compose up 
 curl http://localhost:2910/api/v1/counter
-
 curl -X POST http://localhost:2910/api/v1/auth/sign-in -H "Content-Type: application/json" -d '{"name": "test", "password": "test"}'
-
 curl -X POST http://localhost:2910/api/v1/counter -H "Content-Type: application/json" -H "Authorization: your_access_token"
-
 curl http://localhost:2910/api/v1/counter
 ```
