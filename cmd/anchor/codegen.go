@@ -24,6 +24,44 @@ var genCmd = &cli.Command{
 	Action: runGen,
 }
 
+var cleanCmd = &cli.Command{
+	Name:  "clean",
+	Usage: "Clean files specified in the config",
+	Flags: []cli.Flag{
+		&cli.StringFlag{
+			Name:  "config",
+			Usage: "Path to the config file",
+			Value: "anchor.yaml",
+		},
+	},
+	Action: runClean,
+}
+
+func runClean(c *cli.Context) error {
+	configPath := c.String("config")
+	if configPath == "" {
+		return errors.New("config is required")
+	}
+
+	config, err := parseConfig(configPath)
+	if err != nil {
+		return errors.Wrap(err, "failed to parse config")
+	}
+
+	workdir := c.Args().First()
+	if workdir == "" {
+		return errors.New("work directory is required, e.g. anchor clean .")
+	}
+
+	tempDir, err := os.MkdirTemp("", "anchor-codegen-")
+	if err != nil {
+		return errors.Wrap(err, "failed to create temporary directory")
+	}
+	defer os.RemoveAll(tempDir)
+
+	return clean(tempDir, config, workdir)
+}
+
 func genTaskHandler(workdir string, config *TaskHandlerConfig) error {
 	if err := os.MkdirAll(filepath.Dir(filepath.Join(workdir, config.Out)), 0755); err != nil {
 		return errors.Wrap(err, "failed to create output directory")
@@ -51,14 +89,121 @@ func runGen(c *cli.Context) error {
 	return codegen(c.String("config"), c.Args().First())
 }
 
-func codegen(configPath string, workdir string) error {
-	configPath = filepath.Join(workdir, configPath)
+func clean(tempDir string, config *Config, workdir string) error {
+	for _, pattern := range config.CleanItems {
+		matches, err := filepath.Glob(filepath.Join(workdir, pattern))
+		if err != nil {
+			return errors.Wrapf(err, "failed to glob pattern %s", pattern)
+		}
 
+		for _, match := range matches {
+			// Create target directory in temp folder with the same relative structure
+			relPath, err := filepath.Rel(workdir, match)
+			if err != nil {
+				return errors.Wrapf(err, "failed to get relative path for %s", match)
+			}
+
+			targetDir := filepath.Dir(filepath.Join(tempDir, relPath))
+			if err := os.MkdirAll(targetDir, 0755); err != nil {
+				return errors.Wrapf(err, "failed to create temp directory for %s", relPath)
+			}
+
+			// Move the file to temp directory
+			targetPath := filepath.Join(tempDir, relPath)
+			if err := os.Rename(match, targetPath); err != nil {
+				return errors.Wrapf(err, "failed to move %s to temp directory", match)
+			}
+		}
+	}
+	return nil
+}
+
+func restore(tempDir string, config *Config, workdir string) error {
+	return filepath.Walk(tempDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if info.IsDir() {
+			return nil
+		}
+
+		// Get relative path from tempDir to properly restore
+		relPath, err := filepath.Rel(tempDir, path)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get relative path for %s", path)
+		}
+
+		// Create target directory if it doesn't exist
+		destPath := filepath.Join(workdir, relPath)
+		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+			return errors.Wrapf(err, "failed to create directory for restoring %s", relPath)
+		}
+
+		// Move file back
+		if err := os.Rename(path, destPath); err != nil {
+			return errors.Wrapf(err, "failed to restore %s", relPath)
+		}
+
+		return nil
+	})
+}
+
+func codegen(configPath string, workdir string) error {
+	tempDir, err := os.MkdirTemp("", "anchor-codegen-")
+	if err != nil {
+		return errors.Wrap(err, "failed to create temporary directory")
+	}
+	defer os.RemoveAll(tempDir)
+
+	preCodegen := func(config *Config) error {
+		if len(config.CleanItems) == 0 {
+			return nil
+		}
+		if err := clean(tempDir, config, workdir); err != nil {
+			return errors.Wrap(err, "failed to clean")
+		}
+		return nil
+	}
+
+	postCodegen := func(config *Config, codegenErr error) error {
+		if len(config.CleanItems) == 0 {
+			return nil
+		}
+		if codegenErr == nil {
+			return nil
+		}
+		// If there was an error, restore the files from temp directory
+		if err := restore(tempDir, config, workdir); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	// parse config
+	configPath = filepath.Join(workdir, configPath)
 	config, err := parseConfig(configPath)
 	if err != nil {
 		return errors.Wrap(err, "failed to parse config")
 	}
 
+	// pre-codegen
+	if err := preCodegen(config); err != nil {
+		return errors.Wrap(err, "failed to pre-codegen")
+	}
+
+	// codegen
+	codegenErr := _codegen(config, workdir)
+
+	// post-codegen
+	if err := postCodegen(config, codegenErr); err != nil {
+		return errors.Wrap(err, "failed to post-codegen")
+	}
+
+	return codegenErr
+}
+
+func _codegen(config *Config, workdir string) error {
 	if config.Xware != nil {
 		if err := genXware(workdir, config.Xware); err != nil {
 			return errors.Wrap(err, "failed to generate xware")

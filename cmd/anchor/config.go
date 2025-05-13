@@ -44,4 +44,5 @@ type Config struct {
 	Xware       *XwareConfig       `yaml:"xware,omitempty"`
 	Sqlc        *SqlcConfig        `yaml:"sqlc,omitempty"`
 	TaskHandler *TaskHandlerConfig `yaml:"task-handler,omitempty"`
+	CleanItems  []string           `yaml:"clean,omitempty"`
 }

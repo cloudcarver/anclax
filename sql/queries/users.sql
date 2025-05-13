@@ -18,4 +18,3 @@ WHERE name = $1;
 -- name: DeleteUserByName :exec
 DELETE FROM anchor.users
 WHERE name = $1;
-

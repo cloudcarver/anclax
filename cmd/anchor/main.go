@@ -27,6 +27,7 @@ func main() {
 			docsCmd,
 			installCmd,
 			versionCmd,
+			cleanCmd,
 		},
 	}
 
