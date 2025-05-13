@@ -8,6 +8,14 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+var installMap = map[string]string{
+	OapiCodegen: "github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen",
+	Wire:        "github.com/google/wire/cmd/wire",
+	Sqlc:        "github.com/sqlc-dev/sqlc/cmd/sqlc",
+	Mockgen:     "go.uber.org/mock/mockgen",
+	Anchor:      "github.com/cloudcarver/anchor/cmd/anchor",
+}
+
 var installCmd = &cli.Command{
 	Name:   "install",
 	Usage:  "Install external tools",

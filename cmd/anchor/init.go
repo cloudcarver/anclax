@@ -16,6 +16,7 @@ import (
 )
 
 const (
+	Anchor      = "anchor"
 	OapiCodegen = "oapi-codegen"
 	Wire        = "wire"
 	Sqlc        = "sqlc"
@@ -24,13 +25,6 @@ const (
 	binDir     = "bin"
 	configName = "anchor.yaml"
 )
-
-var installMap = map[string]string{
-	OapiCodegen: "github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen",
-	Wire:        "github.com/google/wire/cmd/wire",
-	Sqlc:        "github.com/sqlc-dev/sqlc/cmd/sqlc",
-	Mockgen:     "go.uber.org/mock/mockgen",
-}
 
 var initCmd = &cli.Command{
 	Name:   "init",
