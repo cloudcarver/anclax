@@ -22,13 +22,19 @@ const (
 	Sqlc        = "sqlc"
 	Mockgen     = "mockgen"
 
-	binDir     = "bin"
-	configName = "anchor.yaml"
+	binDir = "bin"
 )
 
 var initCmd = &cli.Command{
-	Name:   "init",
-	Usage:  "Initialize a new project in the current directory",
+	Name:  "init",
+	Usage: "Initialize a new project in the current directory",
+	Flags: []cli.Flag{
+		&cli.StringFlag{
+			Name:  "config",
+			Usage: "Path to the config file",
+			Value: "anchor.yaml",
+		},
+	},
 	Action: runGenInit,
 }
 
@@ -64,6 +70,11 @@ func runGenInit(c *cli.Context) error {
 		return errors.New("missing go module name, use `anchor init <project-dir> <go-module-name>`")
 	}
 
+	configName := c.String("config")
+	if configName == "" {
+		return errors.New("config name cannot be empty")
+	}
+
 	// create project directory
 	if err := os.MkdirAll(projectDir, 0755); err != nil {
 		return errors.Wrap(err, "failed to create project directory")
@@ -95,7 +106,7 @@ func runGenInit(c *cli.Context) error {
 	}
 
 	// install external tools
-	if err := install(projectDir); err != nil {
+	if err := install(projectDir, configName); err != nil {
 		return errors.Wrap(err, "failed to install external tools")
 	}
 

@@ -17,8 +17,15 @@ var installMap = map[string]string{
 }
 
 var installCmd = &cli.Command{
-	Name:   "install",
-	Usage:  "Install external tools",
+	Name:  "install",
+	Usage: "Install external tools",
+	Flags: []cli.Flag{
+		&cli.StringFlag{
+			Name:  "config",
+			Usage: "Path to the config file",
+			Value: "anchor.yaml",
+		},
+	},
 	Action: runInstall,
 }
 
@@ -27,10 +34,16 @@ func runInstall(c *cli.Context) error {
 	if projectDir == "" {
 		return errors.New("missing project directory, use `anchor install <project-dir>`")
 	}
-	return install(projectDir)
+
+	configName := c.String("config")
+	if configName == "" {
+		return errors.New("config name cannot be empty")
+	}
+
+	return install(projectDir, configName)
 }
 
-func install(projectDir string) error {
+func install(projectDir, configName string) error {
 	// install external tools
 	config, err := parseConfig(configName)
 	if err != nil {
