@@ -82,46 +82,6 @@ func (mr *MockTaskRunnerMockRecorder) RunDeleteOpaqueKeyWithTx(ctx, tx, params a
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunDeleteOpaqueKeyWithTx", reflect.TypeOf((*MockTaskRunner)(nil).RunDeleteOpaqueKeyWithTx), varargs...)
 }
 
-// RunOnOrgCreated mocks base method.
-func (m *MockTaskRunner) RunOnOrgCreated(ctx context.Context, params *OnOrgCreatedParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	m.ctrl.T.Helper()
-	varargs := []any{ctx, params}
-	for _, a := range overrides {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "RunOnOrgCreated", varargs...)
-	ret0, _ := ret[0].(int32)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// RunOnOrgCreated indicates an expected call of RunOnOrgCreated.
-func (mr *MockTaskRunnerMockRecorder) RunOnOrgCreated(ctx, params any, overrides ...any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx, params}, overrides...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunOnOrgCreated", reflect.TypeOf((*MockTaskRunner)(nil).RunOnOrgCreated), varargs...)
-}
-
-// RunOnOrgCreatedWithTx mocks base method.
-func (m *MockTaskRunner) RunOnOrgCreatedWithTx(ctx context.Context, tx pgx.Tx, params *OnOrgCreatedParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	m.ctrl.T.Helper()
-	varargs := []any{ctx, tx, params}
-	for _, a := range overrides {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "RunOnOrgCreatedWithTx", varargs...)
-	ret0, _ := ret[0].(int32)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// RunOnOrgCreatedWithTx indicates an expected call of RunOnOrgCreatedWithTx.
-func (mr *MockTaskRunnerMockRecorder) RunOnOrgCreatedWithTx(ctx, tx, params any, overrides ...any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx, tx, params}, overrides...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunOnOrgCreatedWithTx", reflect.TypeOf((*MockTaskRunner)(nil).RunOnOrgCreatedWithTx), varargs...)
-}
-
 // MockExecutorInterface is a mock of ExecutorInterface interface.
 type MockExecutorInterface struct {
 	ctrl     *gomock.Controller
@@ -158,18 +118,4 @@ func (m *MockExecutorInterface) ExecuteDeleteOpaqueKey(ctx context.Context, para
 func (mr *MockExecutorInterfaceMockRecorder) ExecuteDeleteOpaqueKey(ctx, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteDeleteOpaqueKey", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteDeleteOpaqueKey), ctx, params)
-}
-
-// ExecuteOnOrgCreated mocks base method.
-func (m *MockExecutorInterface) ExecuteOnOrgCreated(ctx context.Context, params *OnOrgCreatedParameters) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ExecuteOnOrgCreated", ctx, params)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// ExecuteOnOrgCreated indicates an expected call of ExecuteOnOrgCreated.
-func (mr *MockExecutorInterfaceMockRecorder) ExecuteOnOrgCreated(ctx, params any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteOnOrgCreated", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteOnOrgCreated), ctx, params)
 }

@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/cloudcarver/anchor/pkg/auth"
+	"github.com/cloudcarver/anchor/pkg/hooks"
 	"github.com/cloudcarver/anchor/pkg/zcore/model"
 	"github.com/cloudcarver/anchor/pkg/zgen/querier"
-	"github.com/cloudcarver/anchor/pkg/zgen/taskgen"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -19,13 +19,12 @@ func TestCreateNewUser(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockModel := model.NewMockModelInterfaceWithTransaction(ctrl)
-	mockTaskRunner := taskgen.NewMockTaskRunner(ctrl)
 	mockAuth := auth.NewMockAuthInterface(ctrl)
+	mockHooks := hooks.NewMockAnchorHookInterface(ctrl)
 
 	var (
 		orgID  = int32(101)
 		userID = int32(102)
-		taskID = int32(103)
 		org    = &querier.AnchorOrg{
 			ID: orgID,
 		}
@@ -41,9 +40,7 @@ func TestCreateNewUser(t *testing.T) {
 
 	mockModel.EXPECT().CreateOrg(ctx, fmt.Sprintf("%s's Org", username)).Return(org, nil)
 
-	mockTaskRunner.EXPECT().RunOnOrgCreatedWithTx(ctx, gomock.Any(), &taskgen.OnOrgCreatedParameters{
-		OrgID: org.ID,
-	}).Return(taskID, nil)
+	mockHooks.EXPECT().OnOrgCreatedWithTx(ctx, gomock.Any(), org.ID).Return(nil)
 
 	mockModel.EXPECT().CreateUser(ctx, querier.CreateUserParams{
 		Name:         username,
@@ -62,9 +59,9 @@ func TestCreateNewUser(t *testing.T) {
 	}).Return(nil, nil)
 
 	service := &Service{
-		m:          mockModel,
-		taskRunner: mockTaskRunner,
-		auth:       mockAuth,
+		m:     mockModel,
+		hooks: mockHooks,
+		auth:  mockAuth,
 		generateSaltAndHash: func(inputPassword string) (string, string, error) {
 			if inputPassword != password {
 				return "", "", errors.New("password mismatch")

@@ -46,7 +46,8 @@ func InitializeApplication() (*app.Application, error) {
 	if err != nil {
 		return nil, err
 	}
-	serviceInterface := service.NewService(configConfig, modelInterface, authInterface, taskRunner)
+	anchorHookInterface := hooks.NewBaseHook()
+	serviceInterface := service.NewService(configConfig, modelInterface, authInterface, anchorHookInterface)
 	serverInterface := controller.NewController(serviceInterface, authInterface)
 	validator := controller.NewValidator(modelInterface, authInterface)
 	serverServer, err := server.NewServer(configConfig, globalContext, authInterface, serverInterface, validator)
@@ -61,7 +62,6 @@ func InitializeApplication() (*app.Application, error) {
 		return nil, err
 	}
 	debugServer := app.NewDebugServer(configConfig, globalContext)
-	anchorHookInterface := hooks.NewBaseHook()
 	application := app.NewApplication(configConfig, serverServer, metricsServer, workerWorker, debugServer, authInterface, taskStoreInterface, serviceInterface, anchorHookInterface)
 	return application, nil
 }

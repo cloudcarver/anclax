@@ -54,3 +54,6 @@ mockgen:
     - source: pkg/zgen/taskgen/runner_gen.go
       destination: pkg/zgen/taskgen/runner_gen_mock.go
       package: taskgen
+    - source: pkg/hooks/hooks.go
+      destination: pkg/hooks/mock_gen.go
+      package: hooks

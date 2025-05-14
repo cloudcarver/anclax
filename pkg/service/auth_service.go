@@ -9,7 +9,6 @@ import (
 	"github.com/cloudcarver/anchor/pkg/zcore/model"
 	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
 	"github.com/cloudcarver/anchor/pkg/zgen/querier"
-	"github.com/cloudcarver/anchor/pkg/zgen/taskgen"
 	"github.com/jackc/pgx/v5"
 	"github.com/pkg/errors"
 )
@@ -93,9 +92,7 @@ func (s *Service) CreateNewUser(ctx context.Context, username, password string) 
 
 		orgID = org.ID
 
-		if _, err := s.taskRunner.RunOnOrgCreatedWithTx(ctx, tx, &taskgen.OnOrgCreatedParameters{
-			OrgID: org.ID,
-		}); err != nil {
+		if err := s.hooks.OnOrgCreatedWithTx(ctx, tx, org.ID); err != nil {
 			return errors.Wrapf(err, "failed to run on org created hook")
 		}
 

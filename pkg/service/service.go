@@ -6,10 +6,10 @@ import (
 
 	"github.com/cloudcarver/anchor/pkg/auth"
 	"github.com/cloudcarver/anchor/pkg/config"
+	"github.com/cloudcarver/anchor/pkg/hooks"
 	"github.com/cloudcarver/anchor/pkg/utils"
 	"github.com/cloudcarver/anchor/pkg/zcore/model"
 	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
-	"github.com/cloudcarver/anchor/pkg/zgen/taskgen"
 	"github.com/pkg/errors"
 )
 
@@ -56,9 +56,9 @@ type ServiceInterface interface {
 }
 
 type Service struct {
-	m          model.ModelInterface
-	auth       auth.AuthInterface
-	taskRunner taskgen.TaskRunner
+	m     model.ModelInterface
+	auth  auth.AuthInterface
+	hooks hooks.AnchorHookInterface
 
 	generateSaltAndHash func(password string) (string, string, error)
 	now                 func() time.Time
@@ -68,13 +68,13 @@ func NewService(
 	cfg *config.Config,
 	m model.ModelInterface,
 	auth auth.AuthInterface,
-	taskRunner taskgen.TaskRunner,
+	hooks hooks.AnchorHookInterface,
 ) ServiceInterface {
 	return &Service{
 		m:                   m,
 		auth:                auth,
+		hooks:               hooks,
 		now:                 time.Now,
 		generateSaltAndHash: utils.GenerateSaltAndHash,
-		taskRunner:          taskRunner,
 	}
 }
