@@ -149,7 +149,7 @@ func (f *TaskHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) erro
 		return f.executor.Execute{{upperFirst .Name}}(ctx, &params)
 		{{end}}
 	default:
-		return fmt.Errorf("unknown handler %s", spec.GetType())
+		return errors.Wrapf(worker.ErrUnknownTaskType, "unknown task type: %s", spec.GetType())
 	}
 }
 `
