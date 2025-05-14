@@ -5,9 +5,14 @@ externals:
   mockgen: v0.5.0
   anchor: v0.3.17
 
+clean:
+  - pkg/zgen/apigen/*_gen.go
+  - pkg/zgen/querier/*
+  - pkg/zgen/taskgen/*
+
 oapi-codegen:
   path: api/v1.yaml
-  out: pkg/apigen/spec_gen.go
+  out: pkg/zgen/apigen/spec_gen.go
   package: apigen
 
 wire:
@@ -15,21 +20,21 @@ wire:
 
 xware:
   path: api/v1.yaml
-  out: pkg/apigen/scopes_extend_gen.go
+  out: pkg/zgen/apigen/scopes_extend_gen.go
   package: apigen
 
 task-handler:
   path: api/tasks.yaml
-  package: runner
-  out: pkg/taskcore/runner/runner_gen.go
+  package: taskgen
+  out: pkg/zgen/taskgen/runner_gen.go
 
 sqlc:
   path: dev/sqlc.yaml
 
 mockgen:
   files:
-    - source: pkg/model/model.go
-      destination: pkg/model/mock_gen.go
+    - source: pkg/zcore/model/model.go
+      destination: pkg/zcore/model/mock_gen.go
       package: model
     - source: pkg/macaroons/interfaces.go
       destination: pkg/macaroons/mock_gen.go
@@ -46,6 +51,6 @@ mockgen:
     - source: pkg/taskcore/worker/interfaces.go
       destination: pkg/taskcore/worker/mock_gen.go
       package: worker
-    - source: pkg/taskcore/runner/runner_gen.go
-      destination: pkg/taskcore/runner/runner_gen_mock.go
-      package: runner
+    - source: pkg/zgen/taskgen/runner_gen.go
+      destination: pkg/zgen/taskgen/runner_gen_mock.go
+      package: taskgen

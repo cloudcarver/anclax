@@ -14,7 +14,7 @@ import (
 	json "encoding/json"
 	reflect "reflect"
 
-	apigen "github.com/cloudcarver/anchor/pkg/apigen"
+	apigen "github.com/cloudcarver/anchor/pkg/zgen/apigen"
 	gomock "go.uber.org/mock/gomock"
 )
 

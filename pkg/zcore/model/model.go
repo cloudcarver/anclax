@@ -8,7 +8,7 @@ import (
 	"github.com/cloudcarver/anchor"
 	"github.com/cloudcarver/anchor/pkg/config"
 	"github.com/cloudcarver/anchor/pkg/logger"
-	"github.com/cloudcarver/anchor/pkg/model/querier"
+	"github.com/cloudcarver/anchor/pkg/zgen/querier"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	"github.com/golang-migrate/migrate/v4/source/iofs"

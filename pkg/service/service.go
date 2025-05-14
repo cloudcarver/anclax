@@ -4,11 +4,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/cloudcarver/anchor/pkg/apigen"
 	"github.com/cloudcarver/anchor/pkg/auth"
 	"github.com/cloudcarver/anchor/pkg/config"
-	"github.com/cloudcarver/anchor/pkg/model"
 	"github.com/cloudcarver/anchor/pkg/utils"
+	"github.com/cloudcarver/anchor/pkg/zcore/model"
+	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
 	"github.com/pkg/errors"
 )
 
@@ -46,6 +46,8 @@ type ServiceInterface interface {
 	ListTasks(ctx context.Context) ([]apigen.Task, error)
 
 	ListEvents(ctx context.Context) ([]apigen.Event, error)
+
+	ListOrgs(ctx context.Context, userID int32) ([]apigen.Org, error)
 }
 
 type Service struct {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/cloudcarver/anchor/pkg/apigen"
+	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
 	"github.com/jackc/pgx/v5"
 )
 

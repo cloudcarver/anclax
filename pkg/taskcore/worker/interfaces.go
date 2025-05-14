@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/cloudcarver/anchor/pkg/apigen"
+	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
 )
 
 var ErrUnknownTaskType = errors.New("unknown task type")

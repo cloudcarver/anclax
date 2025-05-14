@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cloudcarver/anchor/pkg/apigen"
+	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
 	"github.com/cloudcarver/anchor/pkg/taskcore"
 	"github.com/cloudcarver/anchor/pkg/taskcore/worker"
 	"github.com/cloudcarver/anchor/pkg/utils"

@@ -7,7 +7,7 @@ package querier
 import (
 	"context"
 
-	"github.com/cloudcarver/anchor/pkg/apigen"
+	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
 )
 
 type Querier interface {
@@ -30,6 +30,7 @@ type Querier interface {
 	InsertEvent(ctx context.Context, spec apigen.EventSpec) (*AnchorEvent, error)
 	InsertOrgOwner(ctx context.Context, arg InsertOrgOwnerParams) (*AnchorOrgOwner, error)
 	InsertOrgUser(ctx context.Context, arg InsertOrgUserParams) (*AnchorOrgUser, error)
+	ListOrgs(ctx context.Context, userID int32) ([]*AnchorOrg, error)
 	PullTask(ctx context.Context) (*AnchorTask, error)
 	UpdateTask(ctx context.Context, arg UpdateTaskParams) error
 	UpdateTaskStartedAt(ctx context.Context, arg UpdateTaskStartedAtParams) error

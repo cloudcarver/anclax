@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/cloudcarver/anchor/pkg/apigen"
 	"github.com/cloudcarver/anchor/pkg/auth"
-	"github.com/cloudcarver/anchor/pkg/model/querier"
 	"github.com/cloudcarver/anchor/pkg/utils"
+	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
+	"github.com/cloudcarver/anchor/pkg/zgen/querier"
 	"github.com/jackc/pgx/v5"
 	"github.com/pkg/errors"
 )
@@ -110,12 +110,4 @@ func (s *Service) CreateNewUser(ctx context.Context, username, password string) 
 	}
 
 	return org.ID, nil
-}
-
-func (s *Service) ListTasks(ctx context.Context) ([]apigen.Task, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *Service) ListEvents(ctx context.Context) ([]apigen.Event, error) {
-	return nil, errors.New("not implemented")
 }

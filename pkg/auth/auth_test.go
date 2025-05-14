@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/cloudcarver/anchor/pkg/macaroons"
-	"github.com/cloudcarver/anchor/pkg/model/querier"
 	"github.com/cloudcarver/anchor/pkg/utils"
+	"github.com/cloudcarver/anchor/pkg/zgen/querier"
 	"github.com/gofiber/fiber/v2"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"

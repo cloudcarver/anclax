@@ -96,3 +96,36 @@ func (q *Queries) InsertOrgUser(ctx context.Context, arg InsertOrgUserParams) (*
 	)
 	return &i, err
 }
+
+const listOrgs = `-- name: ListOrgs :many
+SELECT orgs.id, orgs.name, orgs.tz, orgs.created_at, orgs.updated_at
+FROM anchor.org_users 
+JOIN anchor.orgs AS orgs ON anchor.org_users.org_id = orgs.id
+WHERE anchor.org_users.user_id = $1
+`
+
+func (q *Queries) ListOrgs(ctx context.Context, userID int32) ([]*AnchorOrg, error) {
+	rows, err := q.db.Query(ctx, listOrgs, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*AnchorOrg
+	for rows.Next() {
+		var i AnchorOrg
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Tz,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

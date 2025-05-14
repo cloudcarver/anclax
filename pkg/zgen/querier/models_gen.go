@@ -7,7 +7,7 @@ package querier
 import (
 	"time"
 
-	"github.com/cloudcarver/anchor/pkg/apigen"
+	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
 )
 
 type AnchorAccessKeyPair struct {

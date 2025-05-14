@@ -97,6 +97,23 @@ paths:
                 items:
                   $ref: "#/components/schemas/Event"
 
+  /orgs:
+    get:
+      summary: Get all organizations of which the user is a member
+      description: Get all organizations of which the user is a member
+      operationId: listOrgs
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Successfully retrieved organizations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Org"
+
 components:
   securitySchemes:
     BearerAuth:
@@ -255,6 +272,22 @@ components:
         taskID:
           type: integer
           format: int32
+
+    Org:
+      type: object
+      required: [ID, name, createdAt, updatedAt]
+      properties:
+        ID:
+          type: integer
+          format: int32
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
 
 x-functions:
   GetOrgID:

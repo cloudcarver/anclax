@@ -8,6 +8,7 @@ package wire
 
 import (
 	"github.com/cloudcarver/anchor/pkg/app"
+	"github.com/cloudcarver/anchor/pkg/asynctask"
 	"github.com/cloudcarver/anchor/pkg/auth"
 	"github.com/cloudcarver/anchor/pkg/config"
 	"github.com/cloudcarver/anchor/pkg/controller"
@@ -15,12 +16,12 @@ import (
 	"github.com/cloudcarver/anchor/pkg/macaroons"
 	"github.com/cloudcarver/anchor/pkg/macaroons/store"
 	"github.com/cloudcarver/anchor/pkg/metrics"
-	"github.com/cloudcarver/anchor/pkg/model"
 	"github.com/cloudcarver/anchor/pkg/server"
 	"github.com/cloudcarver/anchor/pkg/service"
 	"github.com/cloudcarver/anchor/pkg/taskcore"
-	"github.com/cloudcarver/anchor/pkg/taskcore/runner"
 	"github.com/cloudcarver/anchor/pkg/taskcore/worker"
+	"github.com/cloudcarver/anchor/pkg/zcore/model"
+	"github.com/cloudcarver/anchor/pkg/zgen/taskgen"
 )
 
 // Injectors from wire.go:
@@ -36,7 +37,7 @@ func InitializeApplication() (*app.Application, error) {
 		return nil, err
 	}
 	taskStoreInterface := taskcore.NewTaskStore(modelInterface)
-	taskRunner := runner.NewTaskRunner(taskStoreInterface)
+	taskRunner := taskgen.NewTaskRunner(taskStoreInterface)
 	keyStore := store.NewStore(modelInterface, taskRunner)
 	caveatParser := auth.NewCaveatParser()
 	macaroonManagerInterface := macaroons.NewMacaroonManager(keyStore, caveatParser)
@@ -52,8 +53,8 @@ func InitializeApplication() (*app.Application, error) {
 		return nil, err
 	}
 	metricsServer := metrics.NewMetricsServer(configConfig, globalContext)
-	executorInterface := runner.NewExecutor(modelInterface)
-	taskHandler := runner.NewTaskHandler(executorInterface)
+	executorInterface := asynctask.NewExecutor(modelInterface)
+	taskHandler := taskgen.NewTaskHandler(executorInterface)
 	workerWorker, err := worker.NewWorker(globalContext, modelInterface, taskHandler)
 	if err != nil {
 		return nil, err

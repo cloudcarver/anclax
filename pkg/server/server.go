@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cloudcarver/anchor/pkg/apigen"
 	"github.com/cloudcarver/anchor/pkg/auth"
 	"github.com/cloudcarver/anchor/pkg/config"
 	"github.com/cloudcarver/anchor/pkg/globalctx"
 	"github.com/cloudcarver/anchor/pkg/logger"
 	"github.com/cloudcarver/anchor/pkg/utils"
+	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/recover"

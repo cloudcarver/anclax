@@ -9,7 +9,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/cloudcarver/anchor/pkg/apigen"
+	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
 )
 
 const createTask = `-- name: CreateTask :one

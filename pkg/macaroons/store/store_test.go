@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudcarver/anchor/pkg/model"
-	"github.com/cloudcarver/anchor/pkg/taskcore/runner"
+	"github.com/cloudcarver/anchor/pkg/zcore/model"
+	"github.com/cloudcarver/anchor/pkg/zgen/taskgen"
 	"github.com/jackc/pgx/v5"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -18,7 +18,7 @@ func TestCreate(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockModel := model.NewMockModelInterfaceWithTransaction(ctrl)
-	taskRunner := runner.NewMockTaskRunner(ctrl)
+	taskRunner := taskgen.NewMockTaskRunner(ctrl)
 
 	var (
 		ctx      = context.Background()
@@ -33,7 +33,7 @@ func TestCreate(t *testing.T) {
 	mockModel.EXPECT().CreateOpaqueKey(gomock.Any(), gomock.Any()).Return(keyID, nil)
 	taskRunner.EXPECT().RunDeleteOpaqueKey(
 		ctx,
-		&runner.DeleteOpaqueKeyParameters{
+		&taskgen.DeleteOpaqueKeyParameters{
 			KeyID: keyID,
 		},
 	).Return(taskID, nil)

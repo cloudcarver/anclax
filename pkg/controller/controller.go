@@ -3,9 +3,9 @@ package controller
 import (
 	"errors"
 
-	"github.com/cloudcarver/anchor/pkg/apigen"
 	"github.com/cloudcarver/anchor/pkg/auth"
 	"github.com/cloudcarver/anchor/pkg/service"
+	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -84,5 +84,19 @@ func (controller *Controller) ListEvents(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	return c.Status(fiber.StatusOK).JSON(ret)
+}
+
+func (controller *Controller) ListOrgs(c *fiber.Ctx) error {
+	userID, err := auth.GetUserID(c)
+	if err != nil {
+		return c.SendStatus(fiber.StatusUnauthorized)
+	}
+
+	ret, err := controller.svc.ListOrgs(c.Context(), userID)
+	if err != nil {
+		return err
+	}
+
 	return c.Status(fiber.StatusOK).JSON(ret)
 }

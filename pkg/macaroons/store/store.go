@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/cloudcarver/anchor/pkg/model"
-	"github.com/cloudcarver/anchor/pkg/model/querier"
-	"github.com/cloudcarver/anchor/pkg/taskcore/runner"
+	"github.com/cloudcarver/anchor/pkg/zcore/model"
+	"github.com/cloudcarver/anchor/pkg/zgen/querier"
+	runner "github.com/cloudcarver/anchor/pkg/zgen/taskgen"
 	"github.com/jackc/pgx/v5"
 	"github.com/pkg/errors"
 )

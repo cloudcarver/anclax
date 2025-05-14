@@ -83,6 +83,14 @@ type EventTaskError struct {
 	TaskID int32  `json:"taskID"`
 }
 
+// Org defines model for Org.
+type Org struct {
+	ID        int32     `json:"ID"`
+	CreatedAt time.Time `json:"createdAt"`
+	Name      string    `json:"name"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 // RefreshTokenRequest defines model for RefreshTokenRequest.
 type RefreshTokenRequest struct {
 	// RefreshToken Refresh token obtained from sign-in
@@ -240,6 +248,9 @@ type ClientInterface interface {
 	// ListEvents request
 	ListEvents(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListOrgs request
+	ListOrgs(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListTasks request
 	ListTasks(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
@@ -306,6 +317,18 @@ func (c *Client) SignOut(ctx context.Context, reqEditors ...RequestEditorFn) (*h
 
 func (c *Client) ListEvents(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListEventsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListOrgs(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListOrgsRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -462,6 +485,33 @@ func NewListEventsRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewListOrgsRequest generates requests for ListOrgs
+func NewListOrgsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/orgs")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListTasksRequest generates requests for ListTasks
 func NewListTasksRequest(server string) (*http.Request, error) {
 	var err error
@@ -547,6 +597,9 @@ type ClientWithResponsesInterface interface {
 
 	// ListEventsWithResponse request
 	ListEventsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListEventsResponse, error)
+
+	// ListOrgsWithResponse request
+	ListOrgsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListOrgsResponse, error)
 
 	// ListTasksWithResponse request
 	ListTasksWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListTasksResponse, error)
@@ -639,6 +692,28 @@ func (r ListEventsResponse) StatusCode() int {
 	return 0
 }
 
+type ListOrgsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]Org
+}
+
+// Status returns HTTPResponse.Status
+func (r ListOrgsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListOrgsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListTasksResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -711,6 +786,15 @@ func (c *ClientWithResponses) ListEventsWithResponse(ctx context.Context, reqEdi
 		return nil, err
 	}
 	return ParseListEventsResponse(rsp)
+}
+
+// ListOrgsWithResponse request returning *ListOrgsResponse
+func (c *ClientWithResponses) ListOrgsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListOrgsResponse, error) {
+	rsp, err := c.ListOrgs(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListOrgsResponse(rsp)
 }
 
 // ListTasksWithResponse request returning *ListTasksResponse
@@ -816,6 +900,32 @@ func ParseListEventsResponse(rsp *http.Response) (*ListEventsResponse, error) {
 	return response, nil
 }
 
+// ParseListOrgsResponse parses an HTTP response from a ListOrgsWithResponse call
+func ParseListOrgsResponse(rsp *http.Response) (*ListOrgsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListOrgsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []Org
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListTasksResponse parses an HTTP response from a ListTasksWithResponse call
 func ParseListTasksResponse(rsp *http.Response) (*ListTasksResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -856,6 +966,9 @@ type ServerInterface interface {
 	// Get all events
 	// (GET /events)
 	ListEvents(c *fiber.Ctx) error
+	// Get all organizations of which the user is a member
+	// (GET /orgs)
+	ListOrgs(c *fiber.Ctx) error
 	// Get all tasks
 	// (GET /tasks)
 	ListTasks(c *fiber.Ctx) error
@@ -896,6 +1009,14 @@ func (siw *ServerInterfaceWrapper) ListEvents(c *fiber.Ctx) error {
 	return siw.Handler.ListEvents(c)
 }
 
+// ListOrgs operation middleware
+func (siw *ServerInterfaceWrapper) ListOrgs(c *fiber.Ctx) error {
+
+	c.Context().SetUserValue(BearerAuthScopes, []string{})
+
+	return siw.Handler.ListOrgs(c)
+}
+
 // ListTasks operation middleware
 func (siw *ServerInterfaceWrapper) ListTasks(c *fiber.Ctx) error {
 
@@ -932,6 +1053,8 @@ func RegisterHandlersWithOptions(router fiber.Router, si ServerInterface, option
 	router.Post(options.BaseURL+"/auth/sign-out", wrapper.SignOut)
 
 	router.Get(options.BaseURL+"/events", wrapper.ListEvents)
+
+	router.Get(options.BaseURL+"/orgs", wrapper.ListOrgs)
 
 	router.Get(options.BaseURL+"/tasks", wrapper.ListTasks)
 
