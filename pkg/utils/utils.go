@@ -46,7 +46,7 @@ func HashPassword(password string, salt string) (string, error) {
 	return hashed, nil
 }
 
-func GenerateHashAndSalt(password string) (string, string, error) {
+func GenerateSaltAndHash(password string) (string, string, error) {
 	salt := fmt.Sprintf("salt-%d", rand.Int31())
 	hashedPassword, err := HashPassword(password, salt)
 	if err != nil {

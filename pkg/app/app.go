@@ -3,6 +3,7 @@ package app
 import (
 	"github.com/cloudcarver/anchor/pkg/auth"
 	"github.com/cloudcarver/anchor/pkg/config"
+	"github.com/cloudcarver/anchor/pkg/hooks"
 	"github.com/cloudcarver/anchor/pkg/metrics"
 	"github.com/cloudcarver/anchor/pkg/server"
 	"github.com/cloudcarver/anchor/pkg/service"
@@ -19,6 +20,7 @@ type Application struct {
 	auth          auth.AuthInterface
 	taskStore     taskcore.TaskStoreInterface
 	service       service.ServiceInterface
+	hooks         hooks.AnchorHookInterface
 }
 
 func NewApplication(
@@ -30,6 +32,7 @@ func NewApplication(
 	auth auth.AuthInterface,
 	taskStore taskcore.TaskStoreInterface,
 	service service.ServiceInterface,
+	hooks hooks.AnchorHookInterface,
 ) *Application {
 	return &Application{
 		server:        server,
@@ -40,6 +43,7 @@ func NewApplication(
 		auth:          auth,
 		taskStore:     taskStore,
 		service:       service,
+		hooks:         hooks,
 	}
 }
 
@@ -70,4 +74,8 @@ func (a *Application) GetTaskStore() taskcore.TaskStoreInterface {
 
 func (a *Application) GetService() service.ServiceInterface {
 	return a.service
+}
+
+func (a *Application) GetHooks() hooks.AnchorHookInterface {
+	return a.hooks
 }

@@ -6,8 +6,10 @@ import (
 
 	"github.com/cloudcarver/anchor/pkg/auth"
 	"github.com/cloudcarver/anchor/pkg/utils"
+	"github.com/cloudcarver/anchor/pkg/zcore/model"
 	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
 	"github.com/cloudcarver/anchor/pkg/zgen/querier"
+	"github.com/cloudcarver/anchor/pkg/zgen/taskgen"
 	"github.com/jackc/pgx/v5"
 	"github.com/pkg/errors"
 )
@@ -76,40 +78,55 @@ func (s *Service) RefreshToken(ctx context.Context, userID int32, refreshToken s
 }
 
 func (s *Service) CreateNewUser(ctx context.Context, username, password string) (int32, error) {
-	salt, hash, err := s.generateHashAndSalt(password)
+	salt, hash, err := s.generateSaltAndHash(password)
 	if err != nil {
 		return 0, errors.Wrapf(err, "failed to generate hash and salt")
 	}
 
-	org, err := s.m.CreateOrg(ctx, fmt.Sprintf("%s's Org", username))
-	if err != nil {
-		return 0, errors.Wrapf(err, "failed to create organization")
-	}
+	var orgID int32
 
-	user, err := s.m.CreateUser(ctx, querier.CreateUserParams{
-		Name:         username,
-		PasswordHash: hash,
-		PasswordSalt: salt,
-	})
-	if err != nil {
-		return 0, errors.Wrapf(err, "failed to create user")
-	}
+	if err := s.m.RunTransactionWithTx(ctx, func(tx pgx.Tx, txm model.ModelInterface) error {
+		org, err := s.m.CreateOrg(ctx, fmt.Sprintf("%s's Org", username))
+		if err != nil {
+			return errors.Wrapf(err, "failed to create organization")
+		}
 
-	if _, err := s.m.InsertOrgOwner(ctx, querier.InsertOrgOwnerParams{
-		UserID: user.ID,
-		OrgID:  org.ID,
+		orgID = org.ID
+
+		if _, err := s.taskRunner.RunOnOrgCreatedWithTx(ctx, tx, &taskgen.OnOrgCreatedParameters{
+			OrgID: org.ID,
+		}); err != nil {
+			return errors.Wrapf(err, "failed to run on org created hook")
+		}
+
+		user, err := txm.CreateUser(ctx, querier.CreateUserParams{
+			Name:         username,
+			PasswordHash: hash,
+			PasswordSalt: salt,
+		})
+		if err != nil {
+			return errors.Wrapf(err, "failed to create user")
+		}
+
+		if _, err := txm.InsertOrgOwner(ctx, querier.InsertOrgOwnerParams{
+			UserID: user.ID,
+			OrgID:  org.ID,
+		}); err != nil {
+			return errors.Wrapf(err, "failed to create organization owner")
+		}
+
+		if _, err := txm.InsertOrgUser(ctx, querier.InsertOrgUserParams{
+			UserID: user.ID,
+			OrgID:  org.ID,
+		}); err != nil {
+			return errors.Wrapf(err, "failed to create organization user")
+		}
+		return nil
 	}); err != nil {
-		return 0, errors.Wrapf(err, "failed to create organization owner")
+		return 0, errors.Wrapf(err, "failed to create new user")
 	}
 
-	if _, err := s.m.InsertOrgUser(ctx, querier.InsertOrgUserParams{
-		UserID: user.ID,
-		OrgID:  org.ID,
-	}); err != nil {
-		return 0, errors.Wrapf(err, "failed to create organization user")
-	}
-
-	return org.ID, nil
+	return orgID, nil
 }
 
 func (s *Service) DeleteUserByName(ctx context.Context, username string) error {

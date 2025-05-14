@@ -10,6 +10,7 @@ import (
 	"github.com/cloudcarver/anchor/pkg/config"
 	"github.com/cloudcarver/anchor/pkg/controller"
 	"github.com/cloudcarver/anchor/pkg/globalctx"
+	"github.com/cloudcarver/anchor/pkg/hooks"
 	"github.com/cloudcarver/anchor/pkg/macaroons"
 	"github.com/cloudcarver/anchor/pkg/macaroons/store"
 	"github.com/cloudcarver/anchor/pkg/metrics"
@@ -43,6 +44,7 @@ func InitializeApplication() (*app.Application, error) {
 		taskgen.NewTaskHandler,
 		taskgen.NewTaskRunner,
 		asynctask.NewExecutor,
+		hooks.NewBaseHook,
 	)
 	return nil, nil
 }

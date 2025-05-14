@@ -21,6 +21,8 @@ func init() {
 
 const ( 
 	DeleteOpaqueKey = "deleteOpaqueKey" 
+
+	OnOrgCreated = "onOrgCreated" 
 )
 
 type TaskRunner interface { 
@@ -28,6 +30,11 @@ type TaskRunner interface {
 	RunDeleteOpaqueKey(ctx context.Context, params *DeleteOpaqueKeyParameters, overrides ...taskcore.TaskOverride) (int32, error)
     // Delete an opaque key
 	RunDeleteOpaqueKeyWithTx(ctx context.Context, tx pgx.Tx, params *DeleteOpaqueKeyParameters, overrides ...taskcore.TaskOverride) (int32, error)
+
+    // On org created
+	RunOnOrgCreated(ctx context.Context, params *OnOrgCreatedParameters, overrides ...taskcore.TaskOverride) (int32, error)
+    // On org created
+	RunOnOrgCreatedWithTx(ctx context.Context, tx pgx.Tx, params *OnOrgCreatedParameters, overrides ...taskcore.TaskOverride) (int32, error)
 }
 
 type Client struct {
@@ -85,11 +92,58 @@ func (c *Client) runDeleteOpaqueKey(ctx context.Context, taskstore taskcore.Task
 	}
 	return taskID, nil
 }
+func (c *Client) RunOnOrgCreated(ctx context.Context, params *OnOrgCreatedParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runOnOrgCreated(ctx, c.taskStore, params, overrides...)
+}
+
+func (c *Client) RunOnOrgCreatedWithTx(ctx context.Context, tx pgx.Tx, params *OnOrgCreatedParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runOnOrgCreated(ctx, c.taskStore.WithTx(tx), params, overrides...)
+}
+
+func (c *Client) runOnOrgCreated(ctx context.Context, taskstore taskcore.TaskStoreInterface, params *OnOrgCreatedParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	payload, err := params.Marshal()
+	if err != nil {
+		return 0, err
+	}
+
+	spec := apigen.TaskSpec{
+		Type:    OnOrgCreated,
+		Payload: payload,
+	}
+	attributes := apigen.TaskAttributes{}
+	
+	attributes.RetryPolicy = &apigen.TaskRetryPolicy{
+		Interval:             "30m",
+		AlwaysRetryOnFailure: true,
+	}
+	
+	task := &apigen.Task{
+		Attributes: attributes,
+		Spec:       spec,
+		Status:     apigen.Pending,
+	}
+	
+	for _, override := range overrides {
+		if err := override(task); err != nil {
+			return 0, errors.Wrap(err, "failed to apply task override")
+		}
+	}
+	taskID, err := taskstore.PushTask(ctx, task)
+	if err != nil {
+		return 0, err
+	}
+	return taskID, nil
+}
 
 
 type DeleteOpaqueKeyParameters struct { 
     // The ID of the opaque key to delete
 	KeyID int64 `json:"keyID" yaml:"keyID"`
+}
+
+type OnOrgCreatedParameters struct { 
+    // The ID of the org
+	OrgID int32 `json:"orgID" yaml:"orgID"`
 }
 
 func (r *DeleteOpaqueKeyParameters) Parse(spec json.RawMessage) error {
@@ -99,10 +153,20 @@ func (r *DeleteOpaqueKeyParameters) Parse(spec json.RawMessage) error {
 func (r *DeleteOpaqueKeyParameters) Marshal() (json.RawMessage, error) {
 	return json.Marshal(r)
 }
+func (r *OnOrgCreatedParameters) Parse(spec json.RawMessage) error {
+	return json.Unmarshal(spec, r)
+}
+
+func (r *OnOrgCreatedParameters) Marshal() (json.RawMessage, error) {
+	return json.Marshal(r)
+}
 
 type ExecutorInterface interface { 
     // Delete an opaque key
 	ExecuteDeleteOpaqueKey(ctx context.Context, params *DeleteOpaqueKeyParameters) error
+
+    // On org created
+	ExecuteOnOrgCreated(ctx context.Context, params *OnOrgCreatedParameters) error
 }
 
 type TaskHandler struct {
@@ -139,6 +203,13 @@ func (f *TaskHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) erro
 			return fmt.Errorf("failed to parse deleteOpaqueKey parameters: %w", err)
 		}
 		return f.executor.ExecuteDeleteOpaqueKey(ctx, &params)
+		
+	case OnOrgCreated:
+		var params OnOrgCreatedParameters
+		if err := params.Parse(spec.GetPayload()); err != nil {
+			return fmt.Errorf("failed to parse onOrgCreated parameters: %w", err)
+		}
+		return f.executor.ExecuteOnOrgCreated(ctx, &params)
 		
 	default:
 		return fmt.Errorf("unknown handler %s", spec.GetType())

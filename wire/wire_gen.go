@@ -13,6 +13,7 @@ import (
 	"github.com/cloudcarver/anchor/pkg/config"
 	"github.com/cloudcarver/anchor/pkg/controller"
 	"github.com/cloudcarver/anchor/pkg/globalctx"
+	"github.com/cloudcarver/anchor/pkg/hooks"
 	"github.com/cloudcarver/anchor/pkg/macaroons"
 	"github.com/cloudcarver/anchor/pkg/macaroons/store"
 	"github.com/cloudcarver/anchor/pkg/metrics"
@@ -45,7 +46,7 @@ func InitializeApplication() (*app.Application, error) {
 	if err != nil {
 		return nil, err
 	}
-	serviceInterface := service.NewService(configConfig, modelInterface, authInterface)
+	serviceInterface := service.NewService(configConfig, modelInterface, authInterface, taskRunner)
 	serverInterface := controller.NewController(serviceInterface, authInterface)
 	validator := controller.NewValidator(modelInterface, authInterface)
 	serverServer, err := server.NewServer(configConfig, globalContext, authInterface, serverInterface, validator)
@@ -60,6 +61,7 @@ func InitializeApplication() (*app.Application, error) {
 		return nil, err
 	}
 	debugServer := app.NewDebugServer(configConfig, globalContext)
-	application := app.NewApplication(configConfig, serverServer, metricsServer, workerWorker, debugServer, authInterface, taskStoreInterface, serviceInterface)
+	anchorHookInterface := hooks.NewBaseHook()
+	application := app.NewApplication(configConfig, serverServer, metricsServer, workerWorker, debugServer, authInterface, taskStoreInterface, serviceInterface, anchorHookInterface)
 	return application, nil
 }

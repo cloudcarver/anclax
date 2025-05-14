@@ -12,3 +12,16 @@ tasks:
     retryPolicy:
       interval: 30m
       always_retry_on_failure: true
+  - name: onOrgCreated
+    description: On org created
+    parameters:
+      type: object
+      required: [orgID]
+      properties:
+        orgID:
+          type: integer
+          format: int32
+          description: The ID of the org
+    retryPolicy:
+      interval: 30m
+      always_retry_on_failure: true
