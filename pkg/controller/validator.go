@@ -16,8 +16,8 @@ func NewValidator(model model.ModelInterface, auth auth.AuthInterface) apigen.Va
 	return &Validator{model: model, auth: auth}
 }
 
-func (v *Validator) GetOrgID(c *fiber.Ctx) int32 {
-	return c.Locals(auth.ContextKeyOrgID).(int32)
+func (v *Validator) AuthFunc(c *fiber.Ctx) error {
+	return v.auth.Authfunc(c)
 }
 
 func (v *Validator) PreValidate(c *fiber.Ctx) error {
@@ -26,4 +26,8 @@ func (v *Validator) PreValidate(c *fiber.Ctx) error {
 
 func (v *Validator) PostValidate(c *fiber.Ctx) error {
 	return nil
+}
+
+func (v *Validator) GetOrgID(c *fiber.Ctx) int32 {
+	return c.Locals(auth.ContextKeyOrgID).(int32)
 }

@@ -1,6 +1,11 @@
 type Validator interface { 
+    // AuthFunc is called before the request is processed. The response will be 400 if the auth fails.
+    AuthFunc(*fiber.Ctx) error
+
+    // PreValidate is called before the request is processed. The response will be 403 if the validation fails.
     PreValidate(*fiber.Ctx) error
     
+    // PostValidate is called after the request is processed. The response will be 403 if the validation fails.
     PostValidate(*fiber.Ctx) error
 {{range .CheckRules}}
     {{.Name}}({{if .UseContext}}c *fiber.Ctx{{else}}ctx context.Context{{end}}{{if .Params}}, {{end}}{{genXParamArgs .Params}}) error

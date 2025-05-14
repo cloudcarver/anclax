@@ -10,8 +10,8 @@ func NewXMiddleware(handler ServerInterface, validator Validator) ServerInterfac
 {{range .}}{{.SummaryAsComment }}
 // ({{.Method}} {{.Path}})
 func (x *XMiddleware) {{.OperationId}}(c *fiber.Ctx{{genParamArgs .PathParams}}{{if .RequiresParamObject}}, params {{.OperationId}}Params{{end}}) error {
-    {{if ne (len .SecurityDefinitions) 0}}if c.Get("Authorization") == "" {
-		return c.Status(fiber.StatusUnauthorized).SendString("Authorization header is required")
+    {{if ne (len .SecurityDefinitions) 0}}if err := x.AuthFunc(c); err != nil {
+		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
 	} {{end}}
 	if err := x.PreValidate(c); err != nil {
 		return c.Status(fiber.StatusForbidden).SendString(err.Error())

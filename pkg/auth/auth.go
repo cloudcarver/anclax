@@ -61,7 +61,7 @@ func NewAuth(macaroons macaroons.MacaroonManagerInterface) (AuthInterface, error
 func (a *Auth) Authfunc(c *fiber.Ctx) error {
 	authHeader := c.Get("Authorization")
 	if authHeader == "" {
-		return errors.Wrapf(fiber.ErrUnauthorized, "missing authorization header")
+		return errors.New("missing authorization header")
 	}
 
 	// Remove "Bearer " prefix if present
@@ -72,12 +72,12 @@ func (a *Auth) Authfunc(c *fiber.Ctx) error {
 
 	token, err := a.macaroons.Parse(c.Context(), tokenString)
 	if err != nil {
-		return errors.Wrapf(fiber.ErrUnauthorized, "failed to parse macaroon token, error: %v, token: %s", err, tokenString)
+		return errors.Wrapf(err, "failed to parse macaroon token, token: %s", tokenString)
 	}
 
 	for _, caveat := range token.Caveats() {
 		if err := caveat.Validate(c); err != nil {
-			return errors.Wrapf(fiber.ErrUnauthorized, "failed to validate macaroon token, caveat: %s, error: %v, token: %s", caveat.Type(), err, tokenString)
+			return errors.Wrapf(err, "failed to validate macaroon token, caveat: %s, token: %s", caveat.Type(), tokenString)
 		}
 	}
 

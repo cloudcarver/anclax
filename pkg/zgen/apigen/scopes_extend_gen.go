@@ -3,8 +3,13 @@ package apigen
 import "github.com/gofiber/fiber/v2"
 
 type Validator interface { 
+    // AuthFunc is called before the request is processed. The response will be 400 if the auth fails.
+    AuthFunc(*fiber.Ctx) error
+
+    // PreValidate is called before the request is processed. The response will be 403 if the validation fails.
     PreValidate(*fiber.Ctx) error
     
+    // PostValidate is called after the request is processed. The response will be 403 if the validation fails.
     PostValidate(*fiber.Ctx) error
  
     GetOrgID(c *fiber.Ctx) int32
@@ -23,8 +28,8 @@ func NewXMiddleware(handler ServerInterface, validator Validator) ServerInterfac
 // Sign out user
 // (POST /auth/sign-out)
 func (x *XMiddleware) SignOut(c *fiber.Ctx) error {
-    if c.Get("Authorization") == "" {
-		return c.Status(fiber.StatusUnauthorized).SendString("Authorization header is required")
+    if err := x.AuthFunc(c); err != nil {
+		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
 	} 
 	if err := x.PreValidate(c); err != nil {
 		return c.Status(fiber.StatusForbidden).SendString(err.Error())
@@ -38,8 +43,8 @@ func (x *XMiddleware) SignOut(c *fiber.Ctx) error {
 // Get all events
 // (GET /events)
 func (x *XMiddleware) ListEvents(c *fiber.Ctx) error {
-    if c.Get("Authorization") == "" {
-		return c.Status(fiber.StatusUnauthorized).SendString("Authorization header is required")
+    if err := x.AuthFunc(c); err != nil {
+		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
 	} 
 	if err := x.PreValidate(c); err != nil {
 		return c.Status(fiber.StatusForbidden).SendString(err.Error())
@@ -53,8 +58,8 @@ func (x *XMiddleware) ListEvents(c *fiber.Ctx) error {
 // Get all organizations of which the user is a member
 // (GET /orgs)
 func (x *XMiddleware) ListOrgs(c *fiber.Ctx) error {
-    if c.Get("Authorization") == "" {
-		return c.Status(fiber.StatusUnauthorized).SendString("Authorization header is required")
+    if err := x.AuthFunc(c); err != nil {
+		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
 	} 
 	if err := x.PreValidate(c); err != nil {
 		return c.Status(fiber.StatusForbidden).SendString(err.Error())
@@ -68,8 +73,8 @@ func (x *XMiddleware) ListOrgs(c *fiber.Ctx) error {
 // Get all tasks
 // (GET /tasks)
 func (x *XMiddleware) ListTasks(c *fiber.Ctx) error {
-    if c.Get("Authorization") == "" {
-		return c.Status(fiber.StatusUnauthorized).SendString("Authorization header is required")
+    if err := x.AuthFunc(c); err != nil {
+		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
 	} 
 	if err := x.PreValidate(c); err != nil {
 		return c.Status(fiber.StatusForbidden).SendString(err.Error())

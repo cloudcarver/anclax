@@ -3,6 +3,8 @@ package apigen
 import "github.com/gofiber/fiber/v2"
 
 type Validator interface { 
+	AuthFunc(*fiber.Ctx) error
+
     PreValidate(*fiber.Ctx) error
     
     PostValidate(*fiber.Ctx) error
