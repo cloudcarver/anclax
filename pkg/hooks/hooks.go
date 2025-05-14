@@ -8,6 +8,11 @@ type OnOrgCreated func(ctx context.Context, orgID int32) error
 
 type AnchorHookInterface interface {
 	OnOrgCreated(ctx context.Context, orgID int32) error
+
+	// RegisterOnOrgCreatedHook registers a hook function that is executed after an organization is created.
+	// It should be implemented to be idempotent and compatible with at-least-once execution semantics,
+	// as it may be called multiple times for the same organization.
+	RegisterOnOrgCreatedHook(hook OnOrgCreated)
 }
 
 type BaseHook struct {
@@ -18,9 +23,6 @@ func NewBaseHook() AnchorHookInterface {
 	return &BaseHook{}
 }
 
-// RegisterOnOrgCreatedHook registers a hook function that is executed after an organization is created.
-// It should be implemented to be idempotent and compatible with at-least-once execution semantics,
-// as it may be called multiple times for the same organization.
 func (b *BaseHook) RegisterOnOrgCreatedHook(hook OnOrgCreated) {
 	b.OnOrgCreatedHooks = append(b.OnOrgCreatedHooks, hook)
 }
