@@ -38,12 +38,16 @@ type ServiceInterface interface {
 	// Create a new user and its default organization
 	CreateNewUser(ctx context.Context, username, password string) (int32, error)
 
+	DeleteUserByName(ctx context.Context, username string) error
+
 	// SignIn authenticates a user and returns credentials
 	SignIn(ctx context.Context, params apigen.SignInRequest) (*apigen.Credentials, error)
 
 	RefreshToken(ctx context.Context, userID int32, refreshToken string) (*apigen.Credentials, error)
 
 	ListTasks(ctx context.Context) ([]apigen.Task, error)
+
+	GetTaskByID(ctx context.Context, id int32) (*apigen.Task, error)
 
 	ListEvents(ctx context.Context) ([]apigen.Event, error)
 

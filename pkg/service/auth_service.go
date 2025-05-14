@@ -111,3 +111,13 @@ func (s *Service) CreateNewUser(ctx context.Context, username, password string) 
 
 	return org.ID, nil
 }
+
+func (s *Service) DeleteUserByName(ctx context.Context, username string) error {
+	if err := s.m.DeleteUserByName(ctx, username); err != nil {
+		if err == pgx.ErrNoRows {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to delete user, username: %s", username)
+	}
+	return nil
+}
