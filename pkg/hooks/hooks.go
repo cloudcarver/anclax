@@ -8,13 +8,14 @@ import (
 
 type OnOrgCreatedWithTx func(ctx context.Context, tx pgx.Tx, orgID int32) error
 
+// There are two types of hooks:
+// 1. Tx hooks: These hooks are executed with a transaction.
+// 2. Async hooks: These hooks are executed asynchronously using the task runner.
 type AnchorHookInterface interface {
 	OnOrgCreatedWithTx(ctx context.Context, tx pgx.Tx, orgID int32) error
 
 	// RegisterOnOrgCreatedHook registers a hook function that is executed after an organization is created.
-	// It should be implemented to be idempotent and compatible with at-least-once execution semantics,
-	// as it may be called multiple times for the same organization.
-	RegisterOnOrgCreatedHook(hook OnOrgCreatedWithTx)
+	RegisterOnOrgCreatedWithTx(hook OnOrgCreatedWithTx)
 }
 
 type BaseHook struct {
@@ -25,7 +26,7 @@ func NewBaseHook() AnchorHookInterface {
 	return &BaseHook{}
 }
 
-func (b *BaseHook) RegisterOnOrgCreatedHook(hook OnOrgCreatedWithTx) {
+func (b *BaseHook) RegisterOnOrgCreatedWithTx(hook OnOrgCreatedWithTx) {
 	b.OnOrgCreatedWithTxHooks = append(b.OnOrgCreatedWithTxHooks, hook)
 }
 
