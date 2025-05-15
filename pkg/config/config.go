@@ -4,7 +4,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/cloudcarver/anchor/pkg/conf"
+	"github.com/cloudcarver/anchor/lib/conf"
 )
 
 type Pg struct {
