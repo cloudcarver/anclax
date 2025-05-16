@@ -104,7 +104,7 @@ func (a *Auth) CreateToken(ctx context.Context, userID int32, caveats ...macaroo
 		return 0, "", errors.Wrap(err, "failed to create macaroon token")
 	}
 
-	if err := a.hooks.OnCreateToken(ctx, token); err != nil {
+	if err := a.hooks.OnCreateToken(ctx, userID, token); err != nil {
 		return 0, "", errors.Wrap(err, "failed to call hook")
 	}
 

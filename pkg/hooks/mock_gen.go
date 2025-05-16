@@ -43,17 +43,17 @@ func (m *MockAnchorHookInterface) EXPECT() *MockAnchorHookInterfaceMockRecorder 
 }
 
 // OnCreateToken mocks base method.
-func (m *MockAnchorHookInterface) OnCreateToken(ctx context.Context, macaroon *macaroons.Macaroon) error {
+func (m *MockAnchorHookInterface) OnCreateToken(ctx context.Context, userID int32, macaroon *macaroons.Macaroon) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "OnCreateToken", ctx, macaroon)
+	ret := m.ctrl.Call(m, "OnCreateToken", ctx, userID, macaroon)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // OnCreateToken indicates an expected call of OnCreateToken.
-func (mr *MockAnchorHookInterfaceMockRecorder) OnCreateToken(ctx, macaroon any) *gomock.Call {
+func (mr *MockAnchorHookInterfaceMockRecorder) OnCreateToken(ctx, userID, macaroon any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnCreateToken", reflect.TypeOf((*MockAnchorHookInterface)(nil).OnCreateToken), ctx, macaroon)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnCreateToken", reflect.TypeOf((*MockAnchorHookInterface)(nil).OnCreateToken), ctx, userID, macaroon)
 }
 
 // OnOrgCreatedWithTx mocks base method.

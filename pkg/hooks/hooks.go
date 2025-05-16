@@ -10,7 +10,7 @@ import (
 type (
 	OnOrgCreatedWithTx func(ctx context.Context, tx pgx.Tx, orgID int32) error
 
-	OnCreateToken func(ctx context.Context, macaroon *macaroons.Macaroon) error
+	OnCreateToken func(ctx context.Context, userID int32, macaroon *macaroons.Macaroon) error
 )
 
 // There are two types of hooks:
@@ -19,7 +19,7 @@ type (
 type AnchorHookInterface interface {
 	OnOrgCreatedWithTx(ctx context.Context, tx pgx.Tx, orgID int32) error
 
-	OnCreateToken(ctx context.Context, macaroon *macaroons.Macaroon) error
+	OnCreateToken(ctx context.Context, userID int32, macaroon *macaroons.Macaroon) error
 
 	// RegisterOnOrgCreatedHook registers a hook function that is executed after an organization is created.
 	RegisterOnOrgCreatedWithTx(hook OnOrgCreatedWithTx)
@@ -55,9 +55,9 @@ func (b *BaseHook) RegisterOnCreateToken(hook OnCreateToken) {
 	b.OnCreateTokenHooks = append(b.OnCreateTokenHooks, hook)
 }
 
-func (b *BaseHook) OnCreateToken(ctx context.Context, macaroon *macaroons.Macaroon) error {
+func (b *BaseHook) OnCreateToken(ctx context.Context, userID int32, macaroon *macaroons.Macaroon) error {
 	for _, hook := range b.OnCreateTokenHooks {
-		if err := hook(ctx, macaroon); err != nil {
+		if err := hook(ctx, userID, macaroon); err != nil {
 			return err
 		}
 	}

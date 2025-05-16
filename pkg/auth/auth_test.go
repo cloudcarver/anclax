@@ -178,7 +178,7 @@ func TestAuth_CreateToken(t *testing.T) {
 					gomock.Any(), // Here we expect a UserContextCaveat but it's difficult to match in tests
 					TimeoutAccessToken,
 				).Return(macaroon, nil)
-				mockHooks.EXPECT().OnCreateToken(gomock.Any(), macaroon).Return(nil)
+				mockHooks.EXPECT().OnCreateToken(gomock.Any(), userID, macaroon).Return(nil)
 			},
 			expectedKeyID: keyID,
 			expectedToken: macaroon.StringToken(),
