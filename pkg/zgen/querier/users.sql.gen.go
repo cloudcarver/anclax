@@ -16,7 +16,7 @@ INSERT INTO anchor.users (
     password_salt
 ) VALUES (
     $1, $2, $3
-) RETURNING id, name, password_hash, password_salt, created_at, updated_at
+) RETURNING id, name, password_hash, password_salt, created_at, updated_at, deleted_at
 `
 
 type CreateUserParams struct {
@@ -35,13 +35,13 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (*Anchor
 		&i.PasswordSalt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return &i, err
 }
 
 const deleteUserByName = `-- name: DeleteUserByName :exec
-DELETE FROM anchor.users
-WHERE name = $1
+UPDATE anchor.users SET deleted_at = CURRENT_TIMESTAMP WHERE name = $1
 `
 
 func (q *Queries) DeleteUserByName(ctx context.Context, name string) error {
@@ -50,8 +50,8 @@ func (q *Queries) DeleteUserByName(ctx context.Context, name string) error {
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id, name, password_hash, password_salt, created_at, updated_at FROM anchor.users
-WHERE id = $1
+SELECT id, name, password_hash, password_salt, created_at, updated_at, deleted_at FROM anchor.users
+WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetUser(ctx context.Context, id int32) (*AnchorUser, error) {
@@ -64,13 +64,13 @@ func (q *Queries) GetUser(ctx context.Context, id int32) (*AnchorUser, error) {
 		&i.PasswordSalt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return &i, err
 }
 
 const getUserByName = `-- name: GetUserByName :one
-SELECT id, name, password_hash, password_salt, created_at, updated_at FROM anchor.users
-WHERE name = $1
+SELECT id, name, password_hash, password_salt, created_at, updated_at, deleted_at FROM anchor.users WHERE name = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetUserByName(ctx context.Context, name string) (*AnchorUser, error) {
@@ -83,6 +83,7 @@ func (q *Queries) GetUserByName(ctx context.Context, name string) (*AnchorUser, 
 		&i.PasswordSalt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return &i, err
 }
@@ -97,6 +98,15 @@ func (q *Queries) GetUserDefaultOrg(ctx context.Context, userID int32) (int32, e
 	var org_id int32
 	err := row.Scan(&org_id)
 	return org_id, err
+}
+
+const restoreUserByName = `-- name: RestoreUserByName :exec
+UPDATE anchor.users SET deleted_at = NULL WHERE name = $1
+`
+
+func (q *Queries) RestoreUserByName(ctx context.Context, name string) error {
+	_, err := q.db.Exec(ctx, restoreUserByName, name)
+	return err
 }
 
 const setUserDefaultOrg = `-- name: SetUserDefaultOrg :exec

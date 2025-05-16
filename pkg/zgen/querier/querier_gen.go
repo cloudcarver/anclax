@@ -33,6 +33,7 @@ type Querier interface {
 	InsertOrgUser(ctx context.Context, arg InsertOrgUserParams) (*AnchorOrgUser, error)
 	ListOrgs(ctx context.Context, userID int32) ([]*AnchorOrg, error)
 	PullTask(ctx context.Context) (*AnchorTask, error)
+	RestoreUserByName(ctx context.Context, name string) error
 	SetUserDefaultOrg(ctx context.Context, arg SetUserDefaultOrgParams) error
 	UpdateTask(ctx context.Context, arg UpdateTaskParams) error
 	UpdateTaskStartedAt(ctx context.Context, arg UpdateTaskStartedAtParams) error

@@ -93,6 +93,7 @@ type AnchorUser struct {
 	PasswordSalt string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+	DeletedAt    *time.Time
 }
 
 type AnchorUserDefaultOrg struct {

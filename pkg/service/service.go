@@ -41,6 +41,8 @@ type ServiceInterface interface {
 
 	DeleteUserByName(ctx context.Context, username string) error
 
+	RestoreUserByName(ctx context.Context, username string) error
+
 	// SignIn authenticates a user and returns credentials
 	SignIn(ctx context.Context, params apigen.SignInRequest) (*apigen.Credentials, error)
 

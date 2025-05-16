@@ -9,15 +9,16 @@ INSERT INTO anchor.users (
 
 -- name: GetUser :one
 SELECT * FROM anchor.users
-WHERE id = $1;
+WHERE id = $1 AND deleted_at IS NULL;
 
 -- name: GetUserByName :one
-SELECT * FROM anchor.users
-WHERE name = $1;
+SELECT * FROM anchor.users WHERE name = $1 AND deleted_at IS NULL;
 
 -- name: DeleteUserByName :exec
-DELETE FROM anchor.users
-WHERE name = $1;
+UPDATE anchor.users SET deleted_at = CURRENT_TIMESTAMP WHERE name = $1;
+
+-- name: RestoreUserByName :exec
+UPDATE anchor.users SET deleted_at = NULL WHERE name = $1;
 
 -- name: SetUserDefaultOrg :exec
 INSERT INTO anchor.user_default_orgs (user_id, org_id)
