@@ -13,6 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
+	macaroons "github.com/cloudcarver/anchor/pkg/macaroons"
 	pgx "github.com/jackc/pgx/v5"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -41,6 +42,20 @@ func (m *MockAnchorHookInterface) EXPECT() *MockAnchorHookInterfaceMockRecorder 
 	return m.recorder
 }
 
+// OnCreateToken mocks base method.
+func (m *MockAnchorHookInterface) OnCreateToken(ctx context.Context, macaroon *macaroons.Macaroon) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "OnCreateToken", ctx, macaroon)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// OnCreateToken indicates an expected call of OnCreateToken.
+func (mr *MockAnchorHookInterfaceMockRecorder) OnCreateToken(ctx, macaroon any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnCreateToken", reflect.TypeOf((*MockAnchorHookInterface)(nil).OnCreateToken), ctx, macaroon)
+}
+
 // OnOrgCreatedWithTx mocks base method.
 func (m *MockAnchorHookInterface) OnOrgCreatedWithTx(ctx context.Context, tx pgx.Tx, orgID int32) error {
 	m.ctrl.T.Helper()
@@ -53,6 +68,18 @@ func (m *MockAnchorHookInterface) OnOrgCreatedWithTx(ctx context.Context, tx pgx
 func (mr *MockAnchorHookInterfaceMockRecorder) OnOrgCreatedWithTx(ctx, tx, orgID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnOrgCreatedWithTx", reflect.TypeOf((*MockAnchorHookInterface)(nil).OnOrgCreatedWithTx), ctx, tx, orgID)
+}
+
+// RegisterOnCreateToken mocks base method.
+func (m *MockAnchorHookInterface) RegisterOnCreateToken(hook OnCreateToken) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "RegisterOnCreateToken", hook)
+}
+
+// RegisterOnCreateToken indicates an expected call of RegisterOnCreateToken.
+func (mr *MockAnchorHookInterfaceMockRecorder) RegisterOnCreateToken(hook any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterOnCreateToken", reflect.TypeOf((*MockAnchorHookInterface)(nil).RegisterOnCreateToken), hook)
 }
 
 // RegisterOnOrgCreatedWithTx mocks base method.

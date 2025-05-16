@@ -25,11 +25,12 @@ type Macaroon struct {
 
 	signature []byte
 
-	encodedToken *string
+	encodedToken      string
+	encodedTokenNoSig string
 }
 
 func (m *Macaroon) StringToken() string {
-	return *m.encodedToken
+	return m.encodedToken
 }
 
 func (m *Macaroon) Caveats() []Caveat {
@@ -38,6 +39,27 @@ func (m *Macaroon) Caveats() []Caveat {
 
 func (m *Macaroon) KeyID() int64 {
 	return m.keyID
+}
+
+func (m *Macaroon) AddCaveat(caveat Caveat) error {
+	// encode caveat
+	encodedCaveat, err := EncodeCaveat(caveat)
+	if err != nil {
+		return errors.Wrap(err, "failed to encode caveat")
+	}
+
+	// calculate the new signature
+	sig, err := sign(m.signature, encodedCaveat)
+	if err != nil {
+		return errors.Wrap(err, "failed to sign")
+	}
+	encodedSignature := base64.StdEncoding.EncodeToString(sig)
+
+	m.encodedTokenNoSig = m.encodedTokenNoSig + "." + encodedCaveat
+	m.encodedToken = m.encodedTokenNoSig + "." + encodedSignature
+	m.caveats = append(m.caveats, caveat)
+	m.signature = sig
+	return nil
 }
 
 type MacaroonsParser struct {
@@ -82,16 +104,21 @@ func CreateMacaroon(keyID int64, key []byte, caveats []Caveat) (*Macaroon, error
 		token += "." + encodedCaveat
 	}
 
-	signature := chainedHmac(key, encodedKeyID, encodedCaveats)
+	signature, err := chainedHmac(key, encodedKeyID, encodedCaveats)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to calculate signature")
+	}
 
 	encodedSignature := base64.StdEncoding.EncodeToString(signature)
+	encodedTokenNoSig := token
 	token += "." + encodedSignature
 
 	return &Macaroon{
-		keyID:        keyID,
-		caveats:      caveats,
-		signature:    signature,
-		encodedToken: &token,
+		keyID:             keyID,
+		caveats:           caveats,
+		signature:         signature,
+		encodedTokenNoSig: encodedTokenNoSig,
+		encodedToken:      token,
 	}, nil
 }
 
@@ -100,8 +127,12 @@ func (m *MacaroonsParser) Parse(ctx context.Context, token string) (*Macaroon, e
 	if len(parts) < 2 {
 		return nil, errors.Wrap(ErrMalformedToken, "token must contain at least 2 parts")
 	}
+	encodedKeyID := parts[0]
+	encodedCaveats := parts[1 : len(parts)-1]
+	encodedSignature := parts[len(parts)-1]
+
 	// decode nounce and keyID
-	header, err := base64.StdEncoding.DecodeString(parts[0])
+	header, err := base64.StdEncoding.DecodeString(encodedKeyID)
 	if err != nil {
 		return nil, errors.Wrap(ErrMalformedToken, "failed to decode header")
 	}
@@ -109,27 +140,29 @@ func (m *MacaroonsParser) Parse(ctx context.Context, token string) (*Macaroon, e
 	if err != nil {
 		return nil, errors.Wrap(ErrMalformedToken, "failed to convert keyID to int")
 	}
-	// decode signature
-	signature, err := base64.StdEncoding.DecodeString(parts[len(parts)-1])
-	if err != nil {
-		return nil, errors.Wrap(ErrMalformedToken, "failed to decode signature")
-	}
-
-	// verify signature
 	key, err := m.keyStore.Get(ctx, keyID)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get key")
 	}
 
-	calculatedSignature := chainedHmac(key, parts[0], parts[1:len(parts)-1])
+	// decode signature
+	signature, err := base64.StdEncoding.DecodeString(encodedSignature)
+	if err != nil {
+		return nil, errors.Wrap(ErrMalformedToken, "failed to decode signature")
+	}
 
+	// verify signature
+	calculatedSignature, err := chainedHmac(key, encodedKeyID, encodedCaveats)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to calculate signature")
+	}
 	if !hmac.Equal(signature, calculatedSignature) {
 		return nil, ErrInvalidSignature
 	}
 
 	// decode caveats
-	caveats := make([]Caveat, len(parts)-2)
-	for i, part := range parts[1 : len(parts)-1] {
+	caveats := make([]Caveat, len(encodedCaveats))
+	for i, part := range encodedCaveats {
 		caveat, err := m.caveatParser.Parse(part)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to parse caveat")
@@ -138,9 +171,11 @@ func (m *MacaroonsParser) Parse(ctx context.Context, token string) (*Macaroon, e
 	}
 
 	return &Macaroon{
-		keyID:     keyID,
-		caveats:   caveats,
-		signature: signature,
+		keyID:             keyID,
+		caveats:           caveats,
+		signature:         signature,
+		encodedTokenNoSig: strings.TrimSuffix(token, "."+encodedSignature),
+		encodedToken:      token,
 	}, nil
 }
 
@@ -154,15 +189,20 @@ func (m *MacaroonsParser) InvalidateUserTokens(ctx context.Context, userID int32
 	return nil
 }
 
-func chainedHmac(key []byte, encodedKeyID string, encodedCaveats []string) []byte {
-	parts := []string{encodedKeyID}
-	parts = append(parts, encodedCaveats...)
+func chainedHmac(key []byte, encodedKeyID string, encodedCaveats []string) ([]byte, error) {
+	parts := make([]string, len(encodedCaveats)+1)
+	parts[0] = encodedKeyID
+	copy(parts[1:], encodedCaveats)
 
-	hmac := hmac.New(sha256.New, key)
+	hmacKey := key
 	for _, part := range parts {
-		hmac.Write([]byte(part))
+		sig, err := sign(hmacKey, part)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to sign")
+		}
+		hmacKey = sig
 	}
-	return hmac.Sum(nil)
+	return hmacKey, nil
 }
 
 func randomKey() ([]byte, error) {
@@ -172,4 +212,12 @@ func randomKey() ([]byte, error) {
 		return nil, errors.Wrap(err, "failed to generate random key")
 	}
 	return key, nil
+}
+
+func sign(key []byte, content string) ([]byte, error) {
+	hash := hmac.New(sha256.New, key)
+	if _, err := hash.Write([]byte(content)); err != nil {
+		return nil, errors.Wrap(err, "failed to write to hmac")
+	}
+	return hash.Sum(nil), nil
 }

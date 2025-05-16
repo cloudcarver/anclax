@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/cloudcarver/anchor/pkg/hooks"
 	"github.com/cloudcarver/anchor/pkg/macaroons"
 	"github.com/gofiber/fiber/v2"
 	"github.com/pkg/errors"
@@ -47,6 +48,7 @@ type AuthInterface interface {
 
 type Auth struct {
 	macaroonsParser macaroons.MacaroonParserInterface
+	hooks           hooks.AnchorHookInterface
 }
 
 // Ensure AuthService implements AuthServiceInterface

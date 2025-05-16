@@ -17,15 +17,6 @@ type TestCaveat struct {
 	Data string
 }
 
-func (c *TestCaveat) Encode() (string, error) {
-	return c.Data, nil
-}
-
-func (c *TestCaveat) Decode(s string) error {
-	c.Data = s
-	return nil
-}
-
 func (c *TestCaveat) Type() string {
 	return "test"
 }
@@ -52,7 +43,7 @@ func TestMacaroonManager_CreateMacaroon(t *testing.T) {
 	)
 
 	keyStore.EXPECT().Create(gomock.Any(), userID, []byte("key"), ttl).Return(keyID, nil)
-	keyStore.EXPECT().Get(gomock.Any(), keyID).Return([]byte("key"), nil)
+	keyStore.EXPECT().Get(gomock.Any(), keyID).Return([]byte("key"), nil).Times(2)
 
 	encodedCaveat1, err := EncodeCaveat(caveats[0])
 	require.NoError(t, err)
@@ -75,6 +66,20 @@ func TestMacaroonManager_CreateMacaroon(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, keyID, parsed.keyID)
 	require.Equal(t, caveats, parsed.caveats)
+
+	macaroon.AddCaveat(&TestCaveat{Data: "caveat3"})
+	require.NoError(t, err)
+
+	encodedCaveat3, err := EncodeCaveat(&TestCaveat{Data: "caveat3"})
+	require.NoError(t, err)
+
+	caveatParser.EXPECT().Parse(encodedCaveat1).Return(caveats[0], nil)
+	caveatParser.EXPECT().Parse(encodedCaveat2).Return(caveats[1], nil)
+	caveatParser.EXPECT().Parse(encodedCaveat3).Return(&TestCaveat{Data: "caveat3"}, nil)
+
+	parsed, err = manager.Parse(context.Background(), macaroon.StringToken())
+	require.NoError(t, err)
+	require.Equal(t, append(caveats, &TestCaveat{Data: "caveat3"}), parsed.caveats)
 }
 
 func TestInvalidateUserTokens(t *testing.T) {
@@ -123,4 +128,36 @@ func TestInvalidateUserTokens(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestChainedHmac(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	var (
+		key            = []byte("key")
+		keyID          = "9527"
+		encodedCaveats = []string{"caveat1", "caveat2", "caveat3"}
+	)
+
+	signature, err := chainedHmac(key, keyID, encodedCaveats)
+	require.NoError(t, err)
+
+	s1, err := sign(key, keyID)
+	require.NoError(t, err)
+	s2, err := sign(s1, encodedCaveats[0])
+	require.NoError(t, err)
+	s3, err := sign(s2, encodedCaveats[1])
+	require.NoError(t, err)
+	s4, err := sign(s3, encodedCaveats[2])
+	require.NoError(t, err)
+	require.Equal(t, signature, s4)
+
+	v1, err := chainedHmac(key, keyID, encodedCaveats[:2])
+	require.NoError(t, err)
+	require.Equal(t, s3, v1)
+
+	v2, err := sign(v1, "caveat3")
+	require.NoError(t, err)
+	require.Equal(t, signature, v2)
 }
