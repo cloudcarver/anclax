@@ -94,7 +94,7 @@ func (s *Service) CreateNewUser(ctx context.Context, username, password string) 
 	var orgID int32
 
 	if err := s.m.RunTransactionWithTx(ctx, func(tx pgx.Tx, txm model.ModelInterface) error {
-		org, err := s.m.CreateOrg(ctx, fmt.Sprintf("%s's Org", username))
+		org, err := txm.CreateOrg(ctx, fmt.Sprintf("%s's Org", username))
 		if err != nil {
 			return errors.Wrapf(err, "failed to create organization")
 		}
@@ -128,7 +128,7 @@ func (s *Service) CreateNewUser(ctx context.Context, username, password string) 
 			return errors.Wrapf(err, "failed to create organization user")
 		}
 
-		if err := s.m.SetUserDefaultOrg(ctx, querier.SetUserDefaultOrgParams{
+		if err := txm.SetUserDefaultOrg(ctx, querier.SetUserDefaultOrgParams{
 			UserID: user.ID,
 			OrgID:  org.ID,
 		}); err != nil {
