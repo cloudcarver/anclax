@@ -46,22 +46,33 @@ type AuthInterface interface {
 }
 
 type Auth struct {
-	macaroons macaroons.MacaroonManagerInterface
+	macaroonsParser macaroons.MacaroonParserInterface
 }
 
 // Ensure AuthService implements AuthServiceInterface
 var _ AuthInterface = (*Auth)(nil)
 
-func NewAuth(macaroons macaroons.MacaroonManagerInterface) (AuthInterface, error) {
+func NewAuth(macaroonsParser macaroons.MacaroonParserInterface, caveatParser macaroons.CaveatParserInterface) (AuthInterface, error) {
+	if err := caveatParser.Register(CaveatUserContext, func() macaroons.Caveat {
+		return &UserContextCaveat{}
+	}); err != nil {
+		return nil, err
+	}
+	if err := caveatParser.Register(CaveatRefreshOnly, func() macaroons.Caveat {
+		return &RefreshOnlyCaveat{}
+	}); err != nil {
+		return nil, err
+	}
+
 	return &Auth{
-		macaroons: macaroons,
+		macaroonsParser: macaroonsParser,
 	}, nil
 }
 
 func (a *Auth) Authfunc(c *fiber.Ctx) error {
 	authHeader := c.Get("Authorization")
 	if authHeader == "" {
-		return errors.New("missing authorization header")
+		return errors.Wrap(fiber.ErrUnauthorized, "missing authorization header")
 	}
 
 	// Remove "Bearer " prefix if present
@@ -70,14 +81,14 @@ func (a *Auth) Authfunc(c *fiber.Ctx) error {
 		tokenString = authHeader[7:]
 	}
 
-	token, err := a.macaroons.Parse(c.Context(), tokenString)
+	token, err := a.macaroonsParser.Parse(c.Context(), tokenString)
 	if err != nil {
-		return errors.Wrapf(err, "failed to parse macaroon token, token: %s", tokenString)
+		return errors.Wrapf(fiber.ErrUnauthorized, "failed to parse macaroon token, token: %s, err: %v", tokenString, err)
 	}
 
 	for _, caveat := range token.Caveats() {
 		if err := caveat.Validate(c); err != nil {
-			return errors.Wrapf(err, "failed to validate macaroon token, caveat: %s, token: %s", caveat.Type(), tokenString)
+			return errors.Wrapf(fiber.ErrUnauthorized, "failed to validate caveat, token: %s, err: %v", tokenString, err)
 		}
 	}
 
@@ -85,7 +96,7 @@ func (a *Auth) Authfunc(c *fiber.Ctx) error {
 }
 
 func (a *Auth) CreateToken(ctx context.Context, userID int32, caveats ...macaroons.Caveat) (int64, string, error) {
-	token, err := a.macaroons.CreateToken(ctx, userID, append(caveats, NewUserContextCaveat(userID)), TimeoutAccessToken)
+	token, err := a.macaroonsParser.CreateToken(ctx, userID, append(caveats, NewUserContextCaveat(userID)), TimeoutAccessToken)
 	if err != nil {
 		return 0, "", errors.Wrap(err, "failed to create macaroon token")
 	}
@@ -93,7 +104,7 @@ func (a *Auth) CreateToken(ctx context.Context, userID int32, caveats ...macaroo
 }
 
 func (a *Auth) CreateRefreshToken(ctx context.Context, accessKeyID int64, userID int32) (string, error) {
-	token, err := a.macaroons.CreateToken(ctx, userID, []macaroons.Caveat{
+	token, err := a.macaroonsParser.CreateToken(ctx, userID, []macaroons.Caveat{
 		NewRefreshOnlyCaveat(userID, accessKeyID),
 	}, TimeoutRefreshToken)
 	if err != nil {
@@ -103,7 +114,7 @@ func (a *Auth) CreateRefreshToken(ctx context.Context, accessKeyID int64, userID
 }
 
 func (a *Auth) ParseRefreshToken(ctx context.Context, refreshToken string) (int32, error) {
-	token, err := a.macaroons.Parse(ctx, refreshToken)
+	token, err := a.macaroonsParser.Parse(ctx, refreshToken)
 	if err != nil {
 		return 0, errors.Wrapf(err, "failed to parse macaroon token, token: %s", refreshToken)
 	}
@@ -122,7 +133,7 @@ func (a *Auth) ParseRefreshToken(ctx context.Context, refreshToken string) (int3
 }
 
 func (a *Auth) InvalidateUserTokens(ctx context.Context, userID int32) error {
-	return a.macaroons.InvalidateUserTokens(ctx, userID)
+	return a.macaroonsParser.InvalidateUserTokens(ctx, userID)
 }
 
 func GetUserID(c *fiber.Ctx) (int32, error) {

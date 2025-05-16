@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -19,8 +20,11 @@ func TestAuth_Authfunc(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockMacaroons := macaroons.NewMockMacaroonManagerInterface(ctrl)
-	auth, err := NewAuth(mockMacaroons)
+	mockMacaroons := macaroons.NewMockMacaroonParserInterface(ctrl)
+	mockCaveatParser := macaroons.NewMockCaveatParserInterface(ctrl)
+	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)
+	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
+	auth, err := NewAuth(mockMacaroons, mockCaveatParser)
 	require.NoError(t, err)
 
 	// Test token
@@ -60,7 +64,6 @@ func TestAuth_Authfunc(t *testing.T) {
 			authHeader: testToken,
 			setupMock: func() {
 				mockCaveat := macaroons.NewMockCaveat(ctrl)
-				mockCaveat.EXPECT().Encode().Return("caveat", nil)
 
 				macaroon, err := macaroons.CreateMacaroon(123, []byte("key"), []macaroons.Caveat{mockCaveat})
 				require.NoError(t, err)
@@ -76,7 +79,6 @@ func TestAuth_Authfunc(t *testing.T) {
 			authHeader: testToken,
 			setupMock: func() {
 				mockCaveat := macaroons.NewMockCaveat(ctrl)
-				mockCaveat.EXPECT().Encode().Return("caveat", nil)
 				macaroon, err := macaroons.CreateMacaroon(123, []byte("key"), []macaroons.Caveat{mockCaveat})
 				require.NoError(t, err)
 
@@ -94,14 +96,15 @@ func TestAuth_Authfunc(t *testing.T) {
 				ErrorHandler: utils.ErrorHandler,
 			})
 
-			// Add a test route
+			// Add a test route with response body
 			app.Use(func(c *fiber.Ctx) error {
 				// Call auth.Authfunc
 				err := auth.Authfunc(c)
 				if err != nil {
 					return err
 				}
-				return nil
+				// Add a response body for successful requests
+				return c.SendString("Request processed successfully")
 			})
 
 			// Set up mock expectations
@@ -117,6 +120,16 @@ func TestAuth_Authfunc(t *testing.T) {
 			resp, err := app.Test(req)
 			require.NoError(t, err)
 
+			// Read and print the response body
+			if resp.Body != nil {
+				bodyBytes, readErr := io.ReadAll(resp.Body)
+				if readErr == nil {
+					t.Logf("Response Body for %s: %s", tc.name, string(bodyBytes))
+				} else {
+					t.Logf("Error reading response body: %v", readErr)
+				}
+			}
+
 			// Verify status code
 			require.Equal(t, tc.expectedStatus, resp.StatusCode)
 		})
@@ -127,8 +140,11 @@ func TestAuth_CreateToken(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockMacaroons := macaroons.NewMockMacaroonManagerInterface(ctrl)
-	auth, err := NewAuth(mockMacaroons)
+	mockMacaroons := macaroons.NewMockMacaroonParserInterface(ctrl)
+	mockCaveatParser := macaroons.NewMockCaveatParserInterface(ctrl)
+	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)
+	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
+	auth, err := NewAuth(mockMacaroons, mockCaveatParser)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -205,8 +221,11 @@ func TestAuth_CreateRefreshToken(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockMacaroons := macaroons.NewMockMacaroonManagerInterface(ctrl)
-	auth, err := NewAuth(mockMacaroons)
+	mockMacaroons := macaroons.NewMockMacaroonParserInterface(ctrl)
+	mockCaveatParser := macaroons.NewMockCaveatParserInterface(ctrl)
+	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)
+	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
+	auth, err := NewAuth(mockMacaroons, mockCaveatParser)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -279,8 +298,12 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockMacaroons := macaroons.NewMockMacaroonManagerInterface(ctrl)
-	auth, err := NewAuth(mockMacaroons)
+	mockMacaroons := macaroons.NewMockMacaroonParserInterface(ctrl)
+	mockCaveatParser := macaroons.NewMockCaveatParserInterface(ctrl)
+	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)
+	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
+	auth, err := NewAuth(mockMacaroons, mockCaveatParser)
+
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -291,7 +314,6 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 	require.NoError(t, err)
 
 	noRefreshCaveat := macaroons.NewMockCaveat(ctrl)
-	noRefreshCaveat.EXPECT().Encode().Return("caveat", nil)
 	noRefreshCaveat.EXPECT().Type().Return("not_refresh")
 	noRefreshMacaroon, err := macaroons.CreateMacaroon(0, []byte("key"), []macaroons.Caveat{noRefreshCaveat})
 	require.NoError(t, err)
@@ -354,8 +376,11 @@ func TestAuth_InvalidateUserTokens(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockMacaroons := macaroons.NewMockMacaroonManagerInterface(ctrl)
-	auth, err := NewAuth(mockMacaroons)
+	mockMacaroons := macaroons.NewMockMacaroonParserInterface(ctrl)
+	mockCaveatParser := macaroons.NewMockCaveatParserInterface(ctrl)
+	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)
+	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
+	auth, err := NewAuth(mockMacaroons, mockCaveatParser)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -545,9 +570,13 @@ func TestNewAuth(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockMacaroons := macaroons.NewMockMacaroonManagerInterface(ctrl)
+	mockMacaroons := macaroons.NewMockMacaroonParserInterface(ctrl)
+	mockCaveatParser := macaroons.NewMockCaveatParserInterface(ctrl)
 
-	auth, err := NewAuth(mockMacaroons)
+	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)
+	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
+
+	auth, err := NewAuth(mockMacaroons, mockCaveatParser)
 	require.NoError(t, err)
 	require.NotNil(t, auth)
 }

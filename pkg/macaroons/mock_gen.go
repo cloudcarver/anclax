@@ -18,32 +18,32 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
-// MockCaveatParser is a mock of CaveatParser interface.
-type MockCaveatParser struct {
+// MockCaveatParserInterface is a mock of CaveatParserInterface interface.
+type MockCaveatParserInterface struct {
 	ctrl     *gomock.Controller
-	recorder *MockCaveatParserMockRecorder
+	recorder *MockCaveatParserInterfaceMockRecorder
 	isgomock struct{}
 }
 
-// MockCaveatParserMockRecorder is the mock recorder for MockCaveatParser.
-type MockCaveatParserMockRecorder struct {
-	mock *MockCaveatParser
+// MockCaveatParserInterfaceMockRecorder is the mock recorder for MockCaveatParserInterface.
+type MockCaveatParserInterfaceMockRecorder struct {
+	mock *MockCaveatParserInterface
 }
 
-// NewMockCaveatParser creates a new mock instance.
-func NewMockCaveatParser(ctrl *gomock.Controller) *MockCaveatParser {
-	mock := &MockCaveatParser{ctrl: ctrl}
-	mock.recorder = &MockCaveatParserMockRecorder{mock}
+// NewMockCaveatParserInterface creates a new mock instance.
+func NewMockCaveatParserInterface(ctrl *gomock.Controller) *MockCaveatParserInterface {
+	mock := &MockCaveatParserInterface{ctrl: ctrl}
+	mock.recorder = &MockCaveatParserInterfaceMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockCaveatParser) EXPECT() *MockCaveatParserMockRecorder {
+func (m *MockCaveatParserInterface) EXPECT() *MockCaveatParserInterfaceMockRecorder {
 	return m.recorder
 }
 
 // Parse mocks base method.
-func (m *MockCaveatParser) Parse(arg0 string) (Caveat, error) {
+func (m *MockCaveatParserInterface) Parse(arg0 string) (Caveat, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Parse", arg0)
 	ret0, _ := ret[0].(Caveat)
@@ -52,9 +52,23 @@ func (m *MockCaveatParser) Parse(arg0 string) (Caveat, error) {
 }
 
 // Parse indicates an expected call of Parse.
-func (mr *MockCaveatParserMockRecorder) Parse(arg0 any) *gomock.Call {
+func (mr *MockCaveatParserInterfaceMockRecorder) Parse(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Parse", reflect.TypeOf((*MockCaveatParser)(nil).Parse), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Parse", reflect.TypeOf((*MockCaveatParserInterface)(nil).Parse), arg0)
+}
+
+// Register mocks base method.
+func (m *MockCaveatParserInterface) Register(typ string, constructor CaveatConstructor) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Register", typ, constructor)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Register indicates an expected call of Register.
+func (mr *MockCaveatParserInterfaceMockRecorder) Register(typ, constructor any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Register", reflect.TypeOf((*MockCaveatParserInterface)(nil).Register), typ, constructor)
 }
 
 // MockCaveat is a mock of Caveat interface.
@@ -79,35 +93,6 @@ func NewMockCaveat(ctrl *gomock.Controller) *MockCaveat {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockCaveat) EXPECT() *MockCaveatMockRecorder {
 	return m.recorder
-}
-
-// Decode mocks base method.
-func (m *MockCaveat) Decode(arg0 string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Decode", arg0)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Decode indicates an expected call of Decode.
-func (mr *MockCaveatMockRecorder) Decode(arg0 any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Decode", reflect.TypeOf((*MockCaveat)(nil).Decode), arg0)
-}
-
-// Encode mocks base method.
-func (m *MockCaveat) Encode() (string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Encode")
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// Encode indicates an expected call of Encode.
-func (mr *MockCaveatMockRecorder) Encode() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Encode", reflect.TypeOf((*MockCaveat)(nil).Encode))
 }
 
 // Type mocks base method.
@@ -138,32 +123,32 @@ func (mr *MockCaveatMockRecorder) Validate(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Validate", reflect.TypeOf((*MockCaveat)(nil).Validate), arg0)
 }
 
-// MockMacaroonManagerInterface is a mock of MacaroonManagerInterface interface.
-type MockMacaroonManagerInterface struct {
+// MockMacaroonParserInterface is a mock of MacaroonParserInterface interface.
+type MockMacaroonParserInterface struct {
 	ctrl     *gomock.Controller
-	recorder *MockMacaroonManagerInterfaceMockRecorder
+	recorder *MockMacaroonParserInterfaceMockRecorder
 	isgomock struct{}
 }
 
-// MockMacaroonManagerInterfaceMockRecorder is the mock recorder for MockMacaroonManagerInterface.
-type MockMacaroonManagerInterfaceMockRecorder struct {
-	mock *MockMacaroonManagerInterface
+// MockMacaroonParserInterfaceMockRecorder is the mock recorder for MockMacaroonParserInterface.
+type MockMacaroonParserInterfaceMockRecorder struct {
+	mock *MockMacaroonParserInterface
 }
 
-// NewMockMacaroonManagerInterface creates a new mock instance.
-func NewMockMacaroonManagerInterface(ctrl *gomock.Controller) *MockMacaroonManagerInterface {
-	mock := &MockMacaroonManagerInterface{ctrl: ctrl}
-	mock.recorder = &MockMacaroonManagerInterfaceMockRecorder{mock}
+// NewMockMacaroonParserInterface creates a new mock instance.
+func NewMockMacaroonParserInterface(ctrl *gomock.Controller) *MockMacaroonParserInterface {
+	mock := &MockMacaroonParserInterface{ctrl: ctrl}
+	mock.recorder = &MockMacaroonParserInterfaceMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockMacaroonManagerInterface) EXPECT() *MockMacaroonManagerInterfaceMockRecorder {
+func (m *MockMacaroonParserInterface) EXPECT() *MockMacaroonParserInterfaceMockRecorder {
 	return m.recorder
 }
 
 // CreateToken mocks base method.
-func (m *MockMacaroonManagerInterface) CreateToken(ctx context.Context, userID int32, caveats []Caveat, ttl time.Duration) (*Macaroon, error) {
+func (m *MockMacaroonParserInterface) CreateToken(ctx context.Context, userID int32, caveats []Caveat, ttl time.Duration) (*Macaroon, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateToken", ctx, userID, caveats, ttl)
 	ret0, _ := ret[0].(*Macaroon)
@@ -172,13 +157,13 @@ func (m *MockMacaroonManagerInterface) CreateToken(ctx context.Context, userID i
 }
 
 // CreateToken indicates an expected call of CreateToken.
-func (mr *MockMacaroonManagerInterfaceMockRecorder) CreateToken(ctx, userID, caveats, ttl any) *gomock.Call {
+func (mr *MockMacaroonParserInterfaceMockRecorder) CreateToken(ctx, userID, caveats, ttl any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateToken", reflect.TypeOf((*MockMacaroonManagerInterface)(nil).CreateToken), ctx, userID, caveats, ttl)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateToken", reflect.TypeOf((*MockMacaroonParserInterface)(nil).CreateToken), ctx, userID, caveats, ttl)
 }
 
 // InvalidateUserTokens mocks base method.
-func (m *MockMacaroonManagerInterface) InvalidateUserTokens(ctx context.Context, userID int32) error {
+func (m *MockMacaroonParserInterface) InvalidateUserTokens(ctx context.Context, userID int32) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "InvalidateUserTokens", ctx, userID)
 	ret0, _ := ret[0].(error)
@@ -186,13 +171,13 @@ func (m *MockMacaroonManagerInterface) InvalidateUserTokens(ctx context.Context,
 }
 
 // InvalidateUserTokens indicates an expected call of InvalidateUserTokens.
-func (mr *MockMacaroonManagerInterfaceMockRecorder) InvalidateUserTokens(ctx, userID any) *gomock.Call {
+func (mr *MockMacaroonParserInterfaceMockRecorder) InvalidateUserTokens(ctx, userID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InvalidateUserTokens", reflect.TypeOf((*MockMacaroonManagerInterface)(nil).InvalidateUserTokens), ctx, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InvalidateUserTokens", reflect.TypeOf((*MockMacaroonParserInterface)(nil).InvalidateUserTokens), ctx, userID)
 }
 
 // Parse mocks base method.
-func (m *MockMacaroonManagerInterface) Parse(ctx context.Context, token string) (*Macaroon, error) {
+func (m *MockMacaroonParserInterface) Parse(ctx context.Context, token string) (*Macaroon, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Parse", ctx, token)
 	ret0, _ := ret[0].(*Macaroon)
@@ -201,7 +186,7 @@ func (m *MockMacaroonManagerInterface) Parse(ctx context.Context, token string) 
 }
 
 // Parse indicates an expected call of Parse.
-func (mr *MockMacaroonManagerInterfaceMockRecorder) Parse(ctx, token any) *gomock.Call {
+func (mr *MockMacaroonParserInterfaceMockRecorder) Parse(ctx, token any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Parse", reflect.TypeOf((*MockMacaroonManagerInterface)(nil).Parse), ctx, token)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Parse", reflect.TypeOf((*MockMacaroonParserInterface)(nil).Parse), ctx, token)
 }

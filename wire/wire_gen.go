@@ -40,9 +40,9 @@ func InitializeApplication() (*app.Application, error) {
 	taskStoreInterface := taskcore.NewTaskStore(modelInterface)
 	taskRunner := taskgen.NewTaskRunner(taskStoreInterface)
 	keyStore := store.NewStore(modelInterface, taskRunner)
-	caveatParser := auth.NewCaveatParser()
-	macaroonManagerInterface := macaroons.NewMacaroonManager(keyStore, caveatParser)
-	authInterface, err := auth.NewAuth(macaroonManagerInterface)
+	caveatParserInterface := macaroons.NewCaveatParser()
+	macaroonParserInterface := macaroons.NewMacaroonManager(keyStore, caveatParserInterface)
+	authInterface, err := auth.NewAuth(macaroonParserInterface, caveatParserInterface)
 	if err != nil {
 		return nil, err
 	}

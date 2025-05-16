@@ -37,7 +37,7 @@ func InitializeApplication() (*app.Application, error) {
 		macaroons.NewMacaroonManager,
 		store.NewStore,
 		taskcore.NewTaskStore,
-		auth.NewCaveatParser,
+		macaroons.NewCaveatParser,
 		globalctx.New,
 		metrics.NewMetricsServer,
 		worker.NewWorker,

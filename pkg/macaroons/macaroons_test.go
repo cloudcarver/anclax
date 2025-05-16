@@ -39,7 +39,7 @@ func TestMacaroonManager_CreateMacaroon(t *testing.T) {
 	defer ctrl.Finish()
 
 	keyStore := store_mock.NewMockKeyStore(ctrl)
-	caveatParser := NewMockCaveatParser(ctrl)
+	caveatParser := NewMockCaveatParserInterface(ctrl)
 
 	var (
 		keyID   = int64(9527)
@@ -54,10 +54,15 @@ func TestMacaroonManager_CreateMacaroon(t *testing.T) {
 	keyStore.EXPECT().Create(gomock.Any(), userID, []byte("key"), ttl).Return(keyID, nil)
 	keyStore.EXPECT().Get(gomock.Any(), keyID).Return([]byte("key"), nil)
 
-	caveatParser.EXPECT().Parse("caveat1").Return(caveats[0], nil)
-	caveatParser.EXPECT().Parse("caveat2").Return(caveats[1], nil)
+	encodedCaveat1, err := EncodeCaveat(caveats[0])
+	require.NoError(t, err)
+	encodedCaveat2, err := EncodeCaveat(caveats[1])
+	require.NoError(t, err)
 
-	manager := &MacaroonManager{
+	caveatParser.EXPECT().Parse(encodedCaveat1).Return(caveats[0], nil)
+	caveatParser.EXPECT().Parse(encodedCaveat2).Return(caveats[1], nil)
+
+	manager := &MacaroonsParser{
 		keyStore:     keyStore,
 		caveatParser: caveatParser,
 		randomKey:    func() ([]byte, error) { return []byte("key"), nil },
@@ -104,7 +109,7 @@ func TestInvalidateUserTokens(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			keyStore.EXPECT().DeleteUserKeys(gomock.Any(), userID).Return(tc.err)
 
-			manager := &MacaroonManager{
+			manager := &MacaroonsParser{
 				keyStore: keyStore,
 			}
 

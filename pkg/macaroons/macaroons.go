@@ -40,22 +40,22 @@ func (m *Macaroon) KeyID() int64 {
 	return m.keyID
 }
 
-type MacaroonManager struct {
+type MacaroonsParser struct {
 	keyStore     store.KeyStore
-	caveatParser CaveatParser
+	caveatParser CaveatParserInterface
 
 	randomKey func() ([]byte, error)
 }
 
-func NewMacaroonManager(keyStore store.KeyStore, caveatParser CaveatParser) MacaroonManagerInterface {
-	return &MacaroonManager{
+func NewMacaroonManager(keyStore store.KeyStore, caveatParser CaveatParserInterface) MacaroonParserInterface {
+	return &MacaroonsParser{
 		keyStore:     keyStore,
 		caveatParser: caveatParser,
 		randomKey:    randomKey,
 	}
 }
 
-func (m *MacaroonManager) CreateToken(ctx context.Context, userID int32, caveats []Caveat, ttl time.Duration) (*Macaroon, error) {
+func (m *MacaroonsParser) CreateToken(ctx context.Context, userID int32, caveats []Caveat, ttl time.Duration) (*Macaroon, error) {
 	key, err := m.randomKey()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate random key")
@@ -74,7 +74,7 @@ func CreateMacaroon(keyID int64, key []byte, caveats []Caveat) (*Macaroon, error
 
 	encodedCaveats := make([]string, len(caveats))
 	for i, caveat := range caveats {
-		encodedCaveat, err := caveat.Encode()
+		encodedCaveat, err := EncodeCaveat(caveat)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to encode caveat")
 		}
@@ -95,7 +95,7 @@ func CreateMacaroon(keyID int64, key []byte, caveats []Caveat) (*Macaroon, error
 	}, nil
 }
 
-func (m *MacaroonManager) Parse(ctx context.Context, token string) (*Macaroon, error) {
+func (m *MacaroonsParser) Parse(ctx context.Context, token string) (*Macaroon, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) < 2 {
 		return nil, errors.Wrap(ErrMalformedToken, "token must contain at least 2 parts")
@@ -144,7 +144,7 @@ func (m *MacaroonManager) Parse(ctx context.Context, token string) (*Macaroon, e
 	}, nil
 }
 
-func (m *MacaroonManager) InvalidateUserTokens(ctx context.Context, userID int32) error {
+func (m *MacaroonsParser) InvalidateUserTokens(ctx context.Context, userID int32) error {
 	if err := m.keyStore.DeleteUserKeys(ctx, userID); err != nil {
 		if errors.Is(err, store.ErrKeyNotFound) {
 			return nil
