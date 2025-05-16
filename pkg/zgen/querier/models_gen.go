@@ -95,6 +95,12 @@ type AnchorUser struct {
 	UpdatedAt    time.Time
 }
 
+type AnchorUserDefaultOrg struct {
+	UserID    int32
+	OrgID     int32
+	CreatedAt time.Time
+}
+
 type AnchorUsersRole struct {
 	UserID    int32
 	RoleID    int32

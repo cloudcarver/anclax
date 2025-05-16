@@ -58,6 +58,11 @@ func TestCreateNewUser(t *testing.T) {
 		OrgID:  orgID,
 	}).Return(nil, nil)
 
+	mockModel.EXPECT().SetUserDefaultOrg(ctx, querier.SetUserDefaultOrgParams{
+		UserID: userID,
+		OrgID:  orgID,
+	}).Return(nil)
+
 	service := &Service{
 		m:     mockModel,
 		hooks: mockHooks,

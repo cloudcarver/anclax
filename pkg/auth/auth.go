@@ -34,7 +34,7 @@ type AuthInterface interface {
 
 	// CreateToken creates a macaroon token for the given user, the userID is required to track all generated keys.
 	// When the user logout, all keys will be invalidated.
-	CreateToken(ctx context.Context, userID int32, caveats ...macaroons.Caveat) (int64, string, error)
+	CreateToken(ctx context.Context, userID int32, orgID int32, caveats ...macaroons.Caveat) (int64, string, error)
 
 	// CreateRefreshToken returns a refresh token
 	CreateRefreshToken(ctx context.Context, accessKeyID int64, userID int32) (string, error)
@@ -98,8 +98,8 @@ func (a *Auth) Authfunc(c *fiber.Ctx) error {
 	return nil
 }
 
-func (a *Auth) CreateToken(ctx context.Context, userID int32, caveats ...macaroons.Caveat) (int64, string, error) {
-	token, err := a.macaroonsParser.CreateToken(ctx, userID, append(caveats, NewUserContextCaveat(userID)), TimeoutAccessToken)
+func (a *Auth) CreateToken(ctx context.Context, userID int32, orgID int32, caveats ...macaroons.Caveat) (int64, string, error) {
+	token, err := a.macaroonsParser.CreateToken(ctx, userID, append(caveats, NewUserContextCaveat(userID, orgID)), TimeoutAccessToken)
 	if err != nil {
 		return 0, "", errors.Wrap(err, "failed to create macaroon token")
 	}

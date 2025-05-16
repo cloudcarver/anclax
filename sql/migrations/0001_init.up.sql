@@ -19,6 +19,14 @@ CREATE TABLE IF NOT EXISTS anchor.users (
     updated_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS anchor.user_default_orgs (
+    user_id    INTEGER NOT NULL REFERENCES anchor.users(id) ON UPDATE CASCADE,
+    org_id     INTEGER NOT NULL REFERENCES anchor.orgs(id) ON UPDATE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
+    PRIMARY KEY (user_id)
+);
+
 CREATE TABLE IF NOT EXISTS anchor.org_users (
     org_id     INTEGER NOT NULL REFERENCES anchor.orgs(id) ON UPDATE CASCADE,
     user_id    INTEGER NOT NULL REFERENCES anchor.users(id) ON UPDATE CASCADE,

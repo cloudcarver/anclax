@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/cloudcarver/anchor/pkg/auth"
 	"github.com/cloudcarver/anchor/pkg/utils"
 	"github.com/cloudcarver/anchor/pkg/zcore/model"
 	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
@@ -33,7 +32,12 @@ func (s *Service) SignIn(ctx context.Context, params apigen.SignInRequest) (*api
 		return nil, errors.Wrapf(err, "failed to invalidate user tokens")
 	}
 
-	keyID, token, err := s.auth.CreateToken(ctx, user.ID, auth.NewUserContextCaveat(user.ID))
+	orgID, err := s.m.GetUserDefaultOrg(ctx, user.ID)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get user default org")
+	}
+
+	keyID, token, err := s.auth.CreateToken(ctx, user.ID, orgID)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create token")
 	}
@@ -59,7 +63,12 @@ func (s *Service) RefreshToken(ctx context.Context, userID int32, refreshToken s
 		return nil, errors.Wrapf(err, "failed to invalidate user tokens")
 	}
 
-	keyID, accessToken, err := s.auth.CreateToken(ctx, user.ID, auth.NewUserContextCaveat(user.ID))
+	orgID, err := s.m.GetUserDefaultOrg(ctx, userID)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get user default org")
+	}
+
+	keyID, accessToken, err := s.auth.CreateToken(ctx, user.ID, orgID)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create token")
 	}
@@ -117,6 +126,13 @@ func (s *Service) CreateNewUser(ctx context.Context, username, password string) 
 			OrgID:  org.ID,
 		}); err != nil {
 			return errors.Wrapf(err, "failed to create organization user")
+		}
+
+		if err := s.m.SetUserDefaultOrg(ctx, querier.SetUserDefaultOrgParams{
+			UserID: user.ID,
+			OrgID:  org.ID,
+		}); err != nil {
+			return errors.Wrapf(err, "failed to set user default org")
 		}
 		return nil
 	}); err != nil {

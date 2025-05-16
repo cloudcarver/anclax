@@ -158,6 +158,8 @@ func TestAuth_CreateToken(t *testing.T) {
 		ID: userID,
 	}
 
+	orgID := int32(101)
+
 	macaroon, err := macaroons.CreateMacaroon(123, []byte("key"), nil)
 	require.NoError(t, err)
 	testCases := []struct {
@@ -205,7 +207,7 @@ func TestAuth_CreateToken(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.setupMock()
 
-			gotKeyID, gotToken, err := auth.CreateToken(ctx, tc.user.ID, NewUserContextCaveat(tc.user.ID))
+			gotKeyID, gotToken, err := auth.CreateToken(ctx, tc.user.ID, orgID)
 
 			if tc.expectedError != nil {
 				require.Error(t, err)

@@ -279,6 +279,21 @@ func (mr *MockModelInterfaceMockRecorder) GetUserByName(ctx, name any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserByName", reflect.TypeOf((*MockModelInterface)(nil).GetUserByName), ctx, name)
 }
 
+// GetUserDefaultOrg mocks base method.
+func (m *MockModelInterface) GetUserDefaultOrg(ctx context.Context, userID int32) (int32, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUserDefaultOrg", ctx, userID)
+	ret0, _ := ret[0].(int32)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetUserDefaultOrg indicates an expected call of GetUserDefaultOrg.
+func (mr *MockModelInterfaceMockRecorder) GetUserDefaultOrg(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserDefaultOrg", reflect.TypeOf((*MockModelInterface)(nil).GetUserDefaultOrg), ctx, userID)
+}
+
 // InTransaction mocks base method.
 func (m *MockModelInterface) InTransaction() bool {
 	m.ctrl.T.Helper()
@@ -394,6 +409,20 @@ func (m *MockModelInterface) RunTransactionWithTx(ctx context.Context, f func(pg
 func (mr *MockModelInterfaceMockRecorder) RunTransactionWithTx(ctx, f any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunTransactionWithTx", reflect.TypeOf((*MockModelInterface)(nil).RunTransactionWithTx), ctx, f)
+}
+
+// SetUserDefaultOrg mocks base method.
+func (m *MockModelInterface) SetUserDefaultOrg(ctx context.Context, arg querier.SetUserDefaultOrgParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetUserDefaultOrg", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetUserDefaultOrg indicates an expected call of SetUserDefaultOrg.
+func (mr *MockModelInterfaceMockRecorder) SetUserDefaultOrg(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetUserDefaultOrg", reflect.TypeOf((*MockModelInterface)(nil).SetUserDefaultOrg), ctx, arg)
 }
 
 // SpawnWithTx mocks base method.

@@ -27,11 +27,13 @@ type Querier interface {
 	GetTaskByID(ctx context.Context, id int32) (*AnchorTask, error)
 	GetUser(ctx context.Context, id int32) (*AnchorUser, error)
 	GetUserByName(ctx context.Context, name string) (*AnchorUser, error)
+	GetUserDefaultOrg(ctx context.Context, userID int32) (int32, error)
 	InsertEvent(ctx context.Context, spec apigen.EventSpec) (*AnchorEvent, error)
 	InsertOrgOwner(ctx context.Context, arg InsertOrgOwnerParams) (*AnchorOrgOwner, error)
 	InsertOrgUser(ctx context.Context, arg InsertOrgUserParams) (*AnchorOrgUser, error)
 	ListOrgs(ctx context.Context, userID int32) ([]*AnchorOrg, error)
 	PullTask(ctx context.Context) (*AnchorTask, error)
+	SetUserDefaultOrg(ctx context.Context, arg SetUserDefaultOrgParams) error
 	UpdateTask(ctx context.Context, arg UpdateTaskParams) error
 	UpdateTaskStartedAt(ctx context.Context, arg UpdateTaskStartedAtParams) error
 	UpdateTaskStatus(ctx context.Context, arg UpdateTaskStatusParams) error

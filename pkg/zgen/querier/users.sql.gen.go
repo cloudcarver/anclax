@@ -86,3 +86,31 @@ func (q *Queries) GetUserByName(ctx context.Context, name string) (*AnchorUser, 
 	)
 	return &i, err
 }
+
+const getUserDefaultOrg = `-- name: GetUserDefaultOrg :one
+SELECT org_id FROM anchor.user_default_orgs
+WHERE user_id = $1
+`
+
+func (q *Queries) GetUserDefaultOrg(ctx context.Context, userID int32) (int32, error) {
+	row := q.db.QueryRow(ctx, getUserDefaultOrg, userID)
+	var org_id int32
+	err := row.Scan(&org_id)
+	return org_id, err
+}
+
+const setUserDefaultOrg = `-- name: SetUserDefaultOrg :exec
+INSERT INTO anchor.user_default_orgs (user_id, org_id)
+VALUES ($1, $2)
+ON CONFLICT (user_id) DO UPDATE SET org_id = $2
+`
+
+type SetUserDefaultOrgParams struct {
+	UserID int32
+	OrgID  int32
+}
+
+func (q *Queries) SetUserDefaultOrg(ctx context.Context, arg SetUserDefaultOrgParams) error {
+	_, err := q.db.Exec(ctx, setUserDefaultOrg, arg.UserID, arg.OrgID)
+	return err
+}
