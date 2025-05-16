@@ -62,6 +62,6 @@ func InitializeApplication() (*app.Application, error) {
 		return nil, err
 	}
 	debugServer := app.NewDebugServer(configConfig, globalContext)
-	application := app.NewApplication(configConfig, serverServer, metricsServer, workerWorker, debugServer, authInterface, taskStoreInterface, serviceInterface, anchorHookInterface)
+	application := app.NewApplication(configConfig, serverServer, metricsServer, workerWorker, debugServer, authInterface, taskStoreInterface, serviceInterface, anchorHookInterface, caveatParserInterface)
 	return application, nil
 }

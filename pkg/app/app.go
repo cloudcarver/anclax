@@ -4,6 +4,7 @@ import (
 	"github.com/cloudcarver/anchor/pkg/auth"
 	"github.com/cloudcarver/anchor/pkg/config"
 	"github.com/cloudcarver/anchor/pkg/hooks"
+	"github.com/cloudcarver/anchor/pkg/macaroons"
 	"github.com/cloudcarver/anchor/pkg/metrics"
 	"github.com/cloudcarver/anchor/pkg/server"
 	"github.com/cloudcarver/anchor/pkg/service"
@@ -21,6 +22,7 @@ type Application struct {
 	taskStore     taskcore.TaskStoreInterface
 	service       service.ServiceInterface
 	hooks         hooks.AnchorHookInterface
+	caveatParser  macaroons.CaveatParserInterface
 }
 
 func NewApplication(
@@ -33,6 +35,7 @@ func NewApplication(
 	taskStore taskcore.TaskStoreInterface,
 	service service.ServiceInterface,
 	hooks hooks.AnchorHookInterface,
+	caveatParser macaroons.CaveatParserInterface,
 ) *Application {
 	return &Application{
 		server:        server,
@@ -44,6 +47,7 @@ func NewApplication(
 		taskStore:     taskStore,
 		service:       service,
 		hooks:         hooks,
+		caveatParser:  caveatParser,
 	}
 }
 
@@ -78,4 +82,8 @@ func (a *Application) GetService() service.ServiceInterface {
 
 func (a *Application) GetHooks() hooks.AnchorHookInterface {
 	return a.hooks
+}
+
+func (a *Application) GetCaveatParser() macaroons.CaveatParserInterface {
+	return a.caveatParser
 }
