@@ -54,7 +54,7 @@ type Auth struct {
 // Ensure AuthService implements AuthServiceInterface
 var _ AuthInterface = (*Auth)(nil)
 
-func NewAuth(macaroonsParser macaroons.MacaroonParserInterface, caveatParser macaroons.CaveatParserInterface) (AuthInterface, error) {
+func NewAuth(macaroonsParser macaroons.MacaroonParserInterface, caveatParser macaroons.CaveatParserInterface, hooks hooks.AnchorHookInterface) (AuthInterface, error) {
 	if err := caveatParser.Register(CaveatUserContext, func() macaroons.Caveat {
 		return &UserContextCaveat{}
 	}); err != nil {
@@ -68,6 +68,7 @@ func NewAuth(macaroonsParser macaroons.MacaroonParserInterface, caveatParser mac
 
 	return &Auth{
 		macaroonsParser: macaroonsParser,
+		hooks:           hooks,
 	}, nil
 }
 
@@ -102,6 +103,11 @@ func (a *Auth) CreateToken(ctx context.Context, userID int32, caveats ...macaroo
 	if err != nil {
 		return 0, "", errors.Wrap(err, "failed to create macaroon token")
 	}
+
+	if err := a.hooks.OnCreateToken(ctx, token); err != nil {
+		return 0, "", errors.Wrap(err, "failed to call hook")
+	}
+
 	return token.KeyID(), token.StringToken(), nil
 }
 

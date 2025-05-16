@@ -42,11 +42,11 @@ func InitializeApplication() (*app.Application, error) {
 	keyStore := store.NewStore(modelInterface, taskRunner)
 	caveatParserInterface := macaroons.NewCaveatParser()
 	macaroonParserInterface := macaroons.NewMacaroonManager(keyStore, caveatParserInterface)
-	authInterface, err := auth.NewAuth(macaroonParserInterface, caveatParserInterface)
+	anchorHookInterface := hooks.NewBaseHook()
+	authInterface, err := auth.NewAuth(macaroonParserInterface, caveatParserInterface, anchorHookInterface)
 	if err != nil {
 		return nil, err
 	}
-	anchorHookInterface := hooks.NewBaseHook()
 	serviceInterface := service.NewService(configConfig, modelInterface, authInterface, anchorHookInterface)
 	serverInterface := controller.NewController(serviceInterface, authInterface)
 	validator := controller.NewValidator(modelInterface, authInterface)

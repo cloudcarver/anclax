@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/cloudcarver/anchor/pkg/hooks"
 	"github.com/cloudcarver/anchor/pkg/macaroons"
 	"github.com/cloudcarver/anchor/pkg/utils"
 	"github.com/cloudcarver/anchor/pkg/zgen/querier"
@@ -24,7 +25,8 @@ func TestAuth_Authfunc(t *testing.T) {
 	mockCaveatParser := macaroons.NewMockCaveatParserInterface(ctrl)
 	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)
 	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
-	auth, err := NewAuth(mockMacaroons, mockCaveatParser)
+	mockHooks := hooks.NewMockAnchorHookInterface(ctrl)
+	auth, err := NewAuth(mockMacaroons, mockCaveatParser, mockHooks)
 	require.NoError(t, err)
 
 	// Test token
@@ -144,7 +146,8 @@ func TestAuth_CreateToken(t *testing.T) {
 	mockCaveatParser := macaroons.NewMockCaveatParserInterface(ctrl)
 	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)
 	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
-	auth, err := NewAuth(mockMacaroons, mockCaveatParser)
+	mockHooks := hooks.NewMockAnchorHookInterface(ctrl)
+	auth, err := NewAuth(mockMacaroons, mockCaveatParser, mockHooks)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -175,6 +178,7 @@ func TestAuth_CreateToken(t *testing.T) {
 					gomock.Any(), // Here we expect a UserContextCaveat but it's difficult to match in tests
 					TimeoutAccessToken,
 				).Return(macaroon, nil)
+				mockHooks.EXPECT().OnCreateToken(gomock.Any(), macaroon).Return(nil)
 			},
 			expectedKeyID: keyID,
 			expectedToken: macaroon.StringToken(),
@@ -225,7 +229,8 @@ func TestAuth_CreateRefreshToken(t *testing.T) {
 	mockCaveatParser := macaroons.NewMockCaveatParserInterface(ctrl)
 	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)
 	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
-	auth, err := NewAuth(mockMacaroons, mockCaveatParser)
+	mockHooks := hooks.NewMockAnchorHookInterface(ctrl)
+	auth, err := NewAuth(mockMacaroons, mockCaveatParser, mockHooks)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -248,7 +253,6 @@ func TestAuth_CreateRefreshToken(t *testing.T) {
 			userID:      userID,
 			accessKeyID: accessKeyID,
 			setupMock: func() {
-
 				mockMacaroons.EXPECT().CreateToken(
 					gomock.Any(),
 					userID,
@@ -302,7 +306,8 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 	mockCaveatParser := macaroons.NewMockCaveatParserInterface(ctrl)
 	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)
 	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
-	auth, err := NewAuth(mockMacaroons, mockCaveatParser)
+	mockHooks := hooks.NewMockAnchorHookInterface(ctrl)
+	auth, err := NewAuth(mockMacaroons, mockCaveatParser, mockHooks)
 
 	require.NoError(t, err)
 
@@ -380,7 +385,8 @@ func TestAuth_InvalidateUserTokens(t *testing.T) {
 	mockCaveatParser := macaroons.NewMockCaveatParserInterface(ctrl)
 	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)
 	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
-	auth, err := NewAuth(mockMacaroons, mockCaveatParser)
+	mockHooks := hooks.NewMockAnchorHookInterface(ctrl)
+	auth, err := NewAuth(mockMacaroons, mockCaveatParser, mockHooks)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -576,7 +582,8 @@ func TestNewAuth(t *testing.T) {
 	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)
 	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
 
-	auth, err := NewAuth(mockMacaroons, mockCaveatParser)
+	mockHooks := hooks.NewMockAnchorHookInterface(ctrl)
+	auth, err := NewAuth(mockMacaroons, mockCaveatParser, mockHooks)
 	require.NoError(t, err)
 	require.NotNil(t, auth)
 }
