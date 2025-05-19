@@ -204,6 +204,12 @@ func codegen(configPath string, workdir string) error {
 }
 
 func _codegen(config *Config, workdir string) error {
+	if config.OapiCodegen != nil {
+		if err := genOapi(workdir, config.OapiCodegen); err != nil {
+			return errors.Wrap(err, "failed to generate oapi-codegen")
+		}
+	}
+
 	if config.Xware != nil {
 		if err := genXware(workdir, config.Xware); err != nil {
 			return errors.Wrap(err, "failed to generate xware")
@@ -213,12 +219,6 @@ func _codegen(config *Config, workdir string) error {
 	if config.TaskHandler != nil {
 		if err := genTaskHandler(workdir, config.TaskHandler); err != nil {
 			return errors.Wrap(err, "failed to generate task handler")
-		}
-	}
-
-	if config.OapiCodegen != nil {
-		if err := genOapi(workdir, config.OapiCodegen); err != nil {
-			return errors.Wrap(err, "failed to generate oapi-codegen")
 		}
 	}
 
