@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/cloudcarver/anchor/pkg/auth"
@@ -84,30 +85,37 @@ func (s *Server) registerMiddleware() {
 	s.app.Use(cors.New(cors.Config{}))
 	s.app.Use(requestid.New())
 	s.app.Use(func(c *fiber.Ctx) error {
-		// log
-		log.Info(
-			"request",
-			zap.String("method", c.Method()),
-			zap.String("path", c.Path()),
-			zap.String("request-id", c.Locals(requestid.ConfigDefault.ContextKey).(string)),
-		)
+		// log request
 		start := time.Now()
+		if strings.HasPrefix(c.Path(), "/api") {
+			log.Info(
+				"request",
+				zap.String("method", c.Method()),
+				zap.String("path", c.Path()),
+				zap.String("request-id", c.Locals(requestid.ConfigDefault.ContextKey).(string)),
+			)
+
+		}
+
 		err := c.Next()
-		end := time.Now()
-		log.Info(
-			"response",
-			zap.Int("status", c.Response().StatusCode()),
-			zap.String("method", c.Method()),
-			zap.String("path", c.Path()),
-			zap.String("token", fmt.Sprintf("%v", c.Get("Authorization"))),
-			zap.String("request-id", c.Locals(requestid.ConfigDefault.ContextKey).(string)),
-			zap.Float32("latency-ms", float32(end.Sub(start).Milliseconds())),
-			zap.String("body", utils.TruncateString(string(c.Response().Body()), 512)),
-			zap.Error(err),
-		)
+
+		// log response
+		if strings.HasPrefix(c.Path(), "/api") {
+			end := time.Now()
+			log.Info(
+				"response",
+				zap.Int("status", c.Response().StatusCode()),
+				zap.String("method", c.Method()),
+				zap.String("path", c.Path()),
+				zap.String("token", fmt.Sprintf("%v", c.Get("Authorization"))),
+				zap.String("request-id", c.Locals(requestid.ConfigDefault.ContextKey).(string)),
+				zap.Float32("latency-ms", float32(end.Sub(start).Milliseconds())),
+				zap.String("body", utils.TruncateString(string(c.Response().Body()), 512)),
+				zap.Error(err),
+			)
+		}
 		return err
 	})
-
 }
 
 func (s *Server) Listen() error {
