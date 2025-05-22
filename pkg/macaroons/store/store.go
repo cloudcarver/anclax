@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/cloudcarver/anchor/pkg/taskcore"
 	"github.com/cloudcarver/anchor/pkg/zcore/model"
 	"github.com/cloudcarver/anchor/pkg/zgen/querier"
 	runner "github.com/cloudcarver/anchor/pkg/zgen/taskgen"
@@ -45,7 +46,7 @@ func (s *Store) Create(ctx context.Context, userID int32, key []byte, ttl time.D
 		if ttl > 0 {
 			if _, err := s.taskRunner.RunDeleteOpaqueKey(ctx, &runner.DeleteOpaqueKeyParameters{
 				KeyID: keyID,
-			}); err != nil {
+			}, taskcore.WithStartedAt(s.now().Add(ttl))); err != nil {
 				return errors.Wrap(err, "failed to create task")
 			}
 		}

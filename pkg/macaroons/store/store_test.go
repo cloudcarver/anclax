@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cloudcarver/anchor/pkg/taskcore"
 	"github.com/cloudcarver/anchor/pkg/zcore/model"
 	"github.com/cloudcarver/anchor/pkg/zgen/taskgen"
 	"github.com/jackc/pgx/v5"
@@ -36,6 +37,7 @@ func TestCreate(t *testing.T) {
 		&taskgen.DeleteOpaqueKeyParameters{
 			KeyID: keyID,
 		},
+		taskcore.Eq(taskcore.WithStartedAt(currTime.Add(ttl))),
 	).Return(taskID, nil)
 
 	store := &Store{
