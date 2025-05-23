@@ -4,24 +4,22 @@
 package wire
 
 import (
-	"myexampleapp/internal"
-	"myexampleapp/internal/asynctask"
-	"myexampleapp/internal/config"
-	"myexampleapp/internal/handler"
-	"myexampleapp/internal/zcore/initapp"
-	"myexampleapp/internal/zcore/injection"
-	"myexampleapp/internal/zcore/model"
-	"myexampleapp/internal/zgen/taskgen"
+	"myexampleapp/pkg"
+	"myexampleapp/pkg/asynctask"
+	"myexampleapp/pkg/config"
+	"myexampleapp/pkg/handler"
+	"myexampleapp/pkg/zcore/injection"
+	"myexampleapp/pkg/zcore/model"
+	"myexampleapp/pkg/zgen/taskgen"
 
 	anchor_wire "github.com/cloudcarver/anchor/wire"
 
 	"github.com/google/wire"
 )
 
-func InitApp() (*initapp.App, error) {
+func InitApp() (*pkg.App, error) {
 	wire.Build(
 		anchor_wire.InitializeApplication,
-		initapp.NewApp,
 		injection.InjectAuth,
 		injection.InjectTaskStore,
 		injection.InjectAnchorSvc,
@@ -32,7 +30,7 @@ func InitApp() (*initapp.App, error) {
 		asynctask.NewExecutor,
 		model.NewModel,
 		config.NewConfig,
-		internal.Init,
+		pkg.NewApp,
 	)
 	return nil, nil
 }

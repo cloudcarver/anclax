@@ -8,23 +8,25 @@ package wire
 
 import (
 	"github.com/cloudcarver/anchor/wire"
-	"myexampleapp/internal"
-	"myexampleapp/internal/asynctask"
-	"myexampleapp/internal/config"
-	"myexampleapp/internal/handler"
-	"myexampleapp/internal/zcore/initapp"
-	"myexampleapp/internal/zcore/injection"
-	"myexampleapp/internal/zcore/model"
-	"myexampleapp/internal/zgen/taskgen"
+	"myexampleapp/pkg"
+	"myexampleapp/pkg/asynctask"
+	"myexampleapp/pkg/config"
+	"myexampleapp/pkg/handler"
+	"myexampleapp/pkg/zcore/injection"
+	"myexampleapp/pkg/zcore/model"
+	"myexampleapp/pkg/zgen/taskgen"
 )
 
 // Injectors from wire.go:
 
-func InitApp() (*initapp.App, error) {
+func InitApp() (*pkg.App, error) {
 	application, err := wire.InitializeApplication()
 	if err != nil {
 		return nil, err
 	}
+	serviceInterface := injection.InjectAnchorSvc(application)
+	taskStoreInterface := injection.InjectTaskStore(application)
+	taskRunner := taskgen.NewTaskRunner(taskStoreInterface)
 	configConfig, err := config.NewConfig()
 	if err != nil {
 		return nil, err
@@ -33,19 +35,15 @@ func InitApp() (*initapp.App, error) {
 	if err != nil {
 		return nil, err
 	}
-	taskStoreInterface := injection.InjectTaskStore(application)
-	taskRunner := taskgen.NewTaskRunner(taskStoreInterface)
+	executorInterface := asynctask.NewExecutor(modelInterface)
+	taskHandler := taskgen.NewTaskHandler(executorInterface)
 	serverInterface, err := handler.NewHandler(modelInterface, taskRunner)
 	if err != nil {
 		return nil, err
 	}
 	authInterface := injection.InjectAuth(application)
 	validator := handler.NewValidator(authInterface)
-	executorInterface := asynctask.NewExecutor(modelInterface)
-	taskHandler := taskgen.NewTaskHandler(executorInterface)
-	serviceInterface := injection.InjectAnchorSvc(application)
-	v := internal.Init(serviceInterface, taskRunner)
-	app, err := initapp.NewApp(application, serverInterface, validator, taskHandler, v)
+	app, err := pkg.NewApp(application, serviceInterface, taskRunner, taskHandler, serverInterface, validator)
 	if err != nil {
 		return nil, err
 	}
