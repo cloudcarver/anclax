@@ -15,8 +15,12 @@ reload:
 db:
 	psql "postgresql://postgres:postgres@localhost:5432/postgres?sslmode=disable"
 
-test:
-	TEST_DIR=$(PROJECT_DIR)/e2e HOLD="$(HOLD)" ./scripts/run-local-test.sh "$(K)" 
+prepare-test:
+	cd test && uv sync
+	cd test && uv run openapi-python-client generate --path ../api/v1.yaml --output-path oapi --overwrite 
+
+test: prepare-test
+	cd test && uv run main.py
 
 ut:
 	@COLOR=ALWAYS go test -race -covermode=atomic -coverprofile=coverage.out -tags ut ./... 

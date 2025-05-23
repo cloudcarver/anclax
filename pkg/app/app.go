@@ -1,6 +1,8 @@
 package app
 
 import (
+	"context"
+
 	"github.com/cloudcarver/anchor/pkg/auth"
 	"github.com/cloudcarver/anchor/pkg/config"
 	"github.com/cloudcarver/anchor/pkg/hooks"
@@ -10,6 +12,7 @@ import (
 	"github.com/cloudcarver/anchor/pkg/service"
 	"github.com/cloudcarver/anchor/pkg/taskcore"
 	"github.com/cloudcarver/anchor/pkg/taskcore/worker"
+	"github.com/pkg/errors"
 )
 
 type Application struct {
@@ -36,7 +39,14 @@ func NewApplication(
 	service service.ServiceInterface,
 	hooks hooks.AnchorHookInterface,
 	caveatParser macaroons.CaveatParserInterface,
-) *Application {
+) (*Application, error) {
+
+	if cfg.TestAccount != nil {
+		if _, err := service.CreateTestAccount(context.TODO(), "test", cfg.TestAccount.Password); err != nil {
+			return nil, errors.Wrapf(err, "failed to create test account")
+		}
+	}
+
 	return &Application{
 		server:        server,
 		prometheus:    prometheus,
@@ -48,7 +58,7 @@ func NewApplication(
 		service:       service,
 		hooks:         hooks,
 		caveatParser:  caveatParser,
-	}
+	}, nil
 }
 
 func (a *Application) Start() error {

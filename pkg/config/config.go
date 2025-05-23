@@ -9,64 +9,64 @@ import (
 
 type Pg struct {
 	// (Required) The DSN (Data Source Name) for postgres database connection. If specified, Host, Port, User, Password, and Db settings will be ignored.
-	DSN *string `yaml:"dsn,omitempty"`
+	DSN *string `yaml:"dsn"`
 }
 
 type Auth struct {
-	AccessExpiry  *time.Duration `yaml:"accessexp,omitempty"`
-	RefreshExpiry *time.Duration `yaml:"refreshexp,omitempty"`
+	AccessExpiry  *time.Duration `yaml:"accessexp"`
+	RefreshExpiry *time.Duration `yaml:"refreshexp"`
 }
 
-type Root struct {
-	// (Optional) The password of the root user, if not set, the default password is "123456"
+type TestAccount struct {
+	// The password of the test account, if not set, there will be no test account
 	Password string `yaml:"password"`
 }
 
 type Worker struct {
 	// (Optional) Whether to disable the worker, default is false
-	Disable bool `yaml:"disable,omitempty"`
+	Disable bool `yaml:"disable"`
 }
 
 type Debug struct {
 	// (Optional) Whether to enable the debug server, default is false
-	Enable bool `yaml:"enable,omitempty"`
+	Enable bool `yaml:"enable"`
 
 	// (Optional) The port of the debug server, default is 8080
-	Port int `yaml:"port,omitempty"`
+	Port int `yaml:"port"`
 }
 
 type Config struct {
 	// (Optional) The path of file to store the initialization data, if not set, skip the initialization
-	Init string `yaml:"init,omitempty"`
+	Init string `yaml:"init"`
 
 	// (Optional) The host of the anchor server, it is used in the API endpoint of the web UI.
 	// If not set, the host will be localhost.
-	Host string `yaml:"host,omitempty"`
+	Host string `yaml:"host"`
 
 	// (Optional) The port of the anchor server, default is 8020
-	Port int `yaml:"port,omitempty"`
+	Port int `yaml:"port"`
 
 	// The Auth configuration
-	Auth Auth `yaml:"auth,omitempty"`
+	Auth Auth `yaml:"auth"`
 
 	// The postgres configuration
-	Pg Pg `yaml:"pg,omitempty"`
+	Pg Pg `yaml:"pg"`
 
-	// The root user configuration
-	Root *Root `yaml:"root,omitempty"`
+	// The test account configuration
+	TestAccount *TestAccount `yaml:"testaccount"`
 
 	// (Optional) Whether to disable internet access, default is false. If public internet is not allowed, set it to true. Then mount risectl files to <risectl dir>/<version>/risectl.
-	NoInternet bool `yaml:"nointernet,omitempty"`
+	NoInternet bool `yaml:"nointernet"`
 
 	// (Optional) The path of the directory to store the risectl files, default is "$HOME/.risectl"
-	RisectlDir string `yaml:"risectldir,omitempty"`
+	RisectlDir string `yaml:"risectldir"`
 
 	// (Optional) The port of the metrics server, default is 9020
-	MetricsPort int `yaml:"metricsport,omitempty"`
+	MetricsPort int `yaml:"metricsport"`
 
-	Worker Worker `yaml:"worker,omitempty"`
+	Worker Worker `yaml:"worker"`
 
-	Debug Debug `yaml:"debug,omitempty"`
+	Debug Debug `yaml:"debug"`
 }
 
 func NewConfig() (*Config, error) {

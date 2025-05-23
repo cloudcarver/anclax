@@ -149,3 +149,16 @@ func (s *Service) DeleteUserByName(ctx context.Context, username string) error {
 func (s *Service) RestoreUserByName(ctx context.Context, username string) error {
 	return s.m.RestoreUserByName(ctx, username)
 }
+
+func (s *Service) CreateTestAccount(ctx context.Context, username, password string) (int32, error) {
+	user, err := s.m.GetUserByName(ctx, username)
+	if err != nil && err != pgx.ErrNoRows {
+		return 0, errors.Wrapf(err, "failed to get user by name")
+	}
+
+	if err == nil {
+		return user.ID, nil
+	}
+
+	return s.CreateNewUser(ctx, username, password)
+}
