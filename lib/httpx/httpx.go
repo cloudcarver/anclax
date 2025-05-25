@@ -19,6 +19,7 @@ import (
 type H = map[string]any
 
 type FileData struct {
+	Key      string
 	Filename string
 	Content  io.ReadCloser
 }
@@ -174,10 +175,10 @@ func (rc *RequestContext) WithMultipartWriter(fn func(w *multipart.Writer) error
 	return rc
 }
 
-func (rc *RequestContext) WithMultipartForm(key string, fileds map[string]string, files []FileData) *RequestContext {
+func (rc *RequestContext) WithMultipartForm(fileds map[string]string, files []FileData) *RequestContext {
 	return rc.WithMultipartWriter(func(w *multipart.Writer) error {
 		for _, file := range files {
-			part, err := w.CreateFormFile(key, file.Filename)
+			part, err := w.CreateFormFile(file.Key, file.Filename)
 			if err != nil {
 				return err
 			}
