@@ -18,6 +18,11 @@ import (
 
 type H = map[string]any
 
+type FileData struct {
+	Filename string
+	Content  io.ReadCloser
+}
+
 type HTTPDelegate interface {
 	Do(req *http.Request) (*http.Response, error)
 }
@@ -155,7 +160,7 @@ func (rc *RequestContext) WithJSON(data any) *RequestContext {
 	return rc
 }
 
-func (rc *RequestContext) WithMultipart(fn func(w *multipart.Writer) error) *RequestContext {
+func (rc *RequestContext) WithMultipartWriter(fn func(w *multipart.Writer) error) *RequestContext {
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 	if err := fn(writer); err != nil {
@@ -167,6 +172,26 @@ func (rc *RequestContext) WithMultipart(fn func(w *multipart.Writer) error) *Req
 	rc.body = body
 	rc.headers.Add("Content-Type", writer.FormDataContentType())
 	return rc
+}
+
+func (rc *RequestContext) WithMultipartForm(key string, fileds map[string]string, files []FileData) *RequestContext {
+	return rc.WithMultipartWriter(func(w *multipart.Writer) error {
+		for _, file := range files {
+			part, err := w.CreateFormFile(key, file.Filename)
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(part, file.Content); err != nil {
+				return err
+			}
+		}
+		for k, v := range fileds {
+			if err := w.WriteField(k, v); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (rc *RequestContext) WithHeader(key, val string) *RequestContext {
