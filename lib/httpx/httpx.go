@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	neturl "net/url"
 	"strings"
@@ -151,6 +152,20 @@ func (rc *RequestContext) WithJSON(data any) *RequestContext {
 		rc.body = bytes.NewReader(raw)
 	}
 	rc.headers.Add("Content-Type", "application/json")
+	return rc
+}
+
+func (rc *RequestContext) WithMultipart(fn func(w *multipart.Writer) error) *RequestContext {
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	if err := fn(writer); err != nil {
+		rc.handleErr(err)
+	}
+	if err := writer.Close(); err != nil {
+		rc.handleErr(err)
+	}
+	rc.body = body
+	rc.headers.Add("Content-Type", writer.FormDataContentType())
 	return rc
 }
 
