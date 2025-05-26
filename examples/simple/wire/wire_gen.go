@@ -35,15 +35,16 @@ func InitApp() (*pkg.App, error) {
 	if err != nil {
 		return nil, err
 	}
-	executorInterface := asynctask.NewExecutor(modelInterface)
-	taskHandler := taskgen.NewTaskHandler(executorInterface)
 	serverInterface, err := handler.NewHandler(modelInterface, taskRunner)
 	if err != nil {
 		return nil, err
 	}
 	authInterface := injection.InjectAuth(application)
 	validator := handler.NewValidator(authInterface)
-	app, err := pkg.NewApp(application, serviceInterface, taskRunner, taskHandler, serverInterface, validator)
+	executorInterface := asynctask.NewExecutor(modelInterface)
+	taskHandler := taskgen.NewTaskHandler(executorInterface)
+	plugin := pkg.NewPlugin(serverInterface, validator, taskHandler)
+	app, err := pkg.NewApp(application, serviceInterface, taskRunner, plugin)
 	if err != nil {
 		return nil, err
 	}

@@ -31,6 +31,7 @@ func InitApp() (*pkg.App, error) {
 		model.NewModel,
 		config.NewConfig,
 		pkg.NewApp,
+		pkg.NewPlugin,
 	)
 	return nil, nil
 }
