@@ -4,6 +4,7 @@
 /* eslint-disable */
 import type { Credentials } from '../models/Credentials';
 import type { Event } from '../models/Event';
+import type { Org } from '../models/Org';
 import type { RefreshTokenRequest } from '../models/RefreshTokenRequest';
 import type { SignInRequest } from '../models/SignInRequest';
 import type { Task } from '../models/Task';
@@ -85,6 +86,18 @@ export class DefaultService {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/events',
+        });
+    }
+    /**
+     * Get all organizations of which the user is a member
+     * Get all organizations of which the user is a member
+     * @returns Org Successfully retrieved organizations
+     * @throws ApiError
+     */
+    public static listOrgs(): CancelablePromise<Array<Org>> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/orgs',
         });
     }
 }

@@ -12,6 +12,7 @@ export type { Event } from './models/Event';
 export { EventSpec } from './models/EventSpec';
 export type { EventTaskCompleted } from './models/EventTaskCompleted';
 export type { EventTaskError } from './models/EventTaskError';
+export type { Org } from './models/Org';
 export type { RefreshTokenRequest } from './models/RefreshTokenRequest';
 export type { SignInRequest } from './models/SignInRequest';
 export { Task } from './models/Task';

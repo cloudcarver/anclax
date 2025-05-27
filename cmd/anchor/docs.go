@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,43 +16,105 @@ import (
 
 var docsCmd = &cli.Command{
 	Name: "docs",
-	Flags: []cli.Flag{
-		&cli.StringFlag{
-			Name:  "path",
-			Usage: "path to the file to parse",
-			Value: "",
+	Subcommands: []*cli.Command{
+		{
+			Name: "config",
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:  "path",
+					Usage: "path to the file to parse",
+					Value: "",
+				},
+				&cli.BoolFlag{
+					Name:  "markdown",
+					Usage: "output in markdown format",
+				},
+				&cli.BoolFlag{
+					Name:  "env",
+					Usage: "output environment variables",
+				},
+				&cli.BoolFlag{
+					Name:  "yaml",
+					Usage: "output yaml sample",
+				},
+				&cli.StringFlag{
+					Name:  "prefix",
+					Usage: "prefix for environment variables",
+					Value: "",
+				},
+				&cli.StringFlag{
+					Name:  "struct",
+					Usage: "name of the struct to parse",
+					Value: "",
+				},
+			},
+			Action: runGenConfigDocs,
 		},
-		&cli.BoolFlag{
-			Name:  "markdown",
-			Usage: "output in markdown format",
-		},
-		&cli.BoolFlag{
-			Name:  "env",
-			Usage: "output environment variables",
-		},
-		&cli.BoolFlag{
-			Name:  "yaml",
-			Usage: "output yaml sample",
-		},
-		&cli.StringFlag{
-			Name:  "prefix",
-			Usage: "prefix for environment variables",
-			Value: "",
-		},
-		&cli.StringFlag{
-			Name:  "struct",
-			Usage: "name of the struct to parse",
-			Value: "",
+		{
+			Name: "replace",
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:  "key",
+					Usage: "key to use for the template",
+					Value: "",
+				},
+				&cli.StringFlag{
+					Name:  "file",
+					Usage: "path to the file of content to use for the replacement",
+					Value: "",
+				},
+				&cli.StringFlag{
+					Name:  "value",
+					Usage: "value to use for the replacement",
+					Value: "",
+				},
+			},
+			Action: runGenWithTemplate,
 		},
 	},
-	Action: runGenDocs,
 }
 
-func runGenDocs(c *cli.Context) error {
-	return genDocs(c.String("path"), c.Bool("markdown"), c.Bool("env"), c.Bool("yaml"), c.String("prefix"), c.String("struct"))
+func runGenWithTemplate(c *cli.Context) error {
+	key := c.String("key")
+	file := c.String("file")
+	content := c.String("content")
+
+	template, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return errors.Wrap(err, "failed to read from stdin")
+	}
+
+	if file != "" && content != "" {
+		return errors.New("file and content flags cannot be used together")
+	}
+
+	if file == "" && content == "" {
+		return errors.New("one of file or content flag is required")
+	}
+
+	if key == "" {
+		return errors.New("key is required")
+	}
+
+	textToReplace := fmt.Sprintf("{{%s}}", key)
+
+	if file != "" {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			return errors.Wrap(err, "failed to read file")
+		}
+		fmt.Println(strings.ReplaceAll(string(template), textToReplace, string(content)))
+	} else {
+		fmt.Println(strings.ReplaceAll(string(template), textToReplace, content))
+	}
+	return nil
 }
 
-func genDocs(path string, markdown, env, yaml bool, prefix string, structName string) error {
+func runGenConfigDocs(c *cli.Context) error {
+	return genConfigDocs(c.String("path"), c.Bool("markdown"), c.Bool("env"), c.Bool("yaml"), c.String("prefix"), c.String("struct"))
+}
+
+func genConfigDocs(path string, markdown, env, yaml bool, prefix string, structName string) error {
 	configStructName := "Config"
 	if structName != "" {
 		configStructName = structName

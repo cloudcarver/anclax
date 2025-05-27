@@ -9,6 +9,10 @@ export type Task = {
     attributes: TaskAttributes;
     spec: TaskSpec;
     status: Task.status;
+    /**
+     * Unique tag of the task
+     */
+    uniqueTag?: string;
     startedAt?: string;
     createdAt: string;
     updatedAt: string;
