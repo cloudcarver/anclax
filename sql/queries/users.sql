@@ -28,3 +28,6 @@ ON CONFLICT (user_id) DO UPDATE SET org_id = $2;
 -- name: GetUserDefaultOrg :one
 SELECT org_id FROM anchor.user_default_orgs
 WHERE user_id = $1;
+
+-- name: UpdateUserPassword :exec
+UPDATE anchor.users SET password_hash = $2, password_salt = $3 WHERE id = $1;

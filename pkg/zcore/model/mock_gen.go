@@ -494,3 +494,17 @@ func (mr *MockModelInterfaceMockRecorder) UpdateTaskStatus(ctx, arg any) *gomock
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateTaskStatus", reflect.TypeOf((*MockModelInterface)(nil).UpdateTaskStatus), ctx, arg)
 }
+
+// UpdateUserPassword mocks base method.
+func (m *MockModelInterface) UpdateUserPassword(ctx context.Context, arg querier.UpdateUserPasswordParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateUserPassword", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateUserPassword indicates an expected call of UpdateUserPassword.
+func (mr *MockModelInterfaceMockRecorder) UpdateUserPassword(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateUserPassword", reflect.TypeOf((*MockModelInterface)(nil).UpdateUserPassword), ctx, arg)
+}

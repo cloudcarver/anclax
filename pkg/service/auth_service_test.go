@@ -80,3 +80,48 @@ func TestCreateNewUser(t *testing.T) {
 	require.Equal(t, orgID, org.ID)
 
 }
+
+func TestUpdateUserPassword(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockModel := model.NewMockModelInterfaceWithTransaction(ctrl)
+	mockAuth := auth.NewMockAuthInterface(ctrl)
+	mockHooks := hooks.NewMockAnchorHookInterface(ctrl)
+
+	var (
+		userID   = int32(102)
+		user     = &querier.AnchorUser{
+			ID: userID,
+		}
+		username    = "testuser"
+		password    = "newpassword"
+		salt        = "newsalt"
+		hash        = "newhash"
+		ctx         = context.Background()
+	)
+
+	mockModel.EXPECT().GetUserByName(ctx, username).Return(user, nil)
+
+	mockModel.EXPECT().UpdateUserPassword(ctx, querier.UpdateUserPasswordParams{
+		ID:           userID,
+		PasswordHash: hash,
+		PasswordSalt: salt,
+	}).Return(nil)
+
+	service := &Service{
+		m:     mockModel,
+		hooks: mockHooks,
+		auth:  mockAuth,
+		generateSaltAndHash: func(inputPassword string) (string, string, error) {
+			if inputPassword != password {
+				return "", "", errors.New("password mismatch")
+			}
+			return salt, hash, nil
+		},
+	}
+
+	resultUserID, err := service.UpdateUserPassword(ctx, username, password)
+	require.NoError(t, err)
+	require.Equal(t, userID, resultUserID)
+}

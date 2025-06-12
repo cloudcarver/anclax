@@ -162,3 +162,25 @@ func (s *Service) CreateTestAccount(ctx context.Context, username, password stri
 
 	return s.CreateNewUser(ctx, username, password)
 }
+
+func (s *Service) UpdateUserPassword(ctx context.Context, username, password string) (int32, error) {
+	user, err := s.m.GetUserByName(ctx, username)
+	if err != nil {
+		return 0, errors.Wrapf(err, "failed to get user by name")
+	}
+
+	salt, hash, err := s.generateSaltAndHash(password)
+	if err != nil {
+		return 0, errors.Wrapf(err, "failed to generate hash and salt")
+	}
+
+	if err := s.m.UpdateUserPassword(ctx, querier.UpdateUserPasswordParams{
+		ID:           user.ID,
+		PasswordHash: hash,
+		PasswordSalt: salt,
+	}); err != nil {
+		return 0, errors.Wrapf(err, "failed to update user password")
+	}
+
+	return user.ID, nil
+}

@@ -124,3 +124,18 @@ func (q *Queries) SetUserDefaultOrg(ctx context.Context, arg SetUserDefaultOrgPa
 	_, err := q.db.Exec(ctx, setUserDefaultOrg, arg.UserID, arg.OrgID)
 	return err
 }
+
+const updateUserPassword = `-- name: UpdateUserPassword :exec
+UPDATE anchor.users SET password_hash = $2, password_salt = $3 WHERE id = $1
+`
+
+type UpdateUserPasswordParams struct {
+	ID           int32
+	PasswordHash string
+	PasswordSalt string
+}
+
+func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error {
+	_, err := q.db.Exec(ctx, updateUserPassword, arg.ID, arg.PasswordHash, arg.PasswordSalt)
+	return err
+}
