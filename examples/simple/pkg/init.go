@@ -25,8 +25,8 @@ func (a *App) Start() error {
 }
 
 func NewAnchorApp(cfg *config.Config) (*anchor_app.Application, error) {
-	cfg.Anchor.Pg.DSN = cfg.Pg.DSN
-	cfg.Anchor.Host = cfg.Host
+	cfg.Anchor.Pg.DSN = cfg.Anchor.Pg.DSN
+	cfg.Anchor.Host = cfg.Anchor.Host
 
 	anchorApp, err := anchor_wire.InitializeApplication(&cfg.Anchor)
 	if err != nil {

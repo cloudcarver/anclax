@@ -77,10 +77,10 @@ func (m *Model) RunTransaction(ctx context.Context, f func(model ModelInterface)
 }
 
 func NewModel(cfg *config.Config) (ModelInterface, error) {
-	if cfg.Pg.DSN == nil {
+	if cfg.Anchor.Pg.DSN == nil {
 		return nil, errors.New("dsn is not set")
 	}
-	dsn := *cfg.Pg.DSN
+	dsn := *cfg.Anchor.Pg.DSN
 
 	config, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
