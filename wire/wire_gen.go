@@ -27,13 +27,9 @@ import (
 
 // Injectors from wire.go:
 
-func InitializeApplication() (*app.Application, error) {
-	configConfig, err := config.NewConfig()
-	if err != nil {
-		return nil, err
-	}
+func InitializeApplication(cfg *config.Config) (*app.Application, error) {
 	globalContext := globalctx.New()
-	modelInterface, err := model.NewModel(configConfig)
+	modelInterface, err := model.NewModel(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -47,22 +43,22 @@ func InitializeApplication() (*app.Application, error) {
 	if err != nil {
 		return nil, err
 	}
-	serviceInterface := service.NewService(configConfig, modelInterface, authInterface, anchorHookInterface)
+	serviceInterface := service.NewService(cfg, modelInterface, authInterface, anchorHookInterface)
 	serverInterface := controller.NewController(serviceInterface, authInterface)
 	validator := controller.NewValidator(modelInterface, authInterface)
-	serverServer, err := server.NewServer(configConfig, globalContext, authInterface, serverInterface, validator)
+	serverServer, err := server.NewServer(cfg, globalContext, authInterface, serverInterface, validator)
 	if err != nil {
 		return nil, err
 	}
-	metricsServer := metrics.NewMetricsServer(configConfig, globalContext)
+	metricsServer := metrics.NewMetricsServer(cfg, globalContext)
 	executorInterface := asynctask.NewExecutor(modelInterface)
 	taskHandler := taskgen.NewTaskHandler(executorInterface)
 	workerWorker, err := worker.NewWorker(globalContext, modelInterface, taskHandler)
 	if err != nil {
 		return nil, err
 	}
-	debugServer := app.NewDebugServer(configConfig, globalContext)
-	application, err := app.NewApplication(configConfig, serverServer, metricsServer, workerWorker, debugServer, authInterface, taskStoreInterface, serviceInterface, anchorHookInterface, caveatParserInterface)
+	debugServer := app.NewDebugServer(cfg, globalContext)
+	application, err := app.NewApplication(cfg, serverServer, metricsServer, workerWorker, debugServer, authInterface, taskStoreInterface, serviceInterface, anchorHookInterface, caveatParserInterface)
 	if err != nil {
 		return nil, err
 	}

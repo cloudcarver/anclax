@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"github.com/cloudcarver/anchor/lib/conf"
+	anchor_config "github.com/cloudcarver/anchor/pkg/config"
 )
 
 type Pg struct {
@@ -22,19 +23,42 @@ type Debug struct {
 type Config struct {
 	Debug Debug `yaml:"debug,omitempty"`
 
+	// (Optional) The host of the server, default is localhost
+	Host string `yaml:"host,omitempty"`
+
 	// The postgres configuration
 	Pg Pg `yaml:"pg,omitempty"`
 }
 
+const (
+	envPrefix  = "ACP_"
+	configFile = "app.yaml"
+)
+
 func NewConfig() (*Config, error) {
 	c := &Config{}
 	if err := conf.FetchConfig((func() string {
-		if _, err := os.Stat("app.yaml"); err != nil {
+		if _, err := os.Stat(configFile); err != nil {
 			return ""
 		}
-		return "app.yaml"
-	})(), "ACP_", c); err != nil {
+		return configFile
+	})(), envPrefix, c); err != nil {
 		return nil, err
 	}
+
 	return c, nil
+}
+
+func NewAnchorConfig() (*anchor_config.Config, error) {
+	anchorCfg := &anchor_config.Config{}
+	if err := conf.FetchConfig((func() string {
+		if _, err := os.Stat(configFile); err != nil {
+			return ""
+		}
+		return configFile
+	})(), envPrefix, anchorCfg); err != nil {
+		return nil, err
+	}
+
+	return anchorCfg, nil
 }

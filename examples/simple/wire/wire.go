@@ -12,14 +12,11 @@ import (
 	"myexampleapp/pkg/zcore/model"
 	"myexampleapp/pkg/zgen/taskgen"
 
-	anchor_wire "github.com/cloudcarver/anchor/wire"
-
 	"github.com/google/wire"
 )
 
 func InitApp() (*pkg.App, error) {
 	wire.Build(
-		anchor_wire.InitializeApplication,
 		injection.InjectAuth,
 		injection.InjectTaskStore,
 		injection.InjectAnchorSvc,
@@ -30,6 +27,7 @@ func InitApp() (*pkg.App, error) {
 		asynctask.NewExecutor,
 		model.NewModel,
 		config.NewConfig,
+		pkg.NewAnchorApp,
 		pkg.NewApp,
 		pkg.NewPlugin,
 	)

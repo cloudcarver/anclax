@@ -2,8 +2,11 @@ package pkg
 
 import (
 	"context"
+	"myexampleapp/pkg/config"
 	"myexampleapp/pkg/zgen/apigen"
 	"myexampleapp/pkg/zgen/taskgen"
+
+	anchor_wire "github.com/cloudcarver/anchor/wire"
 
 	"github.com/cloudcarver/anchor/pkg/app"
 	anchor_app "github.com/cloudcarver/anchor/pkg/app"
@@ -19,6 +22,23 @@ type App struct {
 
 func (a *App) Start() error {
 	return a.anchorApp.Start()
+}
+
+func NewAnchorApp(cfg *config.Config) (*anchor_app.Application, error) {
+	anchorCfg, err := config.NewAnchorConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	anchorCfg.Pg.DSN = cfg.Pg.DSN
+	anchorCfg.Host = cfg.Host
+
+	anchorApp, err := anchor_wire.InitializeApplication(anchorCfg)
+	if err != nil {
+		return nil, err
+	}
+
+	return anchorApp, nil
 }
 
 func NewApp(anchorApp *anchor_app.Application, anchorSvc anchor_svc.ServiceInterface, taskrunner taskgen.TaskRunner, plugin *Plugin) (*App, error) {

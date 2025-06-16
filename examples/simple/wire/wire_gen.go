@@ -7,7 +7,6 @@
 package wire
 
 import (
-	"github.com/cloudcarver/anchor/wire"
 	"myexampleapp/pkg"
 	"myexampleapp/pkg/asynctask"
 	"myexampleapp/pkg/config"
@@ -20,17 +19,17 @@ import (
 // Injectors from wire.go:
 
 func InitApp() (*pkg.App, error) {
-	application, err := wire.InitializeApplication()
+	configConfig, err := config.NewConfig()
+	if err != nil {
+		return nil, err
+	}
+	application, err := pkg.NewAnchorApp(configConfig)
 	if err != nil {
 		return nil, err
 	}
 	serviceInterface := injection.InjectAnchorSvc(application)
 	taskStoreInterface := injection.InjectTaskStore(application)
 	taskRunner := taskgen.NewTaskRunner(taskStoreInterface)
-	configConfig, err := config.NewConfig()
-	if err != nil {
-		return nil, err
-	}
 	modelInterface, err := model.NewModel(configConfig)
 	if err != nil {
 		return nil, err

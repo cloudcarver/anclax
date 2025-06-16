@@ -57,6 +57,8 @@ type ServiceInterface interface {
 	ListEvents(ctx context.Context) ([]apigen.Event, error)
 
 	ListOrgs(ctx context.Context, userID int32) ([]apigen.Org, error)
+
+	UpdateUserPassword(ctx context.Context, username, password string) (int32, error)
 }
 
 type Service struct {

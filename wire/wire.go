@@ -23,11 +23,10 @@ import (
 	"github.com/google/wire"
 )
 
-func InitializeApplication() (*app.Application, error) {
+func InitializeApplication(cfg *config.Config) (*app.Application, error) {
 	wire.Build(
 		app.NewDebugServer,
 		app.NewApplication,
-		config.NewConfig,
 		service.NewService,
 		controller.NewController,
 		controller.NewValidator,

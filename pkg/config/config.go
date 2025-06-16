@@ -1,10 +1,7 @@
 package config
 
 import (
-	"os"
 	"time"
-
-	"github.com/cloudcarver/anchor/lib/conf"
 )
 
 type Pg struct {
@@ -55,29 +52,10 @@ type Config struct {
 	// The test account configuration
 	TestAccount *TestAccount `yaml:"testaccount"`
 
-	// (Optional) Whether to disable internet access, default is false. If public internet is not allowed, set it to true. Then mount risectl files to <risectl dir>/<version>/risectl.
-	NoInternet bool `yaml:"nointernet"`
-
-	// (Optional) The path of the directory to store the risectl files, default is "$HOME/.risectl"
-	RisectlDir string `yaml:"risectldir"`
-
 	// (Optional) The port of the metrics server, default is 9020
 	MetricsPort int `yaml:"metricsport"`
 
 	Worker Worker `yaml:"worker"`
 
 	Debug Debug `yaml:"debug"`
-}
-
-func NewConfig() (*Config, error) {
-	c := &Config{}
-	if err := conf.FetchConfig((func() string {
-		if _, err := os.Stat("config.yaml"); err != nil {
-			return ""
-		}
-		return "config.yaml"
-	})(), "AC_", c); err != nil {
-		return nil, err
-	}
-	return c, nil
 }
