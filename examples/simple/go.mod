@@ -2,7 +2,6 @@ module myexampleapp
 
 go 1.24.1
 
-
 require (
 	github.com/cloudcarver/anchor v0.3.48
 	github.com/gofiber/fiber/v2 v2.52.6

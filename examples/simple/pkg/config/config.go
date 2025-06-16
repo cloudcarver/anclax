@@ -12,22 +12,14 @@ type Pg struct {
 	DSN *string `yaml:"dsn,omitempty"`
 }
 
-type Debug struct {
-	// (Optional) Whether to enable the debug server, default is false
-	Enable bool `yaml:"enable,omitempty"`
-
-	// (Optional) The port of the debug server, default is 8080
-	Port int `yaml:"port,omitempty"`
-}
-
 type Config struct {
-	Debug Debug `yaml:"debug,omitempty"`
-
 	// (Optional) The host of the server, default is localhost
 	Host string `yaml:"host,omitempty"`
 
 	// The postgres configuration
 	Pg Pg `yaml:"pg,omitempty"`
+
+	Anchor anchor_config.Config `yaml:"anchor,omitempty"`
 }
 
 const (
@@ -47,18 +39,4 @@ func NewConfig() (*Config, error) {
 	}
 
 	return c, nil
-}
-
-func NewAnchorConfig() (*anchor_config.Config, error) {
-	anchorCfg := &anchor_config.Config{}
-	if err := conf.FetchConfig((func() string {
-		if _, err := os.Stat(configFile); err != nil {
-			return ""
-		}
-		return configFile
-	})(), envPrefix, anchorCfg); err != nil {
-		return nil, err
-	}
-
-	return anchorCfg, nil
 }
