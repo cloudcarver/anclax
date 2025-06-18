@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -137,42 +138,86 @@ func genConfigDocs(path string, markdown, env, yaml bool, prefix string, structN
 		return errors.Wrap(err, "failed to read directory")
 	}
 
+	// Parse all Go files in the directory
+	fset := token.NewFileSet()
+	var files []*ast.File
 	var configStruct *ast.StructType
+	var imports map[string]string                  // alias -> package path
+	localTypes := make(map[string]*ast.StructType) // type name -> struct definition
+
 	for _, entry := range entries {
-		if entry.IsDir() {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
 			continue
 		}
 
 		filePath := filepath.Join(path, entry.Name())
-		fs := token.NewFileSet()
-		node, err := parser.ParseFile(fs, filePath, nil, parser.ParseComments)
+		node, err := parser.ParseFile(fset, filePath, nil, parser.ParseComments)
 		if err != nil {
 			continue
 		}
+		files = append(files, node)
 
+		// Extract imports for this file
+		if imports == nil {
+			imports = make(map[string]string)
+		}
+		for _, imp := range node.Imports {
+			path := strings.Trim(imp.Path.Value, "\"")
+			if imp.Name != nil {
+				// Aliased import: import alias "package"
+				imports[imp.Name.Name] = path
+			} else {
+				// Regular import: determine the actual package name
+				var pkgName string
+				if strings.HasSuffix(path, "/v2") || strings.HasSuffix(path, "/v3") {
+					// For versioned packages like github.com/urfave/cli/v2,
+					// the package name is the second-to-last path segment
+					parts := strings.Split(path, "/")
+					if len(parts) >= 2 {
+						pkgName = parts[len(parts)-2]
+					} else {
+						pkgName = parts[len(parts)-1]
+					}
+				} else {
+					// For regular packages, use the last path segment
+					parts := strings.Split(path, "/")
+					pkgName = parts[len(parts)-1]
+				}
+				imports[pkgName] = path
+			}
+		}
+
+		// Look for all struct definitions and the config struct
 		ast.Inspect(node, func(n ast.Node) bool {
 			if ts, ok := n.(*ast.TypeSpec); ok {
 				if st, ok := ts.Type.(*ast.StructType); ok {
+					// Store all struct types for local resolution
+					localTypes[ts.Name.Name] = st
+
+					// Check if this is our target config struct
 					if ts.Name.Name == configStructName {
 						configStruct = st
-						return false
 					}
 				}
 			}
 			return true
 		})
-		if configStruct != nil {
-			break
-		}
 	}
 
 	if configStruct == nil {
 		return errors.New("Config struct not found")
 	}
 
+	// Note: We no longer need local type checking since we use go/packages for external types
+
 	vars := make([]EnvVar, 0)
+	typeResolver := &TypeResolver{
+		fset:       fset,
+		imports:    imports,
+		localTypes: localTypes,
+	}
 	for _, field := range configStruct.Fields.List {
-		processField(field, nil, &vars)
+		processFieldWithResolver(field, nil, &vars, typeResolver)
 	}
 
 	if yaml {
@@ -185,6 +230,263 @@ func genConfigDocs(path string, markdown, env, yaml bool, prefix string, structN
 		}
 	}
 	return nil
+}
+
+// TypeResolver helps resolve external types using dynamic package loading
+type TypeResolver struct {
+	fset       *token.FileSet
+	imports    map[string]string          // alias -> package path
+	localTypes map[string]*ast.StructType // local type name -> struct definition
+}
+
+// findPackageSourcePath finds the source directory for a package using go list
+func (tr *TypeResolver) findPackageSourcePath(packagePath string) (string, error) {
+	cmd := exec.Command("go", "list", "-f", "{{.Dir}}", packagePath)
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to find package %s: %v", packagePath, err)
+	}
+
+	return strings.TrimSpace(string(output)), nil
+}
+
+// expandExternalType dynamically resolves external struct fields by parsing source
+func (tr *TypeResolver) expandExternalType(typeStr string) []Field {
+	// Remove pointer prefix
+	baseType := strings.TrimPrefix(typeStr, "*")
+	parts := strings.Split(baseType, ".")
+	if len(parts) != 2 {
+		return nil
+	}
+
+	pkgAlias, typeName := parts[0], parts[1]
+
+	// Get the actual package path
+	pkgPath, exists := tr.imports[pkgAlias]
+	if !exists {
+		return nil
+	}
+
+	// Find the package source directory
+	sourceDir, err := tr.findPackageSourcePath(pkgPath)
+	if err != nil {
+		return nil
+	}
+
+	// Parse the package source files
+	return tr.parsePackageForType(sourceDir, typeName)
+}
+
+// parsePackageForType parses Go source files in a directory to find a specific type
+func (tr *TypeResolver) parsePackageForType(sourceDir, typeName string) []Field {
+	entries, err := os.ReadDir(sourceDir)
+	if err != nil {
+		return nil
+	}
+
+	// Parse all Go files in the package to build local type map
+	packageLocalTypes := make(map[string]*ast.StructType)
+
+	// First pass: collect all struct types in the package
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
+			continue
+		}
+
+		filePath := filepath.Join(sourceDir, entry.Name())
+		file, err := parser.ParseFile(token.NewFileSet(), filePath, nil, parser.ParseComments)
+		if err != nil {
+			continue
+		}
+
+		// Collect all struct types in this package
+		ast.Inspect(file, func(n ast.Node) bool {
+			if ts, ok := n.(*ast.TypeSpec); ok {
+				if st, ok := ts.Type.(*ast.StructType); ok {
+					packageLocalTypes[ts.Name.Name] = st
+				}
+			}
+			return true
+		})
+	}
+
+	// Second pass: find the target struct and extract its fields
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
+			continue
+		}
+
+		filePath := filepath.Join(sourceDir, entry.Name())
+		file, err := parser.ParseFile(token.NewFileSet(), filePath, nil, parser.ParseComments)
+		if err != nil {
+			continue
+		}
+
+		// Look for the struct definition
+		var targetStruct *ast.StructType
+		ast.Inspect(file, func(n ast.Node) bool {
+			if ts, ok := n.(*ast.TypeSpec); ok {
+				if st, ok := ts.Type.(*ast.StructType); ok && ts.Name.Name == typeName {
+					targetStruct = st
+					return false
+				}
+			}
+			return true
+		})
+
+		if targetStruct != nil {
+			// Extract fields from the struct
+			return tr.extractFieldsFromASTStruct(targetStruct)
+		}
+	}
+
+	return nil
+}
+
+// extractFieldsFromASTStruct extracts fields from an AST struct
+func (tr *TypeResolver) extractFieldsFromASTStruct(structType *ast.StructType) []Field {
+	var fields []Field
+
+	for _, field := range structType.Fields.List {
+		if field.Names == nil {
+			continue // Skip embedded fields for now
+		}
+
+		for _, name := range field.Names {
+			if !name.IsExported() {
+				continue
+			}
+
+			// Get YAML field name
+			var yamlName string
+			if field.Tag != nil {
+				yamlName = extractYAMLFieldName(field.Tag.Value, name.Name)
+			} else {
+				yamlName = strings.ToLower(name.Name)
+			}
+
+			if yamlName == "-" {
+				continue
+			}
+
+			// Get field comment
+			var comment string
+			if field.Doc != nil {
+				comments := make([]string, 0, len(field.Doc.List))
+				for _, c := range field.Doc.List {
+					comments = append(comments, strings.TrimSpace(strings.TrimPrefix(c.Text, "//")))
+				}
+				comment = strings.Join(comments, " ")
+			}
+
+			// Get the field type
+			fieldType := getTypeString(field.Type)
+
+			fields = append(fields, Field{
+				Name:    yamlName,
+				Type:    fieldType,
+				Comment: comment,
+			})
+		}
+	}
+
+	return fields
+}
+
+// getKnownExternalTypeFields returns predefined field definitions for external types - REMOVE THIS
+func (tr *TypeResolver) getKnownExternalTypeFields(pkgPath, typeName string) []Field {
+	// Remove all hardcoded definitions - we want dynamic resolution only
+	return nil
+}
+
+// extractYAMLFieldName extracts the YAML field name from struct tag
+func extractYAMLFieldName(tag, defaultName string) string {
+	if tag == "" {
+		return strings.ToLower(defaultName)
+	}
+
+	// Parse yaml tag
+	for _, part := range strings.Split(tag, " ") {
+		part = strings.Trim(part, "`")
+		if strings.HasPrefix(part, "yaml:") {
+			yamlTag := strings.Trim(strings.TrimPrefix(part, "yaml:"), "\"")
+			if yamlTag == "" {
+				continue
+			}
+			// Split by comma and take the first part
+			name := strings.Split(yamlTag, ",")[0]
+			if name == "" {
+				return strings.ToLower(defaultName)
+			}
+			return name
+		}
+	}
+
+	return strings.ToLower(defaultName)
+}
+
+// shouldExpandExternalType determines if we should try to expand an external type
+func (tr *TypeResolver) shouldExpandExternalType(typeStr string) bool {
+	// Remove pointer prefix
+	baseType := strings.TrimPrefix(typeStr, "*")
+	parts := strings.Split(baseType, ".")
+	if len(parts) != 2 {
+		return false
+	}
+
+	pkgAlias, typeName := parts[0], parts[1]
+	pkgPath, exists := tr.imports[pkgAlias]
+	if !exists {
+		return false
+	}
+
+	// Be more conservative - only expand types that look like struct types
+	// and are likely to be configuration structures
+	if strings.Contains(typeName, "Config") || strings.Contains(typeName, "Settings") ||
+		strings.Contains(typeName, "Options") || strings.HasSuffix(typeName, "Spec") ||
+		strings.HasSuffix(typeName, "Opts") || len(typeName) > 2 && strings.ToUpper(typeName[:1]) == typeName[:1] {
+		// Try to find the package source to see if we can expand it
+		if _, err := tr.findPackageSourcePath(pkgPath); err == nil {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isPrimitiveOrKnownType returns true if the type is primitive or a known non-struct type
+func isPrimitiveOrKnownType(typeStr string) bool {
+	primitives := map[string]bool{
+		"string":  true,
+		"int":     true,
+		"int8":    true,
+		"int16":   true,
+		"int32":   true,
+		"int64":   true,
+		"uint":    true,
+		"uint8":   true,
+		"uint16":  true,
+		"uint32":  true,
+		"uint64":  true,
+		"bool":    true,
+		"float32": true,
+		"float64": true,
+		"byte":    true,
+		"rune":    true,
+	}
+
+	// Known non-struct types from common packages
+	knownTypes := map[string]bool{
+		"time.Time":       true,
+		"time.Duration":   true,
+		"url.URL":         true,
+		"net.IP":          true,
+		"json.RawMessage": true,
+		"error":           true, // Built-in error interface
+	}
+
+	baseType := strings.TrimPrefix(typeStr, "*")
+	return primitives[baseType] || knownTypes[baseType]
 }
 
 // Field represents a single field in the config structure
@@ -225,33 +527,6 @@ func (e EnvVar) LastField() Field {
 	return e.Chain[len(e.Chain)-1]
 }
 
-// isPrimitiveType returns true if the type is a primitive or string type
-func isPrimitiveType(typeStr string) bool {
-	primitives := map[string]bool{
-		"string": true,
-		"int":    true,
-		"bool":   true,
-	}
-	return primitives[strings.TrimPrefix(typeStr, "*")]
-}
-
-// getYAMLTag extracts the yaml tag value from a field tag
-func getYAMLTag(tag string) string {
-	if tag == "" {
-		return ""
-	}
-	tag = strings.Trim(tag, "`")
-	for _, tagPart := range strings.Split(tag, " ") {
-		if strings.HasPrefix(tagPart, "yaml:") {
-			// Extract the yaml tag content
-			content := strings.Trim(strings.Split(tagPart, ":")[1], "\"")
-			// Split by comma and take the first part as the field name
-			return strings.Split(content, ",")[0]
-		}
-	}
-	return ""
-}
-
 // getTypeString returns a string representation of the type
 func getTypeString(expr ast.Expr) string {
 	switch t := expr.(type) {
@@ -266,44 +541,103 @@ func getTypeString(expr ast.Expr) string {
 	}
 }
 
-// processStructFields recursively processes struct fields and builds environment variable paths
-func processStructFields(field ast.Expr, chain []Field, vars *[]EnvVar) {
+// processStructFieldsWithResolver recursively processes struct fields with type resolution
+func processStructFieldsWithResolver(field ast.Expr, chain []Field, vars *[]EnvVar, resolver *TypeResolver) {
 	switch t := field.(type) {
 	case *ast.Ident:
-		if isPrimitiveType(t.Name) {
+		typeStr := t.Name
+		if isPrimitiveOrKnownType(typeStr) {
 			*vars = append(*vars, EnvVar{Chain: chain})
-		} else if obj := t.Obj; obj != nil {
-			if ts, ok := obj.Decl.(*ast.TypeSpec); ok {
-				if st, ok := ts.Type.(*ast.StructType); ok {
-					for _, f := range st.Fields.List {
-						processField(f, chain, vars)
-					}
-				}
+		} else if localStruct, exists := resolver.localTypes[typeStr]; exists {
+			// Resolve local struct type
+			for _, f := range localStruct.Fields.List {
+				processFieldWithResolver(f, chain, vars, resolver)
 			}
+		} else {
+			// For unknown local types, treat as primitives
+			*vars = append(*vars, EnvVar{Chain: chain})
 		}
 	case *ast.StarExpr:
-		if isPrimitiveType(getTypeString(t.X)) {
+		typeStr := getTypeString(t.X)
+		if isPrimitiveOrKnownType(typeStr) {
 			*vars = append(*vars, EnvVar{Chain: chain})
 		} else {
-			processStructFields(t.X, chain, vars)
+			processStructFieldsWithResolver(t.X, chain, vars, resolver)
 		}
 	case *ast.SelectorExpr:
-		*vars = append(*vars, EnvVar{Chain: chain})
+		typeStr := getTypeString(t)
+		if isPrimitiveOrKnownType(typeStr) {
+			*vars = append(*vars, EnvVar{Chain: chain})
+		} else if resolver.shouldExpandExternalType(typeStr) {
+			// Expand using dynamic struct resolution
+			knownFields := resolver.expandExternalType(typeStr)
+			if len(knownFields) > 0 {
+				// Get the package path for potential nested type resolution
+				parts := strings.Split(typeStr, ".")
+				var pkgPath string
+				if len(parts) == 2 {
+					if path, exists := resolver.imports[parts[0]]; exists {
+						pkgPath = path
+					}
+				}
+
+				for _, knownField := range knownFields {
+					newChain := make([]Field, len(chain))
+					copy(newChain, chain)
+					newChain = append(newChain, knownField)
+
+					// Check if this field type should also be expanded (from the same package)
+					fieldType := knownField.Type
+					if !isPrimitiveOrKnownType(fieldType) && pkgPath != "" {
+						// Create a SelectorExpr-like type for nested resolution
+						if !strings.Contains(fieldType, ".") {
+							// This is a local type in the same package
+							nestedTypeStr := parts[0] + "." + strings.TrimPrefix(fieldType, "*")
+							if resolver.shouldExpandExternalType(nestedTypeStr) {
+								// Recursively expand this nested type
+								nestedFields := resolver.expandExternalType(nestedTypeStr)
+								if len(nestedFields) > 0 {
+									for _, nestedField := range nestedFields {
+										nestedChain := make([]Field, len(newChain))
+										copy(nestedChain, newChain)
+										nestedChain = append(nestedChain, nestedField)
+										*vars = append(*vars, EnvVar{Chain: nestedChain})
+									}
+									continue // Skip adding the parent field as primitive
+								}
+							}
+						}
+					}
+
+					// Add as primitive if not expandable
+					*vars = append(*vars, EnvVar{Chain: newChain})
+				}
+			} else {
+				// Fallback to primitive if expansion failed
+				*vars = append(*vars, EnvVar{Chain: chain})
+			}
+		} else {
+			// Treat as primitive (interfaces, unknown external types, etc.)
+			*vars = append(*vars, EnvVar{Chain: chain})
+		}
 	case *ast.StructType:
 		for _, f := range t.Fields.List {
-			processField(f, chain, vars)
+			processFieldWithResolver(f, chain, vars, resolver)
 		}
 	}
 }
 
-// processField handles a single struct field
-func processField(field *ast.Field, parentChain []Field, vars *[]EnvVar) {
+// processFieldWithResolver handles a single struct field with type resolution
+func processFieldWithResolver(field *ast.Field, parentChain []Field, vars *[]EnvVar, resolver *TypeResolver) {
 	if field.Names == nil {
-		processStructFields(field.Type, parentChain, vars)
+		processStructFieldsWithResolver(field.Type, parentChain, vars, resolver)
 		return
 	}
 
-	yamlTag := getYAMLTag(field.Tag.Value)
+	var yamlTag string
+	if field.Tag != nil {
+		yamlTag = extractYAMLFieldName(field.Tag.Value, field.Names[0].Name)
+	}
 	fieldName := yamlTag
 	if fieldName == "" {
 		fieldName = strings.ToLower(field.Names[0].Name)
@@ -328,7 +662,7 @@ func processField(field *ast.Field, parentChain []Field, vars *[]EnvVar) {
 	copy(chain, parentChain)
 	chain = append(chain, newField)
 
-	processStructFields(field.Type, chain, vars)
+	processStructFieldsWithResolver(field.Type, chain, vars, resolver)
 }
 
 // getEnvExampleValue returns an example value for environment variables based on the type

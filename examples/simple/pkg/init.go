@@ -8,7 +8,6 @@ import (
 
 	anchor_wire "github.com/cloudcarver/anchor/wire"
 
-	"github.com/cloudcarver/anchor/pkg/app"
 	anchor_app "github.com/cloudcarver/anchor/pkg/app"
 	anchor_svc "github.com/cloudcarver/anchor/pkg/service"
 	"github.com/cloudcarver/anchor/pkg/taskcore"
@@ -25,9 +24,6 @@ func (a *App) Start() error {
 }
 
 func NewAnchorApp(cfg *config.Config) (*anchor_app.Application, error) {
-	cfg.Anchor.Pg.DSN = cfg.Anchor.Pg.DSN
-	cfg.Anchor.Host = cfg.Anchor.Host
-
 	anchorApp, err := anchor_wire.InitializeApplication(&cfg.Anchor)
 	if err != nil {
 		return nil, err
@@ -69,7 +65,7 @@ func NewPlugin(serverInterface apigen.ServerInterface, validator apigen.Validato
 	}
 }
 
-func (p *Plugin) Plug(anchorApp *app.Application) {
+func (p *Plugin) Plug(anchorApp *anchor_app.Application) {
 	p.PlugToFiberApp(anchorApp.GetServer().GetApp())
 	p.PlugToWorker(anchorApp.GetWorker())
 }
