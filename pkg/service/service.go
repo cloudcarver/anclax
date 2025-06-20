@@ -39,6 +39,9 @@ type ServiceInterface interface {
 	// Create a new user and its default organization
 	CreateNewUser(ctx context.Context, username, password string) (int32, error)
 
+	// IsUsernameExists returns true if the username exists
+	IsUsernameExists(ctx context.Context, username string) (bool, error)
+
 	DeleteUserByName(ctx context.Context, username string) error
 
 	RestoreUserByName(ctx context.Context, username string) error

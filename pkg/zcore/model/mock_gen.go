@@ -353,6 +353,21 @@ func (mr *MockModelInterfaceMockRecorder) InsertOrgUser(ctx, arg any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertOrgUser", reflect.TypeOf((*MockModelInterface)(nil).InsertOrgUser), ctx, arg)
 }
 
+// IsUsernameExists mocks base method.
+func (m *MockModelInterface) IsUsernameExists(ctx context.Context, name string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsUsernameExists", ctx, name)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// IsUsernameExists indicates an expected call of IsUsernameExists.
+func (mr *MockModelInterfaceMockRecorder) IsUsernameExists(ctx, name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsUsernameExists", reflect.TypeOf((*MockModelInterface)(nil).IsUsernameExists), ctx, name)
+}
+
 // ListOrgs mocks base method.
 func (m *MockModelInterface) ListOrgs(ctx context.Context, userID int32) ([]*querier.AnchorOrg, error) {
 	m.ctrl.T.Helper()

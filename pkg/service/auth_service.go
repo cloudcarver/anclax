@@ -184,3 +184,7 @@ func (s *Service) UpdateUserPassword(ctx context.Context, username, password str
 
 	return user.ID, nil
 }
+
+func (s *Service) IsUsernameExists(ctx context.Context, username string) (bool, error) {
+	return s.m.IsUsernameExists(ctx, username)
+}

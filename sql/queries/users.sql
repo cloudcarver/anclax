@@ -14,6 +14,9 @@ WHERE id = $1 AND deleted_at IS NULL;
 -- name: GetUserByName :one
 SELECT * FROM anchor.users WHERE name = $1 AND deleted_at IS NULL;
 
+-- name: IsUsernameExists :one
+SELECT EXISTS (SELECT 1 FROM anchor.users WHERE name = $1);
+
 -- name: DeleteUserByName :exec
 UPDATE anchor.users SET deleted_at = CURRENT_TIMESTAMP WHERE name = $1;
 

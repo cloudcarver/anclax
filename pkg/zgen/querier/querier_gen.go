@@ -31,6 +31,7 @@ type Querier interface {
 	InsertEvent(ctx context.Context, spec apigen.EventSpec) (*AnchorEvent, error)
 	InsertOrgOwner(ctx context.Context, arg InsertOrgOwnerParams) (*AnchorOrgOwner, error)
 	InsertOrgUser(ctx context.Context, arg InsertOrgUserParams) (*AnchorOrgUser, error)
+	IsUsernameExists(ctx context.Context, name string) (bool, error)
 	ListOrgs(ctx context.Context, userID int32) ([]*AnchorOrg, error)
 	PullTask(ctx context.Context) (*AnchorTask, error)
 	RestoreUserByName(ctx context.Context, name string) error

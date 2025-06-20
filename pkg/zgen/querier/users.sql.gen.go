@@ -100,6 +100,17 @@ func (q *Queries) GetUserDefaultOrg(ctx context.Context, userID int32) (int32, e
 	return org_id, err
 }
 
+const isUsernameExists = `-- name: IsUsernameExists :one
+SELECT EXISTS (SELECT 1 FROM anchor.users WHERE name = $1)
+`
+
+func (q *Queries) IsUsernameExists(ctx context.Context, name string) (bool, error) {
+	row := q.db.QueryRow(ctx, isUsernameExists, name)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const restoreUserByName = `-- name: RestoreUserByName :exec
 UPDATE anchor.users SET deleted_at = NULL WHERE name = $1
 `
