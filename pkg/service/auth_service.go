@@ -114,6 +114,10 @@ func (s *Service) CreateNewUser(ctx context.Context, username, password string) 
 			return errors.Wrapf(err, "failed to create user")
 		}
 
+		if err := s.hooks.OnUserCreatedWithTx(ctx, tx, user.ID); err != nil {
+			return errors.Wrapf(err, "failed to run on user created hook")
+		}
+
 		if _, err := txm.InsertOrgOwner(ctx, querier.InsertOrgOwnerParams{
 			UserID: user.ID,
 			OrgID:  org.ID,

@@ -11,6 +11,8 @@ type (
 	OnOrgCreatedWithTx func(ctx context.Context, tx pgx.Tx, orgID int32) error
 
 	OnCreateToken func(ctx context.Context, userID int32, macaroon *macaroons.Macaroon) error
+
+	OnUserCreatedWithTx func(ctx context.Context, tx pgx.Tx, userID int32) error
 )
 
 // There are two types of hooks:
@@ -21,17 +23,22 @@ type AnchorHookInterface interface {
 
 	OnCreateToken(ctx context.Context, userID int32, macaroon *macaroons.Macaroon) error
 
+	OnUserCreatedWithTx(ctx context.Context, tx pgx.Tx, userID int32) error
+
 	// RegisterOnOrgCreatedHook registers a hook function that is executed after an organization is created.
 	RegisterOnOrgCreatedWithTx(hook OnOrgCreatedWithTx)
 
 	// RegisterOnCreateToken registers a hook function that is executed after a token is created.
 	// You can add caveats to the token.
 	RegisterOnCreateToken(hook OnCreateToken)
+
+	RegisterOnUserCreatedWithTx(hook OnUserCreatedWithTx)
 }
 
 type BaseHook struct {
-	OnOrgCreatedWithTxHooks []OnOrgCreatedWithTx
-	OnCreateTokenHooks      []OnCreateToken
+	OnOrgCreatedWithTxHooks  []OnOrgCreatedWithTx
+	OnCreateTokenHooks       []OnCreateToken
+	OnUserCreatedWithTxHooks []OnUserCreatedWithTx
 }
 
 func NewBaseHook() AnchorHookInterface {
@@ -58,6 +65,19 @@ func (b *BaseHook) RegisterOnCreateToken(hook OnCreateToken) {
 func (b *BaseHook) OnCreateToken(ctx context.Context, userID int32, macaroon *macaroons.Macaroon) error {
 	for _, hook := range b.OnCreateTokenHooks {
 		if err := hook(ctx, userID, macaroon); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (b *BaseHook) RegisterOnUserCreatedWithTx(hook OnUserCreatedWithTx) {
+	b.OnUserCreatedWithTxHooks = append(b.OnUserCreatedWithTxHooks, hook)
+}
+
+func (b *BaseHook) OnUserCreatedWithTx(ctx context.Context, tx pgx.Tx, userID int32) error {
+	for _, hook := range b.OnUserCreatedWithTxHooks {
+		if err := hook(ctx, tx, userID); err != nil {
 			return err
 		}
 	}

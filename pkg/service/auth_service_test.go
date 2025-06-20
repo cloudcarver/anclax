@@ -42,6 +42,8 @@ func TestCreateNewUser(t *testing.T) {
 
 	mockHooks.EXPECT().OnOrgCreatedWithTx(ctx, gomock.Any(), org.ID).Return(nil)
 
+	mockHooks.EXPECT().OnUserCreatedWithTx(ctx, gomock.Any(), user.ID).Return(nil)
+
 	mockModel.EXPECT().CreateUser(ctx, querier.CreateUserParams{
 		Name:         username,
 		PasswordHash: hash,
@@ -90,15 +92,15 @@ func TestUpdateUserPassword(t *testing.T) {
 	mockHooks := hooks.NewMockAnchorHookInterface(ctrl)
 
 	var (
-		userID   = int32(102)
-		user     = &querier.AnchorUser{
+		userID = int32(102)
+		user   = &querier.AnchorUser{
 			ID: userID,
 		}
-		username    = "testuser"
-		password    = "newpassword"
-		salt        = "newsalt"
-		hash        = "newhash"
-		ctx         = context.Background()
+		username = "testuser"
+		password = "newpassword"
+		salt     = "newsalt"
+		hash     = "newhash"
+		ctx      = context.Background()
 	)
 
 	mockModel.EXPECT().GetUserByName(ctx, username).Return(user, nil)

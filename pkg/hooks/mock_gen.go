@@ -70,6 +70,20 @@ func (mr *MockAnchorHookInterfaceMockRecorder) OnOrgCreatedWithTx(ctx, tx, orgID
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnOrgCreatedWithTx", reflect.TypeOf((*MockAnchorHookInterface)(nil).OnOrgCreatedWithTx), ctx, tx, orgID)
 }
 
+// OnUserCreatedWithTx mocks base method.
+func (m *MockAnchorHookInterface) OnUserCreatedWithTx(ctx context.Context, tx pgx.Tx, userID int32) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "OnUserCreatedWithTx", ctx, tx, userID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// OnUserCreatedWithTx indicates an expected call of OnUserCreatedWithTx.
+func (mr *MockAnchorHookInterfaceMockRecorder) OnUserCreatedWithTx(ctx, tx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnUserCreatedWithTx", reflect.TypeOf((*MockAnchorHookInterface)(nil).OnUserCreatedWithTx), ctx, tx, userID)
+}
+
 // RegisterOnCreateToken mocks base method.
 func (m *MockAnchorHookInterface) RegisterOnCreateToken(hook OnCreateToken) {
 	m.ctrl.T.Helper()
@@ -92,4 +106,16 @@ func (m *MockAnchorHookInterface) RegisterOnOrgCreatedWithTx(hook OnOrgCreatedWi
 func (mr *MockAnchorHookInterfaceMockRecorder) RegisterOnOrgCreatedWithTx(hook any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterOnOrgCreatedWithTx", reflect.TypeOf((*MockAnchorHookInterface)(nil).RegisterOnOrgCreatedWithTx), hook)
+}
+
+// RegisterOnUserCreatedWithTx mocks base method.
+func (m *MockAnchorHookInterface) RegisterOnUserCreatedWithTx(hook OnUserCreatedWithTx) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "RegisterOnUserCreatedWithTx", hook)
+}
+
+// RegisterOnUserCreatedWithTx indicates an expected call of RegisterOnUserCreatedWithTx.
+func (mr *MockAnchorHookInterfaceMockRecorder) RegisterOnUserCreatedWithTx(hook any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterOnUserCreatedWithTx", reflect.TypeOf((*MockAnchorHookInterface)(nil).RegisterOnUserCreatedWithTx), hook)
 }
