@@ -27,7 +27,7 @@ import (
 
 // Injectors from wire.go:
 
-func InitializeApplication(cfg *config.Config) (*app.Application, error) {
+func InitializeApplication(cfg *config.Config, libCfg *config.LibConfig) (*app.Application, error) {
 	globalContext := globalctx.New()
 	modelInterface, err := model.NewModel(cfg)
 	if err != nil {
@@ -46,7 +46,7 @@ func InitializeApplication(cfg *config.Config) (*app.Application, error) {
 	serviceInterface := service.NewService(cfg, modelInterface, authInterface, anchorHookInterface)
 	serverInterface := controller.NewController(serviceInterface, authInterface)
 	validator := controller.NewValidator(modelInterface, authInterface)
-	serverServer, err := server.NewServer(cfg, globalContext, authInterface, serverInterface, validator)
+	serverServer, err := server.NewServer(cfg, libCfg, globalContext, authInterface, serverInterface, validator)
 	if err != nil {
 		return nil, err
 	}

@@ -12,6 +12,7 @@ import (
 	"myexampleapp/pkg/zcore/model"
 	"myexampleapp/pkg/zgen/taskgen"
 
+	anchor_config "github.com/cloudcarver/anchor/pkg/config"
 	"github.com/google/wire"
 )
 
@@ -30,6 +31,7 @@ func InitApp() (*pkg.App, error) {
 		pkg.NewAnchorApp,
 		pkg.NewApp,
 		pkg.NewPlugin,
+		anchor_config.DefaultLibConfig,
 	)
 	return nil, nil
 }

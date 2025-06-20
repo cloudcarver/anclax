@@ -28,10 +28,12 @@ type Server struct {
 	globalCtx       *globalctx.GlobalContext
 	serverInterface apigen.ServerInterface
 	validator       apigen.Validator
+	libCfg          *config.LibConfig
 }
 
 func NewServer(
 	cfg *config.Config,
+	libCfg *config.LibConfig,
 	globalCtx *globalctx.GlobalContext,
 	auth auth.AuthInterface,
 	serverInterface apigen.ServerInterface,
@@ -65,6 +67,7 @@ func NewServer(
 		serverInterface: serverInterface,
 		globalCtx:       globalCtx,
 		validator:       validator,
+		libCfg:          libCfg,
 	}
 
 	s.registerMiddleware()
@@ -82,7 +85,12 @@ func (s *Server) registerMiddleware() {
 		EnableStackTrace: true,
 	}))
 
-	s.app.Use(cors.New(cors.Config{}))
+	if s.libCfg.Cors != nil {
+		s.app.Use(cors.New(*s.libCfg.Cors))
+	} else {
+		s.app.Use(cors.New(cors.Config{}))
+	}
+
 	s.app.Use(requestid.New())
 	s.app.Use(func(c *fiber.Ctx) error {
 		// log request

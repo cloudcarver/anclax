@@ -23,7 +23,7 @@ import (
 	"github.com/google/wire"
 )
 
-func InitializeApplication(cfg *config.Config) (*app.Application, error) {
+func InitializeApplication(cfg *config.Config, libCfg *config.LibConfig) (*app.Application, error) {
 	wire.Build(
 		app.NewDebugServer,
 		app.NewApplication,
