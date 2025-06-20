@@ -6,6 +6,7 @@ import (
 	"myexampleapp/pkg/zgen/apigen"
 	"myexampleapp/pkg/zgen/taskgen"
 
+	anchor_config "github.com/cloudcarver/anchor/pkg/config"
 	anchor_wire "github.com/cloudcarver/anchor/wire"
 
 	anchor_app "github.com/cloudcarver/anchor/pkg/app"
@@ -24,7 +25,7 @@ func (a *App) Start() error {
 }
 
 func NewAnchorApp(cfg *config.Config) (*anchor_app.Application, error) {
-	anchorApp, err := anchor_wire.InitializeApplication(&cfg.Anchor)
+	anchorApp, err := anchor_wire.InitializeApplication(&cfg.Anchor, anchor_config.DefaultLibConfig())
 	if err != nil {
 		return nil, err
 	}
