@@ -86,12 +86,12 @@ func (s *Service) RefreshToken(ctx context.Context, userID int32, refreshToken s
 }
 
 func (s *Service) CreateNewUser(ctx context.Context, username, password string) (int32, error) {
-	return s.CreateNewUserWithHook(ctx, username, password, func(ctx context.Context, tx *pgx.Tx, orgID int32, userID int32) error {
+	return s.CreateNewUserWithHook(ctx, username, password, func(ctx context.Context, tx pgx.Tx, orgID int32, userID int32) error {
 		return nil
 	})
 }
 
-func (s *Service) CreateNewUserWithHook(ctx context.Context, username, password string, hook func(ctx context.Context, tx *pgx.Tx, orgID int32, userID int32) error) (int32, error) {
+func (s *Service) CreateNewUserWithHook(ctx context.Context, username, password string, hook func(ctx context.Context, tx pgx.Tx, orgID int32, userID int32) error) (int32, error) {
 	salt, hash, err := s.generateSaltAndHash(password)
 	if err != nil {
 		return 0, errors.Wrapf(err, "failed to generate hash and salt")
@@ -145,7 +145,7 @@ func (s *Service) CreateNewUserWithHook(ctx context.Context, username, password 
 			return errors.Wrapf(err, "failed to set user default org")
 		}
 
-		if err := hook(ctx, &tx, org.ID, user.ID); err != nil {
+		if err := hook(ctx, tx, org.ID, user.ID); err != nil {
 			return errors.Wrapf(err, "failed to run hook")
 		}
 
