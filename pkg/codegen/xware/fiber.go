@@ -38,9 +38,18 @@ func Generate(workdir, packageName string, specPath string, outPath string) erro
 		return errors.Wrap(err, "failed to generate check rules")
 	}
 
+	// Check if generated code contains openapi_types references
+	imports := `import "github.com/gofiber/fiber/v2"`
+	if strings.Contains(code, "openapi_types.") || strings.Contains(checkRules, "openapi_types.") {
+		imports = `import (
+	"github.com/gofiber/fiber/v2"
+	openapi_types "github.com/oapi-codegen/runtime/types"
+)`
+	}
+
 	code = `package ` + packageName + `
 
-import "github.com/gofiber/fiber/v2"
+` + imports + `
 
 ` + checkRules + `
 
