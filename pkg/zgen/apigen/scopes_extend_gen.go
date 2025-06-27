@@ -85,4 +85,19 @@ func (x *XMiddleware) ListTasks(c *fiber.Ctx) error {
 	}
     return x.ServerInterface.ListTasks(c)
 }
+// Try to execute a task
+// (POST /tasks/{taskID}/try-execute)
+func (x *XMiddleware) TryExecuteTask(c *fiber.Ctx, taskID int32) error {
+    if err := x.AuthFunc(c); err != nil {
+		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
+	} 
+	if err := x.PreValidate(c); err != nil {
+		return c.Status(fiber.StatusForbidden).SendString(err.Error())
+	}
+	   
+	if err := x.PostValidate(c); err != nil {
+		return c.Status(fiber.StatusForbidden).SendString(err.Error())
+	}
+    return x.ServerInterface.TryExecuteTask(c, taskID)
+}
 

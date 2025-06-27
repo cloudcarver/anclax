@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/cloudcarver/anchor/pkg/taskcore"
 	"github.com/cloudcarver/anchor/pkg/zcore/model"
 	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
 	"github.com/cloudcarver/anchor/pkg/zgen/querier"
@@ -41,24 +42,26 @@ func (a *TaskLifeCycleHandler) isCronjob(task apigen.Task) bool {
 }
 
 func (a *TaskLifeCycleHandler) HandleFailed(ctx context.Context, task apigen.Task, err error) error {
-	// the event must be reported
-	if _, err := a.txm.InsertEvent(ctx, apigen.EventSpec{
-		Type: apigen.TaskError,
-		TaskError: &apigen.EventTaskError{
-			TaskID: task.ID,
-			Error:  err.Error(),
-		},
-	}); err != nil {
-		return errors.Wrap(err, "insert task error event")
+	// insert error event if the error is not intentional
+	if err != taskcore.ErrRetryTaskWithoutErrorEvent {
+		if _, err := a.txm.InsertEvent(ctx, apigen.EventSpec{
+			Type: apigen.TaskError,
+			TaskError: &apigen.EventTaskError{
+				TaskID: task.ID,
+				Error:  err.Error(),
+			},
+		}); err != nil {
+			return errors.Wrap(err, "insert task error event")
+		}
 	}
 
-	// cronjob should be run again anyway, no need to update status
-	if a.isCronjob(task) {
+	// cronjob should be run again if the error is not fatal
+	if a.isCronjob(task) && err != taskcore.ErrFatalTask {
 		log.Info("cronjob failed, will be run again", zap.Int32("task_id", task.ID))
 		return nil
 	}
 
-	if task.Attributes.RetryPolicy != nil {
+	if err != taskcore.ErrFatalTask && task.Attributes.RetryPolicy != nil {
 		if task.Attributes.RetryPolicy.AlwaysRetryOnFailure {
 			// retry the task by updating the started_at field
 			interval, err := time.ParseDuration(task.Attributes.RetryPolicy.Interval)

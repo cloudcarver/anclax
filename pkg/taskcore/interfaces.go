@@ -3,9 +3,18 @@ package taskcore
 import (
 	"context"
 	"encoding/json"
+	"errors"
 
 	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
 	"github.com/jackc/pgx/v5"
+)
+
+var (
+	// The task is fatal and should not be retried
+	ErrFatalTask = errors.New("fatal task")
+
+	// The error of the executor is intentional, no need to insert error event
+	ErrRetryTaskWithoutErrorEvent = errors.New("retry task without error event")
 )
 
 type TaskOverride = func(task *apigen.Task) error

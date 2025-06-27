@@ -9,6 +9,17 @@ ORDER BY created_at ASC
 FOR UPDATE SKIP LOCKED
 LIMIT 1;
 
+-- name: PullTaskByID :one
+SELECT * FROM anchor.tasks
+WHERE 
+    status = 'pending'
+    AND id = $1
+    AND (
+        started_at IS NULL OR started_at < NOW()
+    )
+ORDER BY created_at ASC
+FOR UPDATE SKIP LOCKED;
+
 -- name: UpdateTaskStatus :exec
 UPDATE anchor.tasks
 SET 

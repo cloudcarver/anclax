@@ -114,6 +114,26 @@ paths:
                 items:
                   $ref: "#/components/schemas/Org"
 
+  /tasks/{taskID}/try-execute:
+    post:
+      summary: Try to execute a task
+      description: Try to execute a task
+      operationId: tryExecuteTask
+      parameters:
+        - name: taskID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int32
+      responses:
+        "200":
+          description: Successfully tried to execute the task
+        "404":
+          description: Task not found
+      security:
+        - BearerAuth: []
+
 components:
   securitySchemes:
     BearerAuth:

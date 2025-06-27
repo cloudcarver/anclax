@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cloudcarver/anchor/pkg/taskcore"
 	"github.com/cloudcarver/anchor/pkg/utils"
 	"github.com/cloudcarver/anchor/pkg/zcore/model"
 	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
@@ -173,4 +174,129 @@ func TestHandleFailedWithRetryPolicy(t *testing.T) {
 	err = handler.HandleFailed(context.Background(), task, err)
 	require.NoError(t, err)
 
+}
+
+func TestHandleFailed_ErrRetryTaskWithoutErrorEvent(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	var (
+		taskID   = int32(1)
+		currTime = time.Now()
+		interval = 1 * time.Hour
+	)
+
+	txm := model.NewMockModelInterfaceWithTransaction(ctrl)
+
+	handler := &TaskLifeCycleHandler{
+		txm: txm,
+		now: func() time.Time {
+			return currTime
+		},
+	}
+
+	task := apigen.Task{
+		ID: taskID,
+		Attributes: apigen.TaskAttributes{
+			RetryPolicy: &apigen.TaskRetryPolicy{
+				AlwaysRetryOnFailure: true,
+				Interval:             "1h",
+			},
+		},
+	}
+
+	txm.EXPECT().UpdateTaskStartedAt(context.Background(), querier.UpdateTaskStartedAtParams{
+		ID:        taskID,
+		StartedAt: utils.Ptr(currTime.Add(interval)),
+	}).Return(nil)
+
+	err := handler.HandleFailed(context.Background(), task, taskcore.ErrRetryTaskWithoutErrorEvent)
+	require.NoError(t, err)
+}
+
+func TestHandleFailed_ErrFatalTask(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	var (
+		taskID   = int32(1)
+		currTime = time.Now()
+	)
+
+	txm := model.NewMockModelInterfaceWithTransaction(ctrl)
+
+	handler := &TaskLifeCycleHandler{
+		txm: txm,
+		now: func() time.Time {
+			return currTime
+		},
+	}
+
+	task := apigen.Task{
+		ID: taskID,
+		Attributes: apigen.TaskAttributes{
+			RetryPolicy: &apigen.TaskRetryPolicy{
+				AlwaysRetryOnFailure: true,
+				Interval:             "1h",
+			},
+		},
+	}
+
+	txm.EXPECT().InsertEvent(context.Background(), apigen.EventSpec{
+		Type: apigen.TaskError,
+		TaskError: &apigen.EventTaskError{
+			TaskID: taskID,
+			Error:  taskcore.ErrFatalTask.Error(),
+		},
+	}).Return(&querier.AnchorEvent{}, nil)
+
+	txm.EXPECT().UpdateTaskStatus(context.Background(), querier.UpdateTaskStatusParams{
+		ID:     taskID,
+		Status: string(apigen.Failed),
+	}).Return(nil)
+
+	err := handler.HandleFailed(context.Background(), task, taskcore.ErrFatalTask)
+	require.NoError(t, err)
+}
+
+func TestHandleFailed_ErrFatalTask_Cronjob(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	var (
+		taskID = int32(1)
+	)
+
+	txm := model.NewMockModelInterfaceWithTransaction(ctrl)
+
+	handler := &TaskLifeCycleHandler{
+		txm: txm,
+	}
+
+	task := apigen.Task{
+		ID: taskID,
+		Attributes: apigen.TaskAttributes{
+			Cronjob: &apigen.TaskCronjob{
+				CronExpression: "0 0 0 * * *",
+			},
+		},
+	}
+
+	// Expect that error event is still inserted for fatal errors
+	txm.EXPECT().InsertEvent(context.Background(), apigen.EventSpec{
+		Type: apigen.TaskError,
+		TaskError: &apigen.EventTaskError{
+			TaskID: taskID,
+			Error:  taskcore.ErrFatalTask.Error(),
+		},
+	}).Return(&querier.AnchorEvent{}, nil)
+
+	// Expect that task status is updated to failed (even for cronjobs with fatal errors)
+	txm.EXPECT().UpdateTaskStatus(context.Background(), querier.UpdateTaskStatusParams{
+		ID:     taskID,
+		Status: string(apigen.Failed),
+	}).Return(nil)
+
+	err := handler.HandleFailed(context.Background(), task, taskcore.ErrFatalTask)
+	require.NoError(t, err)
 }

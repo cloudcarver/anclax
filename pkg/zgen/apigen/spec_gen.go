@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/oapi-codegen/runtime"
 )
 
 const (
@@ -253,6 +254,9 @@ type ClientInterface interface {
 
 	// ListTasks request
 	ListTasks(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TryExecuteTask request
+	TryExecuteTask(ctx context.Context, taskID int32, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) RefreshTokenWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -341,6 +345,18 @@ func (c *Client) ListOrgs(ctx context.Context, reqEditors ...RequestEditorFn) (*
 
 func (c *Client) ListTasks(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListTasksRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TryExecuteTask(ctx context.Context, taskID int32, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTryExecuteTaskRequest(c.Server, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -539,6 +555,40 @@ func NewListTasksRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewTryExecuteTaskRequest generates requests for TryExecuteTask
+func NewTryExecuteTaskRequest(server string, taskID int32) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "taskID", runtime.ParamLocationPath, taskID)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/tasks/%s/try-execute", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -603,6 +653,9 @@ type ClientWithResponsesInterface interface {
 
 	// ListTasksWithResponse request
 	ListTasksWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListTasksResponse, error)
+
+	// TryExecuteTaskWithResponse request
+	TryExecuteTaskWithResponse(ctx context.Context, taskID int32, reqEditors ...RequestEditorFn) (*TryExecuteTaskResponse, error)
 }
 
 type RefreshTokenResponse struct {
@@ -736,6 +789,27 @@ func (r ListTasksResponse) StatusCode() int {
 	return 0
 }
 
+type TryExecuteTaskResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// Status returns HTTPResponse.Status
+func (r TryExecuteTaskResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TryExecuteTaskResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 // RefreshTokenWithBodyWithResponse request with arbitrary body returning *RefreshTokenResponse
 func (c *ClientWithResponses) RefreshTokenWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RefreshTokenResponse, error) {
 	rsp, err := c.RefreshTokenWithBody(ctx, contentType, body, reqEditors...)
@@ -804,6 +878,15 @@ func (c *ClientWithResponses) ListTasksWithResponse(ctx context.Context, reqEdit
 		return nil, err
 	}
 	return ParseListTasksResponse(rsp)
+}
+
+// TryExecuteTaskWithResponse request returning *TryExecuteTaskResponse
+func (c *ClientWithResponses) TryExecuteTaskWithResponse(ctx context.Context, taskID int32, reqEditors ...RequestEditorFn) (*TryExecuteTaskResponse, error) {
+	rsp, err := c.TryExecuteTask(ctx, taskID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTryExecuteTaskResponse(rsp)
 }
 
 // ParseRefreshTokenResponse parses an HTTP response from a RefreshTokenWithResponse call
@@ -952,6 +1035,22 @@ func ParseListTasksResponse(rsp *http.Response) (*ListTasksResponse, error) {
 	return response, nil
 }
 
+// ParseTryExecuteTaskResponse parses an HTTP response from a TryExecuteTaskWithResponse call
+func ParseTryExecuteTaskResponse(rsp *http.Response) (*TryExecuteTaskResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TryExecuteTaskResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// Refresh access token
@@ -972,6 +1071,9 @@ type ServerInterface interface {
 	// Get all tasks
 	// (GET /tasks)
 	ListTasks(c *fiber.Ctx) error
+	// Try to execute a task
+	// (POST /tasks/{taskID}/try-execute)
+	TryExecuteTask(c *fiber.Ctx, taskID int32) error
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -1025,6 +1127,24 @@ func (siw *ServerInterfaceWrapper) ListTasks(c *fiber.Ctx) error {
 	return siw.Handler.ListTasks(c)
 }
 
+// TryExecuteTask operation middleware
+func (siw *ServerInterfaceWrapper) TryExecuteTask(c *fiber.Ctx) error {
+
+	var err error
+
+	// ------------- Path parameter "taskID" -------------
+	var taskID int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskID", c.Params("taskID"), &taskID, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, fmt.Errorf("Invalid format for parameter taskID: %w", err).Error())
+	}
+
+	c.Context().SetUserValue(BearerAuthScopes, []string{})
+
+	return siw.Handler.TryExecuteTask(c, taskID)
+}
+
 // FiberServerOptions provides options for the Fiber server.
 type FiberServerOptions struct {
 	BaseURL     string
@@ -1057,5 +1177,7 @@ func RegisterHandlersWithOptions(router fiber.Router, si ServerInterface, option
 	router.Get(options.BaseURL+"/orgs", wrapper.ListOrgs)
 
 	router.Get(options.BaseURL+"/tasks", wrapper.ListTasks)
+
+	router.Post(options.BaseURL+"/tasks/:taskID/try-execute", wrapper.TryExecuteTask)
 
 }
