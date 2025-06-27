@@ -7,6 +7,7 @@ import (
 	"github.com/cloudcarver/anchor/pkg/globalctx"
 	"github.com/cloudcarver/anchor/pkg/logger"
 	"github.com/cloudcarver/anchor/pkg/metrics"
+	"github.com/cloudcarver/anchor/pkg/taskcore"
 	"github.com/cloudcarver/anchor/pkg/zcore/model"
 	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
 	"github.com/cloudcarver/anchor/pkg/zgen/querier"
@@ -115,7 +116,9 @@ func (w *Worker) runTask(parentCtx context.Context) error {
 		// run task
 		err = w.taskHandler.HandleTask(ctx, &task.Spec)
 		if err != nil { // handle failed
-			log.Error("error executing task", zap.Int32("task_id", task.ID), zap.Error(err))
+			if err != taskcore.ErrRetryTaskWithoutErrorEvent {
+				log.Error("error executing task", zap.Int32("task_id", task.ID), zap.Error(err))
+			}
 			if err := lh.HandleFailed(ctx, task, err); err != nil {
 				return errors.Wrap(err, "failed to handle failed task")
 			}
