@@ -100,3 +100,7 @@ func (controller *Controller) ListOrgs(c *fiber.Ctx) error {
 
 	return c.Status(fiber.StatusOK).JSON(ret)
 }
+
+func (controller *Controller) TryExecuteTask(c *fiber.Ctx, taskID int32) error {
+	return nil
+}
