@@ -148,7 +148,7 @@ func (m *MacaroonsParser) Parse(ctx context.Context, token string) (*Macaroon, e
 	// decode signature
 	signature, err := base64.StdEncoding.DecodeString(encodedSignature)
 	if err != nil {
-		return nil, errors.Wrap(ErrMalformedToken, "failed to decode signature")
+		return nil, errors.Wrapf(ErrMalformedToken, "failed to decode signature: %s", err.Error())
 	}
 
 	// verify signature
