@@ -29,6 +29,7 @@ type ModelInterface interface {
 	RunTransactionWithTx(ctx context.Context, f func(tx pgx.Tx, model ModelInterface) error) error
 	InTransaction() bool
 	SpawnWithTx(tx pgx.Tx) ModelInterface
+	Close()
 }
 
 type Model struct {
@@ -36,6 +37,10 @@ type Model struct {
 	beginTx       func(ctx context.Context) (pgx.Tx, error)
 	p             *pgxpool.Pool
 	inTransaction bool
+}
+
+func (m *Model) Close() {
+	m.p.Close()
 }
 
 func (m *Model) InTransaction() bool {

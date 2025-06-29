@@ -27,3 +27,6 @@ func (e *ExtendMockModel) RunTransactionWithTx(ctx context.Context, f func(tx pg
 func (e *ExtendMockModel) SpawnWithTx(tx pgx.Tx) ModelInterface {
 	return e
 }
+
+func (e *ExtendMockModel) Close() {
+}

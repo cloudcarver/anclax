@@ -34,6 +34,7 @@ type Querier interface {
 	IsUsernameExists(ctx context.Context, name string) (bool, error)
 	ListOrgs(ctx context.Context, userID int32) ([]*AnchorOrg, error)
 	PullTask(ctx context.Context) (*AnchorTask, error)
+	PullTaskByID(ctx context.Context, id int32) (*AnchorTask, error)
 	RestoreUserByName(ctx context.Context, name string) error
 	SetUserDefaultOrg(ctx context.Context, arg SetUserDefaultOrgParams) error
 	UpdateTask(ctx context.Context, arg UpdateTaskParams) error

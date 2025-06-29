@@ -43,6 +43,18 @@ func (m *MockModelInterface) EXPECT() *MockModelInterfaceMockRecorder {
 	return m.recorder
 }
 
+// Close mocks base method.
+func (m *MockModelInterface) Close() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Close")
+}
+
+// Close indicates an expected call of Close.
+func (mr *MockModelInterfaceMockRecorder) Close() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockModelInterface)(nil).Close))
+}
+
 // CreateKeyPair mocks base method.
 func (m *MockModelInterface) CreateKeyPair(ctx context.Context, arg querier.CreateKeyPairParams) (*querier.AnchorAccessKeyPair, error) {
 	m.ctrl.T.Helper()
@@ -396,6 +408,21 @@ func (m *MockModelInterface) PullTask(ctx context.Context) (*querier.AnchorTask,
 func (mr *MockModelInterfaceMockRecorder) PullTask(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PullTask", reflect.TypeOf((*MockModelInterface)(nil).PullTask), ctx)
+}
+
+// PullTaskByID mocks base method.
+func (m *MockModelInterface) PullTaskByID(ctx context.Context, id int32) (*querier.AnchorTask, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PullTaskByID", ctx, id)
+	ret0, _ := ret[0].(*querier.AnchorTask)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PullTaskByID indicates an expected call of PullTaskByID.
+func (mr *MockModelInterfaceMockRecorder) PullTaskByID(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PullTaskByID", reflect.TypeOf((*MockModelInterface)(nil).PullTaskByID), ctx, id)
 }
 
 // RestoreUserByName mocks base method.

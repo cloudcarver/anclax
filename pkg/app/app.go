@@ -26,6 +26,7 @@ type Application struct {
 	service       service.ServiceInterface
 	hooks         hooks.AnchorHookInterface
 	caveatParser  macaroons.CaveatParserInterface
+	closer        *Closer
 }
 
 func NewApplication(
@@ -39,6 +40,7 @@ func NewApplication(
 	service service.ServiceInterface,
 	hooks hooks.AnchorHookInterface,
 	caveatParser macaroons.CaveatParserInterface,
+	closer *Closer,
 ) (*Application, error) {
 
 	if cfg.TestAccount != nil {
@@ -58,6 +60,7 @@ func NewApplication(
 		service:       service,
 		hooks:         hooks,
 		caveatParser:  caveatParser,
+		closer:        closer,
 	}, nil
 }
 
@@ -68,6 +71,10 @@ func (a *Application) Start() error {
 		go a.worker.Start()
 	}
 	return a.server.Listen()
+}
+
+func (a *Application) Close() {
+	a.closer.Close()
 }
 
 func (a *Application) GetServer() *server.Server {

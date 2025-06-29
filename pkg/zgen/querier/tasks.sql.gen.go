@@ -110,6 +110,34 @@ func (q *Queries) PullTask(ctx context.Context) (*AnchorTask, error) {
 	return &i, err
 }
 
+const pullTaskByID = `-- name: PullTaskByID :one
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at FROM anchor.tasks
+WHERE 
+    status = 'pending'
+    AND id = $1
+    AND (
+        started_at IS NULL OR started_at < NOW()
+    )
+ORDER BY created_at ASC
+FOR UPDATE SKIP LOCKED
+`
+
+func (q *Queries) PullTaskByID(ctx context.Context, id int32) (*AnchorTask, error) {
+	row := q.db.QueryRow(ctx, pullTaskByID, id)
+	var i AnchorTask
+	err := row.Scan(
+		&i.ID,
+		&i.Attributes,
+		&i.Spec,
+		&i.Status,
+		&i.UniqueTag,
+		&i.StartedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return &i, err
+}
+
 const updateTask = `-- name: UpdateTask :exec
 UPDATE anchor.tasks
 SET attributes = $2, spec = $3, started_at = $4, updated_at = CURRENT_TIMESTAMP

@@ -58,7 +58,8 @@ func InitializeApplication(cfg *config.Config, libCfg *config.LibConfig) (*app.A
 		return nil, err
 	}
 	debugServer := app.NewDebugServer(cfg, globalContext)
-	application, err := app.NewApplication(cfg, serverServer, metricsServer, workerWorker, debugServer, authInterface, taskStoreInterface, serviceInterface, anchorHookInterface, caveatParserInterface)
+	closer := app.NewCloser(modelInterface)
+	application, err := app.NewApplication(cfg, serverServer, metricsServer, workerWorker, debugServer, authInterface, taskStoreInterface, serviceInterface, anchorHookInterface, caveatParserInterface, closer)
 	if err != nil {
 		return nil, err
 	}
