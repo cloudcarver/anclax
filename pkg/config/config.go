@@ -58,4 +58,7 @@ type Config struct {
 	Worker Worker `yaml:"worker"`
 
 	Debug Debug `yaml:"debug"`
+
+	// (Optional) The timeout for the request, default is no timeout
+	RequestTimeout *time.Duration `yaml:"requesttimeout"`
 }

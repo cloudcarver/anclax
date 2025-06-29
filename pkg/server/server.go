@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -72,9 +73,22 @@ func NewServer(
 
 	s.registerMiddleware()
 
+	middlewares := []apigen.MiddlewareFunc{}
+	if cfg.RequestTimeout != nil {
+		middlewares = append(
+			middlewares,
+			func(c *fiber.Ctx) error {
+				ctx, cancel := context.WithTimeout(c.Context(), *cfg.RequestTimeout)
+				defer cancel()
+				c.SetUserContext(ctx)
+				return c.Next()
+			},
+		)
+	}
+
 	apigen.RegisterHandlersWithOptions(s.app, apigen.NewXMiddleware(s.serverInterface, s.validator), apigen.FiberServerOptions{
 		BaseURL:     "/api/v1",
-		Middlewares: []apigen.MiddlewareFunc{},
+		Middlewares: middlewares,
 	})
 
 	return s, nil
