@@ -4,8 +4,10 @@ import (
 	"context"
 	"time"
 
+	"github.com/cloudcarver/anchor/pkg/config"
 	"github.com/cloudcarver/anchor/pkg/hooks"
 	"github.com/cloudcarver/anchor/pkg/macaroons"
+	"github.com/cloudcarver/anchor/pkg/utils"
 	"github.com/gofiber/fiber/v2"
 	"github.com/pkg/errors"
 )
@@ -17,8 +19,8 @@ const (
 )
 
 const (
-	TimeoutAccessToken  = time.Minute * 10
-	TimeoutRefreshToken = time.Hour * 2
+	DefaultTimeoutAccessToken  = time.Minute * 10
+	DefaultTimeoutRefreshToken = time.Hour * 2
 )
 
 var ErrUserIdentityNotExist = errors.New("user identity not exists")
@@ -47,14 +49,16 @@ type AuthInterface interface {
 }
 
 type Auth struct {
-	macaroonsParser macaroons.MacaroonParserInterface
-	hooks           hooks.AnchorHookInterface
+	macaroonsParser     macaroons.MacaroonParserInterface
+	hooks               hooks.AnchorHookInterface
+	timeoutAccessToken  time.Duration
+	timeoutRefreshToken time.Duration
 }
 
 // Ensure AuthService implements AuthServiceInterface
 var _ AuthInterface = (*Auth)(nil)
 
-func NewAuth(macaroonsParser macaroons.MacaroonParserInterface, caveatParser macaroons.CaveatParserInterface, hooks hooks.AnchorHookInterface) (AuthInterface, error) {
+func NewAuth(cfg *config.Config, macaroonsParser macaroons.MacaroonParserInterface, caveatParser macaroons.CaveatParserInterface, hooks hooks.AnchorHookInterface) (AuthInterface, error) {
 	if err := caveatParser.Register(CaveatUserContext, func() macaroons.Caveat {
 		return &UserContextCaveat{}
 	}); err != nil {
@@ -67,8 +71,10 @@ func NewAuth(macaroonsParser macaroons.MacaroonParserInterface, caveatParser mac
 	}
 
 	return &Auth{
-		macaroonsParser: macaroonsParser,
-		hooks:           hooks,
+		macaroonsParser:     macaroonsParser,
+		hooks:               hooks,
+		timeoutAccessToken:  utils.UnwrapOrDefault(cfg.Auth.AccessExpiry, DefaultTimeoutAccessToken),
+		timeoutRefreshToken: utils.UnwrapOrDefault(cfg.Auth.RefreshExpiry, DefaultTimeoutRefreshToken),
 	}, nil
 }
 
@@ -99,7 +105,7 @@ func (a *Auth) Authfunc(c *fiber.Ctx) error {
 }
 
 func (a *Auth) CreateToken(ctx context.Context, userID int32, orgID int32, caveats ...macaroons.Caveat) (int64, string, error) {
-	token, err := a.macaroonsParser.CreateToken(ctx, userID, append(caveats, NewUserContextCaveat(userID, orgID)), TimeoutAccessToken)
+	token, err := a.macaroonsParser.CreateToken(ctx, userID, append(caveats, NewUserContextCaveat(userID, orgID)), a.timeoutAccessToken)
 	if err != nil {
 		return 0, "", errors.Wrap(err, "failed to create macaroon token")
 	}
@@ -114,7 +120,7 @@ func (a *Auth) CreateToken(ctx context.Context, userID int32, orgID int32, cavea
 func (a *Auth) CreateRefreshToken(ctx context.Context, accessKeyID int64, userID int32) (string, error) {
 	token, err := a.macaroonsParser.CreateToken(ctx, userID, []macaroons.Caveat{
 		NewRefreshOnlyCaveat(userID, accessKeyID),
-	}, TimeoutRefreshToken)
+	}, a.timeoutRefreshToken)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to create macaroon token")
 	}

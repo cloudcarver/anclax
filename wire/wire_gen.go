@@ -39,7 +39,7 @@ func InitializeApplication(cfg *config.Config, libCfg *config.LibConfig) (*app.A
 	caveatParserInterface := macaroons.NewCaveatParser()
 	macaroonParserInterface := macaroons.NewMacaroonManager(keyStore, caveatParserInterface)
 	anchorHookInterface := hooks.NewBaseHook()
-	authInterface, err := auth.NewAuth(macaroonParserInterface, caveatParserInterface, anchorHookInterface)
+	authInterface, err := auth.NewAuth(cfg, macaroonParserInterface, caveatParserInterface, anchorHookInterface)
 	if err != nil {
 		return nil, err
 	}

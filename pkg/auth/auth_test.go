@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/cloudcarver/anchor/pkg/config"
 	"github.com/cloudcarver/anchor/pkg/hooks"
 	"github.com/cloudcarver/anchor/pkg/macaroons"
 	"github.com/cloudcarver/anchor/pkg/utils"
@@ -26,7 +27,7 @@ func TestAuth_Authfunc(t *testing.T) {
 	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)
 	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
 	mockHooks := hooks.NewMockAnchorHookInterface(ctrl)
-	auth, err := NewAuth(mockMacaroons, mockCaveatParser, mockHooks)
+	auth, err := NewAuth(&config.Config{}, mockMacaroons, mockCaveatParser, mockHooks)
 	require.NoError(t, err)
 
 	// Test token
@@ -147,7 +148,7 @@ func TestAuth_CreateToken(t *testing.T) {
 	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)
 	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
 	mockHooks := hooks.NewMockAnchorHookInterface(ctrl)
-	auth, err := NewAuth(mockMacaroons, mockCaveatParser, mockHooks)
+	auth, err := NewAuth(&config.Config{}, mockMacaroons, mockCaveatParser, mockHooks)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -178,7 +179,7 @@ func TestAuth_CreateToken(t *testing.T) {
 					gomock.Any(),
 					userID,
 					gomock.Any(), // Here we expect a UserContextCaveat but it's difficult to match in tests
-					TimeoutAccessToken,
+					DefaultTimeoutAccessToken,
 				).Return(macaroon, nil)
 				mockHooks.EXPECT().OnCreateToken(gomock.Any(), userID, macaroon).Return(nil)
 			},
@@ -194,7 +195,7 @@ func TestAuth_CreateToken(t *testing.T) {
 					gomock.Any(),
 					userID,
 					gomock.Any(),
-					TimeoutAccessToken,
+					DefaultTimeoutAccessToken,
 				).Return(nil, errors.New("token creation failed"))
 			},
 			expectedKeyID: 0,
@@ -232,7 +233,7 @@ func TestAuth_CreateRefreshToken(t *testing.T) {
 	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)
 	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
 	mockHooks := hooks.NewMockAnchorHookInterface(ctrl)
-	auth, err := NewAuth(mockMacaroons, mockCaveatParser, mockHooks)
+	auth, err := NewAuth(&config.Config{}, mockMacaroons, mockCaveatParser, mockHooks)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -259,7 +260,7 @@ func TestAuth_CreateRefreshToken(t *testing.T) {
 					gomock.Any(),
 					userID,
 					gomock.Any(), // Expect RefreshOnlyCaveat but difficult to match in tests
-					TimeoutRefreshToken,
+					DefaultTimeoutRefreshToken,
 				).Return(macaroon, nil)
 			},
 			expectedToken: macaroon.StringToken(),
@@ -274,7 +275,7 @@ func TestAuth_CreateRefreshToken(t *testing.T) {
 					gomock.Any(),
 					userID,
 					gomock.Any(),
-					TimeoutRefreshToken,
+					DefaultTimeoutRefreshToken,
 				).Return(nil, errors.New("token creation failed"))
 			},
 			expectedToken: "",
@@ -309,7 +310,7 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)
 	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
 	mockHooks := hooks.NewMockAnchorHookInterface(ctrl)
-	auth, err := NewAuth(mockMacaroons, mockCaveatParser, mockHooks)
+	auth, err := NewAuth(&config.Config{}, mockMacaroons, mockCaveatParser, mockHooks)
 
 	require.NoError(t, err)
 
@@ -388,7 +389,7 @@ func TestAuth_InvalidateUserTokens(t *testing.T) {
 	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)
 	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
 	mockHooks := hooks.NewMockAnchorHookInterface(ctrl)
-	auth, err := NewAuth(mockMacaroons, mockCaveatParser, mockHooks)
+	auth, err := NewAuth(&config.Config{}, mockMacaroons, mockCaveatParser, mockHooks)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -585,7 +586,7 @@ func TestNewAuth(t *testing.T) {
 	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
 
 	mockHooks := hooks.NewMockAnchorHookInterface(ctrl)
-	auth, err := NewAuth(mockMacaroons, mockCaveatParser, mockHooks)
+	auth, err := NewAuth(&config.Config{}, mockMacaroons, mockCaveatParser, mockHooks)
 	require.NoError(t, err)
 	require.NotNil(t, auth)
 }
