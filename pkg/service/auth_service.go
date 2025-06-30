@@ -92,6 +92,9 @@ func (s *Service) RefreshToken(ctx context.Context, userID int32, refreshToken s
 func (s *Service) GetUserIDByUsername(ctx context.Context, username string) (int32, error) {
 	user, err := s.m.GetUserByName(ctx, username)
 	if err != nil {
+		if err == pgx.ErrNoRows {
+			return 0, errors.Wrapf(ErrUserNotFound, "user %s not found", username)
+		}
 		return 0, errors.Wrapf(err, "failed to get user by name")
 	}
 	return user.ID, nil
