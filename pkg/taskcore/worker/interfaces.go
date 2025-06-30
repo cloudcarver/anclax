@@ -17,6 +17,7 @@ type TaskSpec interface {
 
 type TaskHandler interface {
 	HandleTask(ctx context.Context, spec TaskSpec) error
+
 	RegisterTaskHandler(handler TaskHandler)
 }
 

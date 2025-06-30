@@ -12,7 +12,34 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (s *Service) SignIn(ctx context.Context, params apigen.SignInRequest) (*apigen.Credentials, error) {
+func (s *Service) SignIn(ctx context.Context, userID int32) (*apigen.Credentials, error) {
+	if err := s.auth.InvalidateUserTokens(ctx, userID); err != nil {
+		return nil, errors.Wrapf(err, "failed to invalidate user tokens")
+	}
+
+	orgID, err := s.m.GetUserDefaultOrg(ctx, userID)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get user default org")
+	}
+
+	keyID, token, err := s.auth.CreateToken(ctx, userID, orgID)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to create token")
+	}
+
+	refreshToken, err := s.auth.CreateRefreshToken(ctx, keyID, userID)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to generate refresh token")
+	}
+
+	return &apigen.Credentials{
+		AccessToken:  token,
+		RefreshToken: refreshToken,
+		TokenType:    apigen.Bearer,
+	}, nil
+}
+
+func (s *Service) SignInWithPassword(ctx context.Context, params apigen.SignInRequest) (*apigen.Credentials, error) {
 	user, err := s.m.GetUserByName(ctx, params.Name)
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -28,30 +55,7 @@ func (s *Service) SignIn(ctx context.Context, params apigen.SignInRequest) (*api
 		return nil, ErrInvalidPassword
 	}
 
-	if err := s.auth.InvalidateUserTokens(ctx, user.ID); err != nil {
-		return nil, errors.Wrapf(err, "failed to invalidate user tokens")
-	}
-
-	orgID, err := s.m.GetUserDefaultOrg(ctx, user.ID)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get user default org")
-	}
-
-	keyID, token, err := s.auth.CreateToken(ctx, user.ID, orgID)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to create token")
-	}
-
-	refreshToken, err := s.auth.CreateRefreshToken(ctx, keyID, user.ID)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to generate refresh token")
-	}
-
-	return &apigen.Credentials{
-		AccessToken:  token,
-		RefreshToken: refreshToken,
-		TokenType:    apigen.Bearer,
-	}, nil
+	return s.SignIn(ctx, user.ID)
 }
 
 func (s *Service) RefreshToken(ctx context.Context, userID int32, refreshToken string) (*apigen.Credentials, error) {

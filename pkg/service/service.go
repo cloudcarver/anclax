@@ -52,7 +52,9 @@ type ServiceInterface interface {
 	CreateTestAccount(ctx context.Context, username, password string) (int32, error)
 
 	// SignIn authenticates a user and returns credentials
-	SignIn(ctx context.Context, params apigen.SignInRequest) (*apigen.Credentials, error)
+	SignIn(ctx context.Context, userID int32) (*apigen.Credentials, error)
+
+	SignInWithPassword(ctx context.Context, params apigen.SignInRequest) (*apigen.Credentials, error)
 
 	RefreshToken(ctx context.Context, userID int32, refreshToken string) (*apigen.Credentials, error)
 

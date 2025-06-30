@@ -12,7 +12,7 @@ var versionCmd = &cli.Command{
 	Name:  "version",
 	Usage: "Show the version of anchor",
 	Action: func(c *cli.Context) error {
-		fmt.Println("v0.4.6")
+		fmt.Println("v0.4.7")
 		return nil
 	},
 }
