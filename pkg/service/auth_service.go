@@ -89,6 +89,14 @@ func (s *Service) RefreshToken(ctx context.Context, userID int32, refreshToken s
 	}, nil
 }
 
+func (s *Service) GetUserIDByUsername(ctx context.Context, username string) (int32, error) {
+	user, err := s.m.GetUserByName(ctx, username)
+	if err != nil {
+		return 0, errors.Wrapf(err, "failed to get user by name")
+	}
+	return user.ID, nil
+}
+
 func (s *Service) CreateNewUser(ctx context.Context, username, password string) (int32, error) {
 	return s.CreateNewUserWithHook(ctx, username, password, func(ctx context.Context, tx pgx.Tx, orgID int32, userID int32) error {
 		return nil
