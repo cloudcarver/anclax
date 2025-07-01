@@ -8,7 +8,9 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	neturl "net/url"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -175,10 +177,44 @@ func (rc *RequestContext) WithMultipartWriter(fn func(w *multipart.Writer) error
 	return rc
 }
 
+func getContentTypeFromFilename(filename string) string {
+	ext := filepath.Ext(filename)
+	switch ext {
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".png":
+		return "image/png"
+	case ".gif":
+		return "image/gif"
+	case ".bmp":
+		return "image/bmp"
+	case ".webp":
+		return "image/webp"
+	case ".svg":
+		return "image/svg+xml"
+	case ".ico":
+		return "image/x-icon"
+	case ".mp4":
+		return "video/mp4"
+	case ".mp3":
+		return "audio/mpeg"
+	case ".wav":
+		return "audio/wav"
+	}
+	return "application/octet-stream"
+}
+
+func createFormFile(w *multipart.Writer, fieldname, filename string) (io.Writer, error) {
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, fieldname, filename))
+	h.Set("Content-Type", getContentTypeFromFilename(filename))
+	return w.CreatePart(h)
+}
+
 func (rc *RequestContext) WithMultipartForm(fileds map[string]string, files []FileData) *RequestContext {
 	return rc.WithMultipartWriter(func(w *multipart.Writer) error {
 		for _, file := range files {
-			part, err := w.CreateFormFile(file.Key, file.Filename)
+			part, err := createFormFile(w, file.Key, file.Filename)
 			if err != nil {
 				return err
 			}
