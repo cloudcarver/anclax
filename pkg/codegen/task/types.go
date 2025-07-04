@@ -21,6 +21,10 @@ type RetryPolicy struct {
 	AlwaysRetryOnFailure bool   `yaml:"alwaysRetryOnFailure"`
 }
 
+type Events struct {
+	OnFailed *string `yaml:"onFailed,omitempty"`
+}
+
 type Function struct {
 	Name          string       `yaml:"name"`
 	Description   string       `yaml:"description"`
@@ -29,6 +33,7 @@ type Function struct {
 	Cronjob       *Cronjob     `yaml:"cronjob,omitempty"`
 	RetryPolicy   *RetryPolicy `yaml:"retryPolicy,omitempty"`
 	Delay         *string      `yaml:"delay,omitempty"`
+	Events        *Events      `yaml:"events,omitempty"`
 }
 
 type CodeTemplateVars struct {

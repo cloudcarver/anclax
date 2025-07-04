@@ -185,7 +185,7 @@ components:
 
     Task:
       type: object
-      required: [ID, attributes, spec, status, createdAt, updatedAt]
+      required: [ID, attributes, spec, status, createdAt, updatedAt, events]
       properties:
         ID:
           type: integer
@@ -209,6 +209,15 @@ components:
         updatedAt:
           type: string
           format: date-time
+        events:
+          $ref: "#/components/schemas/TaskEvents"
+    
+    TaskEvents:
+      type: object
+      properties:
+        onFailed:
+          type: string
+          description: The name of the task should be triggered when the task fails
 
     TaskSpec:
       type: object

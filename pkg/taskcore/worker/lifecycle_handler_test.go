@@ -19,7 +19,9 @@ func TestHandleCronjob(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	txm := model.NewMockModelInterfaceWithTransaction(ctrl)
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockTxm := model.NewMockModelInterfaceWithTransaction(ctrl)
+	mockEventEmitter := NewMockEventEmitter(ctrl)
 
 	tz := "Asia/Shanghai"
 	location, err := time.LoadLocation(tz)
@@ -33,13 +35,15 @@ func TestHandleCronjob(t *testing.T) {
 	)
 
 	handler := &TaskLifeCycleHandler{
-		txm: txm,
+		model:        mockModel,
+		eventEmitter: mockEventEmitter,
 		now: func() time.Time {
 			return currTime
 		},
 	}
 
-	txm.EXPECT().UpdateTaskStartedAt(context.Background(), querier.UpdateTaskStartedAtParams{
+	mockModel.EXPECT().SpawnWithTx(gomock.Any()).Return(mockTxm)
+	mockTxm.EXPECT().UpdateTaskStartedAt(context.Background(), querier.UpdateTaskStartedAtParams{
 		ID:        taskID,
 		StartedAt: utils.Ptr(nextTime),
 	}).Return(nil)
@@ -53,7 +57,7 @@ func TestHandleCronjob(t *testing.T) {
 		},
 	}
 
-	err = handler.handleCronjob(context.Background(), task)
+	err = handler.handleCronjob(context.Background(), nil, task)
 	require.NoError(t, err)
 }
 
@@ -65,29 +69,33 @@ func TestHandleCompleted(t *testing.T) {
 		taskID = int32(1)
 	)
 
-	txm := model.NewMockModelInterfaceWithTransaction(ctrl)
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockTxm := model.NewMockModelInterfaceWithTransaction(ctrl)
+	mockEventEmitter := NewMockEventEmitter(ctrl)
 
 	handler := &TaskLifeCycleHandler{
-		txm: txm,
+		model:        mockModel,
+		eventEmitter: mockEventEmitter,
 	}
 
 	task := apigen.Task{
 		ID: taskID,
 	}
 
-	txm.EXPECT().InsertEvent(context.Background(), apigen.EventSpec{
+	mockModel.EXPECT().SpawnWithTx(gomock.Any()).Return(mockTxm)
+	mockTxm.EXPECT().InsertEvent(context.Background(), apigen.EventSpec{
 		Type: apigen.TaskCompleted,
 		TaskCompleted: &apigen.EventTaskCompleted{
 			TaskID: taskID,
 		},
 	}).Return(&querier.AnchorEvent{}, nil)
 
-	txm.EXPECT().UpdateTaskStatus(context.Background(), querier.UpdateTaskStatusParams{
+	mockTxm.EXPECT().UpdateTaskStatus(context.Background(), querier.UpdateTaskStatusParams{
 		ID:     taskID,
 		Status: string(apigen.Completed),
 	}).Return(nil)
 
-	err := handler.HandleCompleted(context.Background(), task)
+	err := handler.HandleCompleted(context.Background(), nil, task)
 	require.NoError(t, err)
 }
 
@@ -100,17 +108,24 @@ func TestHandleFailed(t *testing.T) {
 		err    = errors.New("test error")
 	)
 
-	txm := model.NewMockModelInterfaceWithTransaction(ctrl)
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockTxm := model.NewMockModelInterfaceWithTransaction(ctrl)
+	mockEventEmitter := NewMockEventEmitter(ctrl)
 
 	handler := &TaskLifeCycleHandler{
-		txm: txm,
+		model:        mockModel,
+		eventEmitter: mockEventEmitter,
 	}
 
 	task := apigen.Task{
 		ID: taskID,
+		Spec: apigen.TaskSpec{
+			Type: "testTask",
+		},
 	}
 
-	txm.EXPECT().InsertEvent(context.Background(), apigen.EventSpec{
+	mockModel.EXPECT().SpawnWithTx(gomock.Any()).Return(mockTxm)
+	mockTxm.EXPECT().InsertEvent(context.Background(), apigen.EventSpec{
 		Type: apigen.TaskError,
 		TaskError: &apigen.EventTaskError{
 			TaskID: taskID,
@@ -118,12 +133,14 @@ func TestHandleFailed(t *testing.T) {
 		},
 	}).Return(&querier.AnchorEvent{}, nil)
 
-	txm.EXPECT().UpdateTaskStatus(context.Background(), querier.UpdateTaskStatusParams{
+	mockEventEmitter.EXPECT().EmitTaskFailed(context.Background(), gomock.Any(), "testTask", taskID).Return(nil)
+
+	mockTxm.EXPECT().UpdateTaskStatus(context.Background(), querier.UpdateTaskStatusParams{
 		ID:     taskID,
 		Status: string(apigen.Failed),
 	}).Return(nil)
 
-	err = handler.HandleFailed(context.Background(), task, err)
+	err = handler.HandleFailed(context.Background(), nil, task, err)
 	require.NoError(t, err)
 }
 
@@ -139,10 +156,13 @@ func TestHandleFailedWithRetryPolicy(t *testing.T) {
 		currTime    = time.Now()
 	)
 
-	txm := model.NewMockModelInterfaceWithTransaction(ctrl)
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockTxm := model.NewMockModelInterfaceWithTransaction(ctrl)
+	mockEventEmitter := NewMockEventEmitter(ctrl)
 
 	handler := &TaskLifeCycleHandler{
-		txm: txm,
+		model:        mockModel,
+		eventEmitter: mockEventEmitter,
 		now: func() time.Time {
 			return currTime
 		},
@@ -150,6 +170,9 @@ func TestHandleFailedWithRetryPolicy(t *testing.T) {
 
 	task := apigen.Task{
 		ID: taskID,
+		Spec: apigen.TaskSpec{
+			Type: "testTask",
+		},
 		Attributes: apigen.TaskAttributes{
 			RetryPolicy: &apigen.TaskRetryPolicy{
 				AlwaysRetryOnFailure: true,
@@ -158,7 +181,8 @@ func TestHandleFailedWithRetryPolicy(t *testing.T) {
 		},
 	}
 
-	txm.EXPECT().InsertEvent(context.Background(), apigen.EventSpec{
+	mockModel.EXPECT().SpawnWithTx(gomock.Any()).Return(mockTxm)
+	mockTxm.EXPECT().InsertEvent(context.Background(), apigen.EventSpec{
 		Type: apigen.TaskError,
 		TaskError: &apigen.EventTaskError{
 			TaskID: taskID,
@@ -166,12 +190,14 @@ func TestHandleFailedWithRetryPolicy(t *testing.T) {
 		},
 	}).Return(&querier.AnchorEvent{}, nil)
 
-	txm.EXPECT().UpdateTaskStartedAt(context.Background(), querier.UpdateTaskStartedAtParams{
+	mockTxm.EXPECT().UpdateTaskStartedAt(context.Background(), querier.UpdateTaskStartedAtParams{
 		ID:        taskID,
 		StartedAt: utils.Ptr(currTime.Add(interval)),
 	}).Return(nil)
 
-	err = handler.HandleFailed(context.Background(), task, err)
+	// Note: EmitTaskFailed is not called when task is retried
+
+	err = handler.HandleFailed(context.Background(), nil, task, err)
 	require.NoError(t, err)
 
 }
@@ -186,10 +212,13 @@ func TestHandleFailed_ErrRetryTaskWithoutErrorEvent(t *testing.T) {
 		interval = 1 * time.Hour
 	)
 
-	txm := model.NewMockModelInterfaceWithTransaction(ctrl)
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockTxm := model.NewMockModelInterfaceWithTransaction(ctrl)
+	mockEventEmitter := NewMockEventEmitter(ctrl)
 
 	handler := &TaskLifeCycleHandler{
-		txm: txm,
+		model:        mockModel,
+		eventEmitter: mockEventEmitter,
 		now: func() time.Time {
 			return currTime
 		},
@@ -197,6 +226,9 @@ func TestHandleFailed_ErrRetryTaskWithoutErrorEvent(t *testing.T) {
 
 	task := apigen.Task{
 		ID: taskID,
+		Spec: apigen.TaskSpec{
+			Type: "testTask",
+		},
 		Attributes: apigen.TaskAttributes{
 			RetryPolicy: &apigen.TaskRetryPolicy{
 				AlwaysRetryOnFailure: true,
@@ -205,12 +237,15 @@ func TestHandleFailed_ErrRetryTaskWithoutErrorEvent(t *testing.T) {
 		},
 	}
 
-	txm.EXPECT().UpdateTaskStartedAt(context.Background(), querier.UpdateTaskStartedAtParams{
+	mockModel.EXPECT().SpawnWithTx(gomock.Any()).Return(mockTxm)
+	mockTxm.EXPECT().UpdateTaskStartedAt(context.Background(), querier.UpdateTaskStartedAtParams{
 		ID:        taskID,
 		StartedAt: utils.Ptr(currTime.Add(interval)),
 	}).Return(nil)
 
-	err := handler.HandleFailed(context.Background(), task, taskcore.ErrRetryTaskWithoutErrorEvent)
+	// Note: EmitTaskFailed is not called when task is retried
+
+	err := handler.HandleFailed(context.Background(), nil, task, taskcore.ErrRetryTaskWithoutErrorEvent)
 	require.NoError(t, err)
 }
 
@@ -223,10 +258,13 @@ func TestHandleFailed_ErrFatalTask(t *testing.T) {
 		currTime = time.Now()
 	)
 
-	txm := model.NewMockModelInterfaceWithTransaction(ctrl)
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockTxm := model.NewMockModelInterfaceWithTransaction(ctrl)
+	mockEventEmitter := NewMockEventEmitter(ctrl)
 
 	handler := &TaskLifeCycleHandler{
-		txm: txm,
+		model:        mockModel,
+		eventEmitter: mockEventEmitter,
 		now: func() time.Time {
 			return currTime
 		},
@@ -234,6 +272,9 @@ func TestHandleFailed_ErrFatalTask(t *testing.T) {
 
 	task := apigen.Task{
 		ID: taskID,
+		Spec: apigen.TaskSpec{
+			Type: "testTask",
+		},
 		Attributes: apigen.TaskAttributes{
 			RetryPolicy: &apigen.TaskRetryPolicy{
 				AlwaysRetryOnFailure: true,
@@ -242,7 +283,8 @@ func TestHandleFailed_ErrFatalTask(t *testing.T) {
 		},
 	}
 
-	txm.EXPECT().InsertEvent(context.Background(), apigen.EventSpec{
+	mockModel.EXPECT().SpawnWithTx(gomock.Any()).Return(mockTxm)
+	mockTxm.EXPECT().InsertEvent(context.Background(), apigen.EventSpec{
 		Type: apigen.TaskError,
 		TaskError: &apigen.EventTaskError{
 			TaskID: taskID,
@@ -250,12 +292,14 @@ func TestHandleFailed_ErrFatalTask(t *testing.T) {
 		},
 	}).Return(&querier.AnchorEvent{}, nil)
 
-	txm.EXPECT().UpdateTaskStatus(context.Background(), querier.UpdateTaskStatusParams{
+	mockEventEmitter.EXPECT().EmitTaskFailed(context.Background(), gomock.Any(), "testTask", taskID).Return(nil)
+
+	mockTxm.EXPECT().UpdateTaskStatus(context.Background(), querier.UpdateTaskStatusParams{
 		ID:     taskID,
 		Status: string(apigen.Failed),
 	}).Return(nil)
 
-	err := handler.HandleFailed(context.Background(), task, taskcore.ErrFatalTask)
+	err := handler.HandleFailed(context.Background(), nil, task, taskcore.ErrFatalTask)
 	require.NoError(t, err)
 }
 
@@ -267,14 +311,20 @@ func TestHandleFailed_ErrFatalTask_Cronjob(t *testing.T) {
 		taskID = int32(1)
 	)
 
-	txm := model.NewMockModelInterfaceWithTransaction(ctrl)
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockTxm := model.NewMockModelInterfaceWithTransaction(ctrl)
+	mockEventEmitter := NewMockEventEmitter(ctrl)
 
 	handler := &TaskLifeCycleHandler{
-		txm: txm,
+		model:        mockModel,
+		eventEmitter: mockEventEmitter,
 	}
 
 	task := apigen.Task{
 		ID: taskID,
+		Spec: apigen.TaskSpec{
+			Type: "testTask",
+		},
 		Attributes: apigen.TaskAttributes{
 			Cronjob: &apigen.TaskCronjob{
 				CronExpression: "0 0 0 * * *",
@@ -282,8 +332,9 @@ func TestHandleFailed_ErrFatalTask_Cronjob(t *testing.T) {
 		},
 	}
 
+	mockModel.EXPECT().SpawnWithTx(gomock.Any()).Return(mockTxm)
 	// Expect that error event is still inserted for fatal errors
-	txm.EXPECT().InsertEvent(context.Background(), apigen.EventSpec{
+	mockTxm.EXPECT().InsertEvent(context.Background(), apigen.EventSpec{
 		Type: apigen.TaskError,
 		TaskError: &apigen.EventTaskError{
 			TaskID: taskID,
@@ -291,12 +342,14 @@ func TestHandleFailed_ErrFatalTask_Cronjob(t *testing.T) {
 		},
 	}).Return(&querier.AnchorEvent{}, nil)
 
+	mockEventEmitter.EXPECT().EmitTaskFailed(context.Background(), gomock.Any(), "testTask", taskID).Return(nil)
+
 	// Expect that task status is updated to failed (even for cronjobs with fatal errors)
-	txm.EXPECT().UpdateTaskStatus(context.Background(), querier.UpdateTaskStatusParams{
+	mockTxm.EXPECT().UpdateTaskStatus(context.Background(), querier.UpdateTaskStatusParams{
 		ID:     taskID,
 		Status: string(apigen.Failed),
 	}).Return(nil)
 
-	err := handler.HandleFailed(context.Background(), task, taskcore.ErrFatalTask)
+	err := handler.HandleFailed(context.Background(), nil, task, taskcore.ErrFatalTask)
 	require.NoError(t, err)
 }

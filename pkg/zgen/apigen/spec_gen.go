@@ -112,6 +112,7 @@ type Task struct {
 	ID         int32          `json:"ID"`
 	Attributes TaskAttributes `json:"attributes"`
 	CreatedAt  time.Time      `json:"createdAt"`
+	Events     TaskEvents     `json:"events"`
 	Spec       TaskSpec       `json:"spec"`
 	StartedAt  *time.Time     `json:"startedAt,omitempty"`
 	Status     TaskStatus     `json:"status"`
@@ -136,6 +137,12 @@ type TaskAttributes struct {
 // TaskCronjob defines model for TaskCronjob.
 type TaskCronjob struct {
 	CronExpression string `json:"cronExpression"`
+}
+
+// TaskEvents defines model for TaskEvents.
+type TaskEvents struct {
+	// OnFailed The name of the task should be triggered when the task fails
+	OnFailed *string `json:"onFailed,omitempty"`
 }
 
 // TaskRetryPolicy defines model for TaskRetryPolicy.

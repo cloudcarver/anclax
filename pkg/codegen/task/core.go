@@ -114,18 +114,52 @@ func process(data map[string]any, onFunc func(f Function) error, onParam func(na
 			}
 		}
 
-		// parse parameters
-		if _, ok := fnData["parameters"]; !ok {
-			return errors.New("parameters is missing when function type is object")
-		}
-		parameters, ok := fnData["parameters"].(map[string]any)
-		if !ok {
-			return errors.New("parameters cannot be parsed to a map")
+		// parse events
+		var events *Events
+		if _, ok := fnData["events"]; ok {
+			eventsData, ok := fnData["events"].(map[string]any)
+			if !ok {
+				return errors.New("events cannot be parsed to a map")
+			}
+			events = &Events{}
+			if onFailedData, ok := eventsData["onFailed"]; ok {
+				onFailedStr, ok := onFailedData.(string)
+				if !ok {
+					return errors.New("events.onFailed cannot be parsed to a string")
+				}
+				events.OnFailed = &onFailedStr
+			}
 		}
 
-		structName := addGlobalType(fmt.Sprintf("%sParameters", utils.UpperFirst(fnName)))
-		if err := onParam(structName, parameters); err != nil {
-			return err
+		// parse parameters (optional)
+		var structName string
+		if _, ok := fnData["parameters"]; ok {
+			parameters, ok := fnData["parameters"].(map[string]any)
+			if !ok {
+				return errors.New("parameters cannot be parsed to a map")
+			}
+
+			structName = addGlobalType(fmt.Sprintf("%sParameters", utils.UpperFirst(fnName)))
+			if err := onParam(structName, parameters); err != nil {
+				return err
+			}
+		} else {
+			// For tasks without parameters, create a default parameter with taskID
+			structName = addGlobalType(fmt.Sprintf("%sParameters", utils.UpperFirst(fnName)))
+			defaultParams := map[string]any{
+				"type": "object",
+				"required": []any{"taskID"},
+				"properties": map[string]any{
+					"taskID": map[string]any{
+						"type":        "integer",
+						"format":      "int32",
+						"description": "The ID of the task that triggered this event",
+					},
+				},
+			}
+			if err := onParam(structName, defaultParams); err != nil {
+				return err
+			}
 		}
 
 		if err := onFunc(Function{
@@ -136,6 +170,7 @@ func process(data map[string]any, onFunc func(f Function) error, onParam func(na
 			Cronjob:       cronjob,
 			RetryPolicy:   retryPolicy,
 			Delay:         delay,
+			Events:        events,
 		}); err != nil {
 			return err
 		}

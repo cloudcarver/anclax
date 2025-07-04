@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
+	"github.com/jackc/pgx/v5"
 )
 
 var ErrUnknownTaskType = errors.New("unknown task type")
@@ -22,7 +23,11 @@ type TaskHandler interface {
 }
 
 type TaskLifeCycleHandlerInterface interface {
-	HandleAttributes(ctx context.Context, task apigen.Task) error
-	HandleFailed(ctx context.Context, task apigen.Task, err error) error
-	HandleCompleted(ctx context.Context, task apigen.Task) error
+	HandleAttributes(ctx context.Context, tx pgx.Tx, task apigen.Task) error
+	HandleFailed(ctx context.Context, tx pgx.Tx, task apigen.Task, err error) error
+	HandleCompleted(ctx context.Context, tx pgx.Tx, task apigen.Task) error
+}
+
+type EventEmitter interface {
+	EmitTaskFailed(ctx context.Context, tx pgx.Tx, failedTaskType string, failedTaskID int32) error
 }

@@ -30,6 +30,56 @@ const ( {{range .Functions}}
 	{{upperFirst .Name}} = "{{.Name}}" 
 {{end}})
 
+type TaskEvents struct {
+	OnFailed *string
+}
+
+var TaskEventMap = map[string]TaskEvents{ {{range .Functions}}
+	{{upperFirst .Name}}: { {{if .Events}}{{if .Events.OnFailed}}
+		OnFailed: utils.Ptr("{{.Events.OnFailed}}"),{{end}}{{end}}
+	},{{end}}
+}
+
+func GetTaskEvents(taskType string) *TaskEvents {
+	if events, ok := TaskEventMap[taskType]; ok {
+		return &events
+	}
+	return nil
+}
+
+type EventEmitter struct {
+	taskStore taskcore.TaskStoreInterface
+}
+
+func NewEventEmitter(taskStore taskcore.TaskStoreInterface) worker.EventEmitter {
+	return &EventEmitter{
+		taskStore: taskStore,
+	}
+}
+
+func (e *EventEmitter) EmitTaskFailed(ctx context.Context, tx pgx.Tx, failedTaskType string, failedTaskID int32) error {
+	events := GetTaskEvents(failedTaskType)
+	if events == nil || events.OnFailed == nil {
+		return nil // No onFailed event configured
+	}
+	
+	onFailedTaskType := *events.OnFailed
+	
+	// Create the onFailed task with the failed task ID as parameter
+	task := &apigen.Task{
+		Spec: apigen.TaskSpec{
+			Type: onFailedTaskType,
+			Payload: json.RawMessage(fmt.Sprintf("{\"taskID\":%d}", failedTaskID)),
+		},
+		Status: apigen.Pending,
+	}
+	
+	// Use the taskStore with the provided transaction
+	taskStore := e.taskStore.WithTx(tx)
+	_, err := taskStore.PushTask(ctx, task)
+	return err
+}
+
 type TaskRunner interface { {{range .Functions}}
 {{.Description}}
 	Run{{upperFirst .Name}}(ctx context.Context, params *{{.ParameterType}}, overrides ...taskcore.TaskOverride) (int32, error)

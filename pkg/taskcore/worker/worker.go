@@ -23,19 +23,22 @@ const maxTaskTimeout = 1 * time.Hour
 type Worker struct {
 	model model.ModelInterface
 
-	getHandler LifeCycleHandlerGetter
+	lifeCycleHandler TaskLifeCycleHandlerInterface
 
 	globalCtx *globalctx.GlobalContext
 
 	taskHandler TaskHandler
+	
+	eventEmitter EventEmitter
 }
 
-func NewWorker(globalCtx *globalctx.GlobalContext, model model.ModelInterface, taskHandler TaskHandler) (*Worker, error) {
+func NewWorker(globalCtx *globalctx.GlobalContext, model model.ModelInterface, taskHandler TaskHandler, eventEmitter EventEmitter) (*Worker, error) {
 	w := &Worker{
-		model:       model,
-		getHandler:  newTaskLifeCycleHandler,
-		globalCtx:   globalCtx,
-		taskHandler: taskHandler,
+		model:            model,
+		lifeCycleHandler: NewTaskLifeCycleHandler(model, eventEmitter),
+		globalCtx:        globalCtx,
+		taskHandler:      taskHandler,
+		eventEmitter:     eventEmitter,
 	}
 
 	return w, nil
@@ -74,7 +77,7 @@ func (w *Worker) Start() {
 }
 
 func (w *Worker) runTask(parentCtx context.Context) error {
-	if err := w.model.RunTransaction(parentCtx, func(txm model.ModelInterface) error {
+	if err := w.model.RunTransactionWithTx(parentCtx, func(tx pgx.Tx, txm model.ModelInterface) error {
 		qtask, err := txm.PullTask(parentCtx)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
@@ -102,14 +105,8 @@ func (w *Worker) runTask(parentCtx context.Context) error {
 
 		log.Info("executing task", zap.Int32("task_id", task.ID), zap.Any("task", task))
 
-		// life cycle handler
-		lh, err := w.getHandler(txm)
-		if err != nil {
-			return errors.Wrap(err, "failed to create attribute handler")
-		}
-
 		// handle attributes
-		if err := lh.HandleAttributes(ctx, task); err != nil {
+		if err := w.lifeCycleHandler.HandleAttributes(ctx, tx, task); err != nil {
 			return errors.Wrap(err, "failed to handle attributes")
 		}
 
@@ -119,11 +116,11 @@ func (w *Worker) runTask(parentCtx context.Context) error {
 			if err != taskcore.ErrRetryTaskWithoutErrorEvent {
 				log.Error("error executing task", zap.Int32("task_id", task.ID), zap.Error(err))
 			}
-			if err := lh.HandleFailed(ctx, task, err); err != nil {
+			if err := w.lifeCycleHandler.HandleFailed(ctx, tx, task, err); err != nil {
 				return errors.Wrap(err, "failed to handle failed task")
 			}
 		} else { // handle completed
-			if err := lh.HandleCompleted(ctx, task); err != nil {
+			if err := w.lifeCycleHandler.HandleCompleted(ctx, tx, task); err != nil {
 				log.Error("error handling completed task", zap.Int32("task_id", task.ID), zap.Error(err))
 				return errors.Wrap(err, "failed to handle completed task")
 			}

@@ -12,3 +12,11 @@ tasks:
     retryPolicy:
       interval: 30m
       always_retry_on_failure: true
+    events:
+      onFailed: onDeleteOpaqueKeyFailed
+
+  - name: onDeleteOpaqueKeyFailed
+    description: Handle failed delete opaque key
+    retryPolicy:
+      interval: 30m
+      always_retry_on_failure: true

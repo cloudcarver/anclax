@@ -21,13 +21,72 @@ func init() {
 
 const ( 
 	DeleteOpaqueKey = "deleteOpaqueKey" 
+
+	OnDeleteOpaqueKeyFailed = "onDeleteOpaqueKeyFailed" 
 )
+
+type TaskEvents struct {
+	OnFailed *string
+}
+
+var TaskEventMap = map[string]TaskEvents{ 
+	DeleteOpaqueKey: { 
+		OnFailed: utils.Ptr("onDeleteOpaqueKeyFailed"),
+	},
+	OnDeleteOpaqueKeyFailed: { 
+	},
+}
+
+func GetTaskEvents(taskType string) *TaskEvents {
+	if events, ok := TaskEventMap[taskType]; ok {
+		return &events
+	}
+	return nil
+}
+
+type EventEmitter struct {
+	taskStore taskcore.TaskStoreInterface
+}
+
+func NewEventEmitter(taskStore taskcore.TaskStoreInterface) worker.EventEmitter {
+	return &EventEmitter{
+		taskStore: taskStore,
+	}
+}
+
+func (e *EventEmitter) EmitTaskFailed(ctx context.Context, tx pgx.Tx, failedTaskType string, failedTaskID int32) error {
+	events := GetTaskEvents(failedTaskType)
+	if events == nil || events.OnFailed == nil {
+		return nil // No onFailed event configured
+	}
+	
+	onFailedTaskType := *events.OnFailed
+	
+	// Create the onFailed task with the failed task ID as parameter
+	task := &apigen.Task{
+		Spec: apigen.TaskSpec{
+			Type: onFailedTaskType,
+			Payload: json.RawMessage(fmt.Sprintf("{\"taskID\":%d}", failedTaskID)),
+		},
+		Status: apigen.Pending,
+	}
+	
+	// Use the taskStore with the provided transaction
+	taskStore := e.taskStore.WithTx(tx)
+	_, err := taskStore.PushTask(ctx, task)
+	return err
+}
 
 type TaskRunner interface { 
     // Delete an opaque key
 	RunDeleteOpaqueKey(ctx context.Context, params *DeleteOpaqueKeyParameters, overrides ...taskcore.TaskOverride) (int32, error)
     // Delete an opaque key
 	RunDeleteOpaqueKeyWithTx(ctx context.Context, tx pgx.Tx, params *DeleteOpaqueKeyParameters, overrides ...taskcore.TaskOverride) (int32, error)
+
+    // Handle failed delete opaque key
+	RunOnDeleteOpaqueKeyFailed(ctx context.Context, params *OnDeleteOpaqueKeyFailedParameters, overrides ...taskcore.TaskOverride) (int32, error)
+    // Handle failed delete opaque key
+	RunOnDeleteOpaqueKeyFailedWithTx(ctx context.Context, tx pgx.Tx, params *OnDeleteOpaqueKeyFailedParameters, overrides ...taskcore.TaskOverride) (int32, error)
 }
 
 type Client struct {
@@ -85,11 +144,58 @@ func (c *Client) runDeleteOpaqueKey(ctx context.Context, taskstore taskcore.Task
 	}
 	return taskID, nil
 }
+func (c *Client) RunOnDeleteOpaqueKeyFailed(ctx context.Context, params *OnDeleteOpaqueKeyFailedParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runOnDeleteOpaqueKeyFailed(ctx, c.taskStore, params, overrides...)
+}
+
+func (c *Client) RunOnDeleteOpaqueKeyFailedWithTx(ctx context.Context, tx pgx.Tx, params *OnDeleteOpaqueKeyFailedParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runOnDeleteOpaqueKeyFailed(ctx, c.taskStore.WithTx(tx), params, overrides...)
+}
+
+func (c *Client) runOnDeleteOpaqueKeyFailed(ctx context.Context, taskstore taskcore.TaskStoreInterface, params *OnDeleteOpaqueKeyFailedParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	payload, err := params.Marshal()
+	if err != nil {
+		return 0, err
+	}
+
+	spec := apigen.TaskSpec{
+		Type:    OnDeleteOpaqueKeyFailed,
+		Payload: payload,
+	}
+	attributes := apigen.TaskAttributes{}
+	
+	attributes.RetryPolicy = &apigen.TaskRetryPolicy{
+		Interval:             "30m",
+		AlwaysRetryOnFailure: true,
+	}
+	
+	task := &apigen.Task{
+		Attributes: attributes,
+		Spec:       spec,
+		Status:     apigen.Pending,
+	}
+	
+	for _, override := range overrides {
+		if err := override(task); err != nil {
+			return 0, errors.Wrap(err, "failed to apply task override")
+		}
+	}
+	taskID, err := taskstore.PushTask(ctx, task)
+	if err != nil {
+		return 0, err
+	}
+	return taskID, nil
+}
 
 
 type DeleteOpaqueKeyParameters struct { 
     // The ID of the opaque key to delete
 	KeyID int64 `json:"keyID" yaml:"keyID"`
+}
+
+type OnDeleteOpaqueKeyFailedParameters struct { 
+    // The ID of the task that triggered this event
+	TaskID int32 `json:"taskID" yaml:"taskID"`
 }
 
 func (r *DeleteOpaqueKeyParameters) Parse(spec json.RawMessage) error {
@@ -99,10 +205,20 @@ func (r *DeleteOpaqueKeyParameters) Parse(spec json.RawMessage) error {
 func (r *DeleteOpaqueKeyParameters) Marshal() (json.RawMessage, error) {
 	return json.Marshal(r)
 }
+func (r *OnDeleteOpaqueKeyFailedParameters) Parse(spec json.RawMessage) error {
+	return json.Unmarshal(spec, r)
+}
+
+func (r *OnDeleteOpaqueKeyFailedParameters) Marshal() (json.RawMessage, error) {
+	return json.Marshal(r)
+}
 
 type ExecutorInterface interface { 
     // Delete an opaque key
 	ExecuteDeleteOpaqueKey(ctx context.Context, params *DeleteOpaqueKeyParameters) error
+
+    // Handle failed delete opaque key
+	ExecuteOnDeleteOpaqueKeyFailed(ctx context.Context, params *OnDeleteOpaqueKeyFailedParameters) error
 }
 
 type TaskHandler struct {
@@ -139,6 +255,13 @@ func (f *TaskHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) erro
 			return fmt.Errorf("failed to parse deleteOpaqueKey parameters: %w", err)
 		}
 		return f.executor.ExecuteDeleteOpaqueKey(ctx, &params)
+		
+	case OnDeleteOpaqueKeyFailed:
+		var params OnDeleteOpaqueKeyFailedParameters
+		if err := params.Parse(spec.GetPayload()); err != nil {
+			return fmt.Errorf("failed to parse onDeleteOpaqueKeyFailed parameters: %w", err)
+		}
+		return f.executor.ExecuteOnDeleteOpaqueKeyFailed(ctx, &params)
 		
 	default:
 		return errors.Wrapf(worker.ErrUnknownTaskType, "unknown task type: %s", spec.GetType())

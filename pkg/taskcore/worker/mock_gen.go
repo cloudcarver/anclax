@@ -15,6 +15,7 @@ import (
 	reflect "reflect"
 
 	apigen "github.com/cloudcarver/anchor/pkg/zgen/apigen"
+	pgx "github.com/jackc/pgx/v5"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -145,43 +146,81 @@ func (m *MockTaskLifeCycleHandlerInterface) EXPECT() *MockTaskLifeCycleHandlerIn
 }
 
 // HandleAttributes mocks base method.
-func (m *MockTaskLifeCycleHandlerInterface) HandleAttributes(ctx context.Context, task apigen.Task) error {
+func (m *MockTaskLifeCycleHandlerInterface) HandleAttributes(ctx context.Context, tx pgx.Tx, task apigen.Task) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HandleAttributes", ctx, task)
+	ret := m.ctrl.Call(m, "HandleAttributes", ctx, tx, task)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // HandleAttributes indicates an expected call of HandleAttributes.
-func (mr *MockTaskLifeCycleHandlerInterfaceMockRecorder) HandleAttributes(ctx, task any) *gomock.Call {
+func (mr *MockTaskLifeCycleHandlerInterfaceMockRecorder) HandleAttributes(ctx, tx, task any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleAttributes", reflect.TypeOf((*MockTaskLifeCycleHandlerInterface)(nil).HandleAttributes), ctx, task)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleAttributes", reflect.TypeOf((*MockTaskLifeCycleHandlerInterface)(nil).HandleAttributes), ctx, tx, task)
 }
 
 // HandleCompleted mocks base method.
-func (m *MockTaskLifeCycleHandlerInterface) HandleCompleted(ctx context.Context, task apigen.Task) error {
+func (m *MockTaskLifeCycleHandlerInterface) HandleCompleted(ctx context.Context, tx pgx.Tx, task apigen.Task) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HandleCompleted", ctx, task)
+	ret := m.ctrl.Call(m, "HandleCompleted", ctx, tx, task)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // HandleCompleted indicates an expected call of HandleCompleted.
-func (mr *MockTaskLifeCycleHandlerInterfaceMockRecorder) HandleCompleted(ctx, task any) *gomock.Call {
+func (mr *MockTaskLifeCycleHandlerInterfaceMockRecorder) HandleCompleted(ctx, tx, task any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleCompleted", reflect.TypeOf((*MockTaskLifeCycleHandlerInterface)(nil).HandleCompleted), ctx, task)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleCompleted", reflect.TypeOf((*MockTaskLifeCycleHandlerInterface)(nil).HandleCompleted), ctx, tx, task)
 }
 
 // HandleFailed mocks base method.
-func (m *MockTaskLifeCycleHandlerInterface) HandleFailed(ctx context.Context, task apigen.Task, err error) error {
+func (m *MockTaskLifeCycleHandlerInterface) HandleFailed(ctx context.Context, tx pgx.Tx, task apigen.Task, err error) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HandleFailed", ctx, task, err)
+	ret := m.ctrl.Call(m, "HandleFailed", ctx, tx, task, err)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // HandleFailed indicates an expected call of HandleFailed.
-func (mr *MockTaskLifeCycleHandlerInterfaceMockRecorder) HandleFailed(ctx, task, err any) *gomock.Call {
+func (mr *MockTaskLifeCycleHandlerInterfaceMockRecorder) HandleFailed(ctx, tx, task, err any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleFailed", reflect.TypeOf((*MockTaskLifeCycleHandlerInterface)(nil).HandleFailed), ctx, task, err)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleFailed", reflect.TypeOf((*MockTaskLifeCycleHandlerInterface)(nil).HandleFailed), ctx, tx, task, err)
+}
+
+// MockEventEmitter is a mock of EventEmitter interface.
+type MockEventEmitter struct {
+	ctrl     *gomock.Controller
+	recorder *MockEventEmitterMockRecorder
+	isgomock struct{}
+}
+
+// MockEventEmitterMockRecorder is the mock recorder for MockEventEmitter.
+type MockEventEmitterMockRecorder struct {
+	mock *MockEventEmitter
+}
+
+// NewMockEventEmitter creates a new mock instance.
+func NewMockEventEmitter(ctrl *gomock.Controller) *MockEventEmitter {
+	mock := &MockEventEmitter{ctrl: ctrl}
+	mock.recorder = &MockEventEmitterMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockEventEmitter) EXPECT() *MockEventEmitterMockRecorder {
+	return m.recorder
+}
+
+// EmitTaskFailed mocks base method.
+func (m *MockEventEmitter) EmitTaskFailed(ctx context.Context, tx pgx.Tx, failedTaskType string, failedTaskID int32) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EmitTaskFailed", ctx, tx, failedTaskType, failedTaskID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// EmitTaskFailed indicates an expected call of EmitTaskFailed.
+func (mr *MockEventEmitterMockRecorder) EmitTaskFailed(ctx, tx, failedTaskType, failedTaskID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EmitTaskFailed", reflect.TypeOf((*MockEventEmitter)(nil).EmitTaskFailed), ctx, tx, failedTaskType, failedTaskID)
 }
