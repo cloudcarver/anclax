@@ -151,6 +151,16 @@ func (f *TaskHandler) HandleTask(ctx context.Context, tx pgx.Tx, spec worker.Tas
 }
 
 func (f *TaskHandler) OnTaskFailed(ctx context.Context, tx pgx.Tx, failedTaskSpec worker.TaskSpec, taskID int32) error {
+	for _, handler := range f.externalTaskHandler {
+		if err := handler.OnTaskFailed(ctx, tx, failedTaskSpec, taskID); err != nil {
+			if errors.Is(err, worker.ErrUnknownTaskType) {
+				continue
+			}
+			return err
+		}
+		return nil
+	}
+
 	// Call the appropriate OnXXXFailed hook method
 	switch failedTaskSpec.GetType() { 
 	case DeleteOpaqueKey:
