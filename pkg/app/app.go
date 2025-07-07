@@ -18,7 +18,7 @@ import (
 type Application struct {
 	server        *server.Server
 	prometheus    *metrics.MetricsServer
-	worker        *worker.Worker
+	worker        worker.WorkerInterface
 	disableWorker bool
 	debugServer   *DebugServer
 	auth          auth.AuthInterface
@@ -33,7 +33,7 @@ func NewApplication(
 	cfg *config.Config,
 	server *server.Server,
 	prometheus *metrics.MetricsServer,
-	worker *worker.Worker,
+	worker worker.WorkerInterface,
 	debugServer *DebugServer,
 	auth auth.AuthInterface,
 	taskStore taskcore.TaskStoreInterface,
@@ -81,7 +81,7 @@ func (a *Application) GetServer() *server.Server {
 	return a.server
 }
 
-func (a *Application) GetWorker() *worker.Worker {
+func (a *Application) GetWorker() worker.WorkerInterface {
 	return a.worker
 }
 

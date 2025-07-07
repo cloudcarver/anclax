@@ -31,3 +31,9 @@ type TaskLifeCycleHandlerInterface interface {
 type EventEmitter interface {
 	EmitTaskFailed(ctx context.Context, tx pgx.Tx, failedTaskType string, failedTaskID int32) error
 }
+
+type WorkerInterface interface {
+	RunTask(ctx context.Context, taskID int32) error
+
+	Start()
+}

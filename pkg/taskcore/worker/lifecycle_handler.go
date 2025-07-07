@@ -54,14 +54,14 @@ func (a *TaskLifeCycleHandler) HandleFailed(ctx context.Context, tx pgx.Tx, task
 		}
 	}
 
-	// cronjob should be run again if the error is not fatal
-	if a.isCronjob(task) && err != taskcore.ErrFatalTask {
+	// cronjob should be run again no matter what (fatal or not)
+	if a.isCronjob(task) {
 		log.Info("cronjob failed, will be run again", zap.Int32("task_id", task.ID))
 		return nil
 	}
 
 	if err != taskcore.ErrFatalTask && task.Attributes.RetryPolicy != nil {
-		if task.Attributes.RetryPolicy.AlwaysRetryOnFailure {
+		if task.Attributes.RetryPolicy.MaxAttempts == -1 || task.Attempts < task.Attributes.RetryPolicy.MaxAttempts {
 			// retry the task by updating the started_at field
 			interval, err := time.ParseDuration(task.Attributes.RetryPolicy.Interval)
 			if err != nil {

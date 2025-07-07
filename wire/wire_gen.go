@@ -44,7 +44,7 @@ func InitializeApplication(cfg *config.Config, libCfg *config.LibConfig) (*app.A
 		return nil, err
 	}
 	serviceInterface := service.NewService(cfg, modelInterface, authInterface, anchorHookInterface)
-	serverInterface := controller.NewController(serviceInterface, authInterface)
+	serverInterface := controller.NewController(serviceInterface, authInterface, cfg)
 	validator := controller.NewValidator(modelInterface, authInterface)
 	serverServer, err := server.NewServer(cfg, libCfg, globalContext, authInterface, serverInterface, validator)
 	if err != nil {
@@ -54,13 +54,13 @@ func InitializeApplication(cfg *config.Config, libCfg *config.LibConfig) (*app.A
 	executorInterface := asynctask.NewExecutor(modelInterface)
 	taskHandler := taskgen.NewTaskHandler(executorInterface)
 	eventEmitter := taskgen.NewEventEmitter(taskStoreInterface)
-	workerWorker, err := worker.NewWorker(globalContext, modelInterface, taskHandler, eventEmitter)
+	workerInterface, err := worker.NewWorker(globalContext, modelInterface, taskHandler, eventEmitter)
 	if err != nil {
 		return nil, err
 	}
 	debugServer := app.NewDebugServer(cfg, globalContext)
 	closer := app.NewCloser(modelInterface)
-	application, err := app.NewApplication(cfg, serverServer, metricsServer, workerWorker, debugServer, authInterface, taskStoreInterface, serviceInterface, anchorHookInterface, caveatParserInterface, closer)
+	application, err := app.NewApplication(cfg, serverServer, metricsServer, workerInterface, debugServer, authInterface, taskStoreInterface, serviceInterface, anchorHookInterface, caveatParserInterface, closer)
 	if err != nil {
 		return nil, err
 	}

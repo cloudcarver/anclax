@@ -7,6 +7,7 @@ import (
 	"github.com/cloudcarver/anchor/pkg/auth"
 	"github.com/cloudcarver/anchor/pkg/config"
 	"github.com/cloudcarver/anchor/pkg/hooks"
+	"github.com/cloudcarver/anchor/pkg/taskcore/worker"
 	"github.com/cloudcarver/anchor/pkg/utils"
 	"github.com/cloudcarver/anchor/pkg/zcore/model"
 	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
@@ -69,12 +70,15 @@ type ServiceInterface interface {
 	ListOrgs(ctx context.Context, userID int32) ([]apigen.Org, error)
 
 	UpdateUserPassword(ctx context.Context, username, password string) (int32, error)
+
+	TryExecuteTask(ctx context.Context, taskID int32) error
 }
 
 type Service struct {
-	m     model.ModelInterface
-	auth  auth.AuthInterface
-	hooks hooks.AnchorHookInterface
+	m      model.ModelInterface
+	auth   auth.AuthInterface
+	hooks  hooks.AnchorHookInterface
+	worker worker.WorkerInterface
 
 	generateSaltAndHash func(password string) (string, string, error)
 	now                 func() time.Time

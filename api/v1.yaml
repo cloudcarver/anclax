@@ -185,7 +185,7 @@ components:
 
     Task:
       type: object
-      required: [ID, attributes, spec, status, createdAt, updatedAt, events]
+      required: [ID, attributes, spec, status, createdAt, updatedAt, events, attempts]
       properties:
         ID:
           type: integer
@@ -211,7 +211,11 @@ components:
           format: date-time
         events:
           $ref: "#/components/schemas/TaskEvents"
-    
+        attempts:
+          type: integer
+          format: int32
+          description: The number of times the task has been attempted
+        
     TaskEvents:
       type: object
       properties:
@@ -243,14 +247,15 @@ components:
 
     TaskRetryPolicy:
       type: object
-      required: [interval, always_retry_on_failure]
+      required: [interval, maxAttempts]
       properties:
         interval:
           type: string
           description: Interval of the retry policy, e.g. 1h, 1d, 1w, 1m
-        always_retry_on_failure:
-          type: boolean
-          description: Whether to always retry the task on failure
+        maxAttempts:
+          type: integer
+          format: int32
+          description: Maximum number of attempts to retry the task, -1 means infinite retries
 
     TaskCronjob:
       type: object

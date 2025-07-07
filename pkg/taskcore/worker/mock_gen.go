@@ -224,3 +224,53 @@ func (mr *MockEventEmitterMockRecorder) EmitTaskFailed(ctx, tx, failedTaskType, 
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EmitTaskFailed", reflect.TypeOf((*MockEventEmitter)(nil).EmitTaskFailed), ctx, tx, failedTaskType, failedTaskID)
 }
+
+// MockWorkerInterface is a mock of WorkerInterface interface.
+type MockWorkerInterface struct {
+	ctrl     *gomock.Controller
+	recorder *MockWorkerInterfaceMockRecorder
+	isgomock struct{}
+}
+
+// MockWorkerInterfaceMockRecorder is the mock recorder for MockWorkerInterface.
+type MockWorkerInterfaceMockRecorder struct {
+	mock *MockWorkerInterface
+}
+
+// NewMockWorkerInterface creates a new mock instance.
+func NewMockWorkerInterface(ctrl *gomock.Controller) *MockWorkerInterface {
+	mock := &MockWorkerInterface{ctrl: ctrl}
+	mock.recorder = &MockWorkerInterfaceMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockWorkerInterface) EXPECT() *MockWorkerInterfaceMockRecorder {
+	return m.recorder
+}
+
+// RunTask mocks base method.
+func (m *MockWorkerInterface) RunTask(ctx context.Context, taskID int32) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RunTask", ctx, taskID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RunTask indicates an expected call of RunTask.
+func (mr *MockWorkerInterfaceMockRecorder) RunTask(ctx, taskID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunTask", reflect.TypeOf((*MockWorkerInterface)(nil).RunTask), ctx, taskID)
+}
+
+// Start mocks base method.
+func (m *MockWorkerInterface) Start() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Start")
+}
+
+// Start indicates an expected call of Start.
+func (mr *MockWorkerInterfaceMockRecorder) Start() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Start", reflect.TypeOf((*MockWorkerInterface)(nil).Start))
+}

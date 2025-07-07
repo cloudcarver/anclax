@@ -123,8 +123,8 @@ func (c *Client) runDeleteOpaqueKey(ctx context.Context, taskstore taskcore.Task
 	attributes := apigen.TaskAttributes{}
 	
 	attributes.RetryPolicy = &apigen.TaskRetryPolicy{
-		Interval:             "30m",
-		AlwaysRetryOnFailure: true,
+		Interval:    "30m",
+		MaxAttempts: -1,
 	}
 	
 	task := &apigen.Task{
@@ -165,8 +165,8 @@ func (c *Client) runOnDeleteOpaqueKeyFailed(ctx context.Context, taskstore taskc
 	attributes := apigen.TaskAttributes{}
 	
 	attributes.RetryPolicy = &apigen.TaskRetryPolicy{
-		Interval:             "30m",
-		AlwaysRetryOnFailure: true,
+		Interval:    "30m",
+		MaxAttempts: -1,
 	}
 	
 	task := &apigen.Task{

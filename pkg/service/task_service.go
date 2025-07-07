@@ -37,3 +37,7 @@ func (s *Service) GetTaskByID(ctx context.Context, id int32) (*apigen.Task, erro
 
 	return taskToApiTask(task), nil
 }
+
+func (s *Service) TryExecuteTask(ctx context.Context, id int32) error {
+	return s.worker.RunTask(ctx, id)
+}

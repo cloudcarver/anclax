@@ -17,8 +17,8 @@ type Cronjob struct {
 }
 
 type RetryPolicy struct {
-	Interval             string `yaml:"interval"`
-	AlwaysRetryOnFailure bool   `yaml:"alwaysRetryOnFailure"`
+	Interval    string `yaml:"interval"`
+	MaxAttempts int32  `yaml:"maxAttempts"`
 }
 
 type Events struct {

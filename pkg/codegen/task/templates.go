@@ -121,8 +121,8 @@ func (c *Client) run{{upperFirst .Name}}(ctx context.Context, taskstore taskcore
 	attributes := apigen.TaskAttributes{}
 	{{if .Timeout }}attributes.Timeout = utils.Ptr("{{.Timeout}}"){{end}}
 	{{if .RetryPolicy }}attributes.RetryPolicy = &apigen.TaskRetryPolicy{
-		Interval:             "{{.RetryPolicy.Interval}}",
-		AlwaysRetryOnFailure: {{.RetryPolicy.AlwaysRetryOnFailure}},
+		Interval:    "{{.RetryPolicy.Interval}}",
+		MaxAttempts: {{.RetryPolicy.MaxAttempts}},
 	}{{end}}
 	{{if .Cronjob }}attributes.Cronjob = &apigen.TaskCronjob{
 		CronExpression: "{{.Cronjob.CronExpression}}",

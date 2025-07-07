@@ -320,6 +320,20 @@ func (mr *MockModelInterfaceMockRecorder) InTransaction() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InTransaction", reflect.TypeOf((*MockModelInterface)(nil).InTransaction))
 }
 
+// IncrementAttempts mocks base method.
+func (m *MockModelInterface) IncrementAttempts(ctx context.Context, id int32) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IncrementAttempts", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// IncrementAttempts indicates an expected call of IncrementAttempts.
+func (mr *MockModelInterfaceMockRecorder) IncrementAttempts(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IncrementAttempts", reflect.TypeOf((*MockModelInterface)(nil).IncrementAttempts), ctx, id)
+}
+
 // InsertEvent mocks base method.
 func (m *MockModelInterface) InsertEvent(ctx context.Context, spec apigen.EventSpec) (*querier.AnchorEvent, error) {
 	m.ctrl.T.Helper()
@@ -378,6 +392,21 @@ func (m *MockModelInterface) IsUsernameExists(ctx context.Context, name string) 
 func (mr *MockModelInterfaceMockRecorder) IsUsernameExists(ctx, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsUsernameExists", reflect.TypeOf((*MockModelInterface)(nil).IsUsernameExists), ctx, name)
+}
+
+// ListAllPendingTasks mocks base method.
+func (m *MockModelInterface) ListAllPendingTasks(ctx context.Context) ([]*querier.AnchorTask, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListAllPendingTasks", ctx)
+	ret0, _ := ret[0].([]*querier.AnchorTask)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListAllPendingTasks indicates an expected call of ListAllPendingTasks.
+func (mr *MockModelInterfaceMockRecorder) ListAllPendingTasks(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAllPendingTasks", reflect.TypeOf((*MockModelInterface)(nil).ListAllPendingTasks), ctx)
 }
 
 // ListOrgs mocks base method.

@@ -22,6 +22,8 @@ type TestAccount struct {
 type Worker struct {
 	// (Optional) Whether to disable the worker, default is false
 	Disable bool `yaml:"disable"`
+
+	EnableHTTPTrigger bool `yaml:"enableHttpTrigger"`
 }
 
 type Debug struct {

@@ -7,9 +7,9 @@ import (
 	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
 )
 
-func WithRetryPolicy(interval string, alwaysRetryOnFailure bool) TaskOverride {
+func WithRetryPolicy(interval string, maxAttempts int32) TaskOverride {
 	return func(task *apigen.Task) error {
-		task.Attributes.RetryPolicy = &apigen.TaskRetryPolicy{Interval: interval, AlwaysRetryOnFailure: alwaysRetryOnFailure}
+		task.Attributes.RetryPolicy = &apigen.TaskRetryPolicy{Interval: interval, MaxAttempts: maxAttempts}
 		return nil
 	}
 }

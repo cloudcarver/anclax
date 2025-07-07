@@ -11,7 +11,7 @@ tasks:
           description: The ID of the opaque key to delete
     retryPolicy:
       interval: 30m
-      always_retry_on_failure: true
+      maxAttempts: -1
     events:
       onFailed: onDeleteOpaqueKeyFailed
 
@@ -19,4 +19,4 @@ tasks:
     description: Handle failed delete opaque key
     retryPolicy:
       interval: 30m
-      always_retry_on_failure: true
+      maxAttempts: -1

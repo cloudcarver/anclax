@@ -20,6 +20,15 @@ WHERE
 ORDER BY created_at ASC
 FOR UPDATE SKIP LOCKED;
 
+-- name: ListAllPendingTasks :many
+SELECT * FROM anchor.tasks
+WHERE 
+    status = 'pending'
+    AND (
+        started_at IS NULL OR started_at < NOW()
+    )
+FOR UPDATE SKIP LOCKED;
+
 -- name: UpdateTaskStatus :exec
 UPDATE anchor.tasks
 SET 
@@ -48,4 +57,9 @@ RETURNING *;
 
 -- name: GetTaskByID :one
 SELECT * FROM anchor.tasks
+WHERE id = $1;
+
+-- name: IncrementAttempts :exec
+UPDATE anchor.tasks
+SET attempts = attempts + 1, updated_at = CURRENT_TIMESTAMP
 WHERE id = $1;

@@ -14,7 +14,7 @@ import (
 
 const createTask = `-- name: CreateTask :one
 INSERT INTO anchor.tasks (attributes, spec, status, started_at, unique_tag)
-VALUES ($1, $2, $3, $4, $5) ON CONFLICT (unique_tag) DO NOTHING RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at
+VALUES ($1, $2, $3, $4, $5) ON CONFLICT (unique_tag) DO NOTHING RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts
 `
 
 type CreateTaskParams struct {
@@ -43,12 +43,13 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (*Anchor
 		&i.StartedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Attempts,
 	)
 	return &i, err
 }
 
 const getTaskByID = `-- name: GetTaskByID :one
-SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at FROM anchor.tasks
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts FROM anchor.tasks
 WHERE id = $1
 `
 
@@ -64,8 +65,20 @@ func (q *Queries) GetTaskByID(ctx context.Context, id int32) (*AnchorTask, error
 		&i.StartedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Attempts,
 	)
 	return &i, err
+}
+
+const incrementAttempts = `-- name: IncrementAttempts :exec
+UPDATE anchor.tasks
+SET attempts = attempts + 1, updated_at = CURRENT_TIMESTAMP
+WHERE id = $1
+`
+
+func (q *Queries) IncrementAttempts(ctx context.Context, id int32) error {
+	_, err := q.db.Exec(ctx, incrementAttempts, id)
+	return err
 }
 
 const insertEvent = `-- name: InsertEvent :one
@@ -81,8 +94,48 @@ func (q *Queries) InsertEvent(ctx context.Context, spec apigen.EventSpec) (*Anch
 	return &i, err
 }
 
+const listAllPendingTasks = `-- name: ListAllPendingTasks :many
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts FROM anchor.tasks
+WHERE 
+    status = 'pending'
+    AND (
+        started_at IS NULL OR started_at < NOW()
+    )
+FOR UPDATE SKIP LOCKED
+`
+
+func (q *Queries) ListAllPendingTasks(ctx context.Context) ([]*AnchorTask, error) {
+	rows, err := q.db.Query(ctx, listAllPendingTasks)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*AnchorTask
+	for rows.Next() {
+		var i AnchorTask
+		if err := rows.Scan(
+			&i.ID,
+			&i.Attributes,
+			&i.Spec,
+			&i.Status,
+			&i.UniqueTag,
+			&i.StartedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Attempts,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const pullTask = `-- name: PullTask :one
-SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at FROM anchor.tasks
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts FROM anchor.tasks
 WHERE 
     status = 'pending'
     AND (
@@ -105,12 +158,13 @@ func (q *Queries) PullTask(ctx context.Context) (*AnchorTask, error) {
 		&i.StartedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Attempts,
 	)
 	return &i, err
 }
 
 const pullTaskByID = `-- name: PullTaskByID :one
-SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at FROM anchor.tasks
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts FROM anchor.tasks
 WHERE 
     status = 'pending'
     AND id = $1
@@ -133,6 +187,7 @@ func (q *Queries) PullTaskByID(ctx context.Context, id int32) (*AnchorTask, erro
 		&i.StartedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Attempts,
 	)
 	return &i, err
 }

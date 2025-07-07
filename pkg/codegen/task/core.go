@@ -104,13 +104,13 @@ func process(data map[string]any, onFunc func(f Function) error, onParam func(na
 			if !ok {
 				return fmt.Errorf("interval %v cannot be parsed to a string", retryPolicyStr["interval"])
 			}
-			alwaysRetryOnFailure, ok := retryPolicyStr["always_retry_on_failure"].(bool)
+			maxAttempts, ok := retryPolicyStr["maxAttempts"].(int)
 			if !ok {
-				return fmt.Errorf("always_retry_on_failure %v cannot be parsed to a boolean", retryPolicyStr["always_retry_on_failure"])
+				return fmt.Errorf("maxAttempts %v cannot be parsed to a integer", retryPolicyStr["maxAttempts"])
 			}
 			retryPolicy = &RetryPolicy{
-				Interval:             interval,
-				AlwaysRetryOnFailure: alwaysRetryOnFailure,
+				Interval:    interval,
+				MaxAttempts: int32(maxAttempts),
 			}
 		}
 
@@ -147,7 +147,7 @@ func process(data map[string]any, onFunc func(f Function) error, onParam func(na
 			// For tasks without parameters, create a default parameter with taskID
 			structName = addGlobalType(fmt.Sprintf("%sParameters", utils.UpperFirst(fnName)))
 			defaultParams := map[string]any{
-				"type": "object",
+				"type":     "object",
 				"required": []any{"taskID"},
 				"properties": map[string]any{
 					"taskID": map[string]any{

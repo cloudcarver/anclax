@@ -84,6 +84,7 @@ type AnchorTask struct {
 	StartedAt  *time.Time
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
+	Attempts   int32
 }
 
 type AnchorUser struct {

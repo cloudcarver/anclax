@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/cloudcarver/anchor/pkg/auth"
+	"github.com/cloudcarver/anchor/pkg/config"
 	"github.com/cloudcarver/anchor/pkg/service"
 	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
 	"github.com/gofiber/fiber/v2"
@@ -12,15 +13,19 @@ import (
 type Controller struct {
 	svc  service.ServiceInterface
 	auth auth.AuthInterface
+
+	enableWorkerHTTPTrigger bool
 }
 
 func NewController(
 	s service.ServiceInterface,
 	auth auth.AuthInterface,
+	cfg *config.Config,
 ) apigen.ServerInterface {
 	return &Controller{
-		svc:  s,
-		auth: auth,
+		svc:                     s,
+		auth:                    auth,
+		enableWorkerHTTPTrigger: cfg.Worker.EnableHTTPTrigger,
 	}
 }
 
@@ -102,5 +107,14 @@ func (controller *Controller) ListOrgs(c *fiber.Ctx) error {
 }
 
 func (controller *Controller) TryExecuteTask(c *fiber.Ctx, taskID int32) error {
-	return nil
+	if !controller.enableWorkerHTTPTrigger {
+		return c.Status(fiber.StatusNotFound).SendString("Cannot GET /api/v1/tasks/try-execute")
+	}
+
+	err := controller.svc.TryExecuteTask(c.Context(), taskID)
+	if err != nil {
+		return err
+	}
+
+	return c.Status(fiber.StatusOK).SendString("Task executed")
 }

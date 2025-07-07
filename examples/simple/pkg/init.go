@@ -78,6 +78,6 @@ func (p *Plugin) PlugToFiberApp(fiberApp *fiber.App) {
 	})
 }
 
-func (p *Plugin) PlugToWorker(worker *worker.Worker) {
+func (p *Plugin) PlugToWorker(worker) {
 	worker.RegisterTaskHandler(p.taskHandler)
 }

@@ -28,11 +28,11 @@ type Worker struct {
 	globalCtx *globalctx.GlobalContext
 
 	taskHandler TaskHandler
-	
+
 	eventEmitter EventEmitter
 }
 
-func NewWorker(globalCtx *globalctx.GlobalContext, model model.ModelInterface, taskHandler TaskHandler, eventEmitter EventEmitter) (*Worker, error) {
+func NewWorker(globalCtx *globalctx.GlobalContext, model model.ModelInterface, taskHandler TaskHandler, eventEmitter EventEmitter) (WorkerInterface, error) {
 	w := &Worker{
 		model:            model,
 		lifeCycleHandler: NewTaskLifeCycleHandler(model, eventEmitter),
@@ -52,6 +52,7 @@ func taskToAPI(task *querier.AnchorTask) apigen.Task {
 		StartedAt:  task.StartedAt,
 		Status:     apigen.TaskStatus(task.Status),
 		UpdatedAt:  task.UpdatedAt,
+		Attempts:   task.Attempts,
 		Attributes: task.Attributes,
 	}
 }
@@ -67,7 +68,7 @@ func (w *Worker) Start() {
 			go func() {
 				metrics.WorkerGoroutines.Inc()
 				defer metrics.WorkerGoroutines.Dec()
-				if err := w.runTask(w.globalCtx.Context()); err != nil {
+				if err := w.pullAndRun(w.globalCtx.Context()); err != nil {
 					metrics.RunTaskErrors.Inc()
 					log.Error("error running task", zap.Error(err))
 				}
@@ -76,7 +77,7 @@ func (w *Worker) Start() {
 	}
 }
 
-func (w *Worker) runTask(parentCtx context.Context) error {
+func (w *Worker) pullAndRun(parentCtx context.Context) error {
 	if err := w.model.RunTransactionWithTx(parentCtx, func(tx pgx.Tx, txm model.ModelInterface) error {
 		qtask, err := txm.PullTask(parentCtx)
 		if err != nil {
@@ -90,45 +91,74 @@ func (w *Worker) runTask(parentCtx context.Context) error {
 
 		task := taskToAPI(qtask)
 
-		timeout := maxTaskTimeout
-		if task.Attributes.Timeout != nil {
-			timeout, err = time.ParseDuration(*task.Attributes.Timeout)
-			if err != nil {
-				return errors.Wrap(err, "failed to parse timeout")
-			}
-		}
-		if timeout > maxTaskTimeout {
-			timeout = maxTaskTimeout
-		}
-		ctx, cancel := context.WithTimeout(parentCtx, timeout)
-		defer cancel()
+		return w.runTaskWithTx(parentCtx, tx, task)
 
-		log.Info("executing task", zap.Int32("task_id", task.ID), zap.Any("task", task))
-
-		// handle attributes
-		if err := w.lifeCycleHandler.HandleAttributes(ctx, tx, task); err != nil {
-			return errors.Wrap(err, "failed to handle attributes")
-		}
-
-		// run task
-		err = w.taskHandler.HandleTask(ctx, &task.Spec)
-		if err != nil { // handle failed
-			if err != taskcore.ErrRetryTaskWithoutErrorEvent {
-				log.Error("error executing task", zap.Int32("task_id", task.ID), zap.Error(err))
-			}
-			if err := w.lifeCycleHandler.HandleFailed(ctx, tx, task, err); err != nil {
-				return errors.Wrap(err, "failed to handle failed task")
-			}
-		} else { // handle completed
-			if err := w.lifeCycleHandler.HandleCompleted(ctx, tx, task); err != nil {
-				log.Error("error handling completed task", zap.Int32("task_id", task.ID), zap.Error(err))
-				return errors.Wrap(err, "failed to handle completed task")
-			}
-			log.Info("task completed", zap.Int32("task_id", task.ID))
-		}
-		return nil
 	}); err != nil {
 		return err
+	}
+	return nil
+}
+
+func (w *Worker) RunTask(ctx context.Context, taskID int32) error {
+	return w.model.RunTransactionWithTx(ctx, func(tx pgx.Tx, txm model.ModelInterface) error {
+		qtask, err := txm.PullTaskByID(ctx, taskID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil
+			}
+			return err
+		}
+		task := taskToAPI(qtask)
+		return w.runTaskWithTx(ctx, tx, task)
+	})
+}
+
+func (w *Worker) runTaskWithTx(ctx context.Context, tx pgx.Tx, task apigen.Task) error {
+	txm := w.model.SpawnWithTx(tx)
+
+	// increment attempts
+	if err := txm.IncrementAttempts(ctx, task.ID); err != nil {
+		return errors.Wrap(err, "failed to increment attempts")
+	}
+	task.Attempts++
+
+	timeout := maxTaskTimeout
+	var err error
+
+	if task.Attributes.Timeout != nil {
+		timeout, err = time.ParseDuration(*task.Attributes.Timeout)
+		if err != nil {
+			return errors.Wrap(err, "failed to parse timeout")
+		}
+	}
+	if timeout > maxTaskTimeout {
+		timeout = maxTaskTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	log.Info("executing task", zap.Int32("task_id", task.ID), zap.Any("task", task))
+
+	// handle attributes
+	if err := w.lifeCycleHandler.HandleAttributes(ctx, tx, task); err != nil {
+		return errors.Wrap(err, "failed to handle attributes")
+	}
+
+	// run task
+	err = w.taskHandler.HandleTask(ctx, &task.Spec)
+	if err != nil { // handle failed
+		if err != taskcore.ErrRetryTaskWithoutErrorEvent {
+			log.Error("error executing task", zap.Int32("task_id", task.ID), zap.Error(err))
+		}
+		if err := w.lifeCycleHandler.HandleFailed(ctx, tx, task, err); err != nil {
+			return errors.Wrap(err, "failed to handle failed task")
+		}
+	} else { // handle completed
+		if err := w.lifeCycleHandler.HandleCompleted(ctx, tx, task); err != nil {
+			log.Error("error handling completed task", zap.Int32("task_id", task.ID), zap.Error(err))
+			return errors.Wrap(err, "failed to handle completed task")
+		}
+		log.Info("task completed", zap.Int32("task_id", task.ID))
 	}
 	return nil
 }

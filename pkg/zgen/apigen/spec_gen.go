@@ -109,7 +109,10 @@ type SignInRequest struct {
 
 // Task defines model for Task.
 type Task struct {
-	ID         int32          `json:"ID"`
+	ID int32 `json:"ID"`
+
+	// Attempts The number of times the task has been attempted
+	Attempts   int32          `json:"attempts"`
 	Attributes TaskAttributes `json:"attributes"`
 	CreatedAt  time.Time      `json:"createdAt"`
 	Events     TaskEvents     `json:"events"`
@@ -147,11 +150,11 @@ type TaskEvents struct {
 
 // TaskRetryPolicy defines model for TaskRetryPolicy.
 type TaskRetryPolicy struct {
-	// AlwaysRetryOnFailure Whether to always retry the task on failure
-	AlwaysRetryOnFailure bool `json:"always_retry_on_failure"`
-
 	// Interval Interval of the retry policy, e.g. 1h, 1d, 1w, 1m
 	Interval string `json:"interval"`
+
+	// MaxAttempts Maximum number of attempts to retry the task, -1 means infinite retries
+	MaxAttempts int32 `json:"maxAttempts"`
 }
 
 // TaskSpec defines model for TaskSpec.

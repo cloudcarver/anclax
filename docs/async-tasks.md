@@ -48,7 +48,7 @@ tasks:
           format: int32
     retryPolicy:
       interval: 30m
-      always_retry_on_failure: true
+      maxAttempts: -1
     cronjob:
       cronExpression: "0 */1 * * *"  # Every hour
     events:
@@ -228,9 +228,8 @@ Configure how tasks should be retried on failure:
 
 ```yaml
 retryPolicy:
-  interval: 30m                    # Wait 30 minutes between retries
-  always_retry_on_failure: true    # Always retry on any failure
-  max_retries: 3                   # Maximum number of retries (optional)
+  interval: 30m      # Wait 30 minutes between retries
+  maxAttempts: -1    # Unlimited retries (-1 means infinite, positive number limits attempts)
 ```
 
 ### Retry Intervals
@@ -259,7 +258,7 @@ tasks:
           type: number
     retryPolicy:
       interval: 30m
-      always_retry_on_failure: true
+      maxAttempts: -1
     events:
       onFailed: HandlePaymentFailure
       
@@ -401,7 +400,7 @@ tasks:
           type: object
     retryPolicy:
       interval: 5m
-      always_retry_on_failure: true
+      maxAttempts: -1
 ```
 
 **Implementation:**
@@ -455,7 +454,7 @@ tasks:
           format: date
     retryPolicy:
       interval: 1h
-      always_retry_on_failure: true
+      maxAttempts: -1
 ```
 
 **Implementation:**
@@ -487,7 +486,7 @@ tasks:
           format: int32
     retryPolicy:
       interval: 30m
-      always_retry_on_failure: true
+      maxAttempts: -1
     events:
       onFailed: HandleOrderFailure
     timeout: 10m
@@ -553,7 +552,7 @@ tasks:
           enum: [low, medium, high]
     retryPolicy:
       interval: 5m
-      always_retry_on_failure: true
+      maxAttempts: -1
     events:
       onFailed: EscalateFailedNotification
       
@@ -620,7 +619,7 @@ tasks:
           description: The ID of the opaque key to delete
     retryPolicy:
       interval: 30m
-      always_retry_on_failure: true
+      maxAttempts: -1
     events:
       onFailed: onDeleteOpaqueKeyFailed
 
@@ -628,7 +627,7 @@ tasks:
     description: Handle failed delete opaque key
     retryPolicy:
       interval: 30m
-      always_retry_on_failure: true
+      maxAttempts: -1
     # Uses default parameters: { taskID: int32 }
 ```
 
