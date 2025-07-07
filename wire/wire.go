@@ -43,7 +43,6 @@ func InitializeApplication(cfg *config.Config, libCfg *config.LibConfig) (*app.A
 		worker.NewWorker,
 		taskgen.NewTaskHandler,
 		taskgen.NewTaskRunner,
-		taskgen.NewHook,
 		asynctask.NewExecutor,
 		hooks.NewBaseHook,
 	)

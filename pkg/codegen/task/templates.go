@@ -31,29 +31,6 @@ const ( {{range .Functions}}
 {{end}})
 
 
-type Hook struct {
-	executor ExecutorInterface
-}
-
-func NewHook(executor ExecutorInterface) worker.Hook {
-	return &Hook{
-		executor: executor,
-	}
-}
-
-func (h *Hook) OnTaskFailed(ctx context.Context, tx pgx.Tx, failedTaskSpec worker.TaskSpec, taskID int32) error {
-	// Call the appropriate OnXXXFailed hook method
-	switch failedTaskSpec.GetType() { {{range .Functions}}{{if .Events}}{{if .Events.OnFailed}}
-	case {{upperFirst .Name}}:
-		var params {{.ParameterType}}
-		if err := params.Parse(failedTaskSpec.GetPayload()); err != nil {
-			return fmt.Errorf("failed to parse {{.Name}} parameters: %w", err)
-		}
-		return h.executor.On{{upperFirst .Name}}Failed(ctx, taskID, &params, tx){{end}}{{end}}{{end}}
-	default:
-		return nil // No hook configured for this task type
-	}
-}
 
 type TaskRunner interface { {{range .Functions}}
 {{.Description}}
@@ -178,6 +155,20 @@ func (f *TaskHandler) HandleTask(ctx context.Context, tx pgx.Tx, spec worker.Tas
 		{{end}}
 	default:
 		return errors.Wrapf(worker.ErrUnknownTaskType, "unknown task type: %s", spec.GetType())
+	}
+}
+
+func (f *TaskHandler) OnTaskFailed(ctx context.Context, tx pgx.Tx, failedTaskSpec worker.TaskSpec, taskID int32) error {
+	// Call the appropriate OnXXXFailed hook method
+	switch failedTaskSpec.GetType() { {{range .Functions}}{{if .Events}}{{if .Events.OnFailed}}
+	case {{upperFirst .Name}}:
+		var params {{.ParameterType}}
+		if err := params.Parse(failedTaskSpec.GetPayload()); err != nil {
+			return fmt.Errorf("failed to parse {{.Name}} parameters: %w", err)
+		}
+		return f.executor.On{{upperFirst .Name}}Failed(ctx, taskID, &params, tx){{end}}{{end}}{{end}}
+	default:
+		return nil // No hook configured for this task type
 	}
 }
 `

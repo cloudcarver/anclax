@@ -21,7 +21,7 @@ func TestHandleCronjob(t *testing.T) {
 
 	mockModel := model.NewMockModelInterface(ctrl)
 	mockTxm := model.NewMockModelInterfaceWithTransaction(ctrl)
-	mockHook := NewMockHook(ctrl)
+	mockTaskHandler := NewMockTaskHandler(ctrl)
 
 	tz := "Asia/Shanghai"
 	location, err := time.LoadLocation(tz)
@@ -36,7 +36,7 @@ func TestHandleCronjob(t *testing.T) {
 
 	handler := &TaskLifeCycleHandler{
 		model: mockModel,
-		hook:  mockHook,
+		taskHandler: mockTaskHandler,
 		now: func() time.Time {
 			return currTime
 		},
@@ -71,11 +71,11 @@ func TestHandleCompleted(t *testing.T) {
 
 	mockModel := model.NewMockModelInterface(ctrl)
 	mockTxm := model.NewMockModelInterfaceWithTransaction(ctrl)
-	mockHook := NewMockHook(ctrl)
+	mockTaskHandler := NewMockTaskHandler(ctrl)
 
 	handler := &TaskLifeCycleHandler{
 		model: mockModel,
-		hook:  mockHook,
+		taskHandler: mockTaskHandler,
 	}
 
 	task := apigen.Task{
@@ -110,11 +110,11 @@ func TestHandleFailed(t *testing.T) {
 
 	mockModel := model.NewMockModelInterface(ctrl)
 	mockTxm := model.NewMockModelInterfaceWithTransaction(ctrl)
-	mockHook := NewMockHook(ctrl)
+	mockTaskHandler := NewMockTaskHandler(ctrl)
 
 	handler := &TaskLifeCycleHandler{
 		model: mockModel,
-		hook:  mockHook,
+		taskHandler: mockTaskHandler,
 	}
 
 	task := apigen.Task{
@@ -133,7 +133,7 @@ func TestHandleFailed(t *testing.T) {
 		},
 	}).Return(&querier.AnchorEvent{}, nil)
 
-	mockHook.EXPECT().OnTaskFailed(context.Background(), gomock.Any(), &task.Spec, taskID).Return(nil)
+	mockTaskHandler.EXPECT().OnTaskFailed(context.Background(), gomock.Any(), &task.Spec, taskID).Return(nil)
 
 	mockTxm.EXPECT().UpdateTaskStatus(context.Background(), querier.UpdateTaskStatusParams{
 		ID:     taskID,
@@ -158,11 +158,11 @@ func TestHandleFailedWithRetryPolicy(t *testing.T) {
 
 	mockModel := model.NewMockModelInterface(ctrl)
 	mockTxm := model.NewMockModelInterfaceWithTransaction(ctrl)
-	mockHook := NewMockHook(ctrl)
+	mockTaskHandler := NewMockTaskHandler(ctrl)
 
 	handler := &TaskLifeCycleHandler{
 		model: mockModel,
-		hook:  mockHook,
+		taskHandler: mockTaskHandler,
 		now: func() time.Time {
 			return currTime
 		},
@@ -214,11 +214,11 @@ func TestHandleFailed_ErrRetryTaskWithoutErrorEvent(t *testing.T) {
 
 	mockModel := model.NewMockModelInterface(ctrl)
 	mockTxm := model.NewMockModelInterfaceWithTransaction(ctrl)
-	mockHook := NewMockHook(ctrl)
+	mockTaskHandler := NewMockTaskHandler(ctrl)
 
 	handler := &TaskLifeCycleHandler{
 		model: mockModel,
-		hook:  mockHook,
+		taskHandler: mockTaskHandler,
 		now: func() time.Time {
 			return currTime
 		},
@@ -260,11 +260,11 @@ func TestHandleFailed_ErrFatalTask(t *testing.T) {
 
 	mockModel := model.NewMockModelInterface(ctrl)
 	mockTxm := model.NewMockModelInterfaceWithTransaction(ctrl)
-	mockHook := NewMockHook(ctrl)
+	mockTaskHandler := NewMockTaskHandler(ctrl)
 
 	handler := &TaskLifeCycleHandler{
 		model: mockModel,
-		hook:  mockHook,
+		taskHandler: mockTaskHandler,
 		now: func() time.Time {
 			return currTime
 		},
@@ -292,7 +292,7 @@ func TestHandleFailed_ErrFatalTask(t *testing.T) {
 		},
 	}).Return(&querier.AnchorEvent{}, nil)
 
-	mockHook.EXPECT().OnTaskFailed(context.Background(), gomock.Any(), &task.Spec, taskID).Return(nil)
+	mockTaskHandler.EXPECT().OnTaskFailed(context.Background(), gomock.Any(), &task.Spec, taskID).Return(nil)
 
 	mockTxm.EXPECT().UpdateTaskStatus(context.Background(), querier.UpdateTaskStatusParams{
 		ID:     taskID,
@@ -313,11 +313,11 @@ func TestHandleFailed_ErrFatalTask_Cronjob(t *testing.T) {
 
 	mockModel := model.NewMockModelInterface(ctrl)
 	mockTxm := model.NewMockModelInterfaceWithTransaction(ctrl)
-	mockHook := NewMockHook(ctrl)
+	mockTaskHandler := NewMockTaskHandler(ctrl)
 
 	handler := &TaskLifeCycleHandler{
 		model: mockModel,
-		hook:  mockHook,
+		taskHandler: mockTaskHandler,
 	}
 
 	task := apigen.Task{
@@ -365,11 +365,11 @@ func TestHandleFailedWithMaxAttempts(t *testing.T) {
 
 	mockModel := model.NewMockModelInterface(ctrl)
 	mockTxm := model.NewMockModelInterfaceWithTransaction(ctrl)
-	mockHook := NewMockHook(ctrl)
+	mockTaskHandler := NewMockTaskHandler(ctrl)
 
 	handler := &TaskLifeCycleHandler{
 		model: mockModel,
-		hook:  mockHook,
+		taskHandler: mockTaskHandler,
 		now: func() time.Time {
 			return currTime
 		},
@@ -421,11 +421,11 @@ func TestHandleFailedExceedsMaxAttempts(t *testing.T) {
 
 	mockModel := model.NewMockModelInterface(ctrl)
 	mockTxm := model.NewMockModelInterfaceWithTransaction(ctrl)
-	mockHook := NewMockHook(ctrl)
+	mockTaskHandler := NewMockTaskHandler(ctrl)
 
 	handler := &TaskLifeCycleHandler{
 		model: mockModel,
-		hook:  mockHook,
+		taskHandler: mockTaskHandler,
 	}
 
 	task := apigen.Task{
@@ -451,7 +451,7 @@ func TestHandleFailedExceedsMaxAttempts(t *testing.T) {
 		},
 	}).Return(&querier.AnchorEvent{}, nil)
 
-	mockHook.EXPECT().OnTaskFailed(context.Background(), gomock.Any(), &task.Spec, taskID).Return(nil)
+	mockTaskHandler.EXPECT().OnTaskFailed(context.Background(), gomock.Any(), &task.Spec, taskID).Return(nil)
 
 	mockTxm.EXPECT().UpdateTaskStatus(context.Background(), querier.UpdateTaskStatusParams{
 		ID:     taskID,

@@ -109,6 +109,20 @@ func (mr *MockTaskHandlerMockRecorder) HandleTask(ctx, tx, spec any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleTask", reflect.TypeOf((*MockTaskHandler)(nil).HandleTask), ctx, tx, spec)
 }
 
+// OnTaskFailed mocks base method.
+func (m *MockTaskHandler) OnTaskFailed(ctx context.Context, tx pgx.Tx, failedTaskSpec TaskSpec, taskID int32) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "OnTaskFailed", ctx, tx, failedTaskSpec, taskID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// OnTaskFailed indicates an expected call of OnTaskFailed.
+func (mr *MockTaskHandlerMockRecorder) OnTaskFailed(ctx, tx, failedTaskSpec, taskID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnTaskFailed", reflect.TypeOf((*MockTaskHandler)(nil).OnTaskFailed), ctx, tx, failedTaskSpec, taskID)
+}
+
 // RegisterTaskHandler mocks base method.
 func (m *MockTaskHandler) RegisterTaskHandler(handler TaskHandler) {
 	m.ctrl.T.Helper()
@@ -185,44 +199,6 @@ func (m *MockTaskLifeCycleHandlerInterface) HandleFailed(ctx context.Context, tx
 func (mr *MockTaskLifeCycleHandlerInterfaceMockRecorder) HandleFailed(ctx, tx, task, err any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleFailed", reflect.TypeOf((*MockTaskLifeCycleHandlerInterface)(nil).HandleFailed), ctx, tx, task, err)
-}
-
-// MockHook is a mock of Hook interface.
-type MockHook struct {
-	ctrl     *gomock.Controller
-	recorder *MockHookMockRecorder
-	isgomock struct{}
-}
-
-// MockHookMockRecorder is the mock recorder for MockHook.
-type MockHookMockRecorder struct {
-	mock *MockHook
-}
-
-// NewMockHook creates a new mock instance.
-func NewMockHook(ctrl *gomock.Controller) *MockHook {
-	mock := &MockHook{ctrl: ctrl}
-	mock.recorder = &MockHookMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockHook) EXPECT() *MockHookMockRecorder {
-	return m.recorder
-}
-
-// OnTaskFailed mocks base method.
-func (m *MockHook) OnTaskFailed(ctx context.Context, tx pgx.Tx, failedTaskSpec TaskSpec, taskID int32) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "OnTaskFailed", ctx, tx, failedTaskSpec, taskID)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// OnTaskFailed indicates an expected call of OnTaskFailed.
-func (mr *MockHookMockRecorder) OnTaskFailed(ctx, tx, failedTaskSpec, taskID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnTaskFailed", reflect.TypeOf((*MockHook)(nil).OnTaskFailed), ctx, tx, failedTaskSpec, taskID)
 }
 
 // MockWorkerInterface is a mock of WorkerInterface interface.

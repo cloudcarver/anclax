@@ -28,17 +28,14 @@ type Worker struct {
 	globalCtx *globalctx.GlobalContext
 
 	taskHandler TaskHandler
-
-	hook Hook
 }
 
-func NewWorker(globalCtx *globalctx.GlobalContext, model model.ModelInterface, taskHandler TaskHandler, hook Hook) (WorkerInterface, error) {
+func NewWorker(globalCtx *globalctx.GlobalContext, model model.ModelInterface, taskHandler TaskHandler) (WorkerInterface, error) {
 	w := &Worker{
 		model:            model,
-		lifeCycleHandler: NewTaskLifeCycleHandler(model, hook),
+		lifeCycleHandler: NewTaskLifeCycleHandler(model, taskHandler),
 		globalCtx:        globalCtx,
 		taskHandler:      taskHandler,
-		hook:             hook,
 	}
 
 	return w, nil

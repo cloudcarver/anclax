@@ -53,8 +53,7 @@ func InitializeApplication(cfg *config.Config, libCfg *config.LibConfig) (*app.A
 	metricsServer := metrics.NewMetricsServer(cfg, globalContext)
 	executorInterface := asynctask.NewExecutor(modelInterface)
 	taskHandler := taskgen.NewTaskHandler(executorInterface)
-	hook := taskgen.NewHook(executorInterface)
-	workerInterface, err := worker.NewWorker(globalContext, modelInterface, taskHandler, hook)
+	workerInterface, err := worker.NewWorker(globalContext, modelInterface, taskHandler)
 	if err != nil {
 		return nil, err
 	}

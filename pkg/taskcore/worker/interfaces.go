@@ -20,16 +20,14 @@ type TaskHandler interface {
 	HandleTask(ctx context.Context, tx pgx.Tx, spec TaskSpec) error
 
 	RegisterTaskHandler(handler TaskHandler)
+	
+	OnTaskFailed(ctx context.Context, tx pgx.Tx, failedTaskSpec TaskSpec, taskID int32) error
 }
 
 type TaskLifeCycleHandlerInterface interface {
 	HandleAttributes(ctx context.Context, tx pgx.Tx, task apigen.Task) error
 	HandleFailed(ctx context.Context, tx pgx.Tx, task apigen.Task, err error) error
 	HandleCompleted(ctx context.Context, tx pgx.Tx, task apigen.Task) error
-}
-
-type Hook interface {
-	OnTaskFailed(ctx context.Context, tx pgx.Tx, failedTaskSpec TaskSpec, taskID int32) error
 }
 
 type WorkerInterface interface {

@@ -16,14 +16,14 @@ import (
 
 type TaskLifeCycleHandler struct {
 	model model.ModelInterface
-	hook  Hook
+	taskHandler TaskHandler
 	now   func() time.Time
 }
 
-func NewTaskLifeCycleHandler(model model.ModelInterface, hook Hook) *TaskLifeCycleHandler {
+func NewTaskLifeCycleHandler(model model.ModelInterface, taskHandler TaskHandler) *TaskLifeCycleHandler {
 	return &TaskLifeCycleHandler{
 		model: model,
-		hook:  hook,
+		taskHandler: taskHandler,
 		now:   time.Now,
 	}
 }
@@ -80,7 +80,7 @@ func (a *TaskLifeCycleHandler) HandleFailed(ctx context.Context, tx pgx.Tx, task
 	}
 
 	// emit task failed hook if configured
-	if triggerErr := a.hook.OnTaskFailed(ctx, tx, &task.Spec, task.ID); triggerErr != nil {
+	if triggerErr := a.taskHandler.OnTaskFailed(ctx, tx, &task.Spec, task.ID); triggerErr != nil {
 		return errors.Wrap(triggerErr, "failed to emit task failed hook")
 	}
 
