@@ -187,42 +187,42 @@ func (mr *MockTaskLifeCycleHandlerInterfaceMockRecorder) HandleFailed(ctx, tx, t
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleFailed", reflect.TypeOf((*MockTaskLifeCycleHandlerInterface)(nil).HandleFailed), ctx, tx, task, err)
 }
 
-// MockEventEmitter is a mock of EventEmitter interface.
-type MockEventEmitter struct {
+// MockHook is a mock of Hook interface.
+type MockHook struct {
 	ctrl     *gomock.Controller
-	recorder *MockEventEmitterMockRecorder
+	recorder *MockHookMockRecorder
 	isgomock struct{}
 }
 
-// MockEventEmitterMockRecorder is the mock recorder for MockEventEmitter.
-type MockEventEmitterMockRecorder struct {
-	mock *MockEventEmitter
+// MockHookMockRecorder is the mock recorder for MockHook.
+type MockHookMockRecorder struct {
+	mock *MockHook
 }
 
-// NewMockEventEmitter creates a new mock instance.
-func NewMockEventEmitter(ctrl *gomock.Controller) *MockEventEmitter {
-	mock := &MockEventEmitter{ctrl: ctrl}
-	mock.recorder = &MockEventEmitterMockRecorder{mock}
+// NewMockHook creates a new mock instance.
+func NewMockHook(ctrl *gomock.Controller) *MockHook {
+	mock := &MockHook{ctrl: ctrl}
+	mock.recorder = &MockHookMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockEventEmitter) EXPECT() *MockEventEmitterMockRecorder {
+func (m *MockHook) EXPECT() *MockHookMockRecorder {
 	return m.recorder
 }
 
-// EmitTaskFailed mocks base method.
-func (m *MockEventEmitter) EmitTaskFailed(ctx context.Context, tx pgx.Tx, failedTaskType string, failedTaskID int32) error {
+// OnTaskFailed mocks base method.
+func (m *MockHook) OnTaskFailed(ctx context.Context, tx pgx.Tx, failedTaskSpec TaskSpec, taskID int32) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "EmitTaskFailed", ctx, tx, failedTaskType, failedTaskID)
+	ret := m.ctrl.Call(m, "OnTaskFailed", ctx, tx, failedTaskSpec, taskID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// EmitTaskFailed indicates an expected call of EmitTaskFailed.
-func (mr *MockEventEmitterMockRecorder) EmitTaskFailed(ctx, tx, failedTaskType, failedTaskID any) *gomock.Call {
+// OnTaskFailed indicates an expected call of OnTaskFailed.
+func (mr *MockHookMockRecorder) OnTaskFailed(ctx, tx, failedTaskSpec, taskID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EmitTaskFailed", reflect.TypeOf((*MockEventEmitter)(nil).EmitTaskFailed), ctx, tx, failedTaskType, failedTaskID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnTaskFailed", reflect.TypeOf((*MockHook)(nil).OnTaskFailed), ctx, tx, failedTaskSpec, taskID)
 }
 
 // MockWorkerInterface is a mock of WorkerInterface interface.
@@ -247,6 +247,18 @@ func NewMockWorkerInterface(ctrl *gomock.Controller) *MockWorkerInterface {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockWorkerInterface) EXPECT() *MockWorkerInterfaceMockRecorder {
 	return m.recorder
+}
+
+// RegisterTaskHandler mocks base method.
+func (m *MockWorkerInterface) RegisterTaskHandler(handler TaskHandler) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "RegisterTaskHandler", handler)
+}
+
+// RegisterTaskHandler indicates an expected call of RegisterTaskHandler.
+func (mr *MockWorkerInterfaceMockRecorder) RegisterTaskHandler(handler any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterTaskHandler", reflect.TypeOf((*MockWorkerInterface)(nil).RegisterTaskHandler), handler)
 }
 
 // RunTask mocks base method.

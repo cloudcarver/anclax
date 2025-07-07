@@ -9,7 +9,7 @@ Anchor lets you run background tasks that don't block your web requests. For exa
 - [How to Write Task Code](#how-to-write-task-code)
 - [How to Start Tasks](#how-to-start-tasks)
 - [Scheduled Tasks (Cronjobs)](#scheduled-tasks-cronjobs)
-- [Error Handling and Events](#error-handling-and-events)
+- [Error Handling and Hooks](#error-handling-and-hooks)
 - [Complete Examples](#complete-examples)
 
 ## What Are Async Tasks?
@@ -52,7 +52,7 @@ tasks:
     cronjob:
       cronExpression: "0 */1 * * *"  # Every hour
     events:
-      onFailed: HandleTaskFailure
+      - onFailed
     timeout: 10m
 ```
 
@@ -63,7 +63,7 @@ tasks:
 - **parameters**: JSON Schema defining task parameters
 - **retryPolicy**: Retry configuration for failed tasks
 - **cronjob**: Cron scheduling configuration
-- **events**: Event handlers for task lifecycle events
+- **events**: Array of lifecycle hooks (e.g., `[onFailed]`)
 - **timeout**: Maximum execution time (default: 1 hour)
 
 ### Parameter Types
@@ -101,15 +101,24 @@ This generates interfaces in `pkg/zgen/taskgen/`:
 ### Generated Interfaces
 
 ```go
-// ExecutorInterface - implement this to handle task execution
+// ExecutorInterface - implement this to handle task execution and hooks
 type ExecutorInterface interface {
+    // Execute the main task
     ExecuteTaskName(ctx context.Context, params *TaskNameParameters) error
+    
+    // Hook called when the task fails permanently (if events: [onFailed] is configured)
+    OnTaskNameFailed(ctx context.Context, taskID int32, params *TaskNameParameters, tx pgx.Tx) error
 }
 
 // TaskRunner - use this to enqueue tasks
 type TaskRunner interface {
     RunTaskName(ctx context.Context, params *TaskNameParameters, overrides ...taskcore.TaskOverride) (int32, error)
     RunTaskNameWithTx(ctx context.Context, tx pgx.Tx, params *TaskNameParameters, overrides ...taskcore.TaskOverride) (int32, error)
+}
+
+// Hook - automatically generated hook dispatcher
+type Hook interface {
+    OnTaskFailed(ctx context.Context, tx pgx.Tx, failedTaskSpec TaskSpec, taskID int32) error
 }
 ```
 
@@ -237,11 +246,11 @@ retryPolicy:
 - Simple duration: `"30m"`, `"1h"`, `"5s"`
 - Exponential backoff: `"1m,2m,4m,8m"` (comma-separated)
 
-## Error Handling and Events
+## Error Handling and Hooks
 
-### Task Failure Events
+### Task Failure Hooks
 
-Tasks can automatically trigger other tasks when they fail using the `events.onFailed` configuration:
+Tasks can automatically trigger hook methods when they fail using the `events` configuration:
 
 ```yaml
 tasks:
@@ -260,63 +269,52 @@ tasks:
       interval: 30m
       maxAttempts: -1
     events:
-      onFailed: HandlePaymentFailure
-      
-  - name: HandlePaymentFailure
-    description: "Handle failed payment processing"
-    # Parameters are optional for failure handlers
-    # If not specified, gets a default taskID parameter
+      - onFailed
 ```
 
-### How Events Work
+### How Hooks Work
 
-1. **Automatic Triggering**: When a task fails permanently (after all retries), the system automatically creates and queues the `onFailed` task
-2. **Transaction Safety**: Both the original task status update and the failure task creation happen in the same database transaction
-3. **Failure Task Parameters**: The failure handler task receives the ID of the failed task as a parameter
-4. **No Retry Interference**: Events are only triggered when tasks fail permanently, not during retries
+1. **Automatic Triggering**: When a task fails permanently (after all retries), the system automatically calls the corresponding hook method
+2. **Transaction Safety**: Both the original task status update and the hook execution happen in the same database transaction
+3. **Typed Parameters**: Hook methods receive the original task parameters and task ID with full type safety
+4. **No Retry Interference**: Hooks are only triggered when tasks fail permanently, not during retries
 
-### Default Parameters for Failure Tasks
+### Hook Method Signatures
 
-If you don't specify parameters for a failure handler task, it automatically gets:
+When you define a task with `events: [onFailed]`, the code generator automatically creates a hook method in the `ExecutorInterface`:
 
-```yaml
-parameters:
-  type: object
-  required: [taskID]
-  properties:
-    taskID:
-      type: integer
-      format: int32
-      description: "The ID of the task that triggered this event"
+```go
+type ExecutorInterface interface {
+    // Execute the main task
+    ExecuteTaskName(ctx context.Context, params *TaskNameParameters) error
+    
+    // Hook called when the task fails permanently
+    OnTaskNameFailed(ctx context.Context, taskID int32, params *TaskNameParameters, tx pgx.Tx) error
+}
 ```
 
-### Implementing Failure Handlers
+### Implementing Failure Hooks
 
 ```go
 func (e *Executor) ExecuteProcessPayment(ctx context.Context, params *taskgen.ProcessPaymentParameters) error {
     // Your payment processing logic
     if err := e.paymentService.ProcessPayment(params.UserId, params.Amount); err != nil {
-        // This error will trigger HandlePaymentFailure if retries are exhausted
+        // This error will trigger OnProcessPaymentFailed if retries are exhausted
         return fmt.Errorf("payment processing failed: %w", err)
     }
     return nil
 }
 
-func (e *Executor) ExecuteHandlePaymentFailure(ctx context.Context, params *taskgen.HandlePaymentFailureParameters) error {
-    // Load the original failed task details
-    failedTask, err := e.model.GetTask(ctx, params.TaskID)
-    if err != nil {
-        return err
-    }
-    
-    // Parse the original task parameters to understand what failed
-    var originalParams taskgen.ProcessPaymentParameters
-    if err := json.Unmarshal(failedTask.Spec.Payload, &originalParams); err != nil {
-        return err
-    }
+func (e *Executor) OnProcessPaymentFailed(ctx context.Context, taskID int32, params *taskgen.ProcessPaymentParameters, tx pgx.Tx) error {
+    // Hook receives the original task parameters directly with full type safety
+    log.Error("Payment processing failed permanently", 
+        zap.Int32("taskID", taskID),
+        zap.Int32("userId", params.UserId),
+        zap.Float64("amount", params.Amount))
     
     // Handle the failure (notify admin, refund, etc.)
-    return e.handlePaymentFailure(ctx, originalParams.UserId, originalParams.Amount, failedTask.ID)
+    // The transaction context allows you to make additional database operations
+    return e.handlePaymentFailure(ctx, params.UserId, params.Amount, taskID)
 }
 ```
 
@@ -488,12 +486,8 @@ tasks:
       interval: 30m
       maxAttempts: -1
     events:
-      onFailed: HandleOrderFailure
+      - onFailed
     timeout: 10m
-    
-  - name: HandleOrderFailure
-    description: "Handle failed order processing"
-    # Uses default parameters: { taskID: int32 }
 ```
 
 **Implementation:**
@@ -506,28 +500,22 @@ func (e *Executor) ExecuteProcessOrder(ctx context.Context, params *taskgen.Proc
     
     // Process the order
     if err := e.orderService.ProcessOrder(ctx, order); err != nil {
-        // This will trigger HandleOrderFailure if retries are exhausted
+        // This will trigger OnProcessOrderFailed if retries are exhausted
         return err
     }
     
     return nil
 }
 
-func (e *Executor) ExecuteHandleOrderFailure(ctx context.Context, params *taskgen.HandleOrderFailureParameters) error {
-    // Load the original failed task
-    failedTask, err := e.model.GetTask(ctx, params.TaskID)
-    if err != nil {
-        return err
-    }
-    
-    // Parse original parameters
-    var originalParams taskgen.ProcessOrderParameters
-    if err := json.Unmarshal(failedTask.Spec.Payload, &originalParams); err != nil {
-        return err
-    }
+func (e *Executor) OnProcessOrderFailed(ctx context.Context, taskID int32, params *taskgen.ProcessOrderParameters, tx pgx.Tx) error {
+    // Hook receives the original parameters directly with full type safety
+    log.Error("Order processing failed permanently", 
+        zap.Int32("taskID", taskID),
+        zap.Int32("orderId", params.OrderId))
     
     // Handle the failure - notify customer service, update order status, etc.
-    return e.orderService.HandleFailure(ctx, originalParams.OrderId, failedTask.ID)
+    // Use the transaction context for additional database operations
+    return e.orderService.HandleFailure(ctx, params.OrderId, taskID)
 }
 ```
 
@@ -554,20 +542,7 @@ tasks:
       interval: 5m
       maxAttempts: -1
     events:
-      onFailed: EscalateFailedNotification
-      
-  - name: EscalateFailedNotification
-    description: "Escalate failed notifications to admin"
-    parameters:
-      type: object
-      required: [taskID, escalationLevel]
-      properties:
-        taskID:
-          type: integer
-          format: int32
-        escalationLevel:
-          type: string
-          default: "admin"
+      - onFailed
 ```
 
 **Implementation:**
@@ -576,26 +551,21 @@ func (e *Executor) ExecuteSendNotification(ctx context.Context, params *taskgen.
     return e.notificationService.Send(ctx, params.UserId, params.Message, params.Priority)
 }
 
-func (e *Executor) ExecuteEscalateFailedNotification(ctx context.Context, params *taskgen.EscalateFailedNotificationParameters) error {
-    // Get the failed task details
-    failedTask, err := e.model.GetTask(ctx, params.TaskID)
-    if err != nil {
-        return err
-    }
-    
-    // Parse original notification parameters
-    var originalParams taskgen.SendNotificationParameters
-    if err := json.Unmarshal(failedTask.Spec.Payload, &originalParams); err != nil {
-        return err
-    }
+func (e *Executor) OnSendNotificationFailed(ctx context.Context, taskID int32, params *taskgen.SendNotificationParameters, tx pgx.Tx) error {
+    // Hook receives the original parameters directly with full type safety
+    log.Error("Notification sending failed permanently", 
+        zap.Int32("taskID", taskID),
+        zap.Int32("userId", params.UserId),
+        zap.String("message", params.Message),
+        zap.String("priority", params.Priority))
     
     // Escalate to admin with original context
     return e.adminService.EscalateFailedNotification(ctx, EscalationRequest{
-        FailedTaskID: params.TaskID,
-        OriginalUserId: originalParams.UserId,
-        OriginalMessage: originalParams.Message,
-        Priority: originalParams.Priority,
-        EscalationLevel: params.EscalationLevel,
+        FailedTaskID: taskID,
+        OriginalUserId: params.UserId,
+        OriginalMessage: params.Message,
+        Priority: params.Priority,
+        EscalationLevel: "admin",
     })
 }
 ```
@@ -621,14 +591,7 @@ tasks:
       interval: 30m
       maxAttempts: -1
     events:
-      onFailed: onDeleteOpaqueKeyFailed
-
-  - name: onDeleteOpaqueKeyFailed
-    description: Handle failed delete opaque key
-    retryPolicy:
-      interval: 30m
-      maxAttempts: -1
-    # Uses default parameters: { taskID: int32 }
+      - onFailed
 ```
 
 **Generated Types:**
@@ -638,8 +601,9 @@ type DeleteOpaqueKeyParameters struct {
     KeyID int64 `json:"keyID"`
 }
 
-type OnDeleteOpaqueKeyFailedParameters struct {
-    TaskID int32 `json:"taskID"`
+type ExecutorInterface interface {
+    ExecuteDeleteOpaqueKey(ctx context.Context, params *DeleteOpaqueKeyParameters) error
+    OnDeleteOpaqueKeyFailed(ctx context.Context, taskID int32, params *DeleteOpaqueKeyParameters, tx pgx.Tx) error
 }
 ```
 
@@ -649,7 +613,7 @@ func (e *Executor) ExecuteDeleteOpaqueKey(ctx context.Context, params *taskgen.D
     // Attempt to delete the opaque key
     err := e.model.DeleteOpaqueKey(ctx, params.KeyID)
     if err != nil {
-        // If delete fails, this will trigger onDeleteOpaqueKeyFailed after retries
+        // If delete fails, this will trigger OnDeleteOpaqueKeyFailed after retries
         return fmt.Errorf("failed to delete opaque key %d: %w", params.KeyID, err)
     }
     
@@ -657,26 +621,15 @@ func (e *Executor) ExecuteDeleteOpaqueKey(ctx context.Context, params *taskgen.D
     return nil
 }
 
-func (e *Executor) ExecuteOnDeleteOpaqueKeyFailed(ctx context.Context, params *taskgen.OnDeleteOpaqueKeyFailedParameters) error {
-    // Load the original failed task
-    failedTask, err := e.model.GetTask(ctx, params.TaskID)
-    if err != nil {
-        return fmt.Errorf("failed to load failed task: %w", err)
-    }
-    
-    // Parse the original parameters
-    var originalParams taskgen.DeleteOpaqueKeyParameters
-    if err := json.Unmarshal(failedTask.Spec.Payload, &originalParams); err != nil {
-        return fmt.Errorf("failed to parse original task parameters: %w", err)
-    }
-    
-    // Handle the failure - could notify administrators, log for manual intervention, etc.
+func (e *Executor) OnDeleteOpaqueKeyFailed(ctx context.Context, taskID int32, params *taskgen.DeleteOpaqueKeyParameters, tx pgx.Tx) error {
+    // Hook receives the original parameters directly with full type safety
     log.Error("Critical: Failed to delete opaque key after all retries", 
-        zap.Int64("keyID", originalParams.KeyID),
-        zap.Int32("failedTaskID", params.TaskID))
+        zap.Int64("keyID", params.KeyID),
+        zap.Int32("failedTaskID", taskID))
     
     // Notify security team about failed key deletion
-    return e.securityService.NotifyFailedKeyDeletion(ctx, originalParams.KeyID, params.TaskID)
+    // Use the transaction context for additional database operations if needed
+    return e.securityService.NotifyFailedKeyDeletion(ctx, params.KeyID, taskID)
 }
 ```
 
@@ -708,7 +661,8 @@ This example demonstrates:
 - **Graceful degradation**: If deletion fails, the system doesn't just give up
 - **Audit trail**: Failed deletions are logged and tracked
 - **Administrative oversight**: Critical failures are escalated to security teams
-- **Transactional safety**: Both task status and failure task creation are atomic
+- **Transactional safety**: Both task status update and hook execution are atomic
+- **Type safety**: Hook methods receive strongly-typed parameters instead of raw JSON
 
 ## Best Practices
 
@@ -716,10 +670,10 @@ This example demonstrates:
 2. **Use unique tags** - Prevent duplicate tasks for critical operations
 3. **Set appropriate timeouts** - Don't let tasks run indefinitely
 4. **Handle errors gracefully** - Use specific error types to control retry behavior
-5. **Design failure handlers carefully** - Failure tasks should handle cleanup, notifications, or escalations
+5. **Design failure hooks carefully** - Failure hooks should handle cleanup, notifications, or escalations
 6. **Monitor task performance** - Use metrics to track task execution times and failure rates
 7. **Use transactions** - Enqueue tasks within database transactions for consistency
-8. **Test failure scenarios** - Ensure your failure handlers work correctly and don't create infinite loops
+8. **Test failure scenarios** - Ensure your failure hooks work correctly and don't create infinite loops
 
 ## Worker Configuration
 

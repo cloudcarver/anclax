@@ -30,54 +30,29 @@ const ( {{range .Functions}}
 	{{upperFirst .Name}} = "{{.Name}}" 
 {{end}})
 
-type TaskEvents struct {
-	OnFailed *string
+
+type Hook struct {
+	executor ExecutorInterface
 }
 
-var TaskEventMap = map[string]TaskEvents{ {{range .Functions}}
-	{{upperFirst .Name}}: { {{if .Events}}{{if .Events.OnFailed}}
-		OnFailed: utils.Ptr("{{.Events.OnFailed}}"),{{end}}{{end}}
-	},{{end}}
-}
-
-func GetTaskEvents(taskType string) *TaskEvents {
-	if events, ok := TaskEventMap[taskType]; ok {
-		return &events
-	}
-	return nil
-}
-
-type EventEmitter struct {
-	taskStore taskcore.TaskStoreInterface
-}
-
-func NewEventEmitter(taskStore taskcore.TaskStoreInterface) worker.EventEmitter {
-	return &EventEmitter{
-		taskStore: taskStore,
+func NewHook(executor ExecutorInterface) worker.Hook {
+	return &Hook{
+		executor: executor,
 	}
 }
 
-func (e *EventEmitter) EmitTaskFailed(ctx context.Context, tx pgx.Tx, failedTaskType string, failedTaskID int32) error {
-	events := GetTaskEvents(failedTaskType)
-	if events == nil || events.OnFailed == nil {
-		return nil // No onFailed event configured
+func (h *Hook) OnTaskFailed(ctx context.Context, tx pgx.Tx, failedTaskSpec worker.TaskSpec, taskID int32) error {
+	// Call the appropriate OnXXXFailed hook method
+	switch failedTaskSpec.GetType() { {{range .Functions}}{{if .Events}}{{if .Events.OnFailed}}
+	case {{upperFirst .Name}}:
+		var params {{.ParameterType}}
+		if err := params.Parse(failedTaskSpec.GetPayload()); err != nil {
+			return fmt.Errorf("failed to parse {{.Name}} parameters: %w", err)
+		}
+		return h.executor.On{{upperFirst .Name}}Failed(ctx, taskID, &params, tx){{end}}{{end}}{{end}}
+	default:
+		return nil // No hook configured for this task type
 	}
-	
-	onFailedTaskType := *events.OnFailed
-	
-	// Create the onFailed task with the failed task ID as parameter
-	task := &apigen.Task{
-		Spec: apigen.TaskSpec{
-			Type: onFailedTaskType,
-			Payload: json.RawMessage(fmt.Sprintf("{\"taskID\":%d}", failedTaskID)),
-		},
-		Status: apigen.Pending,
-	}
-	
-	// Use the taskStore with the provided transaction
-	taskStore := e.taskStore.WithTx(tx)
-	_, err := taskStore.PushTask(ctx, task)
-	return err
 }
 
 type TaskRunner interface { {{range .Functions}}
@@ -161,6 +136,9 @@ func (r *{{.ParameterType}}) Marshal() (json.RawMessage, error) {
 type ExecutorInterface interface { {{range .Functions}}
 {{.Description}}
 	Execute{{upperFirst .Name}}(ctx context.Context, params *{{.ParameterType}}) error
+{{if .Events}}{{if .Events.OnFailed}}
+	// Hook called when {{.Name}} fails
+	On{{upperFirst .Name}}Failed(ctx context.Context, taskID int32, params *{{.ParameterType}}, tx pgx.Tx) error{{end}}{{end}}
 {{end}}}
 
 type TaskHandler struct {

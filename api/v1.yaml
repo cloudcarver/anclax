@@ -210,18 +210,14 @@ components:
           type: string
           format: date-time
         events:
-          $ref: "#/components/schemas/TaskEvents"
+          type: array
+          items:
+            type: string
+            enum: ["onFailed"]
         attempts:
           type: integer
           format: int32
           description: The number of times the task has been attempted
-        
-    TaskEvents:
-      type: object
-      properties:
-        onFailed:
-          type: string
-          description: The name of the task should be triggered when the task fails
 
     TaskSpec:
       type: object

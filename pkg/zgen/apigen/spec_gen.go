@@ -33,6 +33,11 @@ const (
 	TaskError     EventSpecType = "TaskError"
 )
 
+// Defines values for TaskEvents.
+const (
+	OnFailed TaskEvents = "onFailed"
+)
+
 // Defines values for TaskStatus.
 const (
 	Completed TaskStatus = "completed"
@@ -115,7 +120,7 @@ type Task struct {
 	Attempts   int32          `json:"attempts"`
 	Attributes TaskAttributes `json:"attributes"`
 	CreatedAt  time.Time      `json:"createdAt"`
-	Events     TaskEvents     `json:"events"`
+	Events     []TaskEvents   `json:"events"`
 	Spec       TaskSpec       `json:"spec"`
 	StartedAt  *time.Time     `json:"startedAt,omitempty"`
 	Status     TaskStatus     `json:"status"`
@@ -124,6 +129,9 @@ type Task struct {
 	UniqueTag *string   `json:"uniqueTag,omitempty"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }
+
+// TaskEvents defines model for Task.Events.
+type TaskEvents string
 
 // TaskStatus defines model for Task.Status.
 type TaskStatus string
@@ -140,12 +148,6 @@ type TaskAttributes struct {
 // TaskCronjob defines model for TaskCronjob.
 type TaskCronjob struct {
 	CronExpression string `json:"cronExpression"`
-}
-
-// TaskEvents defines model for TaskEvents.
-type TaskEvents struct {
-	// OnFailed The name of the task should be triggered when the task fails
-	OnFailed *string `json:"onFailed,omitempty"`
 }
 
 // TaskRetryPolicy defines model for TaskRetryPolicy.

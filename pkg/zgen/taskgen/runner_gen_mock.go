@@ -82,46 +82,6 @@ func (mr *MockTaskRunnerMockRecorder) RunDeleteOpaqueKeyWithTx(ctx, tx, params a
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunDeleteOpaqueKeyWithTx", reflect.TypeOf((*MockTaskRunner)(nil).RunDeleteOpaqueKeyWithTx), varargs...)
 }
 
-// RunOnDeleteOpaqueKeyFailed mocks base method.
-func (m *MockTaskRunner) RunOnDeleteOpaqueKeyFailed(ctx context.Context, params *OnDeleteOpaqueKeyFailedParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	m.ctrl.T.Helper()
-	varargs := []any{ctx, params}
-	for _, a := range overrides {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "RunOnDeleteOpaqueKeyFailed", varargs...)
-	ret0, _ := ret[0].(int32)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// RunOnDeleteOpaqueKeyFailed indicates an expected call of RunOnDeleteOpaqueKeyFailed.
-func (mr *MockTaskRunnerMockRecorder) RunOnDeleteOpaqueKeyFailed(ctx, params any, overrides ...any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx, params}, overrides...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunOnDeleteOpaqueKeyFailed", reflect.TypeOf((*MockTaskRunner)(nil).RunOnDeleteOpaqueKeyFailed), varargs...)
-}
-
-// RunOnDeleteOpaqueKeyFailedWithTx mocks base method.
-func (m *MockTaskRunner) RunOnDeleteOpaqueKeyFailedWithTx(ctx context.Context, tx pgx.Tx, params *OnDeleteOpaqueKeyFailedParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	m.ctrl.T.Helper()
-	varargs := []any{ctx, tx, params}
-	for _, a := range overrides {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "RunOnDeleteOpaqueKeyFailedWithTx", varargs...)
-	ret0, _ := ret[0].(int32)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// RunOnDeleteOpaqueKeyFailedWithTx indicates an expected call of RunOnDeleteOpaqueKeyFailedWithTx.
-func (mr *MockTaskRunnerMockRecorder) RunOnDeleteOpaqueKeyFailedWithTx(ctx, tx, params any, overrides ...any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx, tx, params}, overrides...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunOnDeleteOpaqueKeyFailedWithTx", reflect.TypeOf((*MockTaskRunner)(nil).RunOnDeleteOpaqueKeyFailedWithTx), varargs...)
-}
-
 // MockExecutorInterface is a mock of ExecutorInterface interface.
 type MockExecutorInterface struct {
 	ctrl     *gomock.Controller
@@ -160,16 +120,16 @@ func (mr *MockExecutorInterfaceMockRecorder) ExecuteDeleteOpaqueKey(ctx, params 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteDeleteOpaqueKey", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteDeleteOpaqueKey), ctx, params)
 }
 
-// ExecuteOnDeleteOpaqueKeyFailed mocks base method.
-func (m *MockExecutorInterface) ExecuteOnDeleteOpaqueKeyFailed(ctx context.Context, params *OnDeleteOpaqueKeyFailedParameters) error {
+// OnDeleteOpaqueKeyFailed mocks base method.
+func (m *MockExecutorInterface) OnDeleteOpaqueKeyFailed(ctx context.Context, taskID int32, params *DeleteOpaqueKeyParameters, tx pgx.Tx) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ExecuteOnDeleteOpaqueKeyFailed", ctx, params)
+	ret := m.ctrl.Call(m, "OnDeleteOpaqueKeyFailed", ctx, taskID, params, tx)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// ExecuteOnDeleteOpaqueKeyFailed indicates an expected call of ExecuteOnDeleteOpaqueKeyFailed.
-func (mr *MockExecutorInterfaceMockRecorder) ExecuteOnDeleteOpaqueKeyFailed(ctx, params any) *gomock.Call {
+// OnDeleteOpaqueKeyFailed indicates an expected call of OnDeleteOpaqueKeyFailed.
+func (mr *MockExecutorInterfaceMockRecorder) OnDeleteOpaqueKeyFailed(ctx, taskID, params, tx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteOnDeleteOpaqueKeyFailed", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteOnDeleteOpaqueKeyFailed), ctx, params)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnDeleteOpaqueKeyFailed", reflect.TypeOf((*MockExecutorInterface)(nil).OnDeleteOpaqueKeyFailed), ctx, taskID, params, tx)
 }

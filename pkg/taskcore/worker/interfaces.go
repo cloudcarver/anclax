@@ -28,8 +28,8 @@ type TaskLifeCycleHandlerInterface interface {
 	HandleCompleted(ctx context.Context, tx pgx.Tx, task apigen.Task) error
 }
 
-type EventEmitter interface {
-	EmitTaskFailed(ctx context.Context, tx pgx.Tx, failedTaskType string, failedTaskID int32) error
+type Hook interface {
+	OnTaskFailed(ctx context.Context, tx pgx.Tx, failedTaskSpec TaskSpec, taskID int32) error
 }
 
 type WorkerInterface interface {

@@ -117,17 +117,19 @@ func process(data map[string]any, onFunc func(f Function) error, onParam func(na
 		// parse events
 		var events *Events
 		if _, ok := fnData["events"]; ok {
-			eventsData, ok := fnData["events"].(map[string]any)
+			eventsData, ok := fnData["events"].([]any)
 			if !ok {
-				return errors.New("events cannot be parsed to a map")
+				return errors.New("events cannot be parsed to an array")
 			}
 			events = &Events{}
-			if onFailedData, ok := eventsData["onFailed"]; ok {
-				onFailedStr, ok := onFailedData.(string)
+			for _, event := range eventsData {
+				eventStr, ok := event.(string)
 				if !ok {
-					return errors.New("events.onFailed cannot be parsed to a string")
+					return errors.New("event cannot be parsed to a string")
 				}
-				events.OnFailed = &onFailedStr
+				if eventStr == "onFailed" {
+					events.OnFailed = &eventStr
+				}
 			}
 		}
 

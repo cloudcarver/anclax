@@ -13,10 +13,4 @@ tasks:
       interval: 30m
       maxAttempts: -1
     events:
-      onFailed: onDeleteOpaqueKeyFailed
-
-  - name: onDeleteOpaqueKeyFailed
-    description: Handle failed delete opaque key
-    retryPolicy:
-      interval: 30m
-      maxAttempts: -1
+      - onFailed

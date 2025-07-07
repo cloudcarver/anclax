@@ -29,16 +29,16 @@ type Worker struct {
 
 	taskHandler TaskHandler
 
-	eventEmitter EventEmitter
+	hook Hook
 }
 
-func NewWorker(globalCtx *globalctx.GlobalContext, model model.ModelInterface, taskHandler TaskHandler, eventEmitter EventEmitter) (WorkerInterface, error) {
+func NewWorker(globalCtx *globalctx.GlobalContext, model model.ModelInterface, taskHandler TaskHandler, hook Hook) (WorkerInterface, error) {
 	w := &Worker{
 		model:            model,
-		lifeCycleHandler: NewTaskLifeCycleHandler(model, eventEmitter),
+		lifeCycleHandler: NewTaskLifeCycleHandler(model, hook),
 		globalCtx:        globalCtx,
 		taskHandler:      taskHandler,
-		eventEmitter:     eventEmitter,
+		hook:             hook,
 	}
 
 	return w, nil

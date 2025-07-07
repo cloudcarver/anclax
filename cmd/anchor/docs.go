@@ -140,7 +140,6 @@ func genConfigDocs(path string, markdown, env, yaml bool, prefix string, structN
 
 	// Parse all Go files in the directory
 	fset := token.NewFileSet()
-	var files []*ast.File
 	var configStruct *ast.StructType
 	var imports map[string]string                  // alias -> package path
 	localTypes := make(map[string]*ast.StructType) // type name -> struct definition
@@ -155,7 +154,6 @@ func genConfigDocs(path string, markdown, env, yaml bool, prefix string, structN
 		if err != nil {
 			continue
 		}
-		files = append(files, node)
 
 		// Extract imports for this file
 		if imports == nil {
@@ -391,12 +389,6 @@ func (tr *TypeResolver) extractFieldsFromASTStruct(structType *ast.StructType) [
 	}
 
 	return fields
-}
-
-// getKnownExternalTypeFields returns predefined field definitions for external types - REMOVE THIS
-func (tr *TypeResolver) getKnownExternalTypeFields(pkgPath, typeName string) []Field {
-	// Remove all hardcoded definitions - we want dynamic resolution only
-	return nil
 }
 
 // extractYAMLFieldName extracts the YAML field name from struct tag
