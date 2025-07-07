@@ -135,7 +135,7 @@ func (r *{{.ParameterType}}) Marshal() (json.RawMessage, error) {
 
 type ExecutorInterface interface { {{range .Functions}}
 {{.Description}}
-	Execute{{upperFirst .Name}}(ctx context.Context, params *{{.ParameterType}}) error
+	Execute{{upperFirst .Name}}(ctx context.Context, tx pgx.Tx, params *{{.ParameterType}}) error
 {{if .Events}}{{if .Events.OnFailed}}
 	// Hook called when {{.Name}} fails
 	On{{upperFirst .Name}}Failed(ctx context.Context, taskID int32, params *{{.ParameterType}}, tx pgx.Tx) error{{end}}{{end}}
@@ -157,9 +157,9 @@ func (f *TaskHandler) RegisterTaskHandler(handler worker.TaskHandler) {
 	f.externalTaskHandler = append(f.externalTaskHandler, handler)
 }
 
-func (f *TaskHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) error {
+func (f *TaskHandler) HandleTask(ctx context.Context, tx pgx.Tx, spec worker.TaskSpec) error {
 	for _, handler := range f.externalTaskHandler {
-		if err := handler.HandleTask(ctx, spec); err != nil {
+		if err := handler.HandleTask(ctx, tx, spec); err != nil {
 			if errors.Is(err, worker.ErrUnknownTaskType) {
 				continue
 			}
@@ -174,7 +174,7 @@ func (f *TaskHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) erro
 		if err := params.Parse(spec.GetPayload()); err != nil {
 			return fmt.Errorf("failed to parse {{.Name}} parameters: %w", err)
 		}
-		return f.executor.Execute{{upperFirst .Name}}(ctx, &params)
+		return f.executor.Execute{{upperFirst .Name}}(ctx, tx, &params)
 		{{end}}
 	default:
 		return errors.Wrapf(worker.ErrUnknownTaskType, "unknown task type: %s", spec.GetType())

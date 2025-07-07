@@ -127,7 +127,7 @@ func (r *DeleteOpaqueKeyParameters) Marshal() (json.RawMessage, error) {
 
 type ExecutorInterface interface { 
     // Delete an opaque key
-	ExecuteDeleteOpaqueKey(ctx context.Context, params *DeleteOpaqueKeyParameters) error
+	ExecuteDeleteOpaqueKey(ctx context.Context, tx pgx.Tx, params *DeleteOpaqueKeyParameters) error
 
 	// Hook called when deleteOpaqueKey fails
 	OnDeleteOpaqueKeyFailed(ctx context.Context, taskID int32, params *DeleteOpaqueKeyParameters, tx pgx.Tx) error
@@ -149,9 +149,9 @@ func (f *TaskHandler) RegisterTaskHandler(handler worker.TaskHandler) {
 	f.externalTaskHandler = append(f.externalTaskHandler, handler)
 }
 
-func (f *TaskHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) error {
+func (f *TaskHandler) HandleTask(ctx context.Context, tx pgx.Tx, spec worker.TaskSpec) error {
 	for _, handler := range f.externalTaskHandler {
-		if err := handler.HandleTask(ctx, spec); err != nil {
+		if err := handler.HandleTask(ctx, tx, spec); err != nil {
 			if errors.Is(err, worker.ErrUnknownTaskType) {
 				continue
 			}
@@ -166,7 +166,7 @@ func (f *TaskHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) erro
 		if err := params.Parse(spec.GetPayload()); err != nil {
 			return fmt.Errorf("failed to parse deleteOpaqueKey parameters: %w", err)
 		}
-		return f.executor.ExecuteDeleteOpaqueKey(ctx, &params)
+		return f.executor.ExecuteDeleteOpaqueKey(ctx, tx, &params)
 		
 	default:
 		return errors.Wrapf(worker.ErrUnknownTaskType, "unknown task type: %s", spec.GetType())

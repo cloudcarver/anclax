@@ -107,17 +107,17 @@ func (m *MockExecutorInterface) EXPECT() *MockExecutorInterfaceMockRecorder {
 }
 
 // ExecuteDeleteOpaqueKey mocks base method.
-func (m *MockExecutorInterface) ExecuteDeleteOpaqueKey(ctx context.Context, params *DeleteOpaqueKeyParameters) error {
+func (m *MockExecutorInterface) ExecuteDeleteOpaqueKey(ctx context.Context, tx pgx.Tx, params *DeleteOpaqueKeyParameters) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ExecuteDeleteOpaqueKey", ctx, params)
+	ret := m.ctrl.Call(m, "ExecuteDeleteOpaqueKey", ctx, tx, params)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // ExecuteDeleteOpaqueKey indicates an expected call of ExecuteDeleteOpaqueKey.
-func (mr *MockExecutorInterfaceMockRecorder) ExecuteDeleteOpaqueKey(ctx, params any) *gomock.Call {
+func (mr *MockExecutorInterfaceMockRecorder) ExecuteDeleteOpaqueKey(ctx, tx, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteDeleteOpaqueKey", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteDeleteOpaqueKey), ctx, params)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteDeleteOpaqueKey", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteDeleteOpaqueKey), ctx, tx, params)
 }
 
 // OnDeleteOpaqueKeyFailed mocks base method.

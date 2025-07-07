@@ -145,7 +145,7 @@ func (w *Worker) runTaskWithTx(ctx context.Context, tx pgx.Tx, task apigen.Task)
 	}
 
 	// run task
-	err = w.taskHandler.HandleTask(ctx, &task.Spec)
+	err = w.taskHandler.HandleTask(ctx, tx, &task.Spec)
 	if err != nil { // handle failed
 		if err != taskcore.ErrRetryTaskWithoutErrorEvent {
 			log.Error("error executing task", zap.Int32("task_id", task.ID), zap.Error(err))

@@ -16,7 +16,7 @@ func NewExecutor(model model.ModelInterface) taskgen.ExecutorInterface {
 	return &Executor{model: model}
 }
 
-func (e *Executor) ExecuteDeleteOpaqueKey(ctx context.Context, params *taskgen.DeleteOpaqueKeyParameters) error {
+func (e *Executor) ExecuteDeleteOpaqueKey(ctx context.Context, tx pgx.Tx, params *taskgen.DeleteOpaqueKeyParameters) error {
 	return e.model.DeleteOpaqueKey(ctx, params.KeyID)
 }
 
