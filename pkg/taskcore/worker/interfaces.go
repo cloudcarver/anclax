@@ -36,4 +36,6 @@ type WorkerInterface interface {
 	RunTask(ctx context.Context, taskID int32) error
 
 	Start()
+
+	RegisterTaskHandler(handler TaskHandler)
 }
