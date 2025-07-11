@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/cloudcarver/anchor"
 	task_codegen "github.com/cloudcarver/anchor/pkg/codegen/task"
 	xware_codegen "github.com/cloudcarver/anchor/pkg/codegen/xware"
 	"github.com/pkg/errors"
@@ -35,6 +36,33 @@ var cleanCmd = &cli.Command{
 		},
 	},
 	Action: runClean,
+}
+
+func writeAnchorDef(outdir string) error {
+	if err := os.MkdirAll(outdir, 0755); err != nil {
+		return errors.Wrap(err, "failed to create anchor def directory")
+	}
+
+	// write migrations files
+	files, err := anchor.Migrations.ReadDir("sql/migrations")
+	if err != nil {
+		return errors.Wrap(err, "failed to read migrations files")
+	}
+	targetDir := filepath.Join(outdir, "sql", "migrations")
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		return errors.Wrap(err, "failed to create migrations directory")
+	}
+	for _, file := range files {
+		content, err := anchor.Migrations.ReadFile(filepath.Join("sql/migrations", file.Name()))
+		if err != nil {
+			return errors.Wrap(err, "failed to read migrations file")
+		}
+		if err := os.WriteFile(filepath.Join(targetDir, file.Name()), content, 0644); err != nil {
+			return errors.Wrap(err, "failed to write migrations file")
+		}
+	}
+
+	return nil
 }
 
 func runClean(c *cli.Context) error {
@@ -237,6 +265,18 @@ func _codegen(config *Config, workdir string) error {
 	if config.Wire != nil {
 		if err := genWire(workdir, config.Wire); err != nil {
 			return errors.Wrap(err, "failed to generate wire")
+		}
+	}
+
+	if config.AnchorDef != "" {
+		if filepath.IsAbs(config.AnchorDef) {
+			if err := writeAnchorDef(config.AnchorDef); err != nil {
+				return errors.Wrap(err, "failed to write anchor def")
+			}
+		} else {
+			if err := writeAnchorDef(filepath.Join(workdir, config.AnchorDef)); err != nil {
+				return errors.Wrap(err, "failed to write anchor def")
+			}
 		}
 	}
 
