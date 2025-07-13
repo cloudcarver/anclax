@@ -2,10 +2,13 @@ package pkg
 
 import (
 	"context"
+	"myexampleapp/pkg/config"
 	"myexampleapp/pkg/zgen/apigen"
 	"myexampleapp/pkg/zgen/taskgen"
 
-	"github.com/cloudcarver/anchor/pkg/app"
+	anchor_config "github.com/cloudcarver/anchor/pkg/config"
+	anchor_wire "github.com/cloudcarver/anchor/wire"
+
 	anchor_app "github.com/cloudcarver/anchor/pkg/app"
 	anchor_svc "github.com/cloudcarver/anchor/pkg/service"
 	"github.com/cloudcarver/anchor/pkg/taskcore"
@@ -19,6 +22,15 @@ type App struct {
 
 func (a *App) Start() error {
 	return a.anchorApp.Start()
+}
+
+func NewAnchorApp(cfg *config.Config) (*anchor_app.Application, error) {
+	anchorApp, err := anchor_wire.InitializeApplication(&cfg.Anchor, anchor_config.DefaultLibConfig())
+	if err != nil {
+		return nil, err
+	}
+
+	return anchorApp, nil
 }
 
 func NewApp(anchorApp *anchor_app.Application, anchorSvc anchor_svc.ServiceInterface, taskrunner taskgen.TaskRunner, plugin *Plugin) (*App, error) {
@@ -54,7 +66,7 @@ func NewPlugin(serverInterface apigen.ServerInterface, validator apigen.Validato
 	}
 }
 
-func (p *Plugin) Plug(anchorApp *app.Application) {
+func (p *Plugin) Plug(anchorApp *anchor_app.Application) {
 	p.PlugToFiberApp(anchorApp.GetServer().GetApp())
 	p.PlugToWorker(anchorApp.GetWorker())
 }
@@ -66,6 +78,6 @@ func (p *Plugin) PlugToFiberApp(fiberApp *fiber.App) {
 	})
 }
 
-func (p *Plugin) PlugToWorker(worker *worker.Worker) {
+func (p *Plugin) PlugToWorker(worker) {
 	worker.RegisterTaskHandler(p.taskHandler)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/cloudcarver/anchor/pkg/config"
 	"github.com/cloudcarver/anchor/pkg/globalctx"
 	"github.com/cloudcarver/anchor/pkg/logger"
 	"github.com/cloudcarver/anchor/pkg/metrics"
@@ -28,14 +29,21 @@ type Worker struct {
 	globalCtx *globalctx.GlobalContext
 
 	taskHandler TaskHandler
+
+	pollInterval time.Duration
 }
 
-func NewWorker(globalCtx *globalctx.GlobalContext, model model.ModelInterface, taskHandler TaskHandler) (WorkerInterface, error) {
+func NewWorker(globalCtx *globalctx.GlobalContext, cfg *config.Config, model model.ModelInterface, taskHandler TaskHandler) (WorkerInterface, error) {
+	pollInterval := 1 * time.Second
+	if cfg.Worker.PollInterval != nil {
+		pollInterval = *cfg.Worker.PollInterval
+	}
 	w := &Worker{
 		model:            model,
 		lifeCycleHandler: NewTaskLifeCycleHandler(model, taskHandler),
 		globalCtx:        globalCtx,
 		taskHandler:      taskHandler,
+		pollInterval:     pollInterval,
 	}
 
 	return w, nil
@@ -55,7 +63,7 @@ func taskToAPI(task *querier.AnchorTask) apigen.Task {
 }
 
 func (w *Worker) Start() {
-	ticker := time.NewTicker(1 * time.Second)
+	ticker := time.NewTicker(w.pollInterval)
 	defer ticker.Stop()
 	for {
 		select {

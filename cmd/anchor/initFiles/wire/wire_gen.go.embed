@@ -7,7 +7,6 @@
 package wire
 
 import (
-	"github.com/cloudcarver/anchor/wire"
 	"myexampleapp/pkg"
 	"myexampleapp/pkg/asynctask"
 	"myexampleapp/pkg/config"
@@ -20,30 +19,31 @@ import (
 // Injectors from wire.go:
 
 func InitApp() (*pkg.App, error) {
-	application, err := wire.InitializeApplication()
+	configConfig, err := config.NewConfig()
+	if err != nil {
+		return nil, err
+	}
+	application, err := pkg.NewAnchorApp(configConfig)
 	if err != nil {
 		return nil, err
 	}
 	serviceInterface := injection.InjectAnchorSvc(application)
 	taskStoreInterface := injection.InjectTaskStore(application)
 	taskRunner := taskgen.NewTaskRunner(taskStoreInterface)
-	configConfig, err := config.NewConfig()
-	if err != nil {
-		return nil, err
-	}
 	modelInterface, err := model.NewModel(configConfig)
 	if err != nil {
 		return nil, err
 	}
-	executorInterface := asynctask.NewExecutor(modelInterface)
-	taskHandler := taskgen.NewTaskHandler(executorInterface)
 	serverInterface, err := handler.NewHandler(modelInterface, taskRunner)
 	if err != nil {
 		return nil, err
 	}
 	authInterface := injection.InjectAuth(application)
 	validator := handler.NewValidator(authInterface)
-	app, err := pkg.NewApp(application, serviceInterface, taskRunner, taskHandler, serverInterface, validator)
+	executorInterface := asynctask.NewExecutor(modelInterface)
+	taskHandler := taskgen.NewTaskHandler(executorInterface)
+	plugin := pkg.NewPlugin(serverInterface, validator, taskHandler)
+	app, err := pkg.NewApp(application, serviceInterface, taskRunner, plugin)
 	if err != nil {
 		return nil, err
 	}

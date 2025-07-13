@@ -24,6 +24,9 @@ type Worker struct {
 	Disable bool `yaml:"disable"`
 
 	EnableHTTPTrigger bool `yaml:"enableHttpTrigger"`
+
+	// (Optional) The interval of the poll, default is 1 second
+	PollInterval *time.Duration `yaml:"pollinterval"`
 }
 
 type Debug struct {

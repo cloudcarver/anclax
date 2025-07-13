@@ -5,7 +5,7 @@ WHERE
     AND (
         started_at IS NULL OR started_at < NOW()
     )
-ORDER BY created_at ASC
+ORDER BY RANDOM()
 FOR UPDATE SKIP LOCKED
 LIMIT 1;
 
