@@ -42,7 +42,14 @@ func (s *TaskStore) PushTask(ctx context.Context, task *apigen.Task) (int32, err
 		UniqueTag:  task.UniqueTag,
 	})
 	if err != nil {
-		return 0, errors.Wrap(err, "failed to create task")
+		if errors.Is(err, pgx.ErrNoRows) && task.UniqueTag != nil {
+			task, err := s.model.GetTaskByUniqueTag(ctx, task.UniqueTag)
+			if err != nil {
+				return 0, errors.Wrap(err, "failed to get task by unique tag")
+			}
+			return task.ID, nil
+		}
+		return 0, errors.Wrap(err, "failed to push task")
 	}
 	return createdTask.ID, nil
 }

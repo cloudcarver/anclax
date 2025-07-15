@@ -25,6 +25,7 @@ type Querier interface {
 	GetOrg(ctx context.Context, id int32) (*AnchorOrg, error)
 	GetOrgByName(ctx context.Context, name string) (*AnchorOrg, error)
 	GetTaskByID(ctx context.Context, id int32) (*AnchorTask, error)
+	GetTaskByUniqueTag(ctx context.Context, uniqueTag *string) (*AnchorTask, error)
 	GetUser(ctx context.Context, id int32) (*AnchorUser, error)
 	GetUserByName(ctx context.Context, name string) (*AnchorUser, error)
 	GetUserDefaultOrg(ctx context.Context, userID int32) (int32, error)

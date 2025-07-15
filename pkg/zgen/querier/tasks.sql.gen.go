@@ -70,6 +70,28 @@ func (q *Queries) GetTaskByID(ctx context.Context, id int32) (*AnchorTask, error
 	return &i, err
 }
 
+const getTaskByUniqueTag = `-- name: GetTaskByUniqueTag :one
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts FROM anchor.tasks
+WHERE unique_tag = $1
+`
+
+func (q *Queries) GetTaskByUniqueTag(ctx context.Context, uniqueTag *string) (*AnchorTask, error) {
+	row := q.db.QueryRow(ctx, getTaskByUniqueTag, uniqueTag)
+	var i AnchorTask
+	err := row.Scan(
+		&i.ID,
+		&i.Attributes,
+		&i.Spec,
+		&i.Status,
+		&i.UniqueTag,
+		&i.StartedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Attempts,
+	)
+	return &i, err
+}
+
 const incrementAttempts = `-- name: IncrementAttempts :exec
 UPDATE anchor.tasks
 SET attempts = attempts + 1, updated_at = CURRENT_TIMESTAMP

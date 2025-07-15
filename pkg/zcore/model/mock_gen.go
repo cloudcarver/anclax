@@ -261,6 +261,21 @@ func (mr *MockModelInterfaceMockRecorder) GetTaskByID(ctx, id any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTaskByID", reflect.TypeOf((*MockModelInterface)(nil).GetTaskByID), ctx, id)
 }
 
+// GetTaskByUniqueTag mocks base method.
+func (m *MockModelInterface) GetTaskByUniqueTag(ctx context.Context, uniqueTag *string) (*querier.AnchorTask, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetTaskByUniqueTag", ctx, uniqueTag)
+	ret0, _ := ret[0].(*querier.AnchorTask)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetTaskByUniqueTag indicates an expected call of GetTaskByUniqueTag.
+func (mr *MockModelInterfaceMockRecorder) GetTaskByUniqueTag(ctx, uniqueTag any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTaskByUniqueTag", reflect.TypeOf((*MockModelInterface)(nil).GetTaskByUniqueTag), ctx, uniqueTag)
+}
+
 // GetUser mocks base method.
 func (m *MockModelInterface) GetUser(ctx context.Context, id int32) (*querier.AnchorUser, error) {
 	m.ctrl.T.Helper()

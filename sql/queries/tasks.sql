@@ -50,6 +50,10 @@ WHERE id = $1;
 INSERT INTO anchor.tasks (attributes, spec, status, started_at, unique_tag)
 VALUES ($1, $2, $3, $4, $5) ON CONFLICT (unique_tag) DO NOTHING RETURNING *;
 
+-- name: GetTaskByUniqueTag :one
+SELECT * FROM anchor.tasks
+WHERE unique_tag = $1;
+
 -- name: InsertEvent :one
 INSERT INTO anchor.events (spec)
 VALUES ($1)

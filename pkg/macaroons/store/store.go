@@ -47,7 +47,7 @@ func (s *Store) Create(ctx context.Context, userID int32, key []byte, ttl time.D
 			if _, err := s.taskRunner.RunDeleteOpaqueKey(ctx, &runner.DeleteOpaqueKeyParameters{
 				KeyID: keyID,
 			}, taskcore.WithStartedAt(s.now().Add(ttl))); err != nil {
-				return errors.Wrap(err, "failed to create task")
+				return errors.Wrap(err, "failed to run task to delete key")
 			}
 		}
 		return nil

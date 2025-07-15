@@ -15,16 +15,16 @@ import (
 )
 
 type TaskLifeCycleHandler struct {
-	model model.ModelInterface
+	model       model.ModelInterface
 	taskHandler TaskHandler
-	now   func() time.Time
+	now         func() time.Time
 }
 
 func NewTaskLifeCycleHandler(model model.ModelInterface, taskHandler TaskHandler) *TaskLifeCycleHandler {
 	return &TaskLifeCycleHandler{
-		model: model,
+		model:       model,
 		taskHandler: taskHandler,
-		now:   time.Now,
+		now:         time.Now,
 	}
 }
 
@@ -139,7 +139,7 @@ func (a *TaskLifeCycleHandler) handleCronjob(ctx context.Context, tx pgx.Tx, tas
 		ID:        task.ID,
 		StartedAt: &nextTime,
 	}); err != nil {
-		return errors.Wrap(err, "failed to create task")
+		return errors.Wrap(err, "failed to update task started at")
 	}
 	return nil
 }

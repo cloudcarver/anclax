@@ -25,6 +25,8 @@ const (
 	IncrementCounter = "IncrementCounter" 
 )
 
+
+
 type TaskRunner interface { 
     // Increment the counter
 	RunAutoIncrementCounter(ctx context.Context, params *AutoIncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error)
@@ -71,8 +73,8 @@ func (c *Client) runAutoIncrementCounter(ctx context.Context, taskstore taskcore
 	attributes := apigen.TaskAttributes{}
 	
 	attributes.RetryPolicy = &apigen.TaskRetryPolicy{
-		Interval:             "30m",
-		AlwaysRetryOnFailure: true,
+		Interval:    "30m",
+		MaxAttempts: -1,
 	}
 	attributes.Cronjob = &apigen.TaskCronjob{
 		CronExpression: "*/5 * * * * *",
@@ -115,8 +117,8 @@ func (c *Client) runIncrementCounter(ctx context.Context, taskstore taskcore.Tas
 	attributes := apigen.TaskAttributes{}
 	
 	attributes.RetryPolicy = &apigen.TaskRetryPolicy{
-		Interval:             "30m",
-		AlwaysRetryOnFailure: true,
+		Interval:    "30m",
+		MaxAttempts: -1,
 	}
 	
 	task := &apigen.Task{
@@ -165,10 +167,12 @@ func (r *IncrementCounterParameters) Marshal() (json.RawMessage, error) {
 
 type ExecutorInterface interface { 
     // Increment the counter
-	ExecuteAutoIncrementCounter(ctx context.Context, params *AutoIncrementCounterParameters) error
+	ExecuteAutoIncrementCounter(ctx context.Context, tx pgx.Tx, params *AutoIncrementCounterParameters) error
+
 
     // Increment the counter
-	ExecuteIncrementCounter(ctx context.Context, params *IncrementCounterParameters) error
+	ExecuteIncrementCounter(ctx context.Context, tx pgx.Tx, params *IncrementCounterParameters) error
+
 }
 
 type TaskHandler struct {
@@ -187,9 +191,9 @@ func (f *TaskHandler) RegisterTaskHandler(handler worker.TaskHandler) {
 	f.externalTaskHandler = append(f.externalTaskHandler, handler)
 }
 
-func (f *TaskHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) error {
+func (f *TaskHandler) HandleTask(ctx context.Context, tx pgx.Tx, spec worker.TaskSpec) error {
 	for _, handler := range f.externalTaskHandler {
-		if err := handler.HandleTask(ctx, spec); err != nil {
+		if err := handler.HandleTask(ctx, tx, spec); err != nil {
 			if errors.Is(err, worker.ErrUnknownTaskType) {
 				continue
 			}
@@ -204,16 +208,34 @@ func (f *TaskHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) erro
 		if err := params.Parse(spec.GetPayload()); err != nil {
 			return fmt.Errorf("failed to parse AutoIncrementCounter parameters: %w", err)
 		}
-		return f.executor.ExecuteAutoIncrementCounter(ctx, &params)
+		return f.executor.ExecuteAutoIncrementCounter(ctx, tx, &params)
 		
 	case IncrementCounter:
 		var params IncrementCounterParameters
 		if err := params.Parse(spec.GetPayload()); err != nil {
 			return fmt.Errorf("failed to parse IncrementCounter parameters: %w", err)
 		}
-		return f.executor.ExecuteIncrementCounter(ctx, &params)
+		return f.executor.ExecuteIncrementCounter(ctx, tx, &params)
 		
 	default:
 		return errors.Wrapf(worker.ErrUnknownTaskType, "unknown task type: %s", spec.GetType())
+	}
+}
+
+func (f *TaskHandler) OnTaskFailed(ctx context.Context, tx pgx.Tx, failedTaskSpec worker.TaskSpec, taskID int32) error {
+	for _, handler := range f.externalTaskHandler {
+		if err := handler.OnTaskFailed(ctx, tx, failedTaskSpec, taskID); err != nil {
+			if errors.Is(err, worker.ErrUnknownTaskType) {
+				continue
+			}
+			return err
+		}
+		return nil
+	}
+
+	// Call the appropriate OnXXXFailed hook method
+	switch failedTaskSpec.GetType() { 
+	default:
+		return nil // No hook configured for this task type
 	}
 }
