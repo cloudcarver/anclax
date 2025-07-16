@@ -10,8 +10,13 @@ type Pg struct {
 }
 
 type Auth struct {
-	AccessExpiry  *time.Duration `yaml:"accessexp"`
+	AccessExpiry *time.Duration `yaml:"accessexp"`
+
 	RefreshExpiry *time.Duration `yaml:"refreshexp"`
+
+	// (Optional) Whether to enable single session, default is false.
+	// If enabled, the user can only have one session at a time, login from different devices will invalidate the previous session.
+	SingleSession bool `yaml:"singlesession"`
 }
 
 type TestAccount struct {

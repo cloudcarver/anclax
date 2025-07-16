@@ -13,8 +13,10 @@ import (
 )
 
 func (s *Service) SignIn(ctx context.Context, userID int32) (*apigen.Credentials, error) {
-	if err := s.auth.InvalidateUserTokens(ctx, userID); err != nil {
-		return nil, errors.Wrapf(err, "failed to invalidate user tokens")
+	if s.singleSession {
+		if err := s.auth.InvalidateUserTokens(ctx, userID); err != nil {
+			return nil, errors.Wrapf(err, "failed to invalidate user tokens")
+		}
 	}
 
 	orgID, err := s.m.GetUserDefaultOrg(ctx, userID)

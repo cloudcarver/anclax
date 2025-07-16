@@ -80,6 +80,8 @@ type Service struct {
 	hooks  hooks.AnchorHookInterface
 	worker worker.WorkerInterface
 
+	singleSession bool
+
 	generateSaltAndHash func(password string) (string, string, error)
 	now                 func() time.Time
 }
@@ -96,5 +98,6 @@ func NewService(
 		hooks:               hooks,
 		now:                 time.Now,
 		generateSaltAndHash: utils.GenerateSaltAndHash,
+		singleSession:       cfg.Auth.SingleSession,
 	}
 }
