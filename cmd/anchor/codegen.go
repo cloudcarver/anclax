@@ -78,7 +78,7 @@ func runClean(c *cli.Context) error {
 
 	workdir := c.Args().First()
 	if workdir == "" {
-		return errors.New("work directory is required, e.g. anchor clean .")
+		workdir = "."
 	}
 
 	tempDir, err := os.MkdirTemp("", "anchor-codegen-")
@@ -112,7 +112,7 @@ func runGen(c *cli.Context) error {
 
 	workdir := c.Args().First()
 	if workdir == "" {
-		return errors.New("work directory is required, e.g. anchor gen .")
+		workdir = "."
 	}
 	return codegen(c.String("config"), c.Args().First())
 }

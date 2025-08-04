@@ -40,9 +40,9 @@ func TestCreateNewUser(t *testing.T) {
 
 	mockModel.EXPECT().CreateOrg(ctx, fmt.Sprintf("%s's Org", username)).Return(org, nil)
 
-	mockHooks.EXPECT().OnOrgCreatedWithTx(ctx, gomock.Any(), org.ID).Return(nil)
+	mockHooks.EXPECT().OnOrgCreated(ctx, gomock.Any(), org.ID).Return(nil)
 
-	mockHooks.EXPECT().OnUserCreatedWithTx(ctx, gomock.Any(), user.ID).Return(nil)
+	mockHooks.EXPECT().OnUserCreated(ctx, gomock.Any(), user.ID).Return(nil)
 
 	mockModel.EXPECT().CreateUser(ctx, querier.CreateUserParams{
 		Name:         username,
