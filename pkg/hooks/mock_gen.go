@@ -56,32 +56,32 @@ func (mr *MockAnchorHookInterfaceMockRecorder) OnCreateToken(ctx, userID, macaro
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnCreateToken", reflect.TypeOf((*MockAnchorHookInterface)(nil).OnCreateToken), ctx, userID, macaroon)
 }
 
-// OnOrgCreatedWithTx mocks base method.
-func (m *MockAnchorHookInterface) OnOrgCreatedWithTx(ctx context.Context, tx pgx.Tx, orgID int32) error {
+// OnOrgCreated mocks base method.
+func (m *MockAnchorHookInterface) OnOrgCreated(ctx context.Context, tx pgx.Tx, orgID int32) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "OnOrgCreatedWithTx", ctx, tx, orgID)
+	ret := m.ctrl.Call(m, "OnOrgCreated", ctx, tx, orgID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// OnOrgCreatedWithTx indicates an expected call of OnOrgCreatedWithTx.
-func (mr *MockAnchorHookInterfaceMockRecorder) OnOrgCreatedWithTx(ctx, tx, orgID any) *gomock.Call {
+// OnOrgCreated indicates an expected call of OnOrgCreated.
+func (mr *MockAnchorHookInterfaceMockRecorder) OnOrgCreated(ctx, tx, orgID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnOrgCreatedWithTx", reflect.TypeOf((*MockAnchorHookInterface)(nil).OnOrgCreatedWithTx), ctx, tx, orgID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnOrgCreated", reflect.TypeOf((*MockAnchorHookInterface)(nil).OnOrgCreated), ctx, tx, orgID)
 }
 
-// OnUserCreatedWithTx mocks base method.
-func (m *MockAnchorHookInterface) OnUserCreatedWithTx(ctx context.Context, tx pgx.Tx, userID int32) error {
+// OnUserCreated mocks base method.
+func (m *MockAnchorHookInterface) OnUserCreated(ctx context.Context, tx pgx.Tx, userID int32) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "OnUserCreatedWithTx", ctx, tx, userID)
+	ret := m.ctrl.Call(m, "OnUserCreated", ctx, tx, userID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// OnUserCreatedWithTx indicates an expected call of OnUserCreatedWithTx.
-func (mr *MockAnchorHookInterfaceMockRecorder) OnUserCreatedWithTx(ctx, tx, userID any) *gomock.Call {
+// OnUserCreated indicates an expected call of OnUserCreated.
+func (mr *MockAnchorHookInterfaceMockRecorder) OnUserCreated(ctx, tx, userID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnUserCreatedWithTx", reflect.TypeOf((*MockAnchorHookInterface)(nil).OnUserCreatedWithTx), ctx, tx, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnUserCreated", reflect.TypeOf((*MockAnchorHookInterface)(nil).OnUserCreated), ctx, tx, userID)
 }
 
 // RegisterOnCreateToken mocks base method.
@@ -96,26 +96,26 @@ func (mr *MockAnchorHookInterfaceMockRecorder) RegisterOnCreateToken(hook any) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterOnCreateToken", reflect.TypeOf((*MockAnchorHookInterface)(nil).RegisterOnCreateToken), hook)
 }
 
-// RegisterOnOrgCreatedWithTx mocks base method.
-func (m *MockAnchorHookInterface) RegisterOnOrgCreatedWithTx(hook OnOrgCreatedWithTx) {
+// RegisterOnOrgCreated mocks base method.
+func (m *MockAnchorHookInterface) RegisterOnOrgCreated(hook OnOrgCreated) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "RegisterOnOrgCreatedWithTx", hook)
+	m.ctrl.Call(m, "RegisterOnOrgCreated", hook)
 }
 
-// RegisterOnOrgCreatedWithTx indicates an expected call of RegisterOnOrgCreatedWithTx.
-func (mr *MockAnchorHookInterfaceMockRecorder) RegisterOnOrgCreatedWithTx(hook any) *gomock.Call {
+// RegisterOnOrgCreated indicates an expected call of RegisterOnOrgCreated.
+func (mr *MockAnchorHookInterfaceMockRecorder) RegisterOnOrgCreated(hook any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterOnOrgCreatedWithTx", reflect.TypeOf((*MockAnchorHookInterface)(nil).RegisterOnOrgCreatedWithTx), hook)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterOnOrgCreated", reflect.TypeOf((*MockAnchorHookInterface)(nil).RegisterOnOrgCreated), hook)
 }
 
-// RegisterOnUserCreatedWithTx mocks base method.
-func (m *MockAnchorHookInterface) RegisterOnUserCreatedWithTx(hook OnUserCreatedWithTx) {
+// RegisterOnUserCreated mocks base method.
+func (m *MockAnchorHookInterface) RegisterOnUserCreated(hook OnUserCreated) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "RegisterOnUserCreatedWithTx", hook)
+	m.ctrl.Call(m, "RegisterOnUserCreated", hook)
 }
 
-// RegisterOnUserCreatedWithTx indicates an expected call of RegisterOnUserCreatedWithTx.
-func (mr *MockAnchorHookInterfaceMockRecorder) RegisterOnUserCreatedWithTx(hook any) *gomock.Call {
+// RegisterOnUserCreated indicates an expected call of RegisterOnUserCreated.
+func (mr *MockAnchorHookInterfaceMockRecorder) RegisterOnUserCreated(hook any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterOnUserCreatedWithTx", reflect.TypeOf((*MockAnchorHookInterface)(nil).RegisterOnUserCreatedWithTx), hook)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterOnUserCreated", reflect.TypeOf((*MockAnchorHookInterface)(nil).RegisterOnUserCreated), hook)
 }

@@ -41,7 +41,7 @@ type ServiceInterface interface {
 	// Create a new user and its default organization
 	CreateNewUser(ctx context.Context, username, password string) (int32, error)
 
-	CreateNewUserWithHook(ctx context.Context, username, password string, hook func(ctx context.Context, tx pgx.Tx, orgID int32, userID int32) error) (int32, error)
+	CreateNewUserWithTx(ctx context.Context, tx pgx.Tx, username, password string) (int32, error)
 
 	GetUserIDByUsername(ctx context.Context, username string) (int32, error)
 

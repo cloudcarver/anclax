@@ -103,75 +103,69 @@ func (s *Service) GetUserIDByUsername(ctx context.Context, username string) (int
 }
 
 func (s *Service) CreateNewUser(ctx context.Context, username, password string) (int32, error) {
-	return s.CreateNewUserWithHook(ctx, username, password, func(ctx context.Context, tx pgx.Tx, orgID int32, userID int32) error {
-		return nil
-	})
+	var orgID int32
+	if err := s.m.RunTransactionWithTx(ctx, func(tx pgx.Tx, txm model.ModelInterface) error {
+		id, err := s.CreateNewUserWithTx(ctx, tx, username, password)
+		orgID = id
+		return err
+	}); err != nil {
+		return 0, errors.Wrapf(err, "failed to create new user")
+	}
+	return orgID, nil
 }
 
-func (s *Service) CreateNewUserWithHook(ctx context.Context, username, password string, hook func(ctx context.Context, tx pgx.Tx, orgID int32, userID int32) error) (int32, error) {
+func (s *Service) CreateNewUserWithTx(ctx context.Context, tx pgx.Tx, username, password string) (int32, error) {
 	salt, hash, err := s.generateSaltAndHash(password)
 	if err != nil {
 		return 0, errors.Wrapf(err, "failed to generate hash and salt")
 	}
 
-	var orgID int32
+	txm := s.m.SpawnWithTx(tx)
 
-	if err := s.m.RunTransactionWithTx(ctx, func(tx pgx.Tx, txm model.ModelInterface) error {
-		org, err := txm.CreateOrg(ctx, fmt.Sprintf("%s's Org", username))
-		if err != nil {
-			return errors.Wrapf(err, "failed to create organization")
-		}
-
-		orgID = org.ID
-
-		if err := s.hooks.OnOrgCreatedWithTx(ctx, tx, org.ID); err != nil {
-			return errors.Wrapf(err, "failed to run on org created hook")
-		}
-
-		user, err := txm.CreateUser(ctx, querier.CreateUserParams{
-			Name:         username,
-			PasswordHash: hash,
-			PasswordSalt: salt,
-		})
-		if err != nil {
-			return errors.Wrapf(err, "failed to create user")
-		}
-
-		if err := s.hooks.OnUserCreatedWithTx(ctx, tx, user.ID); err != nil {
-			return errors.Wrapf(err, "failed to run on user created hook")
-		}
-
-		if _, err := txm.InsertOrgOwner(ctx, querier.InsertOrgOwnerParams{
-			UserID: user.ID,
-			OrgID:  org.ID,
-		}); err != nil {
-			return errors.Wrapf(err, "failed to create organization owner")
-		}
-
-		if _, err := txm.InsertOrgUser(ctx, querier.InsertOrgUserParams{
-			UserID: user.ID,
-			OrgID:  org.ID,
-		}); err != nil {
-			return errors.Wrapf(err, "failed to create organization user")
-		}
-
-		if err := txm.SetUserDefaultOrg(ctx, querier.SetUserDefaultOrgParams{
-			UserID: user.ID,
-			OrgID:  org.ID,
-		}); err != nil {
-			return errors.Wrapf(err, "failed to set user default org")
-		}
-
-		if err := hook(ctx, tx, org.ID, user.ID); err != nil {
-			return errors.Wrapf(err, "failed to run hook")
-		}
-
-		return nil
-	}); err != nil {
-		return 0, errors.Wrapf(err, "failed to create new user")
+	org, err := txm.CreateOrg(ctx, fmt.Sprintf("%s's Org", username))
+	if err != nil {
+		return 0, errors.Wrapf(err, "failed to create organization")
 	}
 
-	return orgID, nil
+	if err := s.hooks.OnOrgCreated(ctx, tx, org.ID); err != nil {
+		return 0, errors.Wrapf(err, "failed to run on org created hook")
+	}
+
+	user, err := txm.CreateUser(ctx, querier.CreateUserParams{
+		Name:         username,
+		PasswordHash: hash,
+		PasswordSalt: salt,
+	})
+	if err != nil {
+		return 0, errors.Wrapf(err, "failed to create user")
+	}
+
+	if err := s.hooks.OnUserCreated(ctx, tx, user.ID); err != nil {
+		return 0, errors.Wrapf(err, "failed to run on user created hook")
+	}
+
+	if _, err := txm.InsertOrgOwner(ctx, querier.InsertOrgOwnerParams{
+		UserID: user.ID,
+		OrgID:  org.ID,
+	}); err != nil {
+		return 0, errors.Wrapf(err, "failed to create organization owner")
+	}
+
+	if _, err := txm.InsertOrgUser(ctx, querier.InsertOrgUserParams{
+		UserID: user.ID,
+		OrgID:  org.ID,
+	}); err != nil {
+		return 0, errors.Wrapf(err, "failed to create organization user")
+	}
+
+	if err := txm.SetUserDefaultOrg(ctx, querier.SetUserDefaultOrgParams{
+		UserID: user.ID,
+		OrgID:  org.ID,
+	}); err != nil {
+		return 0, errors.Wrapf(err, "failed to set user default org")
+	}
+
+	return org.ID, nil
 }
 
 func (s *Service) DeleteUserByName(ctx context.Context, username string) error {

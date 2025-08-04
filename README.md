@@ -19,8 +19,8 @@ The core philosophy of Anchor is to provide confidence in the codebase by:
 ## Quick Start
 
 ```bash
-go install github.com/cloudcarver/anchor@latest
-anchor init .
+go install github.com/cloudcarver/anchor/cmd/anchor@latest
+anchor init . github.com/my/app
 ```
 
 1. Define the HTTP schema `api/v1.yaml` with YAML format.
@@ -70,7 +70,7 @@ anchor init .
 4. Run code generation.
 
 ```
-anchor generate
+anchor gen
 ```
 
 5. Implement the interfaces.
