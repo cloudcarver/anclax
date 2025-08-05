@@ -1,15 +1,22 @@
 # Transaction Management in Anchor
 
-Anchor provides a robust plugin system built around PostgreSQL transactions (`pgx.Tx`) that ensures data consistency and provides delivery guarantees. This document explains how the transaction system works, particularly focusing on the task runner, task executor, and hook system.
+Anchor is designed as a **single cohesive ultimate backend framework** built around one core principle: **the `WithTx` pattern**. Every component that interacts with the database provides both standalone methods and transactional variants that accept `pgx.Tx`, enabling seamless composition of operations within a single transaction.
 
-## Overview
+This document explains how Anchor's transaction system works, focusing on how the `WithTx` pattern enables the plugin system, task execution, hooks, and service methods to work together cohesively.
 
-Anchor's architecture is designed around the principle that **all operations that modify state should happen within a database transaction**. This ensures:
+## Core Principle: The `WithTx` Pattern
 
-1. **Atomicity**: Operations either complete entirely or are rolled back
-2. **Consistency**: Database constraints are maintained
-3. **At-least-once delivery**: Tasks are guaranteed to be executed at least once
-4. **Hook guarantees**: Hooks are executed within the same transaction as the triggering operation
+Anchor's architecture is built on the fundamental principle that **every database operation should be available in both standalone and transactional forms**:
+
+- **Standalone methods**: Handle their own transaction lifecycle
+- **`WithTx` methods**: Accept an existing transaction and participate in it
+
+This pattern ensures:
+
+1. **Composability**: Operations can be combined into larger transactions
+2. **Atomicity**: Complex workflows either complete entirely or are rolled back
+3. **Consistency**: Database constraints are maintained across all operations
+4. **Cohesiveness**: All framework components follow the same transaction pattern
 
 ## Transaction Delivery Mechanism
 
@@ -80,11 +87,164 @@ func (p *Plugin) Plug(anchorApp *anchor_app.Application) {
 
 ### Transaction-Aware Components
 
-All plugin components that interact with the database receive transactions:
+All plugin components that interact with the database follow the `WithTx` pattern:
 
 1. **Task Handlers**: Receive `pgx.Tx` for all operations
 2. **Hooks**: Execute within the same transaction as the triggering event
 3. **Lifecycle Handlers**: Manage task state changes transactionally
+4. **Service Methods**: Provide both standalone and `WithTx` variants
+
+## The `WithTx` Pattern in Practice
+
+### Universal Application Across Components
+
+Every component in Anchor that performs database operations follows the `WithTx` pattern:
+
+#### 1. Model Layer
+```go
+type ModelInterface interface {
+    // Standalone: manages its own transaction
+    CreateUser(ctx context.Context, username string) (*User, error)
+    
+    // WithTx: participates in existing transaction
+    SpawnWithTx(tx pgx.Tx) ModelInterface
+}
+```
+
+#### 2. Service Layer
+```go
+type ServiceInterface interface {
+    // Standalone: creates and manages transaction
+    CreateNewUser(ctx context.Context, username, password string) (int32, error)
+    
+    // WithTx: uses provided transaction
+    CreateNewUserWithTx(ctx context.Context, tx pgx.Tx, username, password string) (int32, error)
+}
+```
+
+#### 3. Task System
+```go
+type TaskRunner interface {
+    // Standalone: creates its own transaction for task creation
+    RunTask(ctx context.Context, params *TaskParams) (int32, error)
+    
+    // WithTx: creates task within existing transaction
+    RunTaskWithTx(ctx context.Context, tx pgx.Tx, params *TaskParams) (int32, error)
+}
+```
+
+#### 4. Storage Components
+```go
+type TaskStoreInterface interface {
+    // Standalone operations
+    PushTask(ctx context.Context, task *apigen.Task) (int32, error)
+    
+    // WithTx: operates within existing transaction
+    WithTx(tx pgx.Tx) TaskStoreInterface
+}
+```
+
+### Service Methods: Complex Business Logic Made Transactional
+
+Anchor's service layer demonstrates the power of the `WithTx` pattern by providing transactional variants of all business operations:
+
+#### Example: User Creation Service
+
+```go
+// Standalone method - manages its own transaction
+func (s *Service) CreateNewUser(ctx context.Context, username, password string) (int32, error) {
+    var userID int32
+    if err := s.m.RunTransactionWithTx(ctx, func(tx pgx.Tx, txm model.ModelInterface) error {
+        // Delegate to the transactional variant
+        id, err := s.CreateNewUserWithTx(ctx, tx, username, password)
+        userID = id
+        return err
+    }); err != nil {
+        return 0, err
+    }
+    return userID, nil
+}
+
+// WithTx method - participates in existing transaction
+func (s *Service) CreateNewUserWithTx(ctx context.Context, tx pgx.Tx, username, password string) (int32, error) {
+    // Generate password hash
+    salt, hash, err := s.generateSaltAndHash(password)
+    if err != nil {
+        return 0, err
+    }
+    
+    // Use transaction-bound model
+    txm := s.m.SpawnWithTx(tx)
+    
+    // Create organization
+    org, err := txm.CreateOrg(ctx, fmt.Sprintf("%s's Org", username))
+    if err != nil {
+        return 0, err
+    }
+    
+    // Execute hooks within the same transaction
+    if err := s.hooks.OnOrgCreated(ctx, tx, org.ID); err != nil {
+        return 0, err
+    }
+    
+    // Create user
+    user, err := txm.CreateUser(ctx, querier.CreateUserParams{
+        Username:     username,
+        PasswordHash: hash,
+        PasswordSalt: salt,
+        OrgID:        org.ID,
+    })
+    if err != nil {
+        return 0, err
+    }
+    
+    // Execute user creation hooks
+    if err := s.hooks.OnUserCreated(ctx, tx, user.ID); err != nil {
+        return 0, err
+    }
+    
+    return user.ID, nil
+}
+```
+
+### Composability: The Ultimate Power
+
+The `WithTx` pattern enables seamless composition of operations across different layers:
+
+```go
+func (s *SomeService) ComplexBusinessOperation(ctx context.Context, params BusinessParams) error {
+    return s.model.RunTransactionWithTx(ctx, func(tx pgx.Tx, txm model.ModelInterface) error {
+        // 1. Create user (service layer)
+        userID, err := s.authService.CreateNewUserWithTx(ctx, tx, params.Username, params.Password)
+        if err != nil {
+            return err
+        }
+        
+        // 2. Schedule background task (task system)
+        taskID, err := s.taskRunner.RunWelcomeEmailWithTx(ctx, tx, &WelcomeEmailParams{
+            UserID: userID,
+        })
+        if err != nil {
+            return err
+        }
+        
+        // 3. Create related resources (model layer)
+        txModel := s.model.SpawnWithTx(tx)
+        if err := txModel.CreateUserProfile(ctx, userID); err != nil {
+            return err
+        }
+        
+        // 4. Log audit event (another service)
+        return s.auditService.LogEventWithTx(ctx, tx, "user_created", userID)
+    })
+}
+```
+
+**Key benefits:**
+- If any step fails, the entire operation rolls back
+- No partial state changes are committed
+- All components participate in the same transaction
+- Hooks execute within the transaction context
 
 ## Task Runner and Executor: At-Least-Once Delivery
 
@@ -313,9 +473,34 @@ func (a *TaskLifeCycleHandler) HandleFailed(ctx context.Context, tx pgx.Tx, task
 }
 ```
 
-## Best Practices
+## Best Practices for the `WithTx` Pattern
 
-### 1. Always Use Provided Transactions
+### 1. Always Provide Both Variants
+
+When designing new components, always provide both standalone and `WithTx` variants:
+
+```go
+// ✅ Good: Both variants provided
+type MyService interface {
+    ProcessOrder(ctx context.Context, orderID int32) error
+    ProcessOrderWithTx(ctx context.Context, tx pgx.Tx, orderID int32) error
+}
+
+// Implementation pattern
+func (s *MyService) ProcessOrder(ctx context.Context, orderID int32) error {
+    return s.model.RunTransactionWithTx(ctx, func(tx pgx.Tx, txm model.ModelInterface) error {
+        return s.ProcessOrderWithTx(ctx, tx, orderID)
+    })
+}
+
+func (s *MyService) ProcessOrderWithTx(ctx context.Context, tx pgx.Tx, orderID int32) error {
+    // Actual implementation using transaction-bound components
+    txm := s.model.SpawnWithTx(tx)
+    // ... business logic
+}
+```
+
+### 2. Always Use Provided Transactions
 
 ```go
 // ✅ Good: Use the provided transaction
@@ -331,7 +516,45 @@ func (e *Executor) ExecuteTask(ctx context.Context, tx pgx.Tx, params *Params) e
 }
 ```
 
-### 2. Handle Errors Appropriately
+### 3. Prefer `WithTx` Methods in Transactional Contexts
+
+When you're already within a transaction, always use the `WithTx` variants of other services:
+
+```go
+// ✅ Good: Using WithTx methods within transaction
+func (s *OrderService) ProcessOrderWithTx(ctx context.Context, tx pgx.Tx, orderID int32) error {
+    // Use WithTx variants of other services
+    userID, err := s.userService.GetUserByOrderWithTx(ctx, tx, orderID)
+    if err != nil {
+        return err
+    }
+    
+    // Schedule notification task within the same transaction
+    _, err = s.taskRunner.RunOrderNotificationWithTx(ctx, tx, &NotificationParams{
+        UserID:  userID,
+        OrderID: orderID,
+    })
+    return err
+}
+
+// ❌ Bad: Creating new transactions within existing transaction
+func (s *OrderService) ProcessOrderWithTx(ctx context.Context, tx pgx.Tx, orderID int32) error {
+    // This creates a separate transaction!
+    userID, err := s.userService.GetUserByOrder(ctx, orderID)
+    if err != nil {
+        return err
+    }
+    
+    // This also creates a separate transaction!
+    _, err = s.taskRunner.RunOrderNotification(ctx, &NotificationParams{
+        UserID:  userID,
+        OrderID: orderID,
+    })
+    return err
+}
+```
+
+### 4. Handle Errors Appropriately
 
 ```go
 func (e *Executor) ExecuteTask(ctx context.Context, tx pgx.Tx, params *Params) error {
@@ -353,7 +576,7 @@ func (e *Executor) ExecuteTask(ctx context.Context, tx pgx.Tx, params *Params) e
 }
 ```
 
-### 3. Design Idempotent Operations
+### 5. Design Idempotent Operations
 
 Since tasks are guaranteed to execute at least once, design your task executors to be idempotent:
 
@@ -376,13 +599,27 @@ func (e *Executor) ExecuteProcessPayment(ctx context.Context, tx pgx.Tx, params 
 }
 ```
 
-## Conclusion
+## Conclusion: The `WithTx` Pattern as the Foundation
 
-Anchor's transaction system provides strong guarantees through:
+Anchor achieves its goal of being a **single cohesive ultimate backend framework** through the universal application of the `WithTx` pattern. This core principle provides:
 
-1. **Consistent transaction propagation** using `pgx.Tx` parameters
-2. **At-least-once delivery** through transactional task creation and atomic execution
-3. **Hook guarantees** through transactional execution within the same database transaction
-4. **Plugin system integration** that maintains transaction boundaries across all components
+### Framework-Wide Consistency
+- **Every component** follows the same transaction pattern
+- **Every database operation** has both standalone and transactional variants
+- **Every layer** (model, service, task, storage) speaks the same transaction language
 
-This architecture ensures that your application maintains data consistency while providing reliable task execution and hook processing, even in the face of failures and retries.
+### Powerful Guarantees
+1. **Transactional Composability**: Any operation can be combined with any other operation in a single transaction
+2. **At-least-once delivery**: Tasks are guaranteed to be executed through transactional creation and atomic execution
+3. **Hook guarantees**: All hooks execute within the same transaction as the triggering operation
+4. **Data consistency**: Complex business workflows maintain ACID properties across all components
+
+### Developer Experience
+- **Predictable APIs**: If a method exists, its `WithTx` variant also exists
+- **Seamless composition**: Operations from different layers can be combined effortlessly
+- **Fail-safe design**: Partial failures never leave the system in an inconsistent state
+- **Plugin compatibility**: All plugins automatically inherit transactional capabilities
+
+The `WithTx` pattern transforms what could be a collection of separate components into a truly cohesive framework where every piece works together transactionally. This design enables developers to build complex, reliable backend systems with the confidence that data consistency is maintained at every level.
+
+**In essence, `WithTx` is not just a method naming convention—it's the architectural foundation that makes Anchor the ultimate backend framework.**
