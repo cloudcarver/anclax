@@ -20,6 +20,7 @@ Anchor 的核心理念是通过以下方式为代码库提供信心：
 
 ## 文档
 
+- [事务管理](docs/transaction.zh.md) - 了解 Anchor 的 `WithTx` 模式、插件系统，以及事务如何确保至少一次交付和保证钩子执行
 - [中间件 (x-functions 和 x-check-rules)](docs/middleware.zh.md) - 学习如何使用 Anchor 的中间件系统实现自定义验证、授权和实用功能
 - [异步任务](docs/async-tasks.zh.md) - 异步任务管理的综合指南
 - [异步任务（旧版）](docs/asynctask.zh.md) - 旧版异步任务文档
