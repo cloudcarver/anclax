@@ -1,6 +1,8 @@
 # Anchor 中的异步任务
 
-[English](asynctask.md) | 中文
+[English](async-tasks-technical.md) | 中文
+
+> 🚀 **异步任务新手？** 从[教程指南](async-tasks-tutorial.zh.md)开始，了解分步示例和实用模式。
 
 本文档提供了 Anchor 异步任务系统的全面概述，涵盖用户体验流程和底层技术机制。
 
@@ -437,5 +439,68 @@ var (
    - 设置适当的超时
    - 限制并发任务执行
    - 监控内存和 CPU 使用
+
+6. **使用异步任务解耦模块**
+   - 通过使用异步任务而不是直接方法调用来解耦模块
+   - 例如，当订单支付完成时，不要在 `finishOrder()` 中直接调用所有工厂操作，而是排队一个 `orderFinished` 任务
+   - 这保持了 `finishOrder` 方法的简洁性，并允许工厂特定的逻辑在工厂模块内定义
+   - 产生更清洁的代码，更容易调试和维护
+   - **重要提示**：仅在最终一致性场景中使用此模式，不适用于强一致性要求，如账户间的实时金融交易
+
+```go
+// 不要这样做（紧耦合）：
+func (o *OrderService) FinishOrder(ctx context.Context, orderID int32) error {
+    // 更新订单状态
+    if err := o.model.UpdateOrderStatus(ctx, orderID, "completed"); err != nil {
+        return err
+    }
+    
+    // 直接调用工厂操作（紧耦合）
+    if err := o.factoryService.StartProduction(ctx, orderID); err != nil {
+        return err
+    }
+    if err := o.factoryService.AllocateResources(ctx, orderID); err != nil {
+        return err
+    }
+    if err := o.factoryService.ScheduleDelivery(ctx, orderID); err != nil {
+        return err
+    }
+    
+    return nil
+}
+
+// 应该这样做（使用异步任务解耦）：
+func (o *OrderService) FinishOrder(ctx context.Context, orderID int32) error {
+    return o.model.WithTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+        // 更新订单状态
+        if err := o.model.UpdateOrderStatus(ctx, orderID, "completed"); err != nil {
+            return err
+        }
+        
+        // 为工厂操作排队异步任务（松耦合）
+        _, err := o.taskRunner.RunOrderFinishedWithTx(ctx, tx, &taskgen.OrderFinishedParameters{
+            OrderId: orderID,
+        })
+        
+        return err
+    })
+}
+
+// 工厂模块独立处理自己的逻辑
+func (f *FactoryExecutor) ExecuteOrderFinished(ctx context.Context, tx pgx.Tx, params *taskgen.OrderFinishedParameters) error {
+    // 所有工厂特定逻辑都包含在工厂模块内
+    if err := f.startProduction(ctx, params.OrderId); err != nil {
+        return err
+    }
+    if err := f.allocateResources(ctx, params.OrderId); err != nil {
+        return err
+    }
+    if err := f.scheduleDelivery(ctx, params.OrderId); err != nil {
+        return err
+    }
+    
+    return nil
+}
+```
 
 这个综合系统为异步任务处理提供了强大的基础，同时通过其声明式配置和类型安全接口为开发者保持简单性。

@@ -1,6 +1,8 @@
 # Async Tasks in Anchor
 
-English | [中文](asynctask.zh.md)
+English | [中文](async-tasks-technical.zh.md)
+
+> 🚀 **New to async tasks?** Start with the [Tutorial Guide](async-tasks-tutorial.md) for step-by-step examples and practical usage patterns.
 
 This document provides a comprehensive overview of Anchor's async task system, covering both the user experience flow and the underlying technical mechanisms.
 
@@ -437,5 +439,68 @@ var (
    - Set appropriate timeouts
    - Limit concurrent task execution
    - Monitor memory and CPU usage
+
+6. **Use Async Tasks for Module Decoupling**
+   - Decouple modules by using async tasks instead of direct method calls
+   - For example, when an order is paid, instead of calling all factory operations directly in `finishOrder()`, enqueue an `orderFinished` task
+   - This keeps the `finishOrder` method concise and allows factory-specific logic to be defined within the factory module
+   - Results in cleaner code that's easier to debug and maintain
+   - **Important**: Only use this pattern for eventual consistency scenarios, not for strong consistency requirements like real-time financial transactions between accounts
+
+```go
+// Instead of this (tightly coupled):
+func (o *OrderService) FinishOrder(ctx context.Context, orderID int32) error {
+    // Update order status
+    if err := o.model.UpdateOrderStatus(ctx, orderID, "completed"); err != nil {
+        return err
+    }
+    
+    // Directly call factory operations (tight coupling)
+    if err := o.factoryService.StartProduction(ctx, orderID); err != nil {
+        return err
+    }
+    if err := o.factoryService.AllocateResources(ctx, orderID); err != nil {
+        return err
+    }
+    if err := o.factoryService.ScheduleDelivery(ctx, orderID); err != nil {
+        return err
+    }
+    
+    return nil
+}
+
+// Do this instead (decoupled with async tasks):
+func (o *OrderService) FinishOrder(ctx context.Context, orderID int32) error {
+    return o.model.WithTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+        // Update order status
+        if err := o.model.UpdateOrderStatus(ctx, orderID, "completed"); err != nil {
+            return err
+        }
+        
+        // Enqueue async task for factory operations (loose coupling)
+        _, err := o.taskRunner.RunOrderFinishedWithTx(ctx, tx, &taskgen.OrderFinishedParameters{
+            OrderId: orderID,
+        })
+        
+        return err
+    })
+}
+
+// Factory module handles its own logic independently
+func (f *FactoryExecutor) ExecuteOrderFinished(ctx context.Context, tx pgx.Tx, params *taskgen.OrderFinishedParameters) error {
+    // All factory-specific logic contained within factory module
+    if err := f.startProduction(ctx, params.OrderId); err != nil {
+        return err
+    }
+    if err := f.allocateResources(ctx, params.OrderId); err != nil {
+        return err
+    }
+    if err := f.scheduleDelivery(ctx, params.OrderId); err != nil {
+        return err
+    }
+    
+    return nil
+}
+```
 
 This comprehensive system provides a robust foundation for asynchronous task processing while maintaining simplicity for developers through its declarative configuration and type-safe interfaces.
