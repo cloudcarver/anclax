@@ -2,6 +2,8 @@
 
 English | [中文](async-tasks-technical.zh.md)
 
+> 🚀 **New to async tasks?** Start with the [Tutorial Guide](async-tasks-tutorial.md) for step-by-step examples and practical usage patterns.
+
 This document provides a comprehensive overview of Anchor's async task system, covering both the user experience flow and the underlying technical mechanisms.
 
 ## Table of Contents

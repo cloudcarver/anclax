@@ -2,6 +2,8 @@
 
 [English](async-tasks-technical.md) | 中文
 
+> 🚀 **异步任务新手？** 从[教程指南](async-tasks-tutorial.zh.md)开始，了解分步示例和实用模式。
+
 本文档提供了 Anchor 异步任务系统的全面概述，涵盖用户体验流程和底层技术机制。
 
 ## 目录

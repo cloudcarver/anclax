@@ -22,8 +22,11 @@ The core philosophy of Anchor is to provide confidence in the codebase by:
 
 - [Transaction Management](docs/transaction.md) ([中文](docs/transaction.zh.md)) - Learn about Anchor's `WithTx` pattern, plugin system, and how transactions ensure at-least-once delivery and guaranteed hook execution
 - [Middleware (x-functions and x-check-rules)](docs/middleware.md) ([中文](docs/middleware.zh.md)) - Learn how to implement custom validation, authorization, and utility functions using Anchor's middleware system
-- [Async Tasks](docs/async-tasks.md) ([中文](docs/async-tasks.zh.md)) - Comprehensive guide to asynchronous task management
-- [AsyncTask (Legacy)](docs/asynctask.md) ([中文](docs/asynctask.zh.md)) - Legacy async task documentation
+
+### Async Tasks Documentation
+
+- **[Async Tasks Tutorial](docs/async-tasks-tutorial.md)** ([中文](docs/async-tasks-tutorial.zh.md)) - User-friendly guide with step-by-step examples for getting started with async tasks
+- **[Async Tasks Technical Reference](docs/async-tasks-technical.md)** ([中文](docs/async-tasks-technical.zh.md)) - Comprehensive technical documentation covering architecture, lifecycle, and advanced features
 
 ## Quick Start
 

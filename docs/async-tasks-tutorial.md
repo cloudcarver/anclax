@@ -2,6 +2,8 @@
 
 English | [中文](async-tasks-tutorial.zh.md)
 
+> 📚 **Looking for technical details?** Check out the [Technical Reference](async-tasks-technical.md) for comprehensive coverage of the underlying architecture, lifecycle, and advanced features.
+
 Anchor lets you run background tasks that don't block your web requests. For example, you can send emails, process images, or generate reports without making users wait.
 
 ## Table of Contents

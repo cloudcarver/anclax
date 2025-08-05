@@ -2,6 +2,8 @@
 
 [English](async-tasks-tutorial.md) | 中文
 
+> 📚 **需要技术细节？** 查看[技术参考](async-tasks-technical.zh.md)了解底层架构、生命周期和高级功能的全面覆盖。
+
 Anchor 让您可以运行不阻塞 Web 请求的后台任务。例如，您可以发送电子邮件、处理图像或生成报告，而无需让用户等待。
 
 ## 目录
