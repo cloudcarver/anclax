@@ -1,6 +1,6 @@
 # Anchor 中的异步任务
 
-[English](asynctask.md) | 中文
+[English](async-tasks-technical.md) | 中文
 
 本文档提供了 Anchor 异步任务系统的全面概述，涵盖用户体验流程和底层技术机制。
 

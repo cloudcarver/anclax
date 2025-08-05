@@ -1,50 +1,50 @@
-# Async Tasks in Anchor
+# Anchor 中的异步任务
 
-English | [中文](async-tasks.zh.md)
+[English](async-tasks-tutorial.md) | 中文
 
-Anchor lets you run background tasks that don't block your web requests. For example, you can send emails, process images, or generate reports without making users wait.
+Anchor 让您可以运行不阻塞 Web 请求的后台任务。例如，您可以发送电子邮件、处理图像或生成报告，而无需让用户等待。
 
-## Table of Contents
+## 目录
 
-- [What Are Async Tasks?](#what-are-async-tasks)
-- [How to Create a Task](#how-to-create-a-task)
-- [How to Write Task Code](#how-to-write-task-code)
-- [How to Start Tasks](#how-to-start-tasks)
-- [Scheduled Tasks (Cronjobs)](#scheduled-tasks-cronjobs)
-- [Error Handling and Hooks](#error-handling-and-hooks)
-- [Complete Examples](#complete-examples)
+- [什么是异步任务？](#什么是异步任务)
+- [如何创建任务](#如何创建任务)
+- [如何编写任务代码](#如何编写任务代码)
+- [如何启动任务](#如何启动任务)
+- [定时任务（Cronjobs）](#定时任务cronjobs)
+- [错误处理和钩子](#错误处理和钩子)
+- [完整示例](#完整示例)
 
-## What Are Async Tasks?
+## 什么是异步任务？
 
-Think of async tasks like hiring someone to do work for you later. Instead of doing everything right away when a user makes a request, you can:
+将异步任务想象成雇佣某人稍后为您做工作。您可以：
 
-1. **Create a task** - Tell Anchor what work needs to be done
-2. **Queue it up** - Put the task in a to-do list
-3. **Let workers handle it** - Background workers pick up tasks and do the work
-4. **Get guarantees** - Tasks will run at least once, even if something goes wrong
+1. **创建任务** - 告诉 Anchor 需要完成什么工作
+2. **排队** - 将任务放入待办事项列表
+3. **让工作者处理** - 后台工作者接收任务并完成工作
+4. **获得保证** - 任务将至少运行一次，即使出现问题
 
-Common examples:
-- Send welcome emails when users sign up
-- Resize images after upload
-- Generate monthly reports
-- Clean up old data
-- Process payments
+常见示例：
+- 用户注册时发送欢迎邮件
+- 上传后调整图像大小
+- 生成月度报告
+- 清理旧数据
+- 处理付款
 
-## Task Definition
+## 任务定义
 
-Tasks are defined in `api/tasks.yaml` using a structured YAML format:
+任务在 `api/tasks.yaml` 中使用结构化的 YAML 格式定义：
 
 ```yaml
 tasks:
   - name: TaskName
-    description: "Task description"
+    description: "任务描述"
     parameters:
       type: object
       required: [param1, param2]
       properties:
         param1:
           type: string
-          description: "Parameter description"
+          description: "参数描述"
         param2:
           type: integer
           format: int32
@@ -52,25 +52,25 @@ tasks:
       interval: 30m
       maxAttempts: -1
     cronjob:
-      cronExpression: "0 */1 * * *"  # Every hour
+      cronExpression: "0 */1 * * *"  # 每小时
     events:
       - onFailed
     timeout: 10m
 ```
 
-### Task Properties
+### 任务属性
 
-- **name** (required): Unique task identifier
-- **description**: Human-readable task description
-- **parameters**: JSON Schema defining task parameters
-- **retryPolicy**: Retry configuration for failed tasks
-- **cronjob**: Cron scheduling configuration
-- **events**: Array of lifecycle hooks (e.g., `[onFailed]`)
-- **timeout**: Maximum execution time (default: 1 hour)
+- **name**（必需）：唯一任务标识符
+- **description**：人类可读的任务描述
+- **parameters**：定义任务参数的 JSON Schema
+- **retryPolicy**：失败任务的重试配置
+- **cronjob**：Cron 调度配置
+- **events**：生命周期钩子数组（例如 `[onFailed]`）
+- **timeout**：最大执行时间（默认：1 小时）
 
-### Parameter Types
+### 参数类型
 
-Parameters follow JSON Schema format:
+参数遵循 JSON Schema 格式：
 ```yaml
 parameters:
   type: object
@@ -90,43 +90,43 @@ parameters:
         type: string
 ```
 
-## Task Implementation
+## 任务实现
 
-After defining tasks, run code generation:
+定义任务后，运行代码生成：
 
 ```bash
 anchor generate
 ```
 
-This generates interfaces in `pkg/zgen/taskgen/`:
+这会在 `pkg/zgen/taskgen/` 中生成接口：
 
-### Generated Interfaces
+### 生成的接口
 
 ```go
-// ExecutorInterface - implement this to handle task execution and hooks
+// ExecutorInterface - 实现此接口以处理任务执行和钩子
 type ExecutorInterface interface {
-    // Execute the main task
+    // 执行主要任务
     ExecuteTaskName(ctx context.Context, params *TaskNameParameters) error
     
-    // Hook called when the task fails permanently (if events: [onFailed] is configured)
+    // 任务永久失败时调用的钩子（如果配置了 events: [onFailed]）
     OnTaskNameFailed(ctx context.Context, taskID int32, params *TaskNameParameters, tx pgx.Tx) error
 }
 
-// TaskRunner - use this to enqueue tasks
+// TaskRunner - 使用此接口来排队任务
 type TaskRunner interface {
     RunTaskName(ctx context.Context, params *TaskNameParameters, overrides ...taskcore.TaskOverride) (int32, error)
     RunTaskNameWithTx(ctx context.Context, tx pgx.Tx, params *TaskNameParameters, overrides ...taskcore.TaskOverride) (int32, error)
 }
 
-// Hook - automatically generated hook dispatcher
+// Hook - 自动生成的钩子调度器
 type Hook interface {
     OnTaskFailed(ctx context.Context, tx pgx.Tx, failedTaskSpec TaskSpec, taskID int32) error
 }
 ```
 
-### Implementing the Executor
+### 实现执行器
 
-Create an executor that implements the generated interface:
+创建一个实现生成接口的执行器：
 
 ```go
 package asynctask
@@ -148,16 +148,16 @@ func NewExecutor(model model.ModelInterface) taskgen.ExecutorInterface {
 }
 
 func (e *Executor) ExecuteTaskName(ctx context.Context, params *taskgen.TaskNameParameters) error {
-    // Your task logic here
+    // 您的任务逻辑在这里
     return e.model.DoSomething(ctx, params.UserId, params.Amount)
 }
 ```
 
-## Running Tasks
+## 运行任务
 
-### Enqueuing Tasks
+### 排队任务
 
-Use the generated TaskRunner to enqueue tasks:
+使用生成的 TaskRunner 来排队任务：
 
 ```go
 func (h *Handler) EnqueueTask(c *fiber.Ctx) error {
@@ -175,12 +175,12 @@ func (h *Handler) EnqueueTask(c *fiber.Ctx) error {
 }
 ```
 
-### Task Overrides
+### 任务覆盖
 
-You can override task properties at runtime:
+您可以在运行时覆盖任务属性：
 
 ```go
-// Override retry policy
+// 覆盖重试策略
 taskID, err := h.taskRunner.RunTaskName(ctx, params, 
     taskcore.WithRetryPolicy("1h", true),
     taskcore.WithTimeout("30m"),
@@ -188,19 +188,19 @@ taskID, err := h.taskRunner.RunTaskName(ctx, params,
 )
 ```
 
-### Transactional Tasks
+### 事务性任务
 
-Enqueue tasks within database transactions:
+在数据库事务中排队任务：
 
 ```go
 err := h.model.RunTransaction(ctx, func(txm model.ModelInterface) error {
-    // Do some database work
+    // 执行一些数据库工作
     user, err := txm.GetUser(ctx, userID)
     if err != nil {
         return err
     }
     
-    // Enqueue task within the same transaction
+    // 在同一事务中排队任务
     taskID, err := h.taskRunner.RunTaskNameWithTx(ctx, txm.GetTx(), params)
     if err != nil {
         return err
@@ -210,16 +210,16 @@ err := h.model.RunTransaction(ctx, func(txm model.ModelInterface) error {
 })
 ```
 
-## Cronjobs
+## 定时任务（Cronjobs）
 
-Define scheduled tasks using cron expressions:
+使用 cron 表达式定义定时任务：
 
 ```yaml
 tasks:
   - name: DailyCleanup
-    description: "Run daily cleanup tasks"
+    description: "运行每日清理任务"
     cronjob:
-      cronExpression: "0 0 2 * * *"  # 2 AM daily
+      cronExpression: "0 0 2 * * *"  # 每日凌晨 2 点
     parameters:
       type: object
       properties:
@@ -228,36 +228,36 @@ tasks:
           format: int32
 ```
 
-Cronjobs support extended cron format with seconds:
-- Format: `second minute hour dayOfMonth month dayOfWeek`
-- Example: `"*/30 * * * * *"` (every 30 seconds)
-- Example: `"0 0 */6 * * *"` (every 6 hours)
+定时任务支持扩展的 cron 格式（包含秒）：
+- 格式：`second minute hour dayOfMonth month dayOfWeek`
+- 示例：`"*/30 * * * * *"`（每 30 秒）
+- 示例：`"0 0 */6 * * *"`（每 6 小时）
 
-## Retry Policies
+## 重试策略
 
-Configure how tasks should be retried on failure:
+配置任务失败时的重试方式：
 
 ```yaml
 retryPolicy:
-  interval: 30m      # Wait 30 minutes between retries
-  maxAttempts: -1    # Unlimited retries (-1 means infinite, positive number limits attempts)
+  interval: 30m      # 重试间隔等待 30 分钟
+  maxAttempts: -1    # 无限重试（-1 表示无限，正数限制尝试次数）
 ```
 
-### Retry Intervals
+### 重试间隔
 
-- Simple duration: `"30m"`, `"1h"`, `"5s"`
-- Exponential backoff: `"1m,2m,4m,8m"` (comma-separated)
+- 简单持续时间：`"30m"`、`"1h"`、`"5s"`
+- 指数退避：`"1m,2m,4m,8m"`（逗号分隔）
 
-## Error Handling and Hooks
+## 错误处理和钩子
 
-### Task Failure Hooks
+### 任务失败钩子
 
-Tasks can automatically trigger hook methods when they fail using the `events` configuration:
+任务可以使用 `events` 配置在失败时自动触发钩子方法：
 
 ```yaml
 tasks:
   - name: ProcessPayment
-    description: "Process user payment"
+    description: "处理用户付款"
     parameters:
       type: object
       required: [userId, amount]
@@ -274,88 +274,88 @@ tasks:
       - onFailed
 ```
 
-### How Hooks Work
+### 钩子工作原理
 
-1. **Automatic Triggering**: When a task fails permanently (after all retries), the system automatically calls the corresponding hook method
-2. **Transaction Safety**: Both the original task status update and the hook execution happen in the same database transaction
-3. **Typed Parameters**: Hook methods receive the original task parameters and task ID with full type safety
-4. **No Retry Interference**: Hooks are only triggered when tasks fail permanently, not during retries
+1. **自动触发**：当任务永久失败时（所有重试后），系统自动调用相应的钩子方法
+2. **事务安全**：原始任务状态更新和钩子执行在同一数据库事务中发生
+3. **类型参数**：钩子方法接收原始任务参数和任务 ID，具有完全的类型安全性
+4. **无重试干扰**：钩子仅在任务永久失败时触发，不在重试期间触发
 
-### Hook Method Signatures
+### 钩子方法签名
 
-When you define a task with `events: [onFailed]`, the code generator automatically creates a hook method in the `ExecutorInterface`:
+当您定义带有 `events: [onFailed]` 的任务时，代码生成器会自动在 `ExecutorInterface` 中创建钩子方法：
 
 ```go
 type ExecutorInterface interface {
-    // Execute the main task
+    // 执行主要任务
     ExecuteTaskName(ctx context.Context, params *TaskNameParameters) error
     
-    // Hook called when the task fails permanently
+    // 任务永久失败时调用的钩子
     OnTaskNameFailed(ctx context.Context, taskID int32, params *TaskNameParameters, tx pgx.Tx) error
 }
 ```
 
-### Implementing Failure Hooks
+### 实现失败钩子
 
 ```go
 func (e *Executor) ExecuteProcessPayment(ctx context.Context, params *taskgen.ProcessPaymentParameters) error {
-    // Your payment processing logic
+    // 您的付款处理逻辑
     if err := e.paymentService.ProcessPayment(params.UserId, params.Amount); err != nil {
-        // This error will trigger OnProcessPaymentFailed if retries are exhausted
-        return fmt.Errorf("payment processing failed: %w", err)
+        // 如果重试用尽，此错误将触发 OnProcessPaymentFailed
+        return fmt.Errorf("付款处理失败: %w", err)
     }
     return nil
 }
 
 func (e *Executor) OnProcessPaymentFailed(ctx context.Context, taskID int32, params *taskgen.ProcessPaymentParameters, tx pgx.Tx) error {
-    // Hook receives the original task parameters directly with full type safety
-    log.Error("Payment processing failed permanently", 
+    // 钩子直接接收原始任务参数，具有完全的类型安全性
+    log.Error("付款处理永久失败", 
         zap.Int32("taskID", taskID),
         zap.Int32("userId", params.UserId),
         zap.Float64("amount", params.Amount))
     
-    // Handle the failure (notify admin, refund, etc.)
-    // The transaction context allows you to make additional database operations
+    // 处理失败（通知管理员、退款等）
+    // 事务上下文允许您进行额外的数据库操作
     return e.handlePaymentFailure(ctx, params.UserId, params.Amount, taskID)
 }
 ```
 
-### Custom Error Handling
+### 自定义错误处理
 
-In your executor, you can control retry behavior:
+在执行器中，您可以控制重试行为：
 
 ```go
 func (e *Executor) ExecuteProcessPayment(ctx context.Context, params *taskgen.ProcessPaymentParameters) error {
-    // Permanent failure - don't retry, immediately trigger onFailed
+    // 永久失败 - 不重试，立即触发 onFailed
     if params.Amount <= 0 {
         return taskcore.ErrFatalTask
     }
     
-    // Temporary failure - retry without logging error event
+    // 临时失败 - 重试但不记录错误事件
     if rateLimitExceeded {
         return taskcore.ErrRetryTaskWithoutErrorEvent
     }
     
-    // Regular error - will retry according to policy
+    // 常规错误 - 将根据策略重试
     return processPayment(params)
 }
 ```
 
-## Advanced Features
+## 高级功能
 
-### Task Timeouts
+### 任务超时
 
-Configure maximum execution time:
+配置最大执行时间：
 
 ```yaml
 tasks:
   - name: LongRunningTask
-    timeout: 2h  # 2 hours maximum
+    timeout: 2h  # 最多 2 小时
 ```
 
-### Unique Tasks
+### 唯一任务
 
-Prevent duplicate tasks using unique tags:
+使用唯一标签防止重复任务：
 
 ```go
 taskID, err := h.taskRunner.RunTaskName(ctx, params, 
@@ -363,30 +363,30 @@ taskID, err := h.taskRunner.RunTaskName(ctx, params,
 )
 ```
 
-### Task Attributes
+### 任务属性
 
-Access task metadata in your executor:
+在执行器中访问任务元数据：
 
 ```go
 func (e *Executor) ExecuteTaskName(ctx context.Context, params *taskgen.TaskNameParameters) error {
-    // Get task ID from context (if available)
+    // 从上下文获取任务 ID（如果可用）
     if taskID, ok := ctx.Value("taskID").(int32); ok {
-        log.Info("Processing task", zap.Int32("taskID", taskID))
+        log.Info("处理任务", zap.Int32("taskID", taskID))
     }
     
     return e.processTask(params)
 }
 ```
 
-## Examples
+## 示例
 
-### Example 1: Simple Background Task
+### 示例 1：简单后台任务
 
-**Task Definition:**
+**任务定义：**
 ```yaml
 tasks:
   - name: SendEmail
-    description: "Send an email to a user"
+    description: "向用户发送电子邮件"
     parameters:
       type: object
       required: [userId, templateId]
@@ -403,7 +403,7 @@ tasks:
       maxAttempts: -1
 ```
 
-**Implementation:**
+**实现：**
 ```go
 func (e *Executor) ExecuteSendEmail(ctx context.Context, params *taskgen.SendEmailParameters) error {
     user, err := e.model.GetUser(ctx, params.UserId)
@@ -420,12 +420,12 @@ func (e *Executor) ExecuteSendEmail(ctx context.Context, params *taskgen.SendEma
 }
 ```
 
-**Usage:**
+**使用：**
 ```go
 func (h *Handler) RegisterUser(c *fiber.Ctx) error {
-    // ... user registration logic
+    // ... 用户注册逻辑
     
-    // Send welcome email asynchronously
+    // 异步发送欢迎邮件
     _, err := h.taskRunner.RunSendEmail(c.Context(), &taskgen.SendEmailParameters{
         UserId:     user.ID,
         TemplateId: "welcome",
@@ -436,15 +436,15 @@ func (h *Handler) RegisterUser(c *fiber.Ctx) error {
 }
 ```
 
-### Example 2: Scheduled Data Processing
+### 示例 2：定时数据处理
 
-**Task Definition:**
+**任务定义：**
 ```yaml
 tasks:
   - name: ProcessDailyReports
-    description: "Generate daily reports"
+    description: "生成每日报告"
     cronjob:
-      cronExpression: "0 0 1 * * *"  # 1 AM daily
+      cronExpression: "0 0 1 * * *"  # 每日凌晨 1 点
     parameters:
       type: object
       required: [date]
@@ -457,7 +457,7 @@ tasks:
       maxAttempts: -1
 ```
 
-**Implementation:**
+**实现：**
 ```go
 func (e *Executor) ExecuteProcessDailyReports(ctx context.Context, params *taskgen.ProcessDailyReportsParameters) error {
     date, err := time.Parse("2006-01-02", params.Date)
@@ -465,18 +465,18 @@ func (e *Executor) ExecuteProcessDailyReports(ctx context.Context, params *taskg
         return err
     }
     
-    // Process reports for the given date
+    // 处理给定日期的报告
     return e.reportService.GenerateDailyReports(ctx, date)
 }
 ```
 
-### Example 3: Workflow with Failure Events
+### 示例 3：带失败事件的工作流
 
-**Task Definition:**
+**任务定义：**
 ```yaml
 tasks:
   - name: ProcessOrder
-    description: "Process customer order"
+    description: "处理客户订单"
     parameters:
       type: object
       required: [orderId]
@@ -492,7 +492,7 @@ tasks:
     timeout: 10m
 ```
 
-**Implementation:**
+**实现：**
 ```go
 func (e *Executor) ExecuteProcessOrder(ctx context.Context, params *taskgen.ProcessOrderParameters) error {
     order, err := e.model.GetOrder(ctx, params.OrderId)
@@ -500,9 +500,9 @@ func (e *Executor) ExecuteProcessOrder(ctx context.Context, params *taskgen.Proc
         return err
     }
     
-    // Process the order
+    // 处理订单
     if err := e.orderService.ProcessOrder(ctx, order); err != nil {
-        // This will trigger OnProcessOrderFailed if retries are exhausted
+        // 如果重试用尽，这将触发 OnProcessOrderFailed
         return err
     }
     
@@ -510,24 +510,24 @@ func (e *Executor) ExecuteProcessOrder(ctx context.Context, params *taskgen.Proc
 }
 
 func (e *Executor) OnProcessOrderFailed(ctx context.Context, taskID int32, params *taskgen.ProcessOrderParameters, tx pgx.Tx) error {
-    // Hook receives the original parameters directly with full type safety
-    log.Error("Order processing failed permanently", 
+    // 钩子直接接收原始参数，具有完全的类型安全性
+    log.Error("订单处理永久失败", 
         zap.Int32("taskID", taskID),
         zap.Int32("orderId", params.OrderId))
     
-    // Handle the failure - notify customer service, update order status, etc.
-    // Use the transaction context for additional database operations
+    // 处理失败 - 通知客服、更新订单状态等
+    // 使用事务上下文进行额外的数据库操作
     return e.orderService.HandleFailure(ctx, params.OrderId, taskID)
 }
 ```
 
-### Example 4: Complex Failure Handling with Custom Parameters
+### 示例 4：带自定义参数的复杂失败处理
 
-**Task Definition:**
+**任务定义：**
 ```yaml
 tasks:
   - name: SendNotification
-    description: "Send notification to user"
+    description: "向用户发送通知"
     parameters:
       type: object
       required: [userId, message]
@@ -547,21 +547,21 @@ tasks:
       - onFailed
 ```
 
-**Implementation:**
+**实现：**
 ```go
 func (e *Executor) ExecuteSendNotification(ctx context.Context, params *taskgen.SendNotificationParameters) error {
     return e.notificationService.Send(ctx, params.UserId, params.Message, params.Priority)
 }
 
 func (e *Executor) OnSendNotificationFailed(ctx context.Context, taskID int32, params *taskgen.SendNotificationParameters, tx pgx.Tx) error {
-    // Hook receives the original parameters directly with full type safety
-    log.Error("Notification sending failed permanently", 
+    // 钩子直接接收原始参数，具有完全的类型安全性
+    log.Error("通知发送永久失败", 
         zap.Int32("taskID", taskID),
         zap.Int32("userId", params.UserId),
         zap.String("message", params.Message),
         zap.String("priority", params.Priority))
     
-    // Escalate to admin with original context
+    // 使用原始上下文升级到管理员
     return e.adminService.EscalateFailedNotification(ctx, EscalationRequest{
         FailedTaskID: taskID,
         OriginalUserId: params.UserId,
@@ -572,15 +572,15 @@ func (e *Executor) OnSendNotificationFailed(ctx context.Context, taskID int32, p
 }
 ```
 
-### Real-World Example: Delete Operation with Failure Handling
+### 真实世界示例：带失败处理的删除操作
 
-This example from the Anchor codebase shows how to implement a task that deletes sensitive data with proper failure handling:
+这个来自 Anchor 代码库的示例展示了如何实现一个删除敏感数据的任务，并进行适当的失败处理：
 
-**Task Definition (api/tasks.yaml):**
+**任务定义（api/tasks.yaml）：**
 ```yaml
 tasks:
   - name: deleteOpaqueKey
-    description: Delete an opaque key
+    description: 删除不透明密钥
     parameters:
       type: object
       required: [keyID]
@@ -588,7 +588,7 @@ tasks:
         keyID:
           type: integer
           format: int64
-          description: The ID of the opaque key to delete
+          description: 要删除的不透明密钥的 ID
     retryPolicy:
       interval: 30m
       maxAttempts: -1
@@ -596,8 +596,8 @@ tasks:
       - onFailed
 ```
 
-**Generated Types:**
-After running `anchor generate`, you get:
+**生成的类型：**
+运行 `anchor generate` 后，您得到：
 ```go
 type DeleteOpaqueKeyParameters struct {
     KeyID int64 `json:"keyID"`
@@ -609,42 +609,42 @@ type ExecutorInterface interface {
 }
 ```
 
-**Implementation:**
+**实现：**
 ```go
 func (e *Executor) ExecuteDeleteOpaqueKey(ctx context.Context, params *taskgen.DeleteOpaqueKeyParameters) error {
-    // Attempt to delete the opaque key
+    // 尝试删除不透明密钥
     err := e.model.DeleteOpaqueKey(ctx, params.KeyID)
     if err != nil {
-        // If delete fails, this will trigger OnDeleteOpaqueKeyFailed after retries
-        return fmt.Errorf("failed to delete opaque key %d: %w", params.KeyID, err)
+        // 如果删除失败，重试后将触发 OnDeleteOpaqueKeyFailed
+        return fmt.Errorf("删除不透明密钥 %d 失败: %w", params.KeyID, err)
     }
     
-    log.Info("Successfully deleted opaque key", zap.Int64("keyID", params.KeyID))
+    log.Info("成功删除不透明密钥", zap.Int64("keyID", params.KeyID))
     return nil
 }
 
 func (e *Executor) OnDeleteOpaqueKeyFailed(ctx context.Context, taskID int32, params *taskgen.DeleteOpaqueKeyParameters, tx pgx.Tx) error {
-    // Hook receives the original parameters directly with full type safety
-    log.Error("Critical: Failed to delete opaque key after all retries", 
+    // 钩子直接接收原始参数，具有完全的类型安全性
+    log.Error("严重：所有重试后删除不透明密钥失败", 
         zap.Int64("keyID", params.KeyID),
         zap.Int32("failedTaskID", taskID))
     
-    // Notify security team about failed key deletion
-    // Use the transaction context for additional database operations if needed
+    // 通知安全团队密钥删除失败
+    // 如果需要，使用事务上下文进行额外的数据库操作
     return e.securityService.NotifyFailedKeyDeletion(ctx, params.KeyID, taskID)
 }
 ```
 
-**Starting the Task:**
+**启动任务：**
 ```go
 func (h *Handler) DeleteKey(c *fiber.Ctx) error {
     keyID := c.Params("id")
     keyIDInt, err := strconv.ParseInt(keyID, 10, 64)
     if err != nil {
-        return c.Status(400).JSON(fiber.Map{"error": "Invalid key ID"})
+        return c.Status(400).JSON(fiber.Map{"error": "无效的密钥 ID"})
     }
     
-    // Queue the deletion task
+    // 排队删除任务
     taskID, err := h.taskRunner.RunDeleteOpaqueKey(c.Context(), &taskgen.DeleteOpaqueKeyParameters{
         KeyID: keyIDInt,
     })
@@ -653,41 +653,42 @@ func (h *Handler) DeleteKey(c *fiber.Ctx) error {
     }
     
     return c.JSON(fiber.Map{
-        "message": "Key deletion queued",
+        "message": "密钥删除已排队",
         "taskID": taskID,
     })
 }
 ```
 
-This example demonstrates:
-- **Graceful degradation**: If deletion fails, the system doesn't just give up
-- **Audit trail**: Failed deletions are logged and tracked
-- **Administrative oversight**: Critical failures are escalated to security teams
-- **Transactional safety**: Both task status update and hook execution are atomic
-- **Type safety**: Hook methods receive strongly-typed parameters instead of raw JSON
+此示例演示了：
+- **优雅降级**：如果删除失败，系统不会简单放弃
+- **审计跟踪**：失败的删除会被记录和跟踪
+- **管理监督**：关键失败会升级到安全团队
+- **事务安全**：任务状态更新和钩子执行都是原子的
+- **类型安全**：钩子方法接收强类型参数而不是原始 JSON
 
-## Best Practices
+## 最佳实践
 
-1. **Keep tasks idempotent** - Tasks may be retried, so ensure they can be safely executed multiple times
-2. **Use unique tags** - Prevent duplicate tasks for critical operations
-3. **Set appropriate timeouts** - Don't let tasks run indefinitely
-4. **Handle errors gracefully** - Use specific error types to control retry behavior
-5. **Design failure hooks carefully** - Failure hooks should handle cleanup, notifications, or escalations
-6. **Monitor task performance** - Use metrics to track task execution times and failure rates
-7. **Use transactions** - Enqueue tasks within database transactions for consistency
-8. **Test failure scenarios** - Ensure your failure hooks work correctly and don't create infinite loops
+1. **保持任务幂等** - 任务可能会重试，因此确保它们可以安全地多次执行
+2. **使用唯一标签** - 防止关键操作的重复任务
+3. **设置适当的超时** - 不要让任务无限期运行
+4. **优雅地处理错误** - 使用特定的错误类型来控制重试行为
+5. **仔细设计失败钩子** - 失败钩子应处理清理、通知或升级
+6. **监控任务性能** - 使用指标跟踪任务执行时间和失败率
+7. **使用事务** - 在数据库事务中排队任务以保证一致性
+8. **测试失败场景** - 确保您的失败钩子正常工作且不会创建无限循环
+9. **使用异步任务解耦模块** - 不要在模块之间直接调用方法，而是使用异步任务保持模块松耦合。例如，当订单支付完成时，排队一个 `orderFinished` 任务，而不是直接调用工厂操作。这保持代码清洁和可维护性。**注意**：仅在最终一致性场景中使用，不适用于强一致性要求，如实时金融交易。
 
-## Worker Configuration
+## 工作者配置
 
-The worker runs automatically when you start your Anchor application. You can configure worker behavior:
+当您启动 Anchor 应用程序时，工作者会自动运行。您可以配置工作者行为：
 
 ```go
-// Disable worker for specific environments
+// 为特定环境禁用工作者
 cfg := &config.Config{
     Worker: config.WorkerConfig{
-        Disable: true,  // Disable worker
+        Disable: true,  // 禁用工作者
     },
 }
 ```
 
-Workers poll the database every second for pending tasks and process them with configurable concurrency based on available goroutines.
+工作者每秒轮询数据库以查找待处理任务，并根据可用的 goroutine 以可配置的并发性处理它们。
