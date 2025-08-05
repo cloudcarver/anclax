@@ -102,4 +102,4 @@ taskID, err := taskrunner.RunIncrementCounter(ctx, &taskgen.IncrementCounterPara
 })
 ```
 
-Tasks run with at-least-once delivery guarantees and automatic retries based on your retry policy configuration.
+Tasks run with at-least-once delivery guarantees and automatic retries based on your retry policy configuration. Tasks can also be scheduled to run automatically using cron expressions in the task definition.
