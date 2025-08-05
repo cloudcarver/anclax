@@ -16,6 +16,12 @@ The core philosophy of Anchor is to provide confidence in the codebase by:
 - Use event-driven architecture to build a system that is easy to reason about and easy to extend.
 - All modules are mockable and can be tested with ease.
 
+## Documentation
+
+- [Middleware (x-functions and x-check-rules)](docs/middleware.md) - Learn how to implement custom validation, authorization, and utility functions using Anchor's middleware system
+- [Async Tasks](docs/async-tasks.md) - Comprehensive guide to asynchronous task management
+- [AsyncTask (Legacy)](docs/asynctask.md) - Legacy async task documentation
+
 ## Quick Start
 
 ```bash
