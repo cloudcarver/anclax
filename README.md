@@ -90,3 +90,151 @@ anchor gen
 6. Configure the application using environment variables.
 
 7. Build and run the application.
+
+## Running Async Tasks
+
+Anchor provides a powerful async task system with at-least-once delivery guarantees. Tasks can be triggered manually from HTTP endpoints or scheduled as cron jobs.
+
+### 1. Define Tasks in `api/tasks.yaml`
+
+```yaml
+tasks:
+  - name: SendEmail
+    description: Send email notification to user
+    retryPolicy:
+      interval: 5m
+      maxAttempts: 3
+    parameters:
+      type: object
+      required: [email, subject, body]
+      properties:
+        email:
+          type: string
+          format: email
+        subject:
+          type: string
+        body:
+          type: string
+  - name: ProcessData
+    description: Process data every hour
+    cronjob:
+      cronExpression: "0 * * * *"
+    retryPolicy:
+      interval: 10m
+      maxAttempts: 5
+    parameters:
+      type: object
+      required: [dataId]
+      properties:
+        dataId:
+          type: integer
+          format: int32
+```
+
+### 2. Implement Task Executors
+
+After running `anchor gen`, implement the generated executor interfaces:
+
+```go
+// pkg/asynctask/asynctask.go
+func (e *Executor) ExecuteSendEmail(ctx context.Context, tx pgx.Tx, params *taskgen.SendEmailParameters) error {
+    // Send email logic here
+    log.Printf("Sending email to %s with subject: %s", params.Email, params.Subject)
+    
+    // Your email sending implementation
+    return e.emailService.Send(ctx, params.Email, params.Subject, params.Body)
+}
+
+func (e *Executor) ExecuteProcessData(ctx context.Context, tx pgx.Tx, params *taskgen.ProcessDataParameters) error {
+    // Process data logic here
+    log.Printf("Processing data with ID: %d", params.DataId)
+    
+    // Your data processing implementation
+    return e.dataProcessor.Process(ctx, params.DataId)
+}
+```
+
+### 3. Trigger Tasks from HTTP Handlers
+
+```go
+// pkg/handler/handler.go
+func (h *Handler) SendNotification(c *fiber.Ctx) error {
+    var req struct {
+        Email   string `json:"email"`
+        Subject string `json:"subject"`
+        Body    string `json:"body"`
+    }
+    
+    if err := c.BodyParser(&req); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request"})
+    }
+    
+    // Submit async task
+    taskID, err := h.taskrunner.RunSendEmail(c.Context(), &taskgen.SendEmailParameters{
+        Email:   req.Email,
+        Subject: req.Subject,
+        Body:    req.Body,
+    })
+    if err != nil {
+        return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+    }
+    
+    return c.JSON(fiber.Map{
+        "message": "Email task submitted",
+        "taskId":  taskID,
+    })
+}
+```
+
+### 4. Task Overrides and Options
+
+You can customize task behavior using overrides:
+
+```go
+import "github.com/cloudcarver/anchor/pkg/taskcore"
+
+// Run task with custom retry policy
+taskID, err := h.taskrunner.RunSendEmail(c.Context(), 
+    &taskgen.SendEmailParameters{
+        Email:   "user@example.com",
+        Subject: "Welcome",
+        Body:    "Welcome to our service!",
+    },
+    taskcore.WithRetryPolicy("1m", 5), // Retry every 1 minute, max 5 attempts
+    taskcore.WithUniqueTag("welcome-email-user123"), // Prevent duplicate tasks
+)
+```
+
+### 5. Transaction Support
+
+Run tasks within database transactions:
+
+```go
+func (h *Handler) CreateUserAndSendWelcome(c *fiber.Ctx) error {
+    return h.model.WithTx(c.Context(), func(ctx context.Context, tx pgx.Tx) error {
+        // Create user in database
+        userID, err := h.model.CreateUser(ctx, userData)
+        if err != nil {
+            return err
+        }
+        
+        // Submit welcome email task in same transaction
+        _, err = h.taskrunner.RunSendEmailWithTx(ctx, tx, &taskgen.SendEmailParameters{
+            Email:   userData.Email,
+            Subject: "Welcome!",
+            Body:    fmt.Sprintf("Welcome user %d!", userID),
+        })
+        
+        return err
+    })
+}
+```
+
+### Key Features
+
+- **At-least-once delivery**: Tasks are guaranteed to execute at least once
+- **Automatic retries**: Failed tasks are retried based on retry policy
+- **Cron scheduling**: Tasks can run on schedule using cron expressions
+- **Transaction support**: Tasks can be submitted within database transactions
+- **Unique tags**: Prevent duplicate task execution
+- **Monitoring**: Built-in metrics and task status tracking
