@@ -90,3 +90,16 @@ anchor gen
 6. Configure the application using environment variables.
 
 7. Build and run the application.
+
+## Running Async Tasks
+
+After defining tasks in `api/tasks.yaml` and running `anchor gen`, the framework auto-generates a task runner with `Run` methods for each task. Simply call these methods to execute tasks asynchronously:
+
+```go
+// Trigger the incrementCounter task from step 4
+taskID, err := taskrunner.RunIncrementCounter(ctx, &taskgen.IncrementCounterParameters{
+  Amount: 1,
+})
+```
+
+Tasks run with at-least-once delivery guarantees and automatic retries based on your retry policy configuration. Tasks can also be scheduled to run automatically using cron expressions in the task definition.
