@@ -1,39 +1,39 @@
-# Middleware: x-functions and x-check-rules
+# 中间件：x-functions 和 x-check-rules
 
-English | [中文](middleware.zh.md)
+[English](middleware.md) | 中文
 
-This document explains the middleware concepts in Anchor, specifically `x-functions` and `x-check-rules`, which provide a powerful code generation system that allows you to write Go code directly in your OpenAPI specification that gets compiled into type-safe middleware.
+本文档解释了 Anchor 中的中间件概念，特别是 `x-functions` 和 `x-check-rules`，它们提供了一个强大的代码生成系统，允许您直接在 OpenAPI 规范中编写 Go 代码，并将其编译为类型安全的中间件。
 
-## Overview
+## 概述
 
-Anchor uses OpenAPI 3.0 extensions combined with a unique approach where **you write actual Go code directly in your API security scopes**. This design prevents the need for a Domain Specific Language (DSL) and leverages the Go compiler to ensure type safety and catch errors at compile time.
+Anchor 使用 OpenAPI 3.0 扩展结合独特的方法，**您可以直接在 API 安全作用域中编写实际的 Go 代码**。这种设计避免了对领域特定语言（DSL）的需求，并利用 Go 编译器确保类型安全并在编译时捕获错误。
 
-The system works by:
-- **x-check-rules**: Define the function signatures for validation/authorization functions
-- **x-functions**: Define the function signatures for utility functions  
-- **Security scopes**: Contain actual Go code that calls these functions with parameters
+系统的工作原理：
+- **x-check-rules**：定义验证/授权函数的函数签名
+- **x-functions**：定义实用函数的函数签名  
+- **安全作用域**：包含调用这些函数并传递参数的实际 Go 代码
 
-## How It Actually Works
+## 实际工作原理
 
-### The Core Mechanism
+### 核心机制
 
-1. You define function signatures in `x-check-rules` and `x-functions`
-2. You write **actual Go code** in the security scopes of your API operations
-3. The code generator creates a `Validator` interface with your defined functions
-4. The middleware template executes your Go code directly
+1. 您在 `x-check-rules` 和 `x-functions` 中定义函数签名
+2. 您在 API 操作的安全作用域中编写**实际的 Go 代码**
+3. 代码生成器使用您定义的函数创建 `Validator` 接口
+4. 中间件模板直接执行您的 Go 代码
 
-### Example Flow
+### 示例流程
 
-**API Definition:**
+**API 定义：**
 ```yaml
-# Define the function signature
+# 定义函数签名
 x-check-rules:
   OperationPermit:
-    description: Check if the user has permission to perform the operation
+    description: 检查用户是否有权限执行操作
     useContext: true
     parameters:
       - name: operationID
-        description: The operation ID
+        description: 操作 ID
         schema:
           type: string
 
@@ -43,11 +43,11 @@ paths:
       operationId: incrementCounter
       security:
         - BearerAuth:
-            # This is actual Go code that gets executed!
+            # 这是实际的 Go 代码，会被执行！
             - x.OperationPermit(c, operationID)
 ```
 
-**Generated Middleware:**
+**生成的中间件：**
 ```go
 func (x *XMiddleware) IncrementCounter(c *fiber.Ctx) error {
     if err := x.AuthFunc(c); err != nil {
@@ -57,9 +57,9 @@ func (x *XMiddleware) IncrementCounter(c *fiber.Ctx) error {
         return c.Status(fiber.StatusForbidden).SendString(err.Error())
     }
     
-    operationID := "IncrementCounter"  // Auto-generated when referenced
+    operationID := "IncrementCounter"  // 引用时自动生成
     
-    // Your actual Go code gets executed here:
+    // 您的实际 Go 代码在这里执行：
     if err := x.OperationPermit(c, operationID); err != nil {
         return c.Status(fiber.StatusForbidden).SendString(err.Error())
     }
@@ -73,52 +73,52 @@ func (x *XMiddleware) IncrementCounter(c *fiber.Ctx) error {
 
 ## x-check-rules
 
-`x-check-rules` define the function signatures for validation and authorization functions. These are **not the implementations** - they just define what functions should exist in your `Validator` interface.
+`x-check-rules` 定义验证和授权函数的函数签名。这些**不是实现** - 它们只是定义您的 `Validator` 接口中应该存在哪些函数。
 
-### Structure
+### 结构
 
 ```yaml
 x-check-rules:
   FunctionName:
-    description: "What this function does"
+    description: "此函数的作用"
     useContext: true|false
     parameters:
       - name: parameterName
-        description: "Parameter description"
+        description: "参数描述"
         schema:
           type: string
 ```
 
-### Example Definition
+### 示例定义
 
 ```yaml
 x-check-rules:
   OperationPermit:
-    description: Check if the user has permission to perform the operation
+    description: 检查用户是否有权限执行操作
     useContext: true
     parameters:
       - name: operationID
-        description: The operation ID to check permissions for
+        description: 要检查权限的操作 ID
         schema:
           type: string
   
   ValidateOrgAccess:
-    description: Validate that the user has access to the specified organization
+    description: 验证用户是否有权访问指定的组织
     useContext: true
     parameters:
       - name: orgID
-        description: The organization ID
+        description: 组织 ID
         schema:
           type: integer
           format: int32
       - name: requiredRole
-        description: The minimum role required
+        description: 所需的最低角色
         schema:
           type: string
           enum: ["viewer", "editor", "admin"]
   
   CheckResourceOwnership:
-    description: Check if user owns the specified resource
+    description: 检查用户是否拥有指定的资源
     useContext: true
     parameters:
       - name: resourceType
@@ -130,25 +130,25 @@ x-check-rules:
           format: int32
 ```
 
-### Generated Interface
+### 生成的接口
 
 ```go
 type Validator interface {
-    // Standard middleware hooks
+    // 标准中间件钩子
     AuthFunc(*fiber.Ctx) error
     PreValidate(*fiber.Ctx) error
     PostValidate(*fiber.Ctx) error
     
-    // Generated from x-check-rules
+    // 从 x-check-rules 生成
     OperationPermit(c *fiber.Ctx, operationID string) error
     ValidateOrgAccess(c *fiber.Ctx, orgID int32, requiredRole string) error
     CheckResourceOwnership(c *fiber.Ctx, resourceType string, resourceID int32) error
 }
 ```
 
-### Usage in API Operations
+### 在 API 操作中的使用
 
-You write **actual Go code** in the security scopes:
+您在安全作用域中编写**实际的 Go 代码**：
 
 ```yaml
 paths:
@@ -170,79 +170,79 @@ paths:
             format: int32
       security:
         - BearerAuth:
-            # Multiple lines of Go code are supported
+            # 支持多行 Go 代码
             - x.ValidateOrgAccess(c, orgID, "viewer")
             - x.CheckResourceOwnership(c, "project", projectID)
             - x.OperationPermit(c, operationID)
       responses:
         "200":
-          description: Project details
+          description: 项目详情
 
   /admin/users:
     post:
       operationId: CreateUser
       security:
         - BearerAuth:
-            # Complex expressions work too
+            # 复杂表达式也可以工作
             - x.ValidateOrgAccess(c, x.GetCurrentOrgID(c), "admin")
             - x.OperationPermit(c, operationID)
 ```
 
 ## x-functions
 
-`x-functions` define utility functions that can be called within your security scopes or application logic. Like `x-check-rules`, these define function signatures, not implementations.
+`x-functions` 定义可以在安全作用域或应用程序逻辑中调用的实用函数。与 `x-check-rules` 一样，这些定义函数签名，而不是实现。
 
-### Structure
+### 结构
 
 ```yaml
 x-functions:
   FunctionName:
-    description: "What this function does"
+    description: "此函数的作用"
     useContext: true|false
     params:
       - name: parameterName
-        description: "Parameter description"
+        description: "参数描述"
         schema:
           type: string
     return:
       name: returnValueName
-      description: "Return value description"
+      description: "返回值描述"
       schema:
         type: string
 ```
 
-### Example Definition
+### 示例定义
 
 ```yaml
 x-functions:
   GetCurrentOrgID:
-    description: Get the organization ID from the current context
+    description: 从当前上下文获取组织 ID
     useContext: true
     return:
       name: orgID
-      description: The current organization ID
+      description: 当前组织 ID
       schema:
         type: integer
         format: int32
   
   GetUserRole:
-    description: Get the current user's role in the specified organization
+    description: 获取当前用户在指定组织中的角色
     useContext: true
     params:
       - name: orgID
-        description: The organization ID
+        description: 组织 ID
         schema:
           type: integer
           format: int32
     return:
       name: role
-      description: The user's role
+      description: 用户角色
       schema:
         type: string
         enum: ["viewer", "editor", "admin"]
   
   ComputeAccessLevel:
-    description: Compute access level based on user role and resource
+    description: 根据用户角色和资源计算访问级别
     useContext: true
     params:
       - name: resourceType
@@ -253,30 +253,30 @@ x-functions:
           type: string
     return:
       name: accessLevel
-      description: The computed access level
+      description: 计算的访问级别
       schema:
         type: string
         enum: ["read", "write", "admin"]
 ```
 
-### Generated Interface Addition
+### 生成的接口添加
 
-Functions are added to the `Validator` interface:
+函数被添加到 `Validator` 接口：
 
 ```go
 type Validator interface {
-    // ... check rules and standard methods ...
+    // ... 检查规则和标准方法 ...
     
-    // Generated from x-functions
+    // 从 x-functions 生成
     GetCurrentOrgID(c *fiber.Ctx) (int32, error)
     GetUserRole(c *fiber.Ctx, orgID int32) (string, error)
     ComputeAccessLevel(c *fiber.Ctx, resourceType string, userRole string) (string, error)
 }
 ```
 
-### Usage in Security Scopes
+### 在安全作用域中的使用
 
-You can call these functions in your Go code:
+您可以在 Go 代码中调用这些函数：
 
 ```yaml
 paths:
@@ -285,14 +285,14 @@ paths:
       operationId: GetSensitiveData
       security:
         - BearerAuth:
-            # Use functions to compute values dynamically
+            # 使用函数动态计算值
             - x.ValidateOrgAccess(c, x.GetCurrentOrgID(c), x.GetUserRole(c, orgID))
             - x.CheckResourceOwnership(c, "sensitive-data", x.GetCurrentOrgID(c))
 ```
 
-## Implementation Example
+## 实现示例
 
-Here's how you implement the `Validator` interface:
+以下是如何实现 `Validator` 接口：
 
 ```go
 package main
@@ -312,20 +312,20 @@ type MyValidator struct {
     logger *log.Logger
 }
 
-// Standard middleware hooks
+// 标准中间件钩子
 func (v *MyValidator) AuthFunc(c *fiber.Ctx) error {
     token := c.Get("Authorization")
     if token == "" {
-        return errors.New("missing authorization header")
+        return errors.New("缺少授权头")
     }
     
-    // Validate JWT and extract claims
+    // 验证 JWT 并提取声明
     claims, err := validateJWT(token)
     if err != nil {
-        return fmt.Errorf("invalid token: %w", err)
+        return fmt.Errorf("无效令牌: %w", err)
     }
     
-    // Store in context for other functions to use
+    // 存储在上下文中供其他函数使用
     c.Locals("userID", claims.UserID)
     c.Locals("userRole", claims.Role)
     c.Locals("orgID", claims.OrgID)
@@ -334,20 +334,20 @@ func (v *MyValidator) AuthFunc(c *fiber.Ctx) error {
 }
 
 func (v *MyValidator) PreValidate(c *fiber.Ctx) error {
-    // Global pre-validation logic
+    // 全局预验证逻辑
     return nil
 }
 
 func (v *MyValidator) PostValidate(c *fiber.Ctx) error {
-    // Global post-validation logic  
+    // 全局后验证逻辑  
     return nil
 }
 
-// Implement x-check-rules
+// 实现 x-check-rules
 func (v *MyValidator) OperationPermit(c *fiber.Ctx, operationID string) error {
     userRole := c.Locals("userRole").(string)
     
-    // Define operation permissions
+    // 定义操作权限
     permissions := map[string][]string{
         "GetProject":    {"viewer", "editor", "admin"},
         "CreateProject": {"editor", "admin"},
@@ -357,7 +357,7 @@ func (v *MyValidator) OperationPermit(c *fiber.Ctx, operationID string) error {
     
     allowedRoles, exists := permissions[operationID]
     if !exists {
-        return fmt.Errorf("unknown operation: %s", operationID)
+        return fmt.Errorf("未知操作: %s", operationID)
     }
     
     for _, role := range allowedRoles {
@@ -366,7 +366,7 @@ func (v *MyValidator) OperationPermit(c *fiber.Ctx, operationID string) error {
         }
     }
     
-    return fmt.Errorf("insufficient permissions for %s", operationID)
+    return fmt.Errorf("%s 权限不足", operationID)
 }
 
 func (v *MyValidator) ValidateOrgAccess(c *fiber.Ctx, orgID int32, requiredRole string) error {
@@ -379,10 +379,10 @@ func (v *MyValidator) ValidateOrgAccess(c *fiber.Ctx, orgID int32, requiredRole 
     ).Scan(&userRole)
     
     if err == sql.ErrNoRows {
-        return errors.New("access denied to organization")
+        return errors.New("拒绝访问组织")
     }
     if err != nil {
-        return fmt.Errorf("database error: %w", err)
+        return fmt.Errorf("数据库错误: %w", err)
     }
     
     roleHierarchy := map[string]int{
@@ -392,7 +392,7 @@ func (v *MyValidator) ValidateOrgAccess(c *fiber.Ctx, orgID int32, requiredRole 
     }
     
     if roleHierarchy[userRole] < roleHierarchy[requiredRole] {
-        return fmt.Errorf("insufficient role: need %s, have %s", requiredRole, userRole)
+        return fmt.Errorf("角色不足: 需要 %s，拥有 %s", requiredRole, userRole)
     }
     
     return nil
@@ -406,36 +406,36 @@ func (v *MyValidator) CheckResourceOwnership(c *fiber.Ctx, resourceType string, 
     err := v.db.QueryRow(query, resourceID).Scan(&ownerID)
     
     if err == sql.ErrNoRows {
-        return errors.New("resource not found")
+        return errors.New("资源未找到")
     }
     if err != nil {
-        return fmt.Errorf("database error: %w", err)
+        return fmt.Errorf("数据库错误: %w", err)
     }
     
     if ownerID != userID {
-        return errors.New("resource access denied")
+        return errors.New("资源访问被拒绝")
     }
     
     return nil
 }
 
-// Implement x-functions
+// 实现 x-functions
 func (v *MyValidator) GetCurrentOrgID(c *fiber.Ctx) (int32, error) {
-    // Try context first (from JWT)
+    // 首先尝试上下文（来自 JWT）
     if orgID, ok := c.Locals("orgID").(int32); ok && orgID != 0 {
         return orgID, nil
     }
     
-    // Try path parameter
+    // 尝试路径参数
     if orgIDStr := c.Params("orgID"); orgIDStr != "" {
         orgID, err := strconv.ParseInt(orgIDStr, 10, 32)
         if err != nil {
-            return 0, fmt.Errorf("invalid orgID: %w", err)
+            return 0, fmt.Errorf("无效的 orgID: %w", err)
         }
         return int32(orgID), nil
     }
     
-    return 0, errors.New("organization ID not found")
+    return 0, errors.New("未找到组织 ID")
 }
 
 func (v *MyValidator) GetUserRole(c *fiber.Ctx, orgID int32) (string, error) {
@@ -448,10 +448,10 @@ func (v *MyValidator) GetUserRole(c *fiber.Ctx, orgID int32) (string, error) {
     ).Scan(&role)
     
     if err == sql.ErrNoRows {
-        return "", errors.New("user not member of organization")
+        return "", errors.New("用户不是组织成员")
     }
     if err != nil {
-        return "", fmt.Errorf("database error: %w", err)
+        return "", fmt.Errorf("数据库错误: %w", err)
     }
     
     return role, nil
@@ -466,28 +466,28 @@ func (v *MyValidator) ComputeAccessLevel(c *fiber.Ctx, resourceType string, user
         },
         "sensitive-data": {
             "viewer": "read",
-            "editor": "read",  // Even editors only get read access to sensitive data
+            "editor": "read",  // 即使编辑者对敏感数据也只有读取权限
             "admin":  "admin",
         },
     }
     
     resourceAccess, exists := accessMatrix[resourceType]
     if !exists {
-        return "", fmt.Errorf("unknown resource type: %s", resourceType)
+        return "", fmt.Errorf("未知资源类型: %s", resourceType)
     }
     
     accessLevel, exists := resourceAccess[userRole]
     if !exists {
-        return "", fmt.Errorf("unknown role: %s", userRole)
+        return "", fmt.Errorf("未知角色: %s", userRole)
     }
     
     return accessLevel, nil
 }
 ```
 
-## Advanced Usage Patterns
+## 高级使用模式
 
-### Complex Security Logic
+### 复杂安全逻辑
 
 ```yaml
 paths:
@@ -496,40 +496,40 @@ paths:
       operationId: GetProjectSecrets
       security:
         - BearerAuth:
-            # Multi-step validation with function calls
+            # 带函数调用的多步验证
             - x.ValidateOrgAccess(c, orgID, "editor")
             - x.CheckResourceOwnership(c, "project", projectID) 
-            # Only allow if computed access level is "admin"
+            # 仅在计算的访问级别为 "admin" 时允许
             - x.ValidateAccessLevel(c, x.ComputeAccessLevel(c, "secrets", x.GetUserRole(c, orgID)), "admin")
 ```
 
-### Conditional Logic
+### 条件逻辑
 
 ```yaml
 security:
   - BearerAuth:
-      # You can even use conditional logic (implement in your validator)
+      # 您甚至可以使用条件逻辑（在验证器中实现）
       - x.ConditionalAccess(c, orgID, projectID, x.GetUserRole(c, orgID))
 ```
 
-### Variable Assignment and Reuse
+### 变量赋值和重用
 
-The system automatically generates variables when referenced:
+系统在引用时自动生成变量：
 
 ```yaml
 security:
   - BearerAuth:
-      # When you reference 'operationID', it gets auto-generated as:
+      # 当您引用 'operationID' 时，它会自动生成为：
       # operationID := "YourOperationName"
       - x.OperationPermit(c, operationID)
       
-      # When you reference path parameters, they're available directly:
-      - x.ValidateOrgAccess(c, orgID, "viewer")  # orgID from path
+      # 当您引用路径参数时，它们直接可用：
+      - x.ValidateOrgAccess(c, orgID, "viewer")  # orgID 来自路径
 ```
 
-## Security Schemes Setup
+## 安全方案设置
 
-Don't forget to define your security schemes:
+不要忘记定义您的安全方案：
 
 ```yaml
 components:
@@ -540,7 +540,7 @@ components:
       bearerFormat: JWT
 ```
 
-## Integration
+## 集成
 
 ```go
 func main() {
@@ -551,10 +551,10 @@ func main() {
         logger: log.Default(),
     }
     
-    // The validator serves as both the handler and validator
+    // 验证器同时作为处理器和验证器
     apigen.RegisterHandlersWithOptions(
         app,
-        apigen.NewXMiddleware(validator, validator), // validator implements both interfaces
+        apigen.NewXMiddleware(validator, validator), // validator 实现两个接口
         apigen.FiberServerOptions{},
     )
     
@@ -562,23 +562,23 @@ func main() {
 }
 ```
 
-## Key Benefits
+## 主要优势
 
-1. **No DSL**: Write actual Go code, not a domain-specific language
-2. **Compile-time safety**: Go compiler catches errors in your security logic
-3. **IDE support**: Full autocomplete, refactoring, and debugging support
-4. **Type safety**: Function signatures are enforced by the generated interface
-5. **Flexibility**: Complex logic is possible since you're writing real Go code
-6. **Performance**: No runtime interpretation, just compiled Go code
+1. **无 DSL**：编写实际的 Go 代码，而不是领域特定语言
+2. **编译时安全**：Go 编译器捕获安全逻辑中的错误
+3. **IDE 支持**：完整的自动完成、重构和调试支持
+4. **类型安全**：函数签名由生成的接口强制执行
+5. **灵活性**：由于您编写的是真正的 Go 代码，复杂逻辑是可能的
+6. **性能**：无运行时解释，只有编译的 Go 代码
 
-## Best Practices
+## 最佳实践
 
-1. **Keep functions focused**: Each function should have a single responsibility
-2. **Use meaningful names**: Function names should clearly indicate their purpose
-3. **Error handling**: Always return descriptive error messages
-4. **Context usage**: Store shared data in Fiber context for reuse
-5. **Database efficiency**: Cache expensive queries when possible
-6. **Testing**: Mock the Validator interface for comprehensive testing
-7. **Documentation**: Document your function signatures clearly in the YAML
+1. **保持函数专注**：每个函数应该有单一职责
+2. **使用有意义的名称**：函数名称应该清楚地表明其目的
+3. **错误处理**：始终返回描述性错误消息
+4. **上下文使用**：在 Fiber 上下文中存储共享数据以供重用
+5. **数据库效率**：在可能时缓存昂贵的查询
+6. **测试**：模拟 Validator 接口进行全面测试
+7. **文档**：在 YAML 中清晰地记录您的函数签名
 
-This approach gives you the full power of Go while maintaining the declarative nature of OpenAPI specifications, with the added benefit that all your security logic is compiled and type-checked at build time.
+这种方法为您提供了 Go 的全部功能，同时保持了 OpenAPI 规范的声明性质，并且您的所有安全逻辑都在构建时编译和类型检查，这是额外的好处。
