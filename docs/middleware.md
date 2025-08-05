@@ -1,40 +1,91 @@
 # Middleware: x-functions and x-check-rules
 
-This document explains the middleware concepts in Anchor, specifically `x-functions` and `x-check-rules`, which provide powerful ways to extend your API with custom validation, authorization, and utility functions.
+This document explains the middleware concepts in Anchor, specifically `x-functions` and `x-check-rules`, which provide a powerful code generation system that allows you to write Go code directly in your OpenAPI specification that gets compiled into type-safe middleware.
 
 ## Overview
 
-Anchor uses OpenAPI 3.0 extensions to define middleware behavior that gets automatically generated into Go code. These extensions allow you to:
+Anchor uses OpenAPI 3.0 extensions combined with a unique approach where **you write actual Go code directly in your API security scopes**. This design prevents the need for a Domain Specific Language (DSL) and leverages the Go compiler to ensure type safety and catch errors at compile time.
 
-- **x-check-rules**: Define authorization and validation rules that run before your API endpoints
-- **x-functions**: Define utility functions that can be called within your application logic
+The system works by:
+- **x-check-rules**: Define the function signatures for validation/authorization functions
+- **x-functions**: Define the function signatures for utility functions  
+- **Security scopes**: Contain actual Go code that calls these functions with parameters
 
-Both concepts are defined in your `api/v1.yaml` file and are automatically code-generated into middleware that wraps your API handlers.
+## How It Actually Works
+
+### The Core Mechanism
+
+1. You define function signatures in `x-check-rules` and `x-functions`
+2. You write **actual Go code** in the security scopes of your API operations
+3. The code generator creates a `Validator` interface with your defined functions
+4. The middleware template executes your Go code directly
+
+### Example Flow
+
+**API Definition:**
+```yaml
+# Define the function signature
+x-check-rules:
+  OperationPermit:
+    description: Check if the user has permission to perform the operation
+    useContext: true
+    parameters:
+      - name: operationID
+        description: The operation ID
+        schema:
+          type: string
+
+paths:
+  /counter:
+    post:
+      operationId: incrementCounter
+      security:
+        - BearerAuth:
+            # This is actual Go code that gets executed!
+            - x.OperationPermit(c, operationID)
+```
+
+**Generated Middleware:**
+```go
+func (x *XMiddleware) IncrementCounter(c *fiber.Ctx) error {
+    if err := x.AuthFunc(c); err != nil {
+        return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
+    }
+    if err := x.PreValidate(c); err != nil {
+        return c.Status(fiber.StatusForbidden).SendString(err.Error())
+    }
+    
+    operationID := "IncrementCounter"  // Auto-generated when referenced
+    
+    // Your actual Go code gets executed here:
+    if err := x.OperationPermit(c, operationID); err != nil {
+        return c.Status(fiber.StatusForbidden).SendString(err.Error())
+    }
+    
+    if err := x.PostValidate(c); err != nil {
+        return c.Status(fiber.StatusForbidden).SendString(err.Error())
+    }
+    return x.ServerInterface.IncrementCounter(c)
+}
+```
 
 ## x-check-rules
 
-`x-check-rules` define validation and authorization rules that are executed as middleware before your API endpoints. These rules help enforce security policies, validate business logic, and control access to operations.
+`x-check-rules` define the function signatures for validation and authorization functions. These are **not the implementations** - they just define what functions should exist in your `Validator` interface.
 
 ### Structure
 
 ```yaml
 x-check-rules:
-  RuleName:
-    description: "Description of what this rule does"
+  FunctionName:
+    description: "What this function does"
     useContext: true|false
     parameters:
       - name: parameterName
         description: "Parameter description"
         schema:
           type: string|integer|boolean|object
-          # Additional schema properties
 ```
-
-### Properties
-
-- **description**: Human-readable description of the rule
-- **useContext**: Whether the rule needs access to the Fiber context (`*fiber.Ctx`)
-- **parameters**: Array of parameters the rule accepts
 
 ### Example Definition
 
@@ -54,7 +105,7 @@ x-check-rules:
     useContext: true
     parameters:
       - name: orgID
-        description: The organization ID to validate access for
+        description: The organization ID
         schema:
           type: integer
           format: int32
@@ -63,42 +114,45 @@ x-check-rules:
         schema:
           type: string
           enum: ["viewer", "editor", "admin"]
+  
+  CheckResourceOwnership:
+    description: Check if user owns the specified resource
+    useContext: true
+    parameters:
+      - name: resourceType
+        schema:
+          type: string
+      - name: resourceID
+        schema:
+          type: integer
+          format: int32
 ```
 
 ### Generated Interface
 
-The code generator creates a `Validator` interface that you must implement:
-
 ```go
 type Validator interface {
-    // AuthFunc is called before the request is processed
+    // Standard middleware hooks
     AuthFunc(*fiber.Ctx) error
-    
-    // PreValidate is called before the request is processed
     PreValidate(*fiber.Ctx) error
-    
-    // PostValidate is called after the request is processed
     PostValidate(*fiber.Ctx) error
     
     // Generated from x-check-rules
     OperationPermit(c *fiber.Ctx, operationID string) error
     ValidateOrgAccess(c *fiber.Ctx, orgID int32, requiredRole string) error
+    CheckResourceOwnership(c *fiber.Ctx, resourceType string, resourceID int32) error
 }
 ```
 
 ### Usage in API Operations
 
-To use check rules in your API operations, reference them in the security section:
+You write **actual Go code** in the security scopes:
 
 ```yaml
 paths:
-  /api/v1/orgs/{orgID}/users:
+  /orgs/{orgID}/projects/{projectID}:
     get:
-      operationId: ListOrgUsers
-      summary: List users in an organization
-      security:
-        - BearerAuth: []
-        - ValidateOrgAccess: ["viewer"]
+      operationId: GetProject
       parameters:
         - name: orgID
           in: path
@@ -106,46 +160,197 @@ paths:
           schema:
             type: integer
             format: int32
+        - name: projectID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int32
+      security:
+        - BearerAuth:
+            # Multiple lines of Go code are supported
+            - x.ValidateOrgAccess(c, orgID, "viewer")
+            - x.CheckResourceOwnership(c, "project", projectID)
+            - x.OperationPermit(c, operationID)
       responses:
         "200":
-          description: List of users
+          description: Project details
+
+  /admin/users:
+    post:
+      operationId: CreateUser
+      security:
+        - BearerAuth:
+            # Complex expressions work too
+            - x.ValidateOrgAccess(c, x.GetCurrentOrgID(c), "admin")
+            - x.OperationPermit(c, operationID)
 ```
 
-### Implementation Example
+## x-functions
+
+`x-functions` define utility functions that can be called within your security scopes or application logic. Like `x-check-rules`, these define function signatures, not implementations.
+
+### Structure
+
+```yaml
+x-functions:
+  FunctionName:
+    description: "What this function does"
+    useContext: true|false
+    params:
+      - name: parameterName
+        description: "Parameter description"
+        schema:
+          type: string|integer|boolean|object
+    return:
+      name: returnValueName
+      description: "Return value description"
+      schema:
+        type: string|integer|boolean|object
+```
+
+### Example Definition
+
+```yaml
+x-functions:
+  GetCurrentOrgID:
+    description: Get the organization ID from the current context
+    useContext: true
+    return:
+      name: orgID
+      description: The current organization ID
+      schema:
+        type: integer
+        format: int32
+  
+  GetUserRole:
+    description: Get the current user's role in the specified organization
+    useContext: true
+    params:
+      - name: orgID
+        description: The organization ID
+        schema:
+          type: integer
+          format: int32
+    return:
+      name: role
+      description: The user's role
+      schema:
+        type: string
+        enum: ["viewer", "editor", "admin"]
+  
+  ComputeAccessLevel:
+    description: Compute access level based on user role and resource
+    useContext: true
+    params:
+      - name: resourceType
+        schema:
+          type: string
+      - name: userRole
+        schema:
+          type: string
+    return:
+      name: accessLevel
+      description: The computed access level
+      schema:
+        type: string
+        enum: ["read", "write", "admin"]
+```
+
+### Generated Interface Addition
+
+Functions are added to the `Validator` interface:
 
 ```go
+type Validator interface {
+    // ... check rules and standard methods ...
+    
+    // Generated from x-functions
+    GetCurrentOrgID(c *fiber.Ctx) (int32, error)
+    GetUserRole(c *fiber.Ctx, orgID int32) (string, error)
+    ComputeAccessLevel(c *fiber.Ctx, resourceType string, userRole string) (string, error)
+}
+```
+
+### Usage in Security Scopes
+
+You can call these functions in your Go code:
+
+```yaml
+paths:
+  /orgs/{orgID}/sensitive-data:
+    get:
+      operationId: GetSensitiveData
+      security:
+        - BearerAuth:
+            # Use functions to compute values dynamically
+            - x.ValidateOrgAccess(c, x.GetCurrentOrgID(c), x.GetUserRole(c, orgID))
+            - x.CheckResourceOwnership(c, "sensitive-data", x.GetCurrentOrgID(c))
+```
+
+## Implementation Example
+
+Here's how you implement the `Validator` interface:
+
+```go
+package main
+
+import (
+    "database/sql"
+    "errors"
+    "fmt"
+    "strconv"
+    
+    "github.com/gofiber/fiber/v2"
+    "your-app/pkg/zgen/apigen"
+)
+
 type MyValidator struct {
     db     *sql.DB
     logger *log.Logger
 }
 
+// Standard middleware hooks
 func (v *MyValidator) AuthFunc(c *fiber.Ctx) error {
     token := c.Get("Authorization")
     if token == "" {
         return errors.New("missing authorization header")
     }
     
-    // Validate JWT token
+    // Validate JWT and extract claims
     claims, err := validateJWT(token)
     if err != nil {
         return fmt.Errorf("invalid token: %w", err)
     }
     
-    // Store user info in context
+    // Store in context for other functions to use
     c.Locals("userID", claims.UserID)
     c.Locals("userRole", claims.Role)
+    c.Locals("orgID", claims.OrgID)
     
     return nil
 }
 
+func (v *MyValidator) PreValidate(c *fiber.Ctx) error {
+    // Global pre-validation logic
+    return nil
+}
+
+func (v *MyValidator) PostValidate(c *fiber.Ctx) error {
+    // Global post-validation logic  
+    return nil
+}
+
+// Implement x-check-rules
 func (v *MyValidator) OperationPermit(c *fiber.Ctx, operationID string) error {
     userRole := c.Locals("userRole").(string)
     
     // Define operation permissions
     permissions := map[string][]string{
-        "ListOrgUsers":   {"viewer", "editor", "admin"},
-        "CreateOrgUser":  {"editor", "admin"},
-        "DeleteOrgUser":  {"admin"},
+        "GetProject":    {"viewer", "editor", "admin"},
+        "CreateProject": {"editor", "admin"},
+        "DeleteProject": {"admin"},
+        "CreateUser":    {"admin"},
     }
     
     allowedRoles, exists := permissions[operationID]
@@ -159,13 +364,12 @@ func (v *MyValidator) OperationPermit(c *fiber.Ctx, operationID string) error {
         }
     }
     
-    return fmt.Errorf("insufficient permissions for operation %s", operationID)
+    return fmt.Errorf("insufficient permissions for %s", operationID)
 }
 
 func (v *MyValidator) ValidateOrgAccess(c *fiber.Ctx, orgID int32, requiredRole string) error {
     userID := c.Locals("userID").(int)
     
-    // Check if user has access to the organization
     var userRole string
     err := v.db.QueryRow(
         "SELECT role FROM org_members WHERE user_id = $1 AND org_id = $2",
@@ -173,16 +377,15 @@ func (v *MyValidator) ValidateOrgAccess(c *fiber.Ctx, orgID int32, requiredRole 
     ).Scan(&userRole)
     
     if err == sql.ErrNoRows {
-        return errors.New("user does not have access to this organization")
+        return errors.New("access denied to organization")
     }
     if err != nil {
         return fmt.Errorf("database error: %w", err)
     }
     
-    // Check if user has required role
     roleHierarchy := map[string]int{
         "viewer": 1,
-        "editor": 2,
+        "editor": 2, 
         "admin":  3,
     }
     
@@ -193,162 +396,75 @@ func (v *MyValidator) ValidateOrgAccess(c *fiber.Ctx, orgID int32, requiredRole 
     return nil
 }
 
-func (v *MyValidator) PreValidate(c *fiber.Ctx) error {
-    // Global pre-validation logic
-    return nil
-}
-
-func (v *MyValidator) PostValidate(c *fiber.Ctx) error {
-    // Global post-validation logic
-    return nil
-}
-```
-
-## x-functions
-
-`x-functions` define utility functions that can be used within your application logic. These are typically helper functions that extract or compute values from the request context.
-
-### Structure
-
-```yaml
-x-functions:
-  FunctionName:
-    description: "Description of what this function does"
-    useContext: true|false
-    params:
-      - name: parameterName
-        description: "Parameter description"
-        schema:
-          type: string|integer|boolean|object
-    return:
-      name: returnValueName
-      description: "Description of return value"
-      schema:
-        type: string|integer|boolean|object
-```
-
-### Properties
-
-- **description**: Human-readable description of the function
-- **useContext**: Whether the function needs access to the Fiber context
-- **params**: Array of parameters the function accepts (optional)
-- **return**: Definition of the return value
-
-### Example Definition
-
-```yaml
-x-functions:
-  GetOrgID:
-    description: Get the organization ID from the request context
-    useContext: true
-    return:
-      name: orgID
-      description: The organization ID
-      schema:
-        type: integer
-        format: int32
-  
-  GetUserID:
-    description: Get the current user ID from the JWT token
-    useContext: true
-    return:
-      name: userID
-      description: The authenticated user ID
-      schema:
-        type: integer
-        format: int32
-  
-  ComputeAccessLevel:
-    description: Compute access level based on user role and resource type
-    useContext: true
-    params:
-      - name: resourceType
-        description: The type of resource being accessed
-        schema:
-          type: string
-          enum: ["document", "project", "organization"]
-    return:
-      name: accessLevel
-      description: The computed access level
-      schema:
-        type: string
-        enum: ["read", "write", "admin"]
-```
-
-### Generated Interface
-
-Functions are added to the `Validator` interface:
-
-```go
-type Validator interface {
-    // ... other methods ...
+func (v *MyValidator) CheckResourceOwnership(c *fiber.Ctx, resourceType string, resourceID int32) error {
+    userID := c.Locals("userID").(int)
     
-    // Generated from x-functions
-    GetOrgID(c *fiber.Ctx) (int32, error)
-    GetUserID(c *fiber.Ctx) (int32, error)
-    ComputeAccessLevel(c *fiber.Ctx, resourceType string) (string, error)
+    var ownerID int
+    query := fmt.Sprintf("SELECT owner_id FROM %ss WHERE id = $1", resourceType)
+    err := v.db.QueryRow(query, resourceID).Scan(&ownerID)
+    
+    if err == sql.ErrNoRows {
+        return errors.New("resource not found")
+    }
+    if err != nil {
+        return fmt.Errorf("database error: %w", err)
+    }
+    
+    if ownerID != userID {
+        return errors.New("resource access denied")
+    }
+    
+    return nil
 }
-```
 
-### Implementation Example
-
-```go
-func (v *MyValidator) GetOrgID(c *fiber.Ctx) (int32, error) {
-    // Try to get from path parameters first
+// Implement x-functions
+func (v *MyValidator) GetCurrentOrgID(c *fiber.Ctx) (int32, error) {
+    // Try context first (from JWT)
+    if orgID, ok := c.Locals("orgID").(int32); ok && orgID != 0 {
+        return orgID, nil
+    }
+    
+    // Try path parameter
     if orgIDStr := c.Params("orgID"); orgIDStr != "" {
         orgID, err := strconv.ParseInt(orgIDStr, 10, 32)
         if err != nil {
-            return 0, fmt.Errorf("invalid orgID in path: %w", err)
+            return 0, fmt.Errorf("invalid orgID: %w", err)
         }
         return int32(orgID), nil
     }
     
-    // Try to get from query parameters
-    if orgIDStr := c.Query("orgID"); orgIDStr != "" {
-        orgID, err := strconv.ParseInt(orgIDStr, 10, 32)
-        if err != nil {
-            return 0, fmt.Errorf("invalid orgID in query: %w", err)
-        }
-        return int32(orgID), nil
-    }
-    
-    // Try to get from request body
-    var body struct {
-        OrgID int32 `json:"orgID"`
-    }
-    if err := c.BodyParser(&body); err == nil && body.OrgID != 0 {
-        return body.OrgID, nil
-    }
-    
-    return 0, errors.New("orgID not found in request")
+    return 0, errors.New("organization ID not found")
 }
 
-func (v *MyValidator) GetUserID(c *fiber.Ctx) (int32, error) {
-    userID, ok := c.Locals("userID").(int)
-    if !ok {
-        return 0, errors.New("user ID not found in context")
+func (v *MyValidator) GetUserRole(c *fiber.Ctx, orgID int32) (string, error) {
+    userID := c.Locals("userID").(int)
+    
+    var role string
+    err := v.db.QueryRow(
+        "SELECT role FROM org_members WHERE user_id = $1 AND org_id = $2",
+        userID, orgID,
+    ).Scan(&role)
+    
+    if err == sql.ErrNoRows {
+        return "", errors.New("user not member of organization")
     }
-    return int32(userID), nil
+    if err != nil {
+        return "", fmt.Errorf("database error: %w", err)
+    }
+    
+    return role, nil
 }
 
-func (v *MyValidator) ComputeAccessLevel(c *fiber.Ctx, resourceType string) (string, error) {
-    userRole := c.Locals("userRole").(string)
-    
-    // Define access levels based on role and resource type
+func (v *MyValidator) ComputeAccessLevel(c *fiber.Ctx, resourceType string, userRole string) (string, error) {
     accessMatrix := map[string]map[string]string{
-        "document": {
-            "viewer": "read",
-            "editor": "write",
-            "admin":  "admin",
-        },
         "project": {
             "viewer": "read",
-            "editor": "write",
+            "editor": "write", 
             "admin":  "admin",
         },
-        "organization": {
+        "sensitive-data": {
             "viewer": "read",
-            "editor": "read",
+            "editor": "read",  // Even editors only get read access to sensitive data
             "admin":  "admin",
         },
     }
@@ -360,148 +476,83 @@ func (v *MyValidator) ComputeAccessLevel(c *fiber.Ctx, resourceType string) (str
     
     accessLevel, exists := resourceAccess[userRole]
     if !exists {
-        return "", fmt.Errorf("unknown user role: %s", userRole)
+        return "", fmt.Errorf("unknown role: %s", userRole)
     }
     
     return accessLevel, nil
 }
 ```
 
-## How It Works
+## Advanced Usage Patterns
 
-### Code Generation Process
+### Complex Security Logic
 
-1. **Parsing**: The Anchor code generator reads your `api/v1.yaml` file and extracts the `x-check-rules` and `x-functions` definitions.
-
-2. **Interface Generation**: A `Validator` interface is generated with methods corresponding to your rules and functions.
-
-3. **Middleware Generation**: Middleware code is generated that wraps your API handlers and calls the appropriate validator methods.
-
-4. **Integration**: The generated middleware is automatically integrated into your Fiber server.
-
-### Middleware Execution Flow
-
-For each API request, the middleware executes in this order:
-
-1. **AuthFunc()** - Authentication (if security is defined)
-2. **PreValidate()** - Global pre-validation
-3. **Check Rules** - Specific rules defined in security scopes
-4. **PostValidate()** - Global post-validation
-5. **Handler** - Your actual API handler
-
-### Generated Middleware Example
-
-Here's what the generated middleware looks like for an operation:
-
-```go
-func (x *XMiddleware) ListOrgUsers(c *fiber.Ctx, orgID int32) error {
-    // Authentication
-    if err := x.AuthFunc(c); err != nil {
-        return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
-    }
-    
-    // Pre-validation
-    if err := x.PreValidate(c); err != nil {
-        return c.Status(fiber.StatusForbidden).SendString(err.Error())
-    }
-    
-    // Check rules (from security scopes)
-    if err := x.ValidateOrgAccess(c, orgID, "viewer"); err != nil {
-        return c.Status(fiber.StatusForbidden).SendString(err.Error())
-    }
-    
-    // Post-validation
-    if err := x.PostValidate(c); err != nil {
-        return c.Status(fiber.StatusForbidden).SendString(err.Error())
-    }
-    
-    // Call actual handler
-    return x.ServerInterface.ListOrgUsers(c, orgID)
-}
+```yaml
+paths:
+  /orgs/{orgID}/projects/{projectID}/secrets:
+    get:
+      operationId: GetProjectSecrets
+      security:
+        - BearerAuth:
+            # Multi-step validation with function calls
+            - x.ValidateOrgAccess(c, orgID, "editor")
+            - x.CheckResourceOwnership(c, "project", projectID) 
+            # Only allow if computed access level is "admin"
+            - x.ValidateAccessLevel(c, x.ComputeAccessLevel(c, "secrets", x.GetUserRole(c, orgID)), "admin")
 ```
 
-## Best Practices
+### Conditional Logic
 
-### x-check-rules
+```yaml
+security:
+  - BearerAuth:
+      # You can even use conditional logic (implement in your validator)
+      - x.ConditionalAccess(c, orgID, projectID, x.GetUserRole(c, orgID))
+```
 
-1. **Keep rules focused**: Each rule should have a single responsibility
-2. **Use descriptive names**: Rule names should clearly indicate their purpose
-3. **Document parameters**: Provide clear descriptions for all parameters
-4. **Handle errors gracefully**: Return meaningful error messages
-5. **Cache when possible**: Cache expensive operations like database queries
+### Variable Assignment and Reuse
 
-### x-functions
+The system automatically generates variables when referenced:
 
-1. **Pure functions**: When possible, make functions pure (same input = same output)
-2. **Error handling**: Always return meaningful errors
-3. **Context usage**: Use context locals to share data between functions
-4. **Performance**: Consider caching expensive computations
-5. **Type safety**: Use proper Go types for parameters and return values
+```yaml
+security:
+  - BearerAuth:
+      # When you reference 'operationID', it gets auto-generated as:
+      # operationID := "YourOperationName"
+      - x.OperationPermit(c, operationID)
+      
+      # When you reference path parameters, they're available directly:
+      - x.ValidateOrgAccess(c, orgID, "viewer")  # orgID from path
+```
 
-### General
+## Security Schemes Setup
 
-1. **Testing**: Mock the Validator interface for unit testing
-2. **Logging**: Add appropriate logging for debugging and monitoring
-3. **Documentation**: Keep your YAML documentation up to date
-4. **Versioning**: Consider versioning your rules and functions
-5. **Security**: Always validate and sanitize inputs
+Don't forget to define your security schemes:
 
-## Integration Example
+```yaml
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+```
 
-Here's a complete example showing how to integrate everything:
+## Integration
 
 ```go
-// main.go
-package main
-
-import (
-    "database/sql"
-    "log"
-    
-    "github.com/gofiber/fiber/v2"
-    "your-app/pkg/zgen/apigen"
-)
-
-type Server struct {
-    db     *sql.DB
-    logger *log.Logger
-}
-
-func (s *Server) GetCounter(c *fiber.Ctx) error {
-    // Your handler implementation
-    return c.JSON(fiber.Map{"count": 42})
-}
-
-// Implement the Validator interface
-func (s *Server) AuthFunc(c *fiber.Ctx) error {
-    // Authentication logic
-    return nil
-}
-
-func (s *Server) OperationPermit(c *fiber.Ctx, operationID string) error {
-    // Permission checking logic
-    return nil
-}
-
-func (s *Server) GetOrgID(c *fiber.Ctx) (int32, error) {
-    // Extract org ID from request
-    return 1, nil
-}
-
-// ... implement other required methods
-
 func main() {
     app := fiber.New()
     
-    server := &Server{
+    validator := &MyValidator{
         db:     connectDB(),
         logger: log.Default(),
     }
     
-    // Register handlers with middleware
+    // The validator serves as both the handler and validator
     apigen.RegisterHandlersWithOptions(
         app,
-        apigen.NewXMiddleware(server, server),
+        apigen.NewXMiddleware(validator, validator), // validator implements both interfaces
         apigen.FiberServerOptions{},
     )
     
@@ -509,4 +560,23 @@ func main() {
 }
 ```
 
-This middleware system provides a powerful way to handle cross-cutting concerns like authentication, authorization, and request validation in a declarative manner, while maintaining type safety and generating efficient Go code.
+## Key Benefits
+
+1. **No DSL**: Write actual Go code, not a domain-specific language
+2. **Compile-time safety**: Go compiler catches errors in your security logic
+3. **IDE support**: Full autocomplete, refactoring, and debugging support
+4. **Type safety**: Function signatures are enforced by the generated interface
+5. **Flexibility**: Complex logic is possible since you're writing real Go code
+6. **Performance**: No runtime interpretation, just compiled Go code
+
+## Best Practices
+
+1. **Keep functions focused**: Each function should have a single responsibility
+2. **Use meaningful names**: Function names should clearly indicate their purpose
+3. **Error handling**: Always return descriptive error messages
+4. **Context usage**: Store shared data in Fiber context for reuse
+5. **Database efficiency**: Cache expensive queries when possible
+6. **Testing**: Mock the Validator interface for comprehensive testing
+7. **Documentation**: Document your function signatures clearly in the YAML
+
+This approach gives you the full power of Go while maintaining the declarative nature of OpenAPI specifications, with the added benefit that all your security logic is compiled and type-checked at build time.
