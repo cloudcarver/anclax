@@ -84,7 +84,7 @@ x-check-rules:
       - name: parameterName
         description: "Parameter description"
         schema:
-          type: string|integer|boolean|object
+          type: string
 ```
 
 ### Example Definition
@@ -201,12 +201,12 @@ x-functions:
       - name: parameterName
         description: "Parameter description"
         schema:
-          type: string|integer|boolean|object
+          type: string
     return:
       name: returnValueName
       description: "Return value description"
       schema:
-        type: string|integer|boolean|object
+        type: string
 ```
 
 ### Example Definition
