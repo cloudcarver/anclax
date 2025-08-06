@@ -102,33 +102,38 @@ func (s *Service) GetUserIDByUsername(ctx context.Context, username string) (int
 	return user.ID, nil
 }
 
-func (s *Service) CreateNewUser(ctx context.Context, username, password string) (int32, error) {
-	var orgID int32
-	if err := s.m.RunTransactionWithTx(ctx, func(tx pgx.Tx, txm model.ModelInterface) error {
-		id, err := s.CreateNewUserWithTx(ctx, tx, username, password)
-		orgID = id
-		return err
-	}); err != nil {
-		return 0, errors.Wrapf(err, "failed to create new user")
-	}
-	return orgID, nil
+type UserCreated struct {
+	OrgID  int32
+	UserID int32
 }
 
-func (s *Service) CreateNewUserWithTx(ctx context.Context, tx pgx.Tx, username, password string) (int32, error) {
+func (s *Service) CreateNewUser(ctx context.Context, username, password string) (*UserCreated, error) {
+	var ret *UserCreated
+	if err := s.m.RunTransactionWithTx(ctx, func(tx pgx.Tx, txm model.ModelInterface) error {
+		u, err := s.CreateNewUserWithTx(ctx, tx, username, password)
+		ret = u
+		return err
+	}); err != nil {
+		return nil, errors.Wrapf(err, "failed to create new user")
+	}
+	return ret, nil
+}
+
+func (s *Service) CreateNewUserWithTx(ctx context.Context, tx pgx.Tx, username, password string) (*UserCreated, error) {
 	salt, hash, err := s.generateSaltAndHash(password)
 	if err != nil {
-		return 0, errors.Wrapf(err, "failed to generate hash and salt")
+		return nil, errors.Wrapf(err, "failed to generate hash and salt")
 	}
 
 	txm := s.m.SpawnWithTx(tx)
 
 	org, err := txm.CreateOrg(ctx, fmt.Sprintf("%s's Org", username))
 	if err != nil {
-		return 0, errors.Wrapf(err, "failed to create organization")
+		return nil, errors.Wrapf(err, "failed to create organization")
 	}
 
 	if err := s.hooks.OnOrgCreated(ctx, tx, org.ID); err != nil {
-		return 0, errors.Wrapf(err, "failed to run on org created hook")
+		return nil, errors.Wrapf(err, "failed to run on org created hook")
 	}
 
 	user, err := txm.CreateUser(ctx, querier.CreateUserParams{
@@ -137,35 +142,38 @@ func (s *Service) CreateNewUserWithTx(ctx context.Context, tx pgx.Tx, username, 
 		PasswordSalt: salt,
 	})
 	if err != nil {
-		return 0, errors.Wrapf(err, "failed to create user")
+		return nil, errors.Wrapf(err, "failed to create user")
 	}
 
 	if err := s.hooks.OnUserCreated(ctx, tx, user.ID); err != nil {
-		return 0, errors.Wrapf(err, "failed to run on user created hook")
+		return nil, errors.Wrapf(err, "failed to run on user created hook")
 	}
 
 	if _, err := txm.InsertOrgOwner(ctx, querier.InsertOrgOwnerParams{
 		UserID: user.ID,
 		OrgID:  org.ID,
 	}); err != nil {
-		return 0, errors.Wrapf(err, "failed to create organization owner")
+		return nil, errors.Wrapf(err, "failed to create organization owner")
 	}
 
 	if _, err := txm.InsertOrgUser(ctx, querier.InsertOrgUserParams{
 		UserID: user.ID,
 		OrgID:  org.ID,
 	}); err != nil {
-		return 0, errors.Wrapf(err, "failed to create organization user")
+		return nil, errors.Wrapf(err, "failed to create organization user")
 	}
 
 	if err := txm.SetUserDefaultOrg(ctx, querier.SetUserDefaultOrgParams{
 		UserID: user.ID,
 		OrgID:  org.ID,
 	}); err != nil {
-		return 0, errors.Wrapf(err, "failed to set user default org")
+		return nil, errors.Wrapf(err, "failed to set user default org")
 	}
 
-	return org.ID, nil
+	return &UserCreated{
+		OrgID:  org.ID,
+		UserID: user.ID,
+	}, nil
 }
 
 func (s *Service) DeleteUserByName(ctx context.Context, username string) error {
@@ -186,7 +194,11 @@ func (s *Service) CreateTestAccount(ctx context.Context, username, password stri
 		return user.ID, nil
 	}
 
-	return s.CreateNewUser(ctx, username, password)
+	u, err := s.CreateNewUser(ctx, username, password)
+	if err != nil {
+		return 0, errors.Wrapf(err, "failed to create new user")
+	}
+	return u.UserID, nil
 }
 
 func (s *Service) UpdateUserPassword(ctx context.Context, username, password string) (int32, error) {

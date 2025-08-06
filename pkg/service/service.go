@@ -39,9 +39,9 @@ const (
 
 type ServiceInterface interface {
 	// Create a new user and its default organization
-	CreateNewUser(ctx context.Context, username, password string) (int32, error)
+	CreateNewUser(ctx context.Context, username, password string) (*UserCreated, error)
 
-	CreateNewUserWithTx(ctx context.Context, tx pgx.Tx, username, password string) (int32, error)
+	CreateNewUserWithTx(ctx context.Context, tx pgx.Tx, username, password string) (*UserCreated, error)
 
 	GetUserIDByUsername(ctx context.Context, username string) (int32, error)
 

@@ -77,9 +77,9 @@ func TestCreateNewUser(t *testing.T) {
 		},
 	}
 
-	orgID, err := service.CreateNewUser(ctx, username, password)
+	u, err := service.CreateNewUser(ctx, username, password)
 	require.NoError(t, err)
-	require.Equal(t, orgID, org.ID)
+	require.Equal(t, orgID, u.OrgID)
 
 }
 
