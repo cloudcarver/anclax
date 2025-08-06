@@ -1,5 +1,9 @@
 # Async Tasks in Anchor
 
+English | [中文](async-tasks-tutorial.zh.md)
+
+> 📚 **Looking for technical details?** Check out the [Technical Reference](async-tasks-technical.md) for comprehensive coverage of the underlying architecture, lifecycle, and advanced features.
+
 Anchor lets you run background tasks that don't block your web requests. For example, you can send emails, process images, or generate reports without making users wait.
 
 ## Table of Contents
@@ -674,6 +678,7 @@ This example demonstrates:
 6. **Monitor task performance** - Use metrics to track task execution times and failure rates
 7. **Use transactions** - Enqueue tasks within database transactions for consistency
 8. **Test failure scenarios** - Ensure your failure hooks work correctly and don't create infinite loops
+9. **Use async tasks for module decoupling** - Instead of calling methods directly between modules, use async tasks to keep modules loosely coupled. For example, when an order is paid, enqueue an `orderFinished` task rather than directly calling factory operations. This keeps code clean and maintainable. **Note**: Only use this for eventual consistency scenarios, not for strong consistency requirements like real-time financial transactions.
 
 ## Worker Configuration
 

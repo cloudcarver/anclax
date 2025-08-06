@@ -1,5 +1,7 @@
 # Anchor 
 
+English | [中文](README.zh.md)
+
 Anchor is a framework for building serverless and reliable applications in speed of light with confidence.
 
 Anchor provides the following features:
@@ -15,6 +17,16 @@ The core philosophy of Anchor is to provide confidence in the codebase by:
 - Use YAML to define schema and generate interfaces to avoid runtime errors of missing implementation, meaning you can catch errors at compile time.
 - Use event-driven architecture to build a system that is easy to reason about and easy to extend.
 - All modules are mockable and can be tested with ease.
+
+## Documentation
+
+- [Transaction Management](docs/transaction.md) ([中文](docs/transaction.zh.md)) - Learn about Anchor's `WithTx` pattern, plugin system, and how transactions ensure at-least-once delivery and guaranteed hook execution
+- [Middleware (x-functions and x-check-rules)](docs/middleware.md) ([中文](docs/middleware.zh.md)) - Learn how to implement custom validation, authorization, and utility functions using Anchor's middleware system
+
+### Async Tasks Documentation
+
+- **[Async Tasks Tutorial](docs/async-tasks-tutorial.md)** ([中文](docs/async-tasks-tutorial.zh.md)) - User-friendly guide with step-by-step examples for getting started with async tasks
+- **[Async Tasks Technical Reference](docs/async-tasks-technical.md)** ([中文](docs/async-tasks-technical.zh.md)) - Comprehensive technical documentation covering architecture, lifecycle, and advanced features
 
 ## Quick Start
 
@@ -90,3 +102,16 @@ anchor gen
 6. Configure the application using environment variables.
 
 7. Build and run the application.
+
+## Running Async Tasks
+
+After defining tasks in `api/tasks.yaml` and running `anchor gen`, the framework auto-generates a task runner with `Run` methods for each task. Simply call these methods to execute tasks asynchronously:
+
+```go
+// Trigger the incrementCounter task from step 4
+taskID, err := taskrunner.RunIncrementCounter(ctx, &taskgen.IncrementCounterParameters{
+  Amount: 1,
+})
+```
+
+Tasks run with at-least-once delivery guarantees and automatic retries based on your retry policy configuration. Tasks can also be scheduled to run automatically using cron expressions in the task definition.
