@@ -3,42 +3,24 @@ package pkg
 import (
 	"context"
 	"myexampleapp/pkg/config"
-	"myexampleapp/pkg/zgen/apigen"
+	"myexampleapp/pkg/zcore/app"
 	"myexampleapp/pkg/zgen/taskgen"
 
 	anchor_config "github.com/cloudcarver/anchor/pkg/config"
 	anchor_wire "github.com/cloudcarver/anchor/wire"
 
 	anchor_app "github.com/cloudcarver/anchor/pkg/app"
-	anchor_svc "github.com/cloudcarver/anchor/pkg/service"
 	"github.com/cloudcarver/anchor/pkg/taskcore"
-	"github.com/cloudcarver/anchor/pkg/taskcore/worker"
-	"github.com/gofiber/fiber/v2"
 )
 
-type App struct {
-	anchorApp *anchor_app.Application
-}
-
-func (a *App) Start() error {
-	return a.anchorApp.Start()
-}
-
-func NewAnchorApp(cfg *config.Config) (*anchor_app.Application, error) {
-	anchorApp, err := anchor_wire.InitializeApplication(&cfg.Anchor, anchor_config.DefaultLibConfig())
-	if err != nil {
+// This will run before the application starts.
+func Init(anchorApp *anchor_app.Application, taskrunner taskgen.TaskRunner, myapp anchor_app.Plugin) (*app.App, error) {
+	if err := anchorApp.Plug(myapp); err != nil {
 		return nil, err
 	}
 
-	return anchorApp, nil
-}
-
-func NewApp(anchorApp *anchor_app.Application, anchorSvc anchor_svc.ServiceInterface, taskrunner taskgen.TaskRunner, plugin *Plugin) (*App, error) {
-	// register task handler
-	plugin.Plug(anchorApp)
-
-	// other init steps
-	if _, err := anchorSvc.CreateNewUser(context.Background(), "test", "test"); err != nil {
+	// Add your custom initialization logic here.
+	if _, err := anchorApp.GetService().CreateNewUser(context.Background(), "test", "test"); err != nil {
 		return nil, err
 	}
 	if _, err := taskrunner.RunAutoIncrementCounter(context.Background(), &taskgen.AutoIncrementCounterParameters{
@@ -47,37 +29,18 @@ func NewApp(anchorApp *anchor_app.Application, anchorSvc anchor_svc.ServiceInter
 		return nil, err
 	}
 
-	return &App{
-		anchorApp: anchorApp,
+	return &app.App{
+		AnchorApp: anchorApp,
 	}, nil
 }
 
-type Plugin struct {
-	serverInterface apigen.ServerInterface
-	validator       apigen.Validator
-	taskHandler     worker.TaskHandler
-}
-
-func NewPlugin(serverInterface apigen.ServerInterface, validator apigen.Validator, taskHandler worker.TaskHandler) *Plugin {
-	return &Plugin{
-		serverInterface: serverInterface,
-		validator:       validator,
-		taskHandler:     taskHandler,
+// InitAnchorApplication initializes the Anchor application with the provided configuration.
+// You can modify this function to customize the initialization process,
+func InitAnchorApplication(cfg *config.Config) (*anchor_app.Application, error) {
+	anchorApp, err := anchor_wire.InitializeApplication(&cfg.Anchor, anchor_config.DefaultLibConfig())
+	if err != nil {
+		return nil, err
 	}
-}
 
-func (p *Plugin) Plug(anchorApp *anchor_app.Application) {
-	p.PlugToFiberApp(anchorApp.GetServer().GetApp())
-	p.PlugToWorker(anchorApp.GetWorker())
-}
-
-func (p *Plugin) PlugToFiberApp(fiberApp *fiber.App) {
-	apigen.RegisterHandlersWithOptions(fiberApp, apigen.NewXMiddleware(p.serverInterface, p.validator), apigen.FiberServerOptions{
-		BaseURL:     "/api/v1",
-		Middlewares: []apigen.MiddlewareFunc{},
-	})
-}
-
-func (p *Plugin) PlugToWorker(worker) {
-	worker.RegisterTaskHandler(p.taskHandler)
+	return anchorApp, nil
 }

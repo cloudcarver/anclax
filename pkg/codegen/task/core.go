@@ -106,7 +106,7 @@ func process(data map[string]any, onFunc func(f Function) error, onParam func(na
 			}
 			maxAttempts, ok := retryPolicyStr["maxAttempts"].(int)
 			if !ok {
-				return fmt.Errorf("maxAttempts %v cannot be parsed to a integer", retryPolicyStr["maxAttempts"])
+				return fmt.Errorf("maxAttempts %v cannot be parsed to a integer in %s: %v", retryPolicyStr["maxAttempts"], fnName, retryPolicyStr)
 			}
 			retryPolicy = &RetryPolicy{
 				Interval:    interval,

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cloudcarver/anchor"
 	"github.com/cloudcarver/anchor/pkg/config"
 	"github.com/cloudcarver/anchor/pkg/logger"
 	"github.com/cloudcarver/anchor/pkg/zgen/querier"
@@ -15,6 +14,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pkg/errors"
+
+	"github.com/cloudcarver/anchor"
 )
 
 var log = logger.NewLogAgent("model")
@@ -93,6 +94,8 @@ func NewModel(cfg *config.Config) (ModelInterface, error) {
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to parse pgxpool config: %s", dsn)
 	}
+	config.MaxConns = 30
+	config.MinConns = 5
 
 	var (
 		retryLimit = 10
@@ -102,27 +105,30 @@ func NewModel(cfg *config.Config) (ModelInterface, error) {
 	var p *pgxpool.Pool
 
 	for {
-		ctx, cancel := context.WithTimeout(context.TODO(), 10*time.Second)
-		defer cancel()
+		err := func() error {
+			ctx, cancel := context.WithTimeout(context.TODO(), 10*time.Second)
+			defer cancel()
 
-		pool, err := pgxpool.NewWithConfig(ctx, config)
-		if err != nil {
-			log.Warnf("failed to init pgxpool: %s", err.Error())
-			if retry >= retryLimit {
-				return nil, errors.Wrapf(err, "failed to init pgxpool: %s", dsn)
+			pool, err := pgxpool.NewWithConfig(ctx, config)
+			if err != nil {
+				log.Warnf("failed to init pgxpool: %s", err.Error())
+				return errors.Wrapf(err, "failed to init pgxpool: %s", dsn)
 			}
-			continue
-		}
 
-		p = pool
+			p = pool
 
-		if err := pool.Ping(ctx); err != nil {
-			log.Warnf("failed to ping database: %s", err.Error())
-			if retry >= retryLimit {
-				return nil, errors.Wrap(err, "failed to ping db")
+			if err := pool.Ping(ctx); err != nil {
+				log.Warnf("failed to ping database: %s", err.Error())
+				pool.Close()
+				return errors.Wrap(err, "failed to ping db")
 			}
-		} else {
+			return nil
+		}()
+		if err == nil {
 			break
+		}
+		if retry >= retryLimit {
+			return nil, err
 		}
 		retry++
 		time.Sleep(3 * time.Second)

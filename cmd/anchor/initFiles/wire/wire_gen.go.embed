@@ -11,6 +11,7 @@ import (
 	"myexampleapp/pkg/asynctask"
 	"myexampleapp/pkg/config"
 	"myexampleapp/pkg/handler"
+	"myexampleapp/pkg/zcore/app"
 	"myexampleapp/pkg/zcore/injection"
 	"myexampleapp/pkg/zcore/model"
 	"myexampleapp/pkg/zgen/taskgen"
@@ -18,16 +19,15 @@ import (
 
 // Injectors from wire.go:
 
-func InitApp() (*pkg.App, error) {
+func InitApp() (*app.App, error) {
 	configConfig, err := config.NewConfig()
 	if err != nil {
 		return nil, err
 	}
-	application, err := pkg.NewAnchorApp(configConfig)
+	application, err := pkg.InitAnchorApplication(configConfig)
 	if err != nil {
 		return nil, err
 	}
-	serviceInterface := injection.InjectAnchorSvc(application)
 	taskStoreInterface := injection.InjectTaskStore(application)
 	taskRunner := taskgen.NewTaskRunner(taskStoreInterface)
 	modelInterface, err := model.NewModel(configConfig)
@@ -42,10 +42,10 @@ func InitApp() (*pkg.App, error) {
 	validator := handler.NewValidator(authInterface)
 	executorInterface := asynctask.NewExecutor(modelInterface)
 	taskHandler := taskgen.NewTaskHandler(executorInterface)
-	plugin := pkg.NewPlugin(serverInterface, validator, taskHandler)
-	app, err := pkg.NewApp(application, serviceInterface, taskRunner, plugin)
+	plugin := app.NewPlugin(serverInterface, validator, taskHandler)
+	appApp, err := pkg.Init(application, taskRunner, plugin)
 	if err != nil {
 		return nil, err
 	}
-	return app, nil
+	return appApp, nil
 }

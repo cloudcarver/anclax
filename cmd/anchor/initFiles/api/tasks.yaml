@@ -5,7 +5,7 @@ tasks:
       cronExpression: "*/5 * * * * *"
     retryPolicy:
       interval: 30m
-      always_retry_on_failure: true
+      maxAttempts: -1
     parameters:
       type: object
       required: [amount]
@@ -17,7 +17,7 @@ tasks:
     description: Increment the counter
     retryPolicy:
       interval: 30m
-      always_retry_on_failure: true
+      maxAttempts: -1
     parameters:
       type: object
       required: [amount]

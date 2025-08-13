@@ -32,7 +32,7 @@ var installCmd = &cli.Command{
 func runInstall(c *cli.Context) error {
 	projectDir := c.Args().Get(0)
 	if projectDir == "" {
-		return errors.New("missing project directory, use `anchor install <project-dir>`")
+		projectDir = "."
 	}
 
 	configName := c.String("config")
@@ -45,7 +45,7 @@ func runInstall(c *cli.Context) error {
 
 func install(projectDir, configName string) error {
 	// install external tools
-	config, err := parseConfig(configName)
+	config, err := parseConfig(filepath.Join(projectDir, configName))
 	if err != nil {
 		return errors.Wrap(err, "failed to parse config")
 	}
