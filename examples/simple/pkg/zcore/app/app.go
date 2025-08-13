@@ -2,23 +2,11 @@ package app
 
 import (
 	"myexampleapp/pkg/zgen/apigen"
-	"regexp"
-	"strings"
 
 	anchor_app "github.com/cloudcarver/anchor/pkg/app"
 	"github.com/cloudcarver/anchor/pkg/taskcore/worker"
 	"github.com/gofiber/fiber/v2"
 )
-
-const projectPkg = "myexampleapp"
-
-func GetNamespace() string {
-	last := projectPkg
-	if idx := strings.LastIndex(projectPkg, "/"); idx != -1 {
-		last = projectPkg[idx+1:]
-	}
-	return regexp.MustCompile(`[^a-z0-9_]`).ReplaceAllString(strings.ToLower(last), "_")
-}
 
 type App struct {
 	AnchorApp *anchor_app.Application
