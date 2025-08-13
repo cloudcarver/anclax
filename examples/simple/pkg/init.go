@@ -13,6 +13,18 @@ import (
 	"github.com/cloudcarver/anchor/pkg/taskcore"
 )
 
+func ProvidePlugintMeta() anchor_app.PlugintMeta {
+	return anchor_app.PlugintMeta{
+		// This field is for avoiding conflicts with other Anchor plugins.
+		// It will be used as the table name of the migration table.
+		// You can change it to any string that is unique in your application.
+		//
+		// [IMPORTANT]
+		// This field should NOT be changed after the application is deployed.
+		Namespace: "myapp",
+	}
+}
+
 // This will run before the application starts.
 func Init(anchorApp *anchor_app.Application, taskrunner taskgen.TaskRunner, myapp anchor_app.Plugin) (*app.App, error) {
 	if err := anchorApp.Plug(myapp); err != nil {

@@ -10,6 +10,7 @@ import (
 	"myexampleapp/pkg/zgen/querier"
 
 	"github.com/cloudcarver/anchor"
+	anchor_app "github.com/cloudcarver/anchor/pkg/app"
 	"github.com/cloudcarver/anchor/pkg/logger"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
@@ -75,7 +76,7 @@ func (m *Model) RunTransaction(ctx context.Context, f func(model ModelInterface)
 		return f(model)
 	})
 }
-func NewModel(cfg *config.Config) (ModelInterface, error) {
+func NewModel(cfg *config.Config, meta anchor_app.PlugintMeta) (ModelInterface, error) {
 	if cfg.Anchor.Pg.DSN == nil {
 		return nil, errors.New("dsn is not set")
 	}
@@ -130,12 +131,13 @@ func NewModel(cfg *config.Config) (ModelInterface, error) {
 		return nil, errors.Wrap(err, "failed to create migration source driver")
 	}
 
-	url := fmt.Sprintf("pgx5://%s:%s@%s:%d/%s?x-migrations-table=anchor_migrations",
+	url := fmt.Sprintf("pgx5://%s:%s@%s:%d/%s?x-migrations-table=%s_migrations",
 		config.ConnConfig.User,
 		config.ConnConfig.Password,
 		config.ConnConfig.Host,
 		config.ConnConfig.Port,
 		config.ConnConfig.Database,
+		meta.Namespace,
 	)
 	m, err := migrate.NewWithSourceInstance("iofs", d, url)
 	if err != nil {
