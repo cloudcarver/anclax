@@ -29,3 +29,6 @@ ut:
 
 gen:
 	go run cmd/dev/main.go copy-templates --src examples/simple --dst cmd/anchor/initFiles --exclude .anchor,go.sum
+
+install: gen
+	go install ./cmd/anchor

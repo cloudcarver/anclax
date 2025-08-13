@@ -104,3 +104,16 @@ func (a *Application) GetHooks() hooks.AnchorHookInterface {
 func (a *Application) GetCaveatParser() macaroons.CaveatParserInterface {
 	return a.caveatParser
 }
+
+func (a *Application) Plug(plugins ...Plugin) error {
+	for _, plugin := range plugins {
+		if err := plugin.PlugTo(a); err != nil {
+			return errors.Wrapf(err, "failed to plug plugin %T", plugin)
+		}
+	}
+	return nil
+}
+
+type Plugin interface {
+	PlugTo(app *Application) error
+}

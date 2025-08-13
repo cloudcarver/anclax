@@ -5,6 +5,8 @@ import (
 
 	"myexampleapp/pkg/zcore/model"
 	"myexampleapp/pkg/zgen/taskgen"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type Executor struct {
@@ -17,10 +19,10 @@ func NewExecutor(model model.ModelInterface) taskgen.ExecutorInterface {
 	}
 }
 
-func (e *Executor) ExecuteIncrementCounter(ctx context.Context, params *taskgen.IncrementCounterParameters) error {
+func (e *Executor) ExecuteIncrementCounter(ctx context.Context, tx pgx.Tx, params *taskgen.IncrementCounterParameters) error {
 	return e.model.IncrementCounter(ctx)
 }
 
-func (e *Executor) ExecuteAutoIncrementCounter(ctx context.Context, params *taskgen.AutoIncrementCounterParameters) error {
+func (e *Executor) ExecuteAutoIncrementCounter(ctx context.Context, tx pgx.Tx, params *taskgen.AutoIncrementCounterParameters) error {
 	return e.model.IncrementCounter(ctx)
 }

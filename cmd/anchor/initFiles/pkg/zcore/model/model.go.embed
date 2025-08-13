@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cloudcarver/anchor/pkg/logger"
-	root "myexampleapp"
 	"myexampleapp/pkg/config"
 	"myexampleapp/pkg/zgen/querier"
+
+	"github.com/cloudcarver/anchor"
+	"github.com/cloudcarver/anchor/pkg/logger"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
@@ -37,7 +38,6 @@ type Model struct {
 	beginTx       func(ctx context.Context) (pgx.Tx, error)
 	p             *pgxpool.Pool
 	inTransaction bool
-	now           func() time.Time
 }
 
 func (m *Model) InTransaction() bool {
@@ -75,7 +75,6 @@ func (m *Model) RunTransaction(ctx context.Context, f func(model ModelInterface)
 		return f(model)
 	})
 }
-
 func NewModel(cfg *config.Config) (ModelInterface, error) {
 	if cfg.Anchor.Pg.DSN == nil {
 		return nil, errors.New("dsn is not set")
@@ -97,38 +96,41 @@ func NewModel(cfg *config.Config) (ModelInterface, error) {
 	var p *pgxpool.Pool
 
 	for {
-		ctx, cancel := context.WithTimeout(context.TODO(), 10*time.Second)
-		defer cancel()
+		err := func() error {
+			ctx, cancel := context.WithTimeout(context.TODO(), 10*time.Second)
+			defer cancel()
 
-		pool, err := pgxpool.NewWithConfig(ctx, config)
-		if err != nil {
-			log.Warnf("failed to init pgxpool: %s", err.Error())
-			if retry >= retryLimit {
-				return nil, errors.Wrapf(err, "failed to init pgxpool: %s", dsn)
+			pool, err := pgxpool.NewWithConfig(ctx, config)
+			if err != nil {
+				log.Warnf("failed to init pgxpool: %s", err.Error())
+				return errors.Wrapf(err, "failed to init pgxpool: %s", dsn)
 			}
-			continue
-		}
 
-		p = pool
+			p = pool
 
-		if err := pool.Ping(ctx); err != nil {
-			log.Warnf("failed to ping database: %s", err.Error())
-			if retry >= retryLimit {
-				return nil, errors.Wrap(err, "failed to ping db")
+			if err := pool.Ping(ctx); err != nil {
+				log.Warnf("failed to ping database: %s", err.Error())
+				pool.Close()
+				return errors.Wrap(err, "failed to ping db")
 			}
-		} else {
+			return nil
+		}()
+		if err == nil {
 			break
+		}
+		if retry >= retryLimit {
+			return nil, err
 		}
 		retry++
 		time.Sleep(3 * time.Second)
 	}
 
-	d, err := iofs.New(root.Migrations, "sql/migrations")
+	d, err := iofs.New(anchor.Migrations, "sql/migrations")
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create migration source driver")
 	}
 
-	url := fmt.Sprintf("pgx5://%s:%s@%s:%d/%s",
+	url := fmt.Sprintf("pgx5://%s:%s@%s:%d/%s?x-migrations-table=anchor_migrations",
 		config.ConnConfig.User,
 		config.ConnConfig.Password,
 		config.ConnConfig.Host,
@@ -145,5 +147,5 @@ func NewModel(cfg *config.Config) (ModelInterface, error) {
 		}
 	}
 
-	return &Model{Querier: querier.New(p), beginTx: p.Begin, p: p, now: time.Now}, nil
+	return &Model{Querier: querier.New(p), beginTx: p.Begin, p: p}, nil
 }
