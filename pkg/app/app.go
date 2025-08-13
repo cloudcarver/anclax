@@ -15,6 +15,11 @@ import (
 	"github.com/pkg/errors"
 )
 
+type PlugintMeta struct {
+	Namespace string `json:"name"`
+	// Add other fields as necessary
+}
+
 type Application struct {
 	server        *server.Server
 	prometheus    *metrics.MetricsServer
