@@ -115,3 +115,39 @@ taskID, err := taskrunner.RunIncrementCounter(ctx, &taskgen.IncrementCounterPara
 ```
 
 Tasks run with at-least-once delivery guarantees and automatic retries based on your retry policy configuration. Tasks can also be scheduled to run automatically using cron expressions in the task definition.
+
+## Advanced: Custom Initialization
+
+Customize application startup by providing an `Init` function that runs before the app starts. See [examples/simple/pkg/init.go](examples/simple/pkg/init.go).
+
+```go
+// Runs before the application starts
+func Init(anchorApp *anchor_app.Application, taskrunner taskgen.TaskRunner, myapp anchor_app.Plugin) (*app.App, error) {
+    if err := anchorApp.Plug(myapp); err != nil {
+        return nil, err
+    }
+
+    if _, err := anchorApp.GetService().CreateNewUser(context.Background(), "test", "test"); err != nil {
+        return nil, err
+    }
+    if _, err := taskrunner.RunAutoIncrementCounter(context.Background(), &taskgen.AutoIncrementCounterParameters{
+        Amount: 1,
+    }, taskcore.WithUniqueTag("auto-increment-counter")); err != nil {
+        return nil, err
+    }
+
+    return &app.App{ AnchorApp: anchorApp }, nil
+}
+```
+
+To control how the Anchor application is constructed, you can also customize `InitAnchorApplication`:
+
+```go
+func InitAnchorApplication(cfg *config.Config) (*anchor_app.Application, error) {
+    anchorApp, err := anchor_wire.InitializeApplication(&cfg.Anchor, anchor_config.DefaultLibConfig())
+    if err != nil {
+        return nil, err
+    }
+    return anchorApp, nil
+}
+```

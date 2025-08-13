@@ -115,3 +115,39 @@ taskID, err := taskrunner.RunIncrementCounter(ctx, &taskgen.IncrementCounterPara
 ```
 
 任务运行时具有至少一次交付保证和基于重试策略配置的自动重试。任务还可以使用任务定义中的 cron 表达式安排自动运行。
+
+## 高级：自定义初始化
+
+通过提供一个在应用启动前调用的 `Init` 函数，你可以在启动阶段执行自定义逻辑。参考 [examples/simple/pkg/init.go](examples/simple/pkg/init.go)。
+
+```go
+// 在应用启动之前运行
+func Init(anchorApp *anchor_app.Application, taskrunner taskgen.TaskRunner, myapp anchor_app.Plugin) (*app.App, error) {
+    if err := anchorApp.Plug(myapp); err != nil {
+        return nil, err
+    }
+
+    if _, err := anchorApp.GetService().CreateNewUser(context.Background(), "test", "test"); err != nil {
+        return nil, err
+    }
+    if _, err := taskrunner.RunAutoIncrementCounter(context.Background(), &taskgen.AutoIncrementCounterParameters{
+        Amount: 1,
+    }, taskcore.WithUniqueTag("auto-increment-counter")); err != nil {
+        return nil, err
+    }
+
+    return &app.App{ AnchorApp: anchorApp }, nil
+}
+```
+
+你也可以通过 `InitAnchorApplication` 自定义 Anchor 应用的构建过程：
+
+```go
+func InitAnchorApplication(cfg *config.Config) (*anchor_app.Application, error) {
+    anchorApp, err := anchor_wire.InitializeApplication(&cfg.Anchor, anchor_config.DefaultLibConfig())
+    if err != nil {
+        return nil, err
+    }
+    return anchorApp, nil
+}
+```
