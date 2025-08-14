@@ -69,6 +69,117 @@ func (h *Handler) GetCounter(c *fiber.Ctx) error {
 }
 ```
 
+## Showcase: unique features 🧰
+
+### OpenAPI-powered middleware (no DSL)
+```yaml
+x-check-rules:
+  OperationPermit:
+    useContext: true
+    parameters:
+      - name: operationID
+        schema:
+          type: string
+  ValidateOrgAccess:
+    useContext: true
+    parameters:
+      - name: orgID
+        schema:
+          type: integer
+          format: int32
+
+paths:
+  /orgs/{orgID}/projects/{projectID}:
+    get:
+      operationId: GetProject
+      security:
+        - BearerAuth:
+            - x.ValidateOrgAccess(c, orgID, "viewer")
+            - x.OperationPermit(c, operationID)
+```
+
+### Security scheme (JWT example)
+```yaml
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: macaroon
+```
+
+### Async tasks: at-least-once, retries, cron
+```yaml
+# api/tasks.yaml
+tasks:
+  - name: SendWelcomeEmail
+    description: Send welcome email to new users
+    parameters:
+      type: object
+      required: [userId, templateId]
+      properties:
+        userId:
+          type: integer
+          format: int32
+        templateId:
+          type: string
+    retryPolicy:
+      interval: 5m
+      maxAttempts: 3
+    cron: "0 * * * *"
+```
+
+```go
+// Enqueue outside a tx
+taskID, _ := taskrunner.RunSendWelcomeEmail(ctx, &taskgen.SendWelcomeEmailParameters{
+  UserId: 123, TemplateId: "welcome",
+}, taskcore.WithUniqueTag("welcome-email:123"))
+```
+
+```go
+// Enqueue atomically with your business logic
+_ = model.RunTransactionWithTx(ctx, func(tx pgx.Tx, txm model.ModelInterface) error {
+  // ... create user ...
+  _, err := taskrunner.RunSendWelcomeEmailWithTx(ctx, tx, &taskgen.SendWelcomeEmailParameters{
+    UserId: user.ID, TemplateId: "welcome",
+  })
+  return err
+})
+```
+
+### Transactions: compose everything with WithTx
+```go
+func (s *Service) CreateUserWithTx(ctx context.Context, tx pgx.Tx, username, password string) (int32, error) {
+  txm := s.model.SpawnWithTx(tx)
+  userID, err := txm.CreateUser(ctx, username, password)
+  if err != nil { return 0, err }
+  if err := s.hooks.OnUserCreated(ctx, tx, userID); err != nil { return 0, err }
+  _, err = s.taskRunner.RunSendWelcomeEmailWithTx(ctx, tx, &taskgen.SendWelcomeEmailParameters{ UserId: userID })
+  return userID, err
+}
+```
+
+### Dependency injection with Wire
+```go
+func NewGreeter(m model.ModelInterface) (*Greeter, error) { return &Greeter{Model: m}, nil }
+```
+
+```go
+func InitApp() (*app.App, error) {
+  wire.Build(model.NewModel, NewGreeter /* ...other providers... */)
+  return nil, nil
+}
+```
+
+### Typed SQL with sqlc
+```sql
+-- name: GetCounter :one
+SELECT value FROM counter LIMIT 1;
+
+-- name: IncrementCounter :exec
+UPDATE counter SET value = value + 1;
+```
+
 ## Documentation 📚
 
 - **Transaction Management**: [docs/transaction.md](docs/transaction.md) ([中文](docs/transaction.zh.md))

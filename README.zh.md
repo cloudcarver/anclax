@@ -69,6 +69,117 @@ func (h *Handler) GetCounter(c *fiber.Ctx) error {
 }
 ```
 
+## 功能展示：核心能力 🧰
+
+### 基于 OpenAPI 的中间件（无需 DSL）
+```yaml
+x-check-rules:
+  OperationPermit:
+    useContext: true
+    parameters:
+      - name: operationID
+        schema:
+          type: string
+  ValidateOrgAccess:
+    useContext: true
+    parameters:
+      - name: orgID
+        schema:
+          type: integer
+          format: int32
+
+paths:
+  /orgs/{orgID}/projects/{projectID}:
+    get:
+      operationId: GetProject
+      security:
+        - BearerAuth:
+            - x.ValidateOrgAccess(c, orgID, "viewer")
+            - x.OperationPermit(c, operationID)
+```
+
+### 安全方案（JWT 示例）
+```yaml
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: macaroon
+```
+
+### 异步任务：至少一次投递、重试与定时
+```yaml
+# api/tasks.yaml
+tasks:
+  - name: SendWelcomeEmail
+    description: Send welcome email to new users
+    parameters:
+      type: object
+      required: [userId, templateId]
+      properties:
+        userId:
+          type: integer
+          format: int32
+        templateId:
+          type: string
+    retryPolicy:
+      interval: 5m
+      maxAttempts: 3
+    cron: "0 * * * *"
+```
+
+```go
+// 在事务外入队
+taskID, _ := taskrunner.RunSendWelcomeEmail(ctx, &taskgen.SendWelcomeEmailParameters{
+  UserId: 123, TemplateId: "welcome",
+}, taskcore.WithUniqueTag("welcome-email:123"))
+```
+
+```go
+// 与业务逻辑原子化入队
+_ = model.RunTransactionWithTx(ctx, func(tx pgx.Tx, txm model.ModelInterface) error {
+  // ... create user ...
+  _, err := taskrunner.RunSendWelcomeEmailWithTx(ctx, tx, &taskgen.SendWelcomeEmailParameters{
+    UserId: user.ID, TemplateId: "welcome",
+  })
+  return err
+})
+```
+
+### 事务：用 WithTx 组合一切
+```go
+func (s *Service) CreateUserWithTx(ctx context.Context, tx pgx.Tx, username, password string) (int32, error) {
+  txm := s.model.SpawnWithTx(tx)
+  userID, err := txm.CreateUser(ctx, username, password)
+  if err != nil { return 0, err }
+  if err := s.hooks.OnUserCreated(ctx, tx, userID); err != nil { return 0, err }
+  _, err = s.taskRunner.RunSendWelcomeEmailWithTx(ctx, tx, &taskgen.SendWelcomeEmailParameters{ UserId: userID })
+  return userID, err
+}
+```
+
+### Wire 依赖注入
+```go
+func NewGreeter(m model.ModelInterface) (*Greeter, error) { return &Greeter{Model: m}, nil }
+```
+
+```go
+func InitApp() (*app.App, error) {
+  wire.Build(model.NewModel, NewGreeter /* ...other providers... */)
+  return nil, nil
+}
+```
+
+### 基于 sqlc 的类型化 SQL
+```sql
+-- name: GetCounter :one
+SELECT value FROM counter LIMIT 1;
+
+-- name: IncrementCounter :exec
+UPDATE counter SET value = value + 1;
+```
+
 ## 文档 📚
 
 - **事务管理**：[docs/transaction.zh.md](docs/transaction.zh.md)（[English](docs/transaction.md)）
