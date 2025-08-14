@@ -151,3 +151,52 @@ func InitAnchorApplication(cfg *config.Config) (*anchor_app.Application, error) 
     return anchorApp, nil
 }
 ```
+
+Need additional dependencies inside `Init`? Add them directly as parameters (for example, `model.ModelInterface`), then run `anchor gen`. See the [Wire injection](#wire-injection) section for details.
+
+## Wire Injection
+
+Wire resolves dependencies by matching constructor parameters and return types. You can get anything you need by:
+
+1. Defining a constructor with the dependencies you want as parameters
+2. Registering that constructor in `examples/simple/wire/wire.go` inside `wire.Build(...)`
+3. Running `anchor gen` to generate the injection code
+
+Example constructor:
+
+```go
+// Any dependencies you need are declared as parameters
+func NewGreeter(m model.ModelInterface) (*Greeter, error) {
+    return &Greeter{Model: m}, nil
+}
+```
+
+Register it in `examples/simple/wire/wire.go`:
+
+```go
+func InitApp() (*app.App, error) {
+    wire.Build(
+        // ... existing providers ...
+        model.NewModel,
+        NewGreeter,
+        pkg.Init,
+    )
+    return nil, nil
+}
+```
+
+Use dependencies in `Init` by declaring them as parameters and regenerate:
+
+```go
+// Add what you need, e.g., model.ModelInterface
+func Init(anchorApp *anchor_app.Application, taskrunner taskgen.TaskRunner, m model.ModelInterface, myapp anchor_app.Plugin) (*app.App, error) {
+    // use m here
+    return &app.App{AnchorApp: anchorApp}, nil
+}
+```
+
+After editing constructors, `wire/wire.go`, or `Init` parameters, run:
+
+```bash
+anchor gen
+```
