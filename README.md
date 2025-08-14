@@ -1,196 +1,87 @@
-# Anchor 
+# Anchor
 
 English | [中文](README.zh.md)
 
-Anchor is a framework for building serverless and reliable applications in speed of light with confidence.
+Build serverless, reliable apps at lightspeed — with confidence.
 
-Anchor provides the following features:
+### Highlights
 
-- [x] Authentication & Authorization with Macaroons
-- [x] Asynchronous task management with at-least-once delivery
-- [x] Database query interface with sqlc
-- [x] HTTP API server with Fiber
-- [x] Plugin system for easily extending the framework
+- **YAML-first, codegen-backed**: Define HTTP and task schemas in YAML; Anchor generates strongly-typed interfaces so missing implementations fail at compile time, not in prod.
+- **Async tasks you can trust**: At-least-once delivery, automatic retries, and cron scheduling out of the box.
+- **Transaction-safe flows**: A `WithTx` pattern ensures hooks always run and side effects are consistent.
+- **Typed database layer**: Powered by `sqlc` for safe, fast queries.
+- **Fast HTTP server**: Built on Fiber for performance and ergonomics.
+- **AuthN/Z built-in**: Macaroons-based authentication and authorization.
+- **Pluggable architecture**: First-class plugin system for clean modularity.
+- **Ergonomic DI**: Wire-based dependency injection keeps code testable and explicit.
 
-The core philosophy of Anchor is to provide confidence in the codebase by:
+### Why Anchor? (The problem it solves)
 
-- Use YAML to define schema and generate interfaces to avoid runtime errors of missing implementation, meaning you can catch errors at compile time.
-- Use event-driven architecture to build a system that is easy to reason about and easy to extend.
-- All modules are mockable and can be tested with ease.
+- **Glue-code fatigue**: Many teams stitch HTTP, DB, tasks, DI, and auth by hand, leaving implicit contracts and runtime surprises. Anchor makes those contracts explicit and generated.
+- **Background jobs are hard**: Idempotency, retries, and delivery guarantees are non-trivial. Anchor ships a task engine with at-least-once semantics and cron.
+- **Consistency across boundaries**: Keep handlers, tasks, and hooks transactional using `WithTx` so invariants hold.
+- **Confidence and testability**: Every generated interface is mockable; behavior is easy to test.
 
-## Documentation
+### Key advantages
 
-- [Transaction Management](docs/transaction.md) ([中文](docs/transaction.zh.md)) - Learn about Anchor's `WithTx` pattern, plugin system, and how transactions ensure at-least-once delivery and guaranteed hook execution
-- [Middleware (x-functions and x-check-rules)](docs/middleware.md) ([中文](docs/middleware.zh.md)) - Learn how to implement custom validation, authorization, and utility functions using Anchor's middleware system
+- **Compile-time confidence**: Schema → interfaces → concrete implementations you cannot forget to write.
+- **Productivity**: `anchor init` + `anchor gen` reduces boilerplate and wiring.
+- **Extensibility**: Clean plugin boundaries and event-driven architecture.
+- **Predictability**: Singletons for core services, DI for clarity, and well-defined lifecycles.
 
-### Async Tasks Documentation
-
-- **[Async Tasks Tutorial](docs/async-tasks-tutorial.md)** ([中文](docs/async-tasks-tutorial.zh.md)) - User-friendly guide with step-by-step examples for getting started with async tasks
-- **[Async Tasks Technical Reference](docs/async-tasks-technical.md)** ([中文](docs/async-tasks-technical.zh.md)) - Comprehensive technical documentation covering architecture, lifecycle, and advanced features
-
-## Quick Start
+## Quick start
 
 ```bash
 go install github.com/cloudcarver/anchor/cmd/anchor@latest
 anchor init . github.com/my/app
+anchor gen
 ```
 
-### Wire Injection
+## One‑minute tour
 
-Wire resolves dependencies by matching constructor parameters and return types. You can get anything you need by:
+1) Define an endpoint (OpenAPI YAML)
 
-- Singleton pattern: Most core services (e.g., config, database, model) are singletons to ensure a single shared instance across the app. This avoids duplicated connections/state and makes behavior predictable.
-- As your project grows, hand-wiring singletons becomes error-prone. The dependency graph gets complex quickly.
-- With Wire, you declare required dependencies as constructor parameters, and Wire injects them for you automatically. You can inspect the auto-generated initialization in `examples/simple/wire/wire_gen.go`.
-
-1. Defining a constructor with the dependencies you want as parameters
-2. Registering that constructor in `examples/simple/wire/wire.go` inside `wire.Build(...)`
-3. Running `anchor gen` to generate the injection code
-
-Example constructor:
-
-```go
-// Any dependencies you need are declared as parameters
-func NewGreeter(m model.ModelInterface) (*Greeter, error) {
-    return &Greeter{Model: m}, nil
-}
+```yaml
+paths:
+  /api/v1/counter:
+    get:
+      operationId: getCounter
 ```
 
-Register it in `examples/simple/wire/wire.go`:
+2) Define a task
 
-```go
-func InitApp() (*app.App, error) {
-    wire.Build(
-        // ... existing providers ...
-        model.NewModel,
-        NewGreeter,
-    )
-    return nil, nil
-}
+```yaml
+tasks:
+  incrementCounter:
+    description: Increment the counter value
+    cron: "*/1 * * * *"
 ```
 
-After editing constructors or `wire/wire.go`, run:
+3) Generate and implement
 
 ```bash
 anchor gen
 ```
 
-1. Define the HTTP schema `api/v1.yaml` with YAML format.
-
-  ```yaml
-  openapi: 3.0.0
-  info:
-    title: Anchor API
-    version: 1.0.0
-    description: Anchor API
-
-  paths:
-    /api/v1/counter:
-      get:
-        operationId: getCounter
-        summary: Get the counter value
-        responses:
-          "200":
-            description: The counter value
-  ```
-
-2. Define the database schema `sql/migrations/0001_init.up.sql` with SQL format.
-
-  ```sql
-  CREATE TABLE IF NOT EXISTS counter (
-    value INTEGER NOT NULL DEFAULT 0
-  );
-  ```
-
-  ```sql
-  -- name: GetCounter :one
-  SELECT value FROM counter LIMIT 1;
-
-  -- name: IncrementCounter :exec
-  UPDATE counter SET value = value + 1;
-  ```
-
-3. Define the task schema `api/tasks.yaml` with YAML format.
-
-  ```yaml
-  tasks:
-    incrementCounter:
-      description: Increment the counter value
-      cron: "*/1 * * * *" # every 1 seconds
-  ```
-
-4. Run code generation.
-
-```
-anchor gen
-```
-
-5. Implement the interfaces.
-
-  ```go
-  func (h *Handler) GetCounter(c *fiber.Ctx) error {
-    return c.JSON(apigen.Counter{Count: 0})
-  }
-  ```
-
-  ```go
-  func (e *Executor) IncrementCounter(ctx context.Context, params *IncrementCounterParameters) error {
-    return e.model.IncrementCounter(ctx)
-  }
-  ```
-
-6. Configure the application using environment variables.
-
-7. Build and run the application.
-
-## Running Async Tasks
-
-After defining tasks in `api/tasks.yaml` and running `anchor gen`, the framework auto-generates a task runner with `Run` methods for each task. Simply call these methods to execute tasks asynchronously:
-
 ```go
-// Trigger the incrementCounter task from step 4
-taskID, err := taskrunner.RunIncrementCounter(ctx, &taskgen.IncrementCounterParameters{
-  Amount: 1,
-})
-```
-
-Tasks run with at-least-once delivery guarantees and automatic retries based on your retry policy configuration. Tasks can also be scheduled to run automatically using cron expressions in the task definition.
-
-
-## Advanced: Custom Initialization
-
-Customize application startup by providing an `Init` function that runs before the app starts. See [examples/simple/pkg/init.go](examples/simple/pkg/init.go).
-
-```go
-// Runs before the application starts
-func Init(anchorApp *anchor_app.Application, taskrunner taskgen.TaskRunner, myapp anchor_app.Plugin) (*app.App, error) {
-    if err := anchorApp.Plug(myapp); err != nil {
-        return nil, err
-    }
-
-    if _, err := anchorApp.GetService().CreateNewUser(context.Background(), "test", "test"); err != nil {
-        return nil, err
-    }
-    if _, err := taskrunner.RunAutoIncrementCounter(context.Background(), &taskgen.AutoIncrementCounterParameters{
-        Amount: 1,
-    }, taskcore.WithUniqueTag("auto-increment-counter")); err != nil {
-        return nil, err
-    }
-
-    return &app.App{ AnchorApp: anchorApp }, nil
+func (h *Handler) GetCounter(c *fiber.Ctx) error {
+  return c.JSON(apigen.Counter{Count: 0})
 }
 ```
 
-To control how the Anchor application is constructed, you can also customize `InitAnchorApplication`:
+## Documentation
 
-```go
-func InitAnchorApplication(cfg *config.Config) (*anchor_app.Application, error) {
-    anchorApp, err := anchor_wire.InitializeApplication(&cfg.Anchor, anchor_config.DefaultLibConfig())
-    if err != nil {
-        return nil, err
-    }
-    return anchorApp, nil
-}
-```
+- **Transaction Management**: [docs/transaction.md](docs/transaction.md) ([中文](docs/transaction.zh.md))
+- **Middleware (x-functions & x-check-rules)**: [docs/middleware.md](docs/middleware.md) ([中文](docs/middleware.zh.md))
+- **Async Tasks**: Tutorial [docs/async-tasks-tutorial.md](docs/async-tasks-tutorial.md) · Tech reference [docs/async-tasks-technical.md](docs/async-tasks-technical.md) ([中文](docs/async-tasks-tutorial.zh.md), [中文](docs/async-tasks-technical.zh.md))
 
-Need additional dependencies inside `Init`? Add them directly as parameters (for example, `model.ModelInterface`), then run `anchor gen`. See the [Wire injection](#wire-injection) section for details.
+## Examples
+
+- `examples/simple` — minimal end-to-end sample with HTTP, tasks, DI, and DB.
+
+## Deep dive (original full guide)
+
+Prefer the detailed step-by-step? Read the archived full guide:
+
+- English: `docs/README-full.md`
+- 中文：`docs/README.zh-full.md`
