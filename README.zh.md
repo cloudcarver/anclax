@@ -39,6 +39,10 @@ anchor init . github.com/my/app
 
 Wire 通过匹配构造函数的参数和返回类型来解析依赖。你可以按以下方式获取任意依赖：
 
+- 单例模式（Singleton）：大多数核心服务（如配置、数据库、模型）作为单例提供，确保全局只有一个共享实例，避免重复连接/状态并提升可预测性。
+- 随着项目增长，手动初始化并串联所有单例会变得复杂且易错，依赖图会迅速膨胀。
+- 使用 Wire 时，你只需在构造函数参数中声明所需依赖，Wire 会自动注入。你可以在 `examples/simple/wire/wire_gen.go` 查看自动生成的初始化代码。
+
 1. 定义一个构造函数（constructor），将所需依赖作为参数声明
 2. 在 `examples/simple/wire/wire.go` 的 `wire.Build(...)` 中注册该构造函数
 3. 运行 `anchor gen` 生成注入代码
@@ -60,23 +64,12 @@ func InitApp() (*app.App, error) {
         // ... existing providers ...
         model.NewModel,
         NewGreeter,
-        pkg.Init,
     )
     return nil, nil
 }
 ```
 
-在 `Init` 中直接通过参数获取依赖，然后重新生成：
-
-```go
-// 例如需要 model.ModelInterface，则直接添加到参数中
-func Init(anchorApp *anchor_app.Application, taskrunner taskgen.TaskRunner, m model.ModelInterface, myapp anchor_app.Plugin) (*app.App, error) {
-    // 使用 m
-    return &app.App{AnchorApp: anchorApp}, nil
-}
-```
-
-当你修改了构造函数、`wire/wire.go` 或 `Init` 的参数后，运行：
+当你修改了构造函数或 `wire/wire.go` 后，运行：
 
 ```bash
 anchor gen
@@ -205,6 +198,10 @@ func InitAnchorApplication(cfg *config.Config) (*anchor_app.Application, error) 
 
 Wire 通过匹配构造函数的参数和返回类型来解析依赖。你可以按以下方式获取任意依赖：
 
+- 单例模式（Singleton）：大多数核心服务（如配置、数据库、模型）作为单例提供，确保全局只有一个共享实例，避免重复连接/状态并提升可预测性。
+- 随着项目增长，手动初始化并串联所有单例会变得复杂且易错，依赖图会迅速膨胀。
+- 使用 Wire 时，你只需在构造函数参数中声明所需依赖，Wire 会自动注入。你可以在 `examples/simple/wire/wire_gen.go` 查看自动生成的初始化代码。
+
 1. 定义一个构造函数（constructor），将所需依赖作为参数声明
 2. 在 `examples/simple/wire/wire.go` 的 `wire.Build(...)` 中注册该构造函数
 3. 运行 `anchor gen` 生成注入代码
@@ -226,23 +223,12 @@ func InitApp() (*app.App, error) {
         // ... existing providers ...
         model.NewModel,
         NewGreeter,
-        pkg.Init,
     )
     return nil, nil
 }
 ```
 
-在 `Init` 中直接通过参数获取依赖，然后重新生成：
-
-```go
-// 例如需要 model.ModelInterface，则直接添加到参数中
-func Init(anchorApp *anchor_app.Application, taskrunner taskgen.TaskRunner, m model.ModelInterface, myapp anchor_app.Plugin) (*app.App, error) {
-    // 使用 m
-    return &app.App{AnchorApp: anchorApp}, nil
-}
-```
-
-当你修改了构造函数、`wire/wire.go` 或 `Init` 的参数后，运行：
+当你修改了构造函数或 `wire/wire.go` 后，运行：
 
 ```bash
 anchor gen

@@ -39,6 +39,10 @@ anchor init . github.com/my/app
 
 Wire resolves dependencies by matching constructor parameters and return types. You can get anything you need by:
 
+- Singleton pattern: Most core services (e.g., config, database, model) are singletons to ensure a single shared instance across the app. This avoids duplicated connections/state and makes behavior predictable.
+- As your project grows, hand-wiring singletons becomes error-prone. The dependency graph gets complex quickly.
+- With Wire, you declare required dependencies as constructor parameters, and Wire injects them for you automatically. You can inspect the auto-generated initialization in `examples/simple/wire/wire_gen.go`.
+
 1. Defining a constructor with the dependencies you want as parameters
 2. Registering that constructor in `examples/simple/wire/wire.go` inside `wire.Build(...)`
 3. Running `anchor gen` to generate the injection code
@@ -60,23 +64,12 @@ func InitApp() (*app.App, error) {
         // ... existing providers ...
         model.NewModel,
         NewGreeter,
-        pkg.Init,
     )
     return nil, nil
 }
 ```
 
-Use dependencies in `Init` by declaring them as parameters and regenerate:
-
-```go
-// Add what you need, e.g., model.ModelInterface
-func Init(anchorApp *anchor_app.Application, taskrunner taskgen.TaskRunner, m model.ModelInterface, myapp anchor_app.Plugin) (*app.App, error) {
-    // use m here
-    return &app.App{AnchorApp: anchorApp}, nil
-}
-```
-
-After editing constructors, `wire/wire.go`, or `Init` parameters, run:
+After editing constructors or `wire/wire.go`, run:
 
 ```bash
 anchor gen
