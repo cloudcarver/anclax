@@ -35,6 +35,46 @@ go install github.com/cloudcarver/anchor/cmd/anchor@latest
 anchor init . github.com/my/app
 ```
 
+### Wire Injection
+
+Wire resolves dependencies by matching constructor parameters and return types. You can get anything you need by:
+
+- Singleton pattern: Most core services (e.g., config, database, model) are singletons to ensure a single shared instance across the app. This avoids duplicated connections/state and makes behavior predictable.
+- As your project grows, hand-wiring singletons becomes error-prone. The dependency graph gets complex quickly.
+- With Wire, you declare required dependencies as constructor parameters, and Wire injects them for you automatically. You can inspect the auto-generated initialization in `examples/simple/wire/wire_gen.go`.
+
+1. Defining a constructor with the dependencies you want as parameters
+2. Registering that constructor in `examples/simple/wire/wire.go` inside `wire.Build(...)`
+3. Running `anchor gen` to generate the injection code
+
+Example constructor:
+
+```go
+// Any dependencies you need are declared as parameters
+func NewGreeter(m model.ModelInterface) (*Greeter, error) {
+    return &Greeter{Model: m}, nil
+}
+```
+
+Register it in `examples/simple/wire/wire.go`:
+
+```go
+func InitApp() (*app.App, error) {
+    wire.Build(
+        // ... existing providers ...
+        model.NewModel,
+        NewGreeter,
+    )
+    return nil, nil
+}
+```
+
+After editing constructors or `wire/wire.go`, run:
+
+```bash
+anchor gen
+```
+
 1. Define the HTTP schema `api/v1.yaml` with YAML format.
 
   ```yaml
@@ -115,3 +155,42 @@ taskID, err := taskrunner.RunIncrementCounter(ctx, &taskgen.IncrementCounterPara
 ```
 
 Tasks run with at-least-once delivery guarantees and automatic retries based on your retry policy configuration. Tasks can also be scheduled to run automatically using cron expressions in the task definition.
+
+
+## Advanced: Custom Initialization
+
+Customize application startup by providing an `Init` function that runs before the app starts. See [examples/simple/pkg/init.go](examples/simple/pkg/init.go).
+
+```go
+// Runs before the application starts
+func Init(anchorApp *anchor_app.Application, taskrunner taskgen.TaskRunner, myapp anchor_app.Plugin) (*app.App, error) {
+    if err := anchorApp.Plug(myapp); err != nil {
+        return nil, err
+    }
+
+    if _, err := anchorApp.GetService().CreateNewUser(context.Background(), "test", "test"); err != nil {
+        return nil, err
+    }
+    if _, err := taskrunner.RunAutoIncrementCounter(context.Background(), &taskgen.AutoIncrementCounterParameters{
+        Amount: 1,
+    }, taskcore.WithUniqueTag("auto-increment-counter")); err != nil {
+        return nil, err
+    }
+
+    return &app.App{ AnchorApp: anchorApp }, nil
+}
+```
+
+To control how the Anchor application is constructed, you can also customize `InitAnchorApplication`:
+
+```go
+func InitAnchorApplication(cfg *config.Config) (*anchor_app.Application, error) {
+    anchorApp, err := anchor_wire.InitializeApplication(&cfg.Anchor, anchor_config.DefaultLibConfig())
+    if err != nil {
+        return nil, err
+    }
+    return anchorApp, nil
+}
+```
+
+Need additional dependencies inside `Init`? Add them directly as parameters (for example, `model.ModelInterface`), then run `anchor gen`. See the [Wire injection](#wire-injection) section for details.

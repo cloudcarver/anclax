@@ -35,6 +35,46 @@ go install github.com/cloudcarver/anchor/cmd/anchor@latest
 anchor init . github.com/my/app
 ```
 
+### Wire 注入
+
+Wire 通过匹配构造函数的参数和返回类型来解析依赖。你可以按以下方式获取任意依赖：
+
+- 单例模式（Singleton）：大多数核心服务（如配置、数据库、模型）作为单例提供，确保全局只有一个共享实例，避免重复连接/状态并提升可预测性。
+- 随着项目增长，手动初始化并串联所有单例会变得复杂且易错，依赖图会迅速膨胀。
+- 使用 Wire 时，你只需在构造函数参数中声明所需依赖，Wire 会自动注入。你可以在 `examples/simple/wire/wire_gen.go` 查看自动生成的初始化代码。
+
+1. 定义一个构造函数（constructor），将所需依赖作为参数声明
+2. 在 `examples/simple/wire/wire.go` 的 `wire.Build(...)` 中注册该构造函数
+3. 运行 `anchor gen` 生成注入代码
+
+构造函数示例：
+
+```go
+// 需要什么就声明什么依赖
+func NewGreeter(m model.ModelInterface) (*Greeter, error) {
+    return &Greeter{Model: m}, nil
+}
+```
+
+在 `examples/simple/wire/wire.go` 中注册：
+
+```go
+func InitApp() (*app.App, error) {
+    wire.Build(
+        // ... existing providers ...
+        model.NewModel,
+        NewGreeter,
+    )
+    return nil, nil
+}
+```
+
+当你修改了构造函数或 `wire/wire.go` 后，运行：
+
+```bash
+anchor gen
+```
+
 1. 使用 YAML 格式定义 HTTP 模式 `api/v1.yaml`。
 
   ```yaml
@@ -115,3 +155,41 @@ taskID, err := taskrunner.RunIncrementCounter(ctx, &taskgen.IncrementCounterPara
 ```
 
 任务运行时具有至少一次交付保证和基于重试策略配置的自动重试。任务还可以使用任务定义中的 cron 表达式安排自动运行。
+
+## 高级：自定义初始化
+
+通过提供一个在应用启动前调用的 `Init` 函数，你可以在启动阶段执行自定义逻辑。参考 [examples/simple/pkg/init.go](examples/simple/pkg/init.go)。
+
+```go
+// 在应用启动之前运行
+func Init(anchorApp *anchor_app.Application, taskrunner taskgen.TaskRunner, myapp anchor_app.Plugin) (*app.App, error) {
+    if err := anchorApp.Plug(myapp); err != nil {
+        return nil, err
+    }
+
+    if _, err := anchorApp.GetService().CreateNewUser(context.Background(), "test", "test"); err != nil {
+        return nil, err
+    }
+    if _, err := taskrunner.RunAutoIncrementCounter(context.Background(), &taskgen.AutoIncrementCounterParameters{
+        Amount: 1,
+    }, taskcore.WithUniqueTag("auto-increment-counter")); err != nil {
+        return nil, err
+    }
+
+    return &app.App{ AnchorApp: anchorApp }, nil
+}
+```
+
+你也可以通过 `InitAnchorApplication` 自定义 Anchor 应用的构建过程：
+
+```go
+func InitAnchorApplication(cfg *config.Config) (*anchor_app.Application, error) {
+    anchorApp, err := anchor_wire.InitializeApplication(&cfg.Anchor, anchor_config.DefaultLibConfig())
+    if err != nil {
+        return nil, err
+    }
+    return anchorApp, nil
+}
+```
+
+在 `Init` 中需要额外的依赖？只需将其直接声明为参数（例如 `model.ModelInterface`），然后运行 `anchor gen`。详细说明见[Wire 注入](#wire-注入)部分。
