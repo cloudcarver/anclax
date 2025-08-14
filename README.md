@@ -37,6 +37,28 @@ anchor init . github.com/my/app
 anchor gen
 ```
 
+## Hands-on: try it now 🧑‍💻
+
+```bash
+# 1) Scaffold into folder 'demo'
+anchor init demo github.com/you/demo
+
+# 2) Generate code (can be re-run anytime)
+cd demo
+anchor gen
+
+# 3) Start the stack (DB + API + worker)
+docker compose up
+```
+
+In another terminal:
+
+```bash
+curl http://localhost:2910/api/v1/counter
+# Optional sign-in if your template includes auth
+curl -X POST http://localhost:2910/api/v1/auth/sign-in -H "Content-Type: application/json" -d '{"name":"test","password":"test"}'
+```
+
 ## One‑minute tour 🧭
 
 1) Define an endpoint (OpenAPI YAML) 🧩

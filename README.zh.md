@@ -37,6 +37,28 @@ anchor init . github.com/my/app
 anchor gen
 ```
 
+## 上手实践：现在就跑起来 🧑‍💻
+
+```bash
+# 1）在文件夹 demo 下初始化
+anchor init demo github.com/you/demo
+
+# 2）生成代码（可重复执行）
+cd demo
+anchor gen
+
+# 3）启动（DB + API + worker）
+docker compose up
+```
+
+在另一个终端：
+
+```bash
+curl http://localhost:2910/api/v1/counter
+# 如果模板包含 auth，可选登录
+curl -X POST http://localhost:2910/api/v1/auth/sign-in -H "Content-Type: application/json" -d '{"name":"test","password":"test"}'
+```
+
 ## 1 分钟上手 🧭
 
 1）定义一个接口（OpenAPI YAML）🧩
