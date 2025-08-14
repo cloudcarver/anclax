@@ -202,6 +202,56 @@ SELECT value FROM counter LIMIT 1;
 UPDATE counter SET value = value + 1;
 ```
 
+## 运行异步任务 ⚙️
+
+```go
+// 触发 incrementCounter 任务
+taskID, err := taskrunner.RunIncrementCounter(ctx, &taskgen.IncrementCounterParameters{})
+if err != nil {
+  // 处理错误
+}
+```
+
+任务具有至少一次交付保证，并会按重试策略自动重试。你也可以在 `api/tasks.yaml` 中通过 cron 表达式进行定时调度。
+
+## 高级：自定义初始化 🧩
+
+你可以通过在应用启动前提供一个 `Init` 函数来执行自定义逻辑：
+
+```go
+// 在应用启动之前运行
+func Init(anchorApp *anchor_app.Application, taskrunner taskgen.TaskRunner, myapp anchor_app.Plugin) (*app.App, error) {
+    if err := anchorApp.Plug(myapp); err != nil {
+        return nil, err
+    }
+
+    if _, err := anchorApp.GetService().CreateNewUser(context.Background(), "test", "test"); err != nil {
+        return nil, err
+    }
+    if _, err := taskrunner.RunAutoIncrementCounter(context.Background(), &taskgen.AutoIncrementCounterParameters{
+        Amount: 1,
+    }, taskcore.WithUniqueTag("auto-increment-counter")); err != nil {
+        return nil, err
+    }
+
+    return &app.App{ AnchorApp: anchorApp }, nil
+}
+```
+
+你也可以通过 `InitAnchorApplication` 自定义 Anchor 应用的构建过程：
+
+```go
+func InitAnchorApplication(cfg *config.Config) (*anchor_app.Application, error) {
+    anchorApp, err := anchor_wire.InitializeApplication(&cfg.Anchor, anchor_config.DefaultLibConfig())
+    if err != nil {
+        return nil, err
+    }
+    return anchorApp, nil
+}
+```
+
+在 `Init` 中需要额外的依赖？直接将其声明为参数（例如 `model.ModelInterface`），然后运行 `anchor gen`。
+
 ## 文档 📚
 
 - **事务管理**：[docs/transaction.zh.md](docs/transaction.zh.md)（[English](docs/transaction.md)）
@@ -212,9 +262,4 @@ UPDATE counter SET value = value + 1;
 
 - `examples/simple` —— 一个包含 HTTP、任务、DI 与 DB 的最小端到端示例。
 
-## 深入阅读（完整原文）🔎
 
-更偏爱细致的逐步讲解？请阅读归档的完整版：
-
-- English: `docs/README-full.md`
-- 中文：`docs/README.zh-full.md`

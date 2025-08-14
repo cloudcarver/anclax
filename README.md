@@ -202,6 +202,56 @@ SELECT value FROM counter LIMIT 1;
 UPDATE counter SET value = value + 1;
 ```
 
+## Running async tasks ⚙️
+
+```go
+// Trigger the incrementCounter task
+taskID, err := taskrunner.RunIncrementCounter(ctx, &taskgen.IncrementCounterParameters{})
+if err != nil {
+  // handle error
+}
+```
+
+Tasks run with at-least-once delivery guarantees and automatic retries based on your retry policy. You can also schedule tasks via cron expressions in `api/tasks.yaml`.
+
+## Advanced: Custom initialization 🧩
+
+You can run custom logic before the app starts by providing an `Init` function:
+
+```go
+// Runs before the application starts
+func Init(anchorApp *anchor_app.Application, taskrunner taskgen.TaskRunner, myapp anchor_app.Plugin) (*app.App, error) {
+    if err := anchorApp.Plug(myapp); err != nil {
+        return nil, err
+    }
+
+    if _, err := anchorApp.GetService().CreateNewUser(context.Background(), "test", "test"); err != nil {
+        return nil, err
+    }
+    if _, err := taskrunner.RunAutoIncrementCounter(context.Background(), &taskgen.AutoIncrementCounterParameters{
+        Amount: 1,
+    }, taskcore.WithUniqueTag("auto-increment-counter")); err != nil {
+        return nil, err
+    }
+
+    return &app.App{ AnchorApp: anchorApp }, nil
+}
+```
+
+To customize how the Anchor application is constructed, override `InitAnchorApplication`:
+
+```go
+func InitAnchorApplication(cfg *config.Config) (*anchor_app.Application, error) {
+    anchorApp, err := anchor_wire.InitializeApplication(&cfg.Anchor, anchor_config.DefaultLibConfig())
+    if err != nil {
+        return nil, err
+    }
+    return anchorApp, nil
+}
+```
+
+Need more dependencies inside `Init`? Add them as parameters (e.g., `model.ModelInterface`) and run `anchor gen`.
+
 ## Documentation 📚
 
 - **Transaction Management**: [docs/transaction.md](docs/transaction.md) ([中文](docs/transaction.zh.md))
@@ -212,9 +262,4 @@ UPDATE counter SET value = value + 1;
 
 - `examples/simple` — minimal end-to-end sample with HTTP, tasks, DI, and DB.
 
-## Deep dive (original full guide) 🔎
 
-Prefer the detailed step-by-step? Read the archived full guide:
-
-- English: `docs/README-full.md`
-- 中文：`docs/README.zh-full.md`
