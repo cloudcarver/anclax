@@ -2,6 +2,8 @@
 
 English | [中文](README.zh.md)
 
+![social preview](docs/images/social-preview.jpg)
+
 Build serverless, reliable apps at lightspeed ⚡ — with confidence 🛡️.
 
 ### Highlights ✨
