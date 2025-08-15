@@ -5,6 +5,7 @@ import (
 	"myexampleapp/pkg/config"
 	"myexampleapp/pkg/zcore/app"
 	"myexampleapp/pkg/zgen/taskgen"
+	"time"
 
 	anchor_config "github.com/cloudcarver/anchor/pkg/config"
 	anchor_wire "github.com/cloudcarver/anchor/wire"
@@ -32,10 +33,13 @@ func Init(anchorApp *anchor_app.Application, taskrunner taskgen.TaskRunner, myap
 	}
 
 	// Add your custom initialization logic here.
-	if _, err := anchorApp.GetService().CreateNewUser(context.Background(), "test", "test"); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if _, err := anchorApp.GetService().CreateNewUser(ctx, "test", "test"); err != nil {
 		return nil, err
 	}
-	if _, err := taskrunner.RunAutoIncrementCounter(context.Background(), &taskgen.AutoIncrementCounterParameters{
+	if _, err := taskrunner.RunAutoIncrementCounter(ctx, &taskgen.AutoIncrementCounterParameters{
 		Amount: 1,
 	}, taskcore.WithUniqueTag("auto-increment-counter")); err != nil {
 		return nil, err
