@@ -6,6 +6,8 @@ English | [中文](README.zh.md)
 
 Build serverless, reliable apps at lightspeed ⚡ — with confidence 🛡️.
 
+Anchor is a pragmatic framework for small‑to‑medium applications—the kind a single PostgreSQL instance can comfortably serve. It favors a scalable monolith with stateless replicas and a durable Postgres‑backed task queue, so you can ship fast now and scale with confidence.
+
 ### Highlights ✨
 
 - **YAML-first, codegen-backed**: Define HTTP and task schemas in YAML; Anchor generates strongly-typed interfaces so missing implementations fail at compile time, not in prod.
