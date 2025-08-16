@@ -6,6 +6,8 @@ English | [中文](README.zh.md)
 
 Build serverless, reliable apps at lightspeed ⚡ — with confidence 🛡️.
 
+Anchor is a definition‑first framework for small–medium apps (single PostgreSQL). Define APIs and tasks as schemas; generated code moves correctness to compile time.
+
 ### Highlights ✨
 
 - **YAML-first, codegen-backed**: Define HTTP and task schemas in YAML; Anchor generates strongly-typed interfaces so missing implementations fail at compile time, not in prod.
@@ -30,6 +32,18 @@ Build serverless, reliable apps at lightspeed ⚡ — with confidence 🛡️.
 - **Productivity**: `anchor init` + `anchor gen` reduces boilerplate and wiring.
 - **Extensibility**: Clean plugin boundaries and event-driven architecture.
 - **Predictability**: Singletons for core services, DI for clarity, and well-defined lifecycles.
+
+## Architecture 🏗️
+
+Anchor helps you build quickly while staying scalable and production‑ready.
+
+- **Single PostgreSQL backbone**: One PostgreSQL database powers both transactional business logic and the durable task queue, keeping state consistent and operations simple. For many products, a well‑provisioned instance (e.g., 32 vCPU) goes a very long way.
+- **Stateless application nodes**: HTTP servers are stateless and horizontally scalable; you can run multiple replicas without coordination concerns.
+- **Task queue as integration fabric**: Use async tasks to decouple modules. For example, when a payment completes, enqueue an `OrderFinished` task and do any factory‑module inserts in its handler—no factory logic inside the payment module.
+- **Built‑in worker, flexible deployment**: Anchor includes an async task worker. Run it in‑process, as separate long‑running workers, or disable it for serverless HTTP (e.g., AWS Lambda) while keeping workers on regular servers.
+- **Monolith, not microservices**: Anchor favors a pragmatic, scalable monolith and is not aimed at multi‑million QPS microservice fleets.
+
+These choices maximize early velocity and give you a clear, reliable path to scale with confidence.
 
 ## Quick start 🚀
 
