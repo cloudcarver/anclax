@@ -76,7 +76,7 @@ func (m *Model) RunTransaction(ctx context.Context, f func(model ModelInterface)
 		return f(model)
 	})
 }
-func NewModel(cfg *config.Config, meta anchor_app.PlugintMeta) (ModelInterface, error) {
+func NewModel(cfg *config.Config, meta anchor_app.PluginMeta) (ModelInterface, error) {
 	if cfg.Anchor.Pg.DSN == nil {
 		return nil, errors.New("dsn is not set")
 	}

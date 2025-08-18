@@ -15,7 +15,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-type PlugintMeta struct {
+type PluginMeta struct {
 	Namespace string `json:"name"`
 	// Add other fields as necessary
 }

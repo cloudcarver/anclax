@@ -14,8 +14,8 @@ import (
 	"github.com/cloudcarver/anchor/pkg/taskcore"
 )
 
-func ProvidePlugintMeta() anchor_app.PlugintMeta {
-	return anchor_app.PlugintMeta{
+func ProvidePluginMeta() anchor_app.PluginMeta {
+	return anchor_app.PluginMeta{
 		// This field is for avoiding conflicts with other Anchor plugins.
 		// It will be used as the table name of the migration table.
 		// You can change it to any string that is unique in your application.

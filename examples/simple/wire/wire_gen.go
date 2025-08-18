@@ -30,8 +30,8 @@ func InitApp() (*app.App, error) {
 	}
 	taskStoreInterface := injection.InjectTaskStore(application)
 	taskRunner := taskgen.NewTaskRunner(taskStoreInterface)
-	plugintMeta := pkg.ProvidePlugintMeta()
-	modelInterface, err := model.NewModel(configConfig, plugintMeta)
+	PluginMeta := pkg.ProvidePluginMeta()
+	modelInterface, err := model.NewModel(configConfig, PluginMeta)
 	if err != nil {
 		return nil, err
 	}
