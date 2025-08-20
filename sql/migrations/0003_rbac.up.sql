@@ -1,0 +1,29 @@
+BEGIN;
+
+CREATE TABLE IF NOT EXISTS anchor.roles (
+    id          SERIAL PRIMARY KEY,
+    name        VARCHAR(32) NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    created_at  TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
+    UNIQUE (name)
+);
+
+CREATE TABLE IF NOT EXISTS anchor.user_roles (
+    user_id    INTEGER NOT NULL REFERENCES anchor.users(id) ON UPDATE CASCADE,
+    role_id    INTEGER NOT NULL REFERENCES anchor.roles(id) ON UPDATE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
+    PRIMARY KEY (user_id, role_id)
+);
+
+CREATE TABLE IF NOT EXISTS anchor.role_permissions (
+    id         SERIAL PRIMARY KEY,
+    role_id    INTEGER NOT NULL REFERENCES anchor.roles(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    type       VARCHAR(32) NOT NULL, -- operation
+    rule       TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+COMMIT;
