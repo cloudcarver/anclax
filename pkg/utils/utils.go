@@ -177,4 +177,12 @@ func UpperFirst(name string) string {
 	return strings.ToUpper(name[:1]) + name[1:]
 }
 
+func ReplaceSensitiveStringBySha256(text string, sensitiveStr string) string {
+	h := sha256.New()
+	_, _ = h.Write([]byte(sensitiveStr))
+	bs := h.Sum(nil)
+	hashed := fmt.Sprintf("%x", bs)
+	return strings.ReplaceAll(text, sensitiveStr, fmt.Sprintf("<sha256:%s>", hashed))
+}
+
 func Noop() {}

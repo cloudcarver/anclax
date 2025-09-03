@@ -13,6 +13,7 @@ import (
 	anchor_app "github.com/cloudcarver/anchor/pkg/app"
 	"github.com/cloudcarver/anchor/pkg/logger"
 	"github.com/cloudcarver/anchor/pkg/utils"
+	anchor_utils "github.com/cloudcarver/anchor/pkg/utils"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
@@ -93,7 +94,7 @@ func NewModel(cfg *config.Config, meta anchor_app.PluginMeta) (ModelInterface, e
 
 	config, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to parse pgxpool config: %s", dsn)
+		return nil, errors.Wrapf(err, "failed to parse pgxpool config: %s", anchor_utils.ReplaceSensitiveStringBySha256(dsn, anchorCfg.Pg.Password))
 	}
 	config.MaxConns = 30
 	config.MinConns = 5

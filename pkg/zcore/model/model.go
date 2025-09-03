@@ -99,7 +99,7 @@ func NewModel(cfg *config.Config) (ModelInterface, error) {
 
 	config, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to parse pgxpool config: %s", dsn)
+		return nil, errors.Wrapf(err, "failed to parse pgxpool config: %s", utils.ReplaceSensitiveStringBySha256(dsn, cfg.Pg.Password))
 	}
 	config.MaxConns = 30
 	config.MinConns = 5
