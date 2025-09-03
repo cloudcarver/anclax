@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/cloudcarver/anchor/pkg/config"
@@ -93,8 +94,14 @@ func NewModel(cfg *config.Config) (ModelInterface, error) {
 		if cfg.Pg.User == "" || cfg.Pg.Host == "" || cfg.Pg.Port == 0 || cfg.Pg.Db == "" {
 			return nil, errors.New("either dsn or user, host, port, db must be set")
 		}
-		sslModel := utils.IfElse(cfg.Pg.SSLMode == "", "require", cfg.Pg.SSLMode)
-		dsn = fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s", cfg.Pg.User, cfg.Pg.Password, cfg.Pg.Host, cfg.Pg.Port, cfg.Pg.Db, sslModel)
+		url := &url.URL{
+			Scheme:   "postgres",
+			User:     url.UserPassword(cfg.Pg.User, cfg.Pg.Password),
+			Host:     fmt.Sprintf("%s:%d", cfg.Pg.Host, cfg.Pg.Port),
+			Path:     cfg.Pg.Db,
+			RawQuery: "sslmode=" + utils.IfElse(cfg.Pg.SSLMode == "", "require", cfg.Pg.SSLMode),
+		}
+		dsn = url.String()
 	}
 
 	config, err := pgxpool.ParseConfig(dsn)

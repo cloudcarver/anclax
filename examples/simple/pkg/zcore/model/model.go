@@ -4,6 +4,7 @@ package model
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"time"
 
 	"myexampleapp/pkg/config"
@@ -12,7 +13,6 @@ import (
 	"github.com/cloudcarver/anchor"
 	anchor_app "github.com/cloudcarver/anchor/pkg/app"
 	"github.com/cloudcarver/anchor/pkg/logger"
-	"github.com/cloudcarver/anchor/pkg/utils"
 	anchor_utils "github.com/cloudcarver/anchor/pkg/utils"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
@@ -85,11 +85,14 @@ func NewModel(cfg *config.Config, meta anchor_app.PluginMeta) (ModelInterface, e
 	if anchorCfg.Pg.DSN != nil {
 		dsn = *anchorCfg.Pg.DSN
 	} else {
-		if anchorCfg.Pg.User == "" || anchorCfg.Pg.Host == "" || anchorCfg.Pg.Port == 0 || anchorCfg.Pg.Db == "" {
-			return nil, errors.New("either dsn or user, host, port, db must be set")
+		url := &url.URL{
+			Scheme:   "postgres",
+			User:     url.UserPassword(anchorCfg.Pg.User, anchorCfg.Pg.Password),
+			Host:     fmt.Sprintf("%s:%d", anchorCfg.Pg.Host, anchorCfg.Pg.Port),
+			Path:     anchorCfg.Pg.Db,
+			RawQuery: "sslmode=" + anchor_utils.IfElse(anchorCfg.Pg.SSLMode == "", "require", anchorCfg.Pg.SSLMode),
 		}
-		sslModel := utils.IfElse(anchorCfg.Pg.SSLMode == "", "require", anchorCfg.Pg.SSLMode)
-		dsn = fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s", anchorCfg.Pg.User, anchorCfg.Pg.Password, anchorCfg.Pg.Host, anchorCfg.Pg.Port, anchorCfg.Pg.Db, sslModel)
+		dsn = url.String()
 	}
 
 	config, err := pgxpool.ParseConfig(dsn)
