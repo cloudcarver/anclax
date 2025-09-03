@@ -12,6 +12,7 @@ import (
 	"github.com/cloudcarver/anchor"
 	anchor_app "github.com/cloudcarver/anchor/pkg/app"
 	"github.com/cloudcarver/anchor/pkg/logger"
+	"github.com/cloudcarver/anchor/pkg/utils"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
@@ -77,10 +78,18 @@ func (m *Model) RunTransaction(ctx context.Context, f func(model ModelInterface)
 	})
 }
 func NewModel(cfg *config.Config, meta anchor_app.PluginMeta) (ModelInterface, error) {
-	if cfg.Anchor.Pg.DSN == nil {
-		return nil, errors.New("dsn is not set")
+	anchorCfg := cfg.Anchor
+
+	var dsn string
+	if anchorCfg.Pg.DSN != nil {
+		dsn = *anchorCfg.Pg.DSN
+	} else {
+		if anchorCfg.Pg.User == "" || anchorCfg.Pg.Host == "" || anchorCfg.Pg.Port == 0 || anchorCfg.Pg.Db == "" {
+			return nil, errors.New("either dsn or user, host, port, db must be set")
+		}
+		sslModel := utils.IfElse(anchorCfg.Pg.SSLMode == "", "require", anchorCfg.Pg.SSLMode)
+		dsn = fmt.Sprintf("postgresql://%s:%s@%s:%d/%s?sslmode=%s", anchorCfg.Pg.User, anchorCfg.Pg.Password, anchorCfg.Pg.Host, anchorCfg.Pg.Port, anchorCfg.Pg.Db, sslModel)
 	}
-	dsn := *cfg.Anchor.Pg.DSN
 
 	config, err := pgxpool.ParseConfig(dsn)
 	if err != nil {

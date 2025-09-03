@@ -5,8 +5,17 @@ import (
 )
 
 type Pg struct {
-	// (Required) The DSN (Data Source Name) for postgres database connection. If specified, Host, Port, User, Password, and Db settings will be ignored.
+	// (Required) The DSN (Data Source Name) for postgres database connection. If specified, Host, Port, User, Password, Db, and SSLMode settings will be ignored.
 	DSN *string `yaml:"dsn"`
+
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	User     string `yaml:"user"`
+	Password string `yaml:"password"`
+	Db       string `yaml:"db"`
+
+	// (Optional) The SSL mode for postgres connection, default is "required". Other options are "disable", "verify-ca", "verify-full".
+	SSLMode string `yaml:"sslmode"`
 }
 
 type Auth struct {
@@ -46,8 +55,7 @@ type Config struct {
 	// (Optional) The path of file to store the initialization data, if not set, skip the initialization
 	Init string `yaml:"init"`
 
-	// (Optional) The host of the anchor server, it is used in the API endpoint of the web UI.
-	// If not set, the host will be localhost.
+	// (Optional) The host of the anchor server.
 	Host string `yaml:"host"`
 
 	// (Optional) The port of the anchor server, default is 8020
