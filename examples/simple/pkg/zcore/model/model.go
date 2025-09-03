@@ -89,7 +89,7 @@ func NewModel(cfg *config.Config, meta anchor_app.PluginMeta) (ModelInterface, e
 			return nil, errors.New("either dsn or user, host, port, db must be set")
 		}
 		sslModel := utils.IfElse(anchorCfg.Pg.SSLMode == "", "require", anchorCfg.Pg.SSLMode)
-		dsn = fmt.Sprintf("postgresql://%s:%s@%s:%d/%s?sslmode=%s", anchorCfg.Pg.User, anchorCfg.Pg.Password, anchorCfg.Pg.Host, anchorCfg.Pg.Port, anchorCfg.Pg.Db, sslModel)
+		dsn = fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s", anchorCfg.Pg.User, anchorCfg.Pg.Password, anchorCfg.Pg.Host, anchorCfg.Pg.Port, anchorCfg.Pg.Db, sslModel)
 	}
 
 	config, err := pgxpool.ParseConfig(dsn)

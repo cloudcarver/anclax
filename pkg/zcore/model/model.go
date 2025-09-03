@@ -94,7 +94,7 @@ func NewModel(cfg *config.Config) (ModelInterface, error) {
 			return nil, errors.New("either dsn or user, host, port, db must be set")
 		}
 		sslModel := utils.IfElse(cfg.Pg.SSLMode == "", "require", cfg.Pg.SSLMode)
-		dsn = fmt.Sprintf("postgresql://%s:%s@%s:%d/%s?sslmode=%s", cfg.Pg.User, cfg.Pg.Password, cfg.Pg.Host, cfg.Pg.Port, cfg.Pg.Db, sslModel)
+		dsn = fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s", cfg.Pg.User, cfg.Pg.Password, cfg.Pg.Host, cfg.Pg.Port, cfg.Pg.Db, sslModel)
 	}
 
 	config, err := pgxpool.ParseConfig(dsn)
