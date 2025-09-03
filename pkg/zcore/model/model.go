@@ -153,14 +153,15 @@ func NewModel(cfg *config.Config) (ModelInterface, error) {
 		return nil, errors.Wrap(err, "failed to create migration source driver")
 	}
 
-	url := fmt.Sprintf("pgx5://%s:%s@%s:%d/%s?x-migrations-table=anchor_migrations",
-		config.ConnConfig.User,
-		config.ConnConfig.Password,
-		config.ConnConfig.Host,
-		config.ConnConfig.Port,
-		config.ConnConfig.Database,
-	)
-	m, err := migrate.NewWithSourceInstance("iofs", d, url)
+	url := &url.URL{
+		Scheme:   "pgx5",
+		User:     url.UserPassword(config.ConnConfig.User, config.ConnConfig.Password),
+		Host:     fmt.Sprintf("%s:%d", config.ConnConfig.Host, config.ConnConfig.Port),
+		Path:     config.ConnConfig.Database,
+		RawQuery: "sslmode=" + utils.IfElse(cfg.Pg.SSLMode == "", "require", cfg.Pg.SSLMode),
+	}
+
+	m, err := migrate.NewWithSourceInstance("iofs", d, url.String())
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to init migrate")
 	}
