@@ -19,8 +19,6 @@ import (
 
 var log = logger.NewLogAgent("worker")
 
-const maxTaskTimeout = 1 * time.Hour
-
 type Worker struct {
 	model model.ModelInterface
 
@@ -118,28 +116,29 @@ func (w *Worker) RunTask(ctx context.Context, taskID int32) error {
 	})
 }
 
-func (w *Worker) runTaskWithTx(ctx context.Context, tx pgx.Tx, task apigen.Task) error {
+func (w *Worker) runTaskWithTx(_ctx context.Context, tx pgx.Tx, task apigen.Task) error {
 	txm := w.model.SpawnWithTx(tx)
 
 	// increment attempts
-	if err := txm.IncrementAttempts(ctx, task.ID); err != nil {
+	if err := txm.IncrementAttempts(_ctx, task.ID); err != nil {
 		return errors.Wrap(err, "failed to increment attempts")
 	}
 	task.Attempts++
 
-	timeout := maxTaskTimeout
-	var err error
+	var (
+		ctx    context.Context
+		cancel context.CancelFunc
+	)
 
-	if task.Attributes.Timeout != nil {
-		timeout, err = time.ParseDuration(*task.Attributes.Timeout)
+	if task.Attributes.Timeout == nil {
+		ctx, cancel = context.WithCancel(ctx)
+	} else {
+		timeout, err := time.ParseDuration(*task.Attributes.Timeout)
 		if err != nil {
 			return errors.Wrap(err, "failed to parse timeout")
 		}
+		ctx, cancel = context.WithTimeout(ctx, timeout)
 	}
-	if timeout > maxTaskTimeout {
-		timeout = maxTaskTimeout
-	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	log.Info("executing task", zap.Int32("task_id", task.ID), zap.Any("task", task))
@@ -150,7 +149,7 @@ func (w *Worker) runTaskWithTx(ctx context.Context, tx pgx.Tx, task apigen.Task)
 	}
 
 	// run task
-	err = w.taskHandler.HandleTask(ctx, tx, &task.Spec)
+	err := w.taskHandler.HandleTask(ctx, tx, &task.Spec)
 	if err != nil { // handle failed
 		if err != taskcore.ErrRetryTaskWithoutErrorEvent {
 			log.Error("error executing task", zap.Int32("task_id", task.ID), zap.Error(err))

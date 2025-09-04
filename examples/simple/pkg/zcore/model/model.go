@@ -4,13 +4,13 @@ package model
 import (
 	"context"
 	"fmt"
+	root "myexampleapp"
 	"net/url"
 	"time"
 
 	"myexampleapp/pkg/config"
 	"myexampleapp/pkg/zgen/querier"
 
-	"github.com/cloudcarver/anchor"
 	anchor_app "github.com/cloudcarver/anchor/pkg/app"
 	"github.com/cloudcarver/anchor/pkg/logger"
 	anchor_utils "github.com/cloudcarver/anchor/pkg/utils"
@@ -139,7 +139,7 @@ func NewModel(cfg *config.Config, meta anchor_app.PluginMeta) (ModelInterface, e
 		time.Sleep(3 * time.Second)
 	}
 
-	d, err := iofs.New(anchor.Migrations, "sql/migrations")
+	d, err := iofs.New(root.Migrations, "sql/migrations")
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create migration source driver")
 	}
@@ -149,6 +149,9 @@ func NewModel(cfg *config.Config, meta anchor_app.PluginMeta) (ModelInterface, e
 		return nil, errors.Wrapf(err, "failed to parse dsn: %s", anchor_utils.ReplaceSensitiveStringBySha256(dsn, anchorCfg.Pg.Password))
 	}
 	dsnURL.Scheme = "pgx5"
+	dsnQuery := dsnURL.Query()
+	dsnQuery.Add("x-migrations-table", fmt.Sprintf("%s_migrations", meta.Namespace))
+	dsnURL.RawQuery = dsnQuery.Encode()
 
 	m, err := migrate.NewWithSourceInstance("iofs", d, dsnURL.String())
 	if err != nil {

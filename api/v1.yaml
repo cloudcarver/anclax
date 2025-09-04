@@ -235,7 +235,7 @@ components:
       properties:
         timeout:
           type: string
-          description: Timeout of the task, e.g. 1h, 1d, 1w, 1m
+          description: Timeout of the task, a valid go time duration value e.g. 1h, 1d, 1w, 1m
         cronjob:
           $ref: "#/components/schemas/TaskCronjob"
         retryPolicy:

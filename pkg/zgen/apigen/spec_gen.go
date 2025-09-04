@@ -141,7 +141,7 @@ type TaskAttributes struct {
 	Cronjob     *TaskCronjob     `json:"cronjob,omitempty"`
 	RetryPolicy *TaskRetryPolicy `json:"retryPolicy,omitempty"`
 
-	// Timeout Timeout of the task, e.g. 1h, 1d, 1w, 1m
+	// Timeout Timeout of the task, a valid go time duration value e.g. 1h, 1d, 1w, 1m
 	Timeout *string `json:"timeout,omitempty"`
 }
 
