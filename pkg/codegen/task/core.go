@@ -74,13 +74,9 @@ func process(data map[string]any, onFunc func(f Function) error, onParam func(na
 			if !ok {
 				return errors.New("timeout cannot be parsed to a string")
 			}
-			if timeoutStr == "never" {
-				timeout = &timeoutStr
-				continue
-			}
 			_, err := time.ParseDuration(timeoutStr)
 			if err != nil {
-				return errors.New("timeout should be `never` or a valid duration, e.g. 1h, 1d, 1m")
+				return errors.New("timeout should be a valid duration, e.g. 1h, 1d, 1m")
 			}
 			timeout = &timeoutStr
 		}
