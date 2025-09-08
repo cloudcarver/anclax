@@ -131,13 +131,13 @@ func (w *Worker) runTaskWithTx(_ctx context.Context, tx pgx.Tx, task apigen.Task
 	)
 
 	if task.Attributes.Timeout == nil {
-		ctx, cancel = context.WithCancel(ctx)
+		ctx, cancel = context.WithCancel(_ctx)
 	} else {
 		timeout, err := time.ParseDuration(*task.Attributes.Timeout)
 		if err != nil {
 			return errors.Wrap(err, "failed to parse timeout")
 		}
-		ctx, cancel = context.WithTimeout(ctx, timeout)
+		ctx, cancel = context.WithTimeout(_ctx, timeout)
 	}
 	defer cancel()
 
