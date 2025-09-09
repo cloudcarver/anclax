@@ -30,8 +30,8 @@ func InitApp() (*app.App, error) {
 	}
 	taskStoreInterface := injection.InjectTaskStore(application)
 	taskRunner := taskgen.NewTaskRunner(taskStoreInterface)
-	PluginMeta := pkg.ProvidePluginMeta()
-	modelInterface, err := model.NewModel(configConfig, PluginMeta)
+	pluginMeta := pkg.ProvidePluginMeta()
+	modelInterface, err := model.NewModel(configConfig, pluginMeta)
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +44,7 @@ func InitApp() (*app.App, error) {
 	executorInterface := asynctask.NewExecutor(modelInterface)
 	taskHandler := taskgen.NewTaskHandler(executorInterface)
 	plugin := app.NewPlugin(serverInterface, validator, taskHandler)
-	appApp, err := pkg.Init(application, taskRunner, plugin)
+	appApp, err := pkg.Init(application, taskRunner, plugin, modelInterface)
 	if err != nil {
 		return nil, err
 	}

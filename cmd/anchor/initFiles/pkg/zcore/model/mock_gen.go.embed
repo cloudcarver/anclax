@@ -42,6 +42,18 @@ func (m *MockModelInterface) EXPECT() *MockModelInterfaceMockRecorder {
 	return m.recorder
 }
 
+// Close mocks base method.
+func (m *MockModelInterface) Close() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Close")
+}
+
+// Close indicates an expected call of Close.
+func (mr *MockModelInterfaceMockRecorder) Close() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockModelInterface)(nil).Close))
+}
+
 // GetCounter mocks base method.
 func (m *MockModelInterface) GetCounter(ctx context.Context) (*querier.Counter, error) {
 	m.ctrl.T.Helper()
