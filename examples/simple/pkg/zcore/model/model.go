@@ -57,6 +57,12 @@ func (m *Model) SpawnWithTx(tx pgx.Tx) ModelInterface {
 	}
 }
 
+func (m *Model) Close() {
+	if m.p != nil {
+		m.p.Close()
+	}
+}
+
 func (m *Model) RunTransactionWithTx(ctx context.Context, f func(tx pgx.Tx, model ModelInterface) error) error {
 	tx, err := m.beginTx(ctx)
 	if err != nil {

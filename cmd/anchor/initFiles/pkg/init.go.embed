@@ -4,6 +4,7 @@ import (
 	"context"
 	"myexampleapp/pkg/config"
 	"myexampleapp/pkg/zcore/app"
+	"myexampleapp/pkg/zcore/model"
 	"myexampleapp/pkg/zgen/taskgen"
 	"time"
 
@@ -27,7 +28,7 @@ func ProvidePluginMeta() anchor_app.PluginMeta {
 }
 
 // This will run before the application starts.
-func Init(anchorApp *anchor_app.Application, taskrunner taskgen.TaskRunner, myapp anchor_app.Plugin) (*app.App, error) {
+func Init(anchorApp *anchor_app.Application, taskrunner taskgen.TaskRunner, myapp anchor_app.Plugin, model model.ModelInterface) (*app.App, error) {
 	if err := anchorApp.Plug(myapp); err != nil {
 		return nil, err
 	}
@@ -44,6 +45,9 @@ func Init(anchorApp *anchor_app.Application, taskrunner taskgen.TaskRunner, myap
 	}, taskcore.WithUniqueTag("auto-increment-counter")); err != nil {
 		return nil, err
 	}
+
+	// closer
+	anchorApp.RegisterCloser(model.Close)
 
 	return &app.App{
 		AnchorApp: anchorApp,

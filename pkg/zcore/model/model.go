@@ -43,7 +43,9 @@ type Model struct {
 }
 
 func (m *Model) Close() {
-	m.p.Close()
+	if m.p != nil {
+		m.p.Close()
+	}
 }
 
 func (m *Model) InTransaction() bool {

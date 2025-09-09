@@ -3,15 +3,15 @@ package app
 import "github.com/cloudcarver/anchor/pkg/zcore/model"
 
 type Closer struct {
-	model model.ModelInterface
+	closers []func()
 }
 
 func NewCloser(model model.ModelInterface) *Closer {
-	return &Closer{
-		model: model,
+	closers := []func(){
+		model.Close,
 	}
-}
 
-func (c *Closer) Close() {
-	c.model.Close()
+	return &Closer{
+		closers: closers,
+	}
 }

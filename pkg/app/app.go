@@ -5,6 +5,7 @@ import (
 
 	"github.com/cloudcarver/anchor/pkg/auth"
 	"github.com/cloudcarver/anchor/pkg/config"
+	"github.com/cloudcarver/anchor/pkg/globalctx"
 	"github.com/cloudcarver/anchor/pkg/hooks"
 	"github.com/cloudcarver/anchor/pkg/macaroons"
 	"github.com/cloudcarver/anchor/pkg/metrics"
@@ -31,10 +32,12 @@ type Application struct {
 	service       service.ServiceInterface
 	hooks         hooks.AnchorHookInterface
 	caveatParser  macaroons.CaveatParserInterface
-	closer        *Closer
+	globalctx     *globalctx.GlobalContext
+	closers       []func()
 }
 
 func NewApplication(
+	globalctx *globalctx.GlobalContext,
 	cfg *config.Config,
 	server *server.Server,
 	prometheus *metrics.MetricsServer,
@@ -54,7 +57,7 @@ func NewApplication(
 		}
 	}
 
-	return &Application{
+	app := &Application{
 		server:        server,
 		prometheus:    prometheus,
 		worker:        worker,
@@ -65,8 +68,12 @@ func NewApplication(
 		service:       service,
 		hooks:         hooks,
 		caveatParser:  caveatParser,
-		closer:        closer,
-	}, nil
+		globalctx:     globalctx,
+	}
+
+	app.RegisterCloser(closer.closers...)
+
+	return app, nil
 }
 
 func (a *Application) Start() error {
@@ -79,7 +86,9 @@ func (a *Application) Start() error {
 }
 
 func (a *Application) Close() {
-	a.closer.Close()
+	for _, closer := range a.closers {
+		closer()
+	}
 }
 
 func (a *Application) GetServer() *server.Server {
@@ -108,6 +117,14 @@ func (a *Application) GetHooks() hooks.AnchorHookInterface {
 
 func (a *Application) GetCaveatParser() macaroons.CaveatParserInterface {
 	return a.caveatParser
+}
+
+func (a *Application) RegisterCloser(closers ...func()) {
+	a.closers = append(a.closers, closers...)
+}
+
+func (a *Application) GetGlobalCtx() *globalctx.GlobalContext {
+	return a.globalctx
 }
 
 func (a *Application) Plug(plugins ...Plugin) error {
