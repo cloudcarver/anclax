@@ -4,13 +4,13 @@ import (
 	"context"
 	"time"
 
-	"github.com/cloudcarver/anchor/pkg/auth"
-	"github.com/cloudcarver/anchor/pkg/config"
-	"github.com/cloudcarver/anchor/pkg/hooks"
-	"github.com/cloudcarver/anchor/pkg/taskcore/worker"
-	"github.com/cloudcarver/anchor/pkg/utils"
-	"github.com/cloudcarver/anchor/pkg/zcore/model"
-	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
+	"github.com/cloudcarver/anclax/pkg/auth"
+	"github.com/cloudcarver/anclax/pkg/config"
+	"github.com/cloudcarver/anclax/pkg/hooks"
+	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
+	"github.com/cloudcarver/anclax/pkg/utils"
+	"github.com/cloudcarver/anclax/pkg/zcore/model"
+	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/jackc/pgx/v5"
 	"github.com/pkg/errors"
 )
@@ -77,7 +77,7 @@ type ServiceInterface interface {
 type Service struct {
 	m      model.ModelInterface
 	auth   auth.AuthInterface
-	hooks  hooks.AnchorHookInterface
+	hooks  hooks.AnclaxHookInterface
 	worker worker.WorkerInterface
 
 	singleSession bool
@@ -90,7 +90,7 @@ func NewService(
 	cfg *config.Config,
 	m model.ModelInterface,
 	auth auth.AuthInterface,
-	hooks hooks.AnchorHookInterface,
+	hooks hooks.AnclaxHookInterface,
 ) ServiceInterface {
 	return &Service{
 		m:                   m,

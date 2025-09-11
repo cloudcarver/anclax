@@ -2,11 +2,11 @@
 
 English | [中文](middleware.zh.md)
 
-This document explains the middleware concepts in Anchor, specifically `x-functions` and `x-check-rules`, which provide a powerful code generation system that allows you to write Go code directly in your OpenAPI specification that gets compiled into type-safe middleware.
+This document explains the middleware concepts in Anclax, specifically `x-functions` and `x-check-rules`, which provide a powerful code generation system that allows you to write Go code directly in your OpenAPI specification that gets compiled into type-safe middleware.
 
 ## Overview
 
-Anchor uses OpenAPI 3.0 extensions combined with a unique approach where **you write actual Go code directly in your API security scopes**. This design prevents the need for a Domain Specific Language (DSL) and leverages the Go compiler to ensure type safety and catch errors at compile time.
+Anclax uses OpenAPI 3.0 extensions combined with a unique approach where **you write actual Go code directly in your API security scopes**. This design prevents the need for a Domain Specific Language (DSL) and leverages the Go compiler to ensure type safety and catch errors at compile time.
 
 The system works by:
 - **x-check-rules**: Define the function signatures for validation/authorization functions

@@ -3,7 +3,7 @@ package hooks
 import (
 	"context"
 
-	"github.com/cloudcarver/anchor/pkg/macaroons"
+	"github.com/cloudcarver/anclax/pkg/macaroons"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -18,7 +18,7 @@ type (
 // There are two types of hooks:
 // 1. Tx hooks: These hooks are executed with a transaction.
 // 2. Async hooks: These hooks are executed asynchronously using the task runner.
-type AnchorHookInterface interface {
+type AnclaxHookInterface interface {
 	OnOrgCreated(ctx context.Context, tx pgx.Tx, orgID int32) error
 
 	OnCreateToken(ctx context.Context, userID int32, macaroon *macaroons.Macaroon) error
@@ -41,7 +41,7 @@ type BaseHook struct {
 	OnUserCreatedHooks []OnUserCreated
 }
 
-func NewBaseHook() AnchorHookInterface {
+func NewBaseHook() AnclaxHookInterface {
 	return &BaseHook{}
 }
 

@@ -1,10 +1,10 @@
-# Anchor 中的异步任务
+# Anclax 中的异步任务
 
 [English](async-tasks-tutorial.md) | 中文
 
 > 📚 **需要技术细节？** 查看[技术参考](async-tasks-technical.zh.md)了解底层架构、生命周期和高级功能的全面覆盖。
 
-Anchor 让您可以运行不阻塞 Web 请求的后台任务。例如，您可以发送电子邮件、处理图像或生成报告，而无需让用户等待。
+Anclax 让您可以运行不阻塞 Web 请求的后台任务。例如，您可以发送电子邮件、处理图像或生成报告，而无需让用户等待。
 
 ## 目录
 
@@ -20,7 +20,7 @@ Anchor 让您可以运行不阻塞 Web 请求的后台任务。例如，您可�
 
 将异步任务想象成雇佣某人稍后为您做工作。您可以：
 
-1. **创建任务** - 告诉 Anchor 需要完成什么工作
+1. **创建任务** - 告诉 Anclax 需要完成什么工作
 2. **排队** - 将任务放入待办事项列表
 3. **让工作者处理** - 后台工作者接收任务并完成工作
 4. **获得保证** - 任务将至少运行一次，即使出现问题
@@ -97,7 +97,7 @@ parameters:
 定义任务后，运行代码生成：
 
 ```bash
-anchor generate
+anclax generate
 ```
 
 这会在 `pkg/zgen/taskgen/` 中生成接口：
@@ -576,7 +576,7 @@ func (e *Executor) OnSendNotificationFailed(ctx context.Context, taskID int32, p
 
 ### 真实世界示例：带失败处理的删除操作
 
-这个来自 Anchor 代码库的示例展示了如何实现一个删除敏感数据的任务，并进行适当的失败处理：
+这个来自 Anclax 代码库的示例展示了如何实现一个删除敏感数据的任务，并进行适当的失败处理：
 
 **任务定义（api/tasks.yaml）：**
 ```yaml
@@ -599,7 +599,7 @@ tasks:
 ```
 
 **生成的类型：**
-运行 `anchor generate` 后，您得到：
+运行 `anclax generate` 后，您得到：
 ```go
 type DeleteOpaqueKeyParameters struct {
     KeyID int64 `json:"keyID"`
@@ -682,7 +682,7 @@ func (h *Handler) DeleteKey(c *fiber.Ctx) error {
 
 ## 工作者配置
 
-当您启动 Anchor 应用程序时，工作者会自动运行。您可以配置工作者行为：
+当您启动 Anclax 应用程序时，工作者会自动运行。您可以配置工作者行为：
 
 ```go
 // 为特定环境禁用工作者

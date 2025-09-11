@@ -3,8 +3,8 @@ package taskcore
 import (
 	"time"
 
-	"github.com/cloudcarver/anchor/pkg/utils"
-	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
+	"github.com/cloudcarver/anclax/pkg/utils"
+	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 )
 
 func WithRetryPolicy(interval string, maxAttempts int32) TaskOverride {

@@ -7,22 +7,22 @@
 package wire
 
 import (
-	"github.com/cloudcarver/anchor/pkg/app"
-	"github.com/cloudcarver/anchor/pkg/asynctask"
-	"github.com/cloudcarver/anchor/pkg/auth"
-	"github.com/cloudcarver/anchor/pkg/config"
-	"github.com/cloudcarver/anchor/pkg/controller"
-	"github.com/cloudcarver/anchor/pkg/globalctx"
-	"github.com/cloudcarver/anchor/pkg/hooks"
-	"github.com/cloudcarver/anchor/pkg/macaroons"
-	"github.com/cloudcarver/anchor/pkg/macaroons/store"
-	"github.com/cloudcarver/anchor/pkg/metrics"
-	"github.com/cloudcarver/anchor/pkg/server"
-	"github.com/cloudcarver/anchor/pkg/service"
-	"github.com/cloudcarver/anchor/pkg/taskcore"
-	"github.com/cloudcarver/anchor/pkg/taskcore/worker"
-	"github.com/cloudcarver/anchor/pkg/zcore/model"
-	"github.com/cloudcarver/anchor/pkg/zgen/taskgen"
+	"github.com/cloudcarver/anclax/pkg/app"
+	"github.com/cloudcarver/anclax/pkg/asynctask"
+	"github.com/cloudcarver/anclax/pkg/auth"
+	"github.com/cloudcarver/anclax/pkg/config"
+	"github.com/cloudcarver/anclax/pkg/controller"
+	"github.com/cloudcarver/anclax/pkg/globalctx"
+	"github.com/cloudcarver/anclax/pkg/hooks"
+	"github.com/cloudcarver/anclax/pkg/macaroons"
+	"github.com/cloudcarver/anclax/pkg/macaroons/store"
+	"github.com/cloudcarver/anclax/pkg/metrics"
+	"github.com/cloudcarver/anclax/pkg/server"
+	"github.com/cloudcarver/anclax/pkg/service"
+	"github.com/cloudcarver/anclax/pkg/taskcore"
+	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
+	"github.com/cloudcarver/anclax/pkg/zcore/model"
+	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
 )
 
 // Injectors from wire.go:
@@ -38,12 +38,12 @@ func InitializeApplication(cfg *config.Config, libCfg *config.LibConfig) (*app.A
 	keyStore := store.NewStore(modelInterface, taskRunner)
 	caveatParserInterface := macaroons.NewCaveatParser()
 	macaroonParserInterface := macaroons.NewMacaroonManager(keyStore, caveatParserInterface)
-	anchorHookInterface := hooks.NewBaseHook()
-	authInterface, err := auth.NewAuth(cfg, macaroonParserInterface, caveatParserInterface, anchorHookInterface)
+	anclaxHookInterface := hooks.NewBaseHook()
+	authInterface, err := auth.NewAuth(cfg, macaroonParserInterface, caveatParserInterface, anclaxHookInterface)
 	if err != nil {
 		return nil, err
 	}
-	serviceInterface := service.NewService(cfg, modelInterface, authInterface, anchorHookInterface)
+	serviceInterface := service.NewService(cfg, modelInterface, authInterface, anclaxHookInterface)
 	serverInterface := controller.NewController(serviceInterface, authInterface, cfg)
 	validator := controller.NewValidator(modelInterface, authInterface)
 	serverServer, err := server.NewServer(cfg, libCfg, globalContext, authInterface, serverInterface, validator)
@@ -59,7 +59,7 @@ func InitializeApplication(cfg *config.Config, libCfg *config.LibConfig) (*app.A
 	}
 	debugServer := app.NewDebugServer(cfg, globalContext)
 	closer := app.NewCloser(modelInterface)
-	application, err := app.NewApplication(globalContext, cfg, serverServer, metricsServer, workerInterface, debugServer, authInterface, taskStoreInterface, serviceInterface, anchorHookInterface, caveatParserInterface, closer)
+	application, err := app.NewApplication(globalContext, cfg, serverServer, metricsServer, workerInterface, debugServer, authInterface, taskStoreInterface, serviceInterface, anclaxHookInterface, caveatParserInterface, closer)
 	if err != nil {
 		return nil, err
 	}

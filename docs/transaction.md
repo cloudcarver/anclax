@@ -1,12 +1,12 @@
-# Transaction Management in Anchor
+# Transaction Management in Anclax
 
-Anchor is designed as a **single cohesive ultimate backend framework** built around one core principle: **the `WithTx` pattern**. Every component that interacts with the database provides both standalone methods and transactional variants that accept `pgx.Tx`, enabling seamless composition of operations within a single transaction.
+Anclax is designed as a **single cohesive ultimate backend framework** built around one core principle: **the `WithTx` pattern**. Every component that interacts with the database provides both standalone methods and transactional variants that accept `pgx.Tx`, enabling seamless composition of operations within a single transaction.
 
-This document explains how Anchor's transaction system works, focusing on how the `WithTx` pattern enables the plugin system, task execution, hooks, and service methods to work together cohesively.
+This document explains how Anclax's transaction system works, focusing on how the `WithTx` pattern enables the plugin system, task execution, hooks, and service methods to work together cohesively.
 
 ## Core Principle: The `WithTx` Pattern
 
-Anchor's architecture is built on the fundamental principle that **every database operation should be available in both standalone and transactional forms**:
+Anclax's architecture is built on the fundamental principle that **every database operation should be available in both standalone and transactional forms**:
 
 - **Standalone methods**: Handle their own transaction lifecycle
 - **`WithTx` methods**: Accept an existing transaction and participate in it
@@ -22,7 +22,7 @@ This pattern ensures:
 
 ### Core Pattern: `pgx.Tx` Propagation
 
-Anchor uses a consistent pattern to propagate PostgreSQL transactions (`pgx.Tx`) across function boundaries:
+Anclax uses a consistent pattern to propagate PostgreSQL transactions (`pgx.Tx`) across function boundaries:
 
 ```go
 // Base pattern: Functions accept both context and transaction
@@ -70,7 +70,7 @@ func (m *Model) RunTransactionWithTx(ctx context.Context, f func(tx pgx.Tx, mode
 
 ### Plugin Interface
 
-Plugins in Anchor implement a simple interface that allows them to integrate with different parts of the system:
+Plugins in Anclax implement a simple interface that allows them to integrate with different parts of the system:
 
 ```go
 type Plugin struct {
@@ -79,9 +79,9 @@ type Plugin struct {
     taskHandler     worker.TaskHandler
 }
 
-func (p *Plugin) Plug(anchorApp *anchor_app.Application) {
-    p.PlugToFiberApp(anchorApp.GetServer().GetApp())
-    p.PlugToWorker(anchorApp.GetWorker())
+func (p *Plugin) Plug(anclaxApp *anclax_app.Application) {
+    p.PlugToFiberApp(anclaxApp.GetServer().GetApp())
+    p.PlugToWorker(anclaxApp.GetWorker())
 }
 ```
 
@@ -98,7 +98,7 @@ All plugin components that interact with the database follow the `WithTx` patter
 
 ### Universal Application Across Components
 
-Every component in Anchor that performs database operations follows the `WithTx` pattern:
+Every component in Anclax that performs database operations follows the `WithTx` pattern:
 
 #### 1. Model Layer
 ```go
@@ -146,7 +146,7 @@ type TaskStoreInterface interface {
 
 ### Service Methods: Complex Business Logic Made Transactional
 
-Anchor's service layer demonstrates the power of the `WithTx` pattern by providing transactional variants of all business operations:
+Anclax's service layer demonstrates the power of the `WithTx` pattern by providing transactional variants of all business operations:
 
 #### Example: User Creation Service
 
@@ -355,13 +355,13 @@ func (e *Executor) ExecuteIncrementCounter(ctx context.Context, tx pgx.Tx, param
 
 ### Hook Types
 
-Anchor provides two types of hooks:
+Anclax provides two types of hooks:
 
 1. **Transactional Hooks**: Execute within the same transaction
 2. **Async Hooks**: Execute asynchronously via the task system
 
 ```go
-type AnchorHookInterface interface {
+type AnclaxHookInterface interface {
     // Transactional hook - executes within the same tx
     OnUserCreated(ctx context.Context, tx pgx.Tx, userID int32) error
     
@@ -601,7 +601,7 @@ func (e *Executor) ExecuteProcessPayment(ctx context.Context, tx pgx.Tx, params 
 
 ## Conclusion: The `WithTx` Pattern as the Foundation
 
-Anchor achieves its goal of being a **single cohesive ultimate backend framework** through the universal application of the `WithTx` pattern. This core principle provides:
+Anclax achieves its goal of being a **single cohesive ultimate backend framework** through the universal application of the `WithTx` pattern. This core principle provides:
 
 ### Framework-Wide Consistency
 - **Every component** follows the same transaction pattern
@@ -622,4 +622,4 @@ Anchor achieves its goal of being a **single cohesive ultimate backend framework
 
 The `WithTx` pattern transforms what could be a collection of separate components into a truly cohesive framework where every piece works together transactionally. This design enables developers to build complex, reliable backend systems with the confidence that data consistency is maintained at every level.
 
-**In essence, `WithTx` is not just a method naming convention—it's the architectural foundation that makes Anchor the ultimate backend framework.**
+**In essence, `WithTx` is not just a method naming convention—it's the architectural foundation that makes Anclax the ultimate backend framework.**

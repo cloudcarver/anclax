@@ -1,5 +1,5 @@
 -- name: PullTask :one
-SELECT * FROM anchor.tasks
+SELECT * FROM anclax.tasks
 WHERE 
     status = 'pending'
     AND (
@@ -10,7 +10,7 @@ FOR UPDATE SKIP LOCKED
 LIMIT 1;
 
 -- name: PullTaskByID :one
-SELECT * FROM anchor.tasks
+SELECT * FROM anclax.tasks
 WHERE 
     status = 'pending'
     AND id = $1
@@ -21,7 +21,7 @@ ORDER BY created_at ASC
 FOR UPDATE SKIP LOCKED;
 
 -- name: ListAllPendingTasks :many
-SELECT * FROM anchor.tasks
+SELECT * FROM anclax.tasks
 WHERE 
     status = 'pending'
     AND (
@@ -30,40 +30,40 @@ WHERE
 FOR UPDATE SKIP LOCKED;
 
 -- name: UpdateTaskStatus :exec
-UPDATE anchor.tasks
+UPDATE anclax.tasks
 SET 
     status = $2,
     updated_at = CURRENT_TIMESTAMP
 WHERE id = $1;
 
 -- name: UpdateTask :exec
-UPDATE anchor.tasks
+UPDATE anclax.tasks
 SET attributes = $2, spec = $3, started_at = $4, updated_at = CURRENT_TIMESTAMP
 WHERE id = $1;
 
 -- name: UpdateTaskStartedAt :exec
-UPDATE anchor.tasks
+UPDATE anclax.tasks
 SET started_at = $2, updated_at = CURRENT_TIMESTAMP
 WHERE id = $1;
 
 -- name: CreateTask :one
-INSERT INTO anchor.tasks (attributes, spec, status, started_at, unique_tag)
+INSERT INTO anclax.tasks (attributes, spec, status, started_at, unique_tag)
 VALUES ($1, $2, $3, $4, $5) ON CONFLICT (unique_tag) DO NOTHING RETURNING *;
 
 -- name: GetTaskByUniqueTag :one
-SELECT * FROM anchor.tasks
+SELECT * FROM anclax.tasks
 WHERE unique_tag = $1;
 
 -- name: InsertEvent :one
-INSERT INTO anchor.events (spec)
+INSERT INTO anclax.events (spec)
 VALUES ($1)
 RETURNING *;
 
 -- name: GetTaskByID :one
-SELECT * FROM anchor.tasks
+SELECT * FROM anclax.tasks
 WHERE id = $1;
 
 -- name: IncrementAttempts :exec
-UPDATE anchor.tasks
+UPDATE anclax.tasks
 SET attempts = attempts + 1, updated_at = CURRENT_TIMESTAMP
 WHERE id = $1;

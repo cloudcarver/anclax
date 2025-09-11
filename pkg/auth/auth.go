@@ -4,10 +4,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/cloudcarver/anchor/pkg/config"
-	"github.com/cloudcarver/anchor/pkg/hooks"
-	"github.com/cloudcarver/anchor/pkg/macaroons"
-	"github.com/cloudcarver/anchor/pkg/utils"
+	"github.com/cloudcarver/anclax/pkg/config"
+	"github.com/cloudcarver/anclax/pkg/hooks"
+	"github.com/cloudcarver/anclax/pkg/macaroons"
+	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/gofiber/fiber/v2"
 	"github.com/pkg/errors"
 )
@@ -50,7 +50,7 @@ type AuthInterface interface {
 
 type Auth struct {
 	macaroonsParser     macaroons.MacaroonParserInterface
-	hooks               hooks.AnchorHookInterface
+	hooks               hooks.AnclaxHookInterface
 	timeoutAccessToken  time.Duration
 	timeoutRefreshToken time.Duration
 }
@@ -58,7 +58,7 @@ type Auth struct {
 // Ensure AuthService implements AuthServiceInterface
 var _ AuthInterface = (*Auth)(nil)
 
-func NewAuth(cfg *config.Config, macaroonsParser macaroons.MacaroonParserInterface, caveatParser macaroons.CaveatParserInterface, hooks hooks.AnchorHookInterface) (AuthInterface, error) {
+func NewAuth(cfg *config.Config, macaroonsParser macaroons.MacaroonParserInterface, caveatParser macaroons.CaveatParserInterface, hooks hooks.AnclaxHookInterface) (AuthInterface, error) {
 	if err := caveatParser.Register(CaveatUserContext, func() macaroons.Caveat {
 		return &UserContextCaveat{}
 	}); err != nil {

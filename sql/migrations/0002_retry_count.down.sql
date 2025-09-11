@@ -1,6 +1,6 @@
 BEGIN;
 
-ALTER TABLE anchor.tasks DROP COLUMN attempts;
+ALTER TABLE anclax.tasks DROP COLUMN attempts;
 
 COMMIT;
 

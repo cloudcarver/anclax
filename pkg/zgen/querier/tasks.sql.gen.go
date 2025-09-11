@@ -9,11 +9,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
+	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 )
 
 const createTask = `-- name: CreateTask :one
-INSERT INTO anchor.tasks (attributes, spec, status, started_at, unique_tag)
+INSERT INTO anclax.tasks (attributes, spec, status, started_at, unique_tag)
 VALUES ($1, $2, $3, $4, $5) ON CONFLICT (unique_tag) DO NOTHING RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts
 `
 
@@ -25,7 +25,7 @@ type CreateTaskParams struct {
 	UniqueTag  *string
 }
 
-func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (*AnchorTask, error) {
+func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (*AnclaxTask, error) {
 	row := q.db.QueryRow(ctx, createTask,
 		arg.Attributes,
 		arg.Spec,
@@ -33,7 +33,7 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (*Anchor
 		arg.StartedAt,
 		arg.UniqueTag,
 	)
-	var i AnchorTask
+	var i AnclaxTask
 	err := row.Scan(
 		&i.ID,
 		&i.Attributes,
@@ -49,13 +49,13 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (*Anchor
 }
 
 const getTaskByID = `-- name: GetTaskByID :one
-SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts FROM anchor.tasks
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts FROM anclax.tasks
 WHERE id = $1
 `
 
-func (q *Queries) GetTaskByID(ctx context.Context, id int32) (*AnchorTask, error) {
+func (q *Queries) GetTaskByID(ctx context.Context, id int32) (*AnclaxTask, error) {
 	row := q.db.QueryRow(ctx, getTaskByID, id)
-	var i AnchorTask
+	var i AnclaxTask
 	err := row.Scan(
 		&i.ID,
 		&i.Attributes,
@@ -71,13 +71,13 @@ func (q *Queries) GetTaskByID(ctx context.Context, id int32) (*AnchorTask, error
 }
 
 const getTaskByUniqueTag = `-- name: GetTaskByUniqueTag :one
-SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts FROM anchor.tasks
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts FROM anclax.tasks
 WHERE unique_tag = $1
 `
 
-func (q *Queries) GetTaskByUniqueTag(ctx context.Context, uniqueTag *string) (*AnchorTask, error) {
+func (q *Queries) GetTaskByUniqueTag(ctx context.Context, uniqueTag *string) (*AnclaxTask, error) {
 	row := q.db.QueryRow(ctx, getTaskByUniqueTag, uniqueTag)
-	var i AnchorTask
+	var i AnclaxTask
 	err := row.Scan(
 		&i.ID,
 		&i.Attributes,
@@ -93,7 +93,7 @@ func (q *Queries) GetTaskByUniqueTag(ctx context.Context, uniqueTag *string) (*A
 }
 
 const incrementAttempts = `-- name: IncrementAttempts :exec
-UPDATE anchor.tasks
+UPDATE anclax.tasks
 SET attempts = attempts + 1, updated_at = CURRENT_TIMESTAMP
 WHERE id = $1
 `
@@ -104,20 +104,20 @@ func (q *Queries) IncrementAttempts(ctx context.Context, id int32) error {
 }
 
 const insertEvent = `-- name: InsertEvent :one
-INSERT INTO anchor.events (spec)
+INSERT INTO anclax.events (spec)
 VALUES ($1)
 RETURNING id, spec, created_at
 `
 
-func (q *Queries) InsertEvent(ctx context.Context, spec apigen.EventSpec) (*AnchorEvent, error) {
+func (q *Queries) InsertEvent(ctx context.Context, spec apigen.EventSpec) (*AnclaxEvent, error) {
 	row := q.db.QueryRow(ctx, insertEvent, spec)
-	var i AnchorEvent
+	var i AnclaxEvent
 	err := row.Scan(&i.ID, &i.Spec, &i.CreatedAt)
 	return &i, err
 }
 
 const listAllPendingTasks = `-- name: ListAllPendingTasks :many
-SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts FROM anchor.tasks
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts FROM anclax.tasks
 WHERE 
     status = 'pending'
     AND (
@@ -126,15 +126,15 @@ WHERE
 FOR UPDATE SKIP LOCKED
 `
 
-func (q *Queries) ListAllPendingTasks(ctx context.Context) ([]*AnchorTask, error) {
+func (q *Queries) ListAllPendingTasks(ctx context.Context) ([]*AnclaxTask, error) {
 	rows, err := q.db.Query(ctx, listAllPendingTasks)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []*AnchorTask
+	var items []*AnclaxTask
 	for rows.Next() {
-		var i AnchorTask
+		var i AnclaxTask
 		if err := rows.Scan(
 			&i.ID,
 			&i.Attributes,
@@ -157,7 +157,7 @@ func (q *Queries) ListAllPendingTasks(ctx context.Context) ([]*AnchorTask, error
 }
 
 const pullTask = `-- name: PullTask :one
-SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts FROM anchor.tasks
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts FROM anclax.tasks
 WHERE 
     status = 'pending'
     AND (
@@ -168,9 +168,9 @@ FOR UPDATE SKIP LOCKED
 LIMIT 1
 `
 
-func (q *Queries) PullTask(ctx context.Context) (*AnchorTask, error) {
+func (q *Queries) PullTask(ctx context.Context) (*AnclaxTask, error) {
 	row := q.db.QueryRow(ctx, pullTask)
-	var i AnchorTask
+	var i AnclaxTask
 	err := row.Scan(
 		&i.ID,
 		&i.Attributes,
@@ -186,7 +186,7 @@ func (q *Queries) PullTask(ctx context.Context) (*AnchorTask, error) {
 }
 
 const pullTaskByID = `-- name: PullTaskByID :one
-SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts FROM anchor.tasks
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts FROM anclax.tasks
 WHERE 
     status = 'pending'
     AND id = $1
@@ -197,9 +197,9 @@ ORDER BY created_at ASC
 FOR UPDATE SKIP LOCKED
 `
 
-func (q *Queries) PullTaskByID(ctx context.Context, id int32) (*AnchorTask, error) {
+func (q *Queries) PullTaskByID(ctx context.Context, id int32) (*AnclaxTask, error) {
 	row := q.db.QueryRow(ctx, pullTaskByID, id)
-	var i AnchorTask
+	var i AnclaxTask
 	err := row.Scan(
 		&i.ID,
 		&i.Attributes,
@@ -215,7 +215,7 @@ func (q *Queries) PullTaskByID(ctx context.Context, id int32) (*AnchorTask, erro
 }
 
 const updateTask = `-- name: UpdateTask :exec
-UPDATE anchor.tasks
+UPDATE anclax.tasks
 SET attributes = $2, spec = $3, started_at = $4, updated_at = CURRENT_TIMESTAMP
 WHERE id = $1
 `
@@ -238,7 +238,7 @@ func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) error {
 }
 
 const updateTaskStartedAt = `-- name: UpdateTaskStartedAt :exec
-UPDATE anchor.tasks
+UPDATE anclax.tasks
 SET started_at = $2, updated_at = CURRENT_TIMESTAMP
 WHERE id = $1
 `
@@ -254,7 +254,7 @@ func (q *Queries) UpdateTaskStartedAt(ctx context.Context, arg UpdateTaskStarted
 }
 
 const updateTaskStatus = `-- name: UpdateTaskStatus :exec
-UPDATE anchor.tasks
+UPDATE anclax.tasks
 SET 
     status = $2,
     updated_at = CURRENT_TIMESTAMP

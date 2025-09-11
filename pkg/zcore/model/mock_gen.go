@@ -13,8 +13,8 @@ import (
 	context "context"
 	reflect "reflect"
 
-	apigen "github.com/cloudcarver/anchor/pkg/zgen/apigen"
-	querier "github.com/cloudcarver/anchor/pkg/zgen/querier"
+	apigen "github.com/cloudcarver/anclax/pkg/zgen/apigen"
+	querier "github.com/cloudcarver/anclax/pkg/zgen/querier"
 	pgx "github.com/jackc/pgx/v5"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -56,10 +56,10 @@ func (mr *MockModelInterfaceMockRecorder) Close() *gomock.Call {
 }
 
 // CreateKeyPair mocks base method.
-func (m *MockModelInterface) CreateKeyPair(ctx context.Context, arg querier.CreateKeyPairParams) (*querier.AnchorAccessKeyPair, error) {
+func (m *MockModelInterface) CreateKeyPair(ctx context.Context, arg querier.CreateKeyPairParams) (*querier.AnclaxAccessKeyPair, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateKeyPair", ctx, arg)
-	ret0, _ := ret[0].(*querier.AnchorAccessKeyPair)
+	ret0, _ := ret[0].(*querier.AnclaxAccessKeyPair)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -86,10 +86,10 @@ func (mr *MockModelInterfaceMockRecorder) CreateOpaqueKey(ctx, arg any) *gomock.
 }
 
 // CreateOrg mocks base method.
-func (m *MockModelInterface) CreateOrg(ctx context.Context, name string) (*querier.AnchorOrg, error) {
+func (m *MockModelInterface) CreateOrg(ctx context.Context, name string) (*querier.AnclaxOrg, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateOrg", ctx, name)
-	ret0, _ := ret[0].(*querier.AnchorOrg)
+	ret0, _ := ret[0].(*querier.AnclaxOrg)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -101,10 +101,10 @@ func (mr *MockModelInterfaceMockRecorder) CreateOrg(ctx, name any) *gomock.Call 
 }
 
 // CreateTask mocks base method.
-func (m *MockModelInterface) CreateTask(ctx context.Context, arg querier.CreateTaskParams) (*querier.AnchorTask, error) {
+func (m *MockModelInterface) CreateTask(ctx context.Context, arg querier.CreateTaskParams) (*querier.AnclaxTask, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateTask", ctx, arg)
-	ret0, _ := ret[0].(*querier.AnchorTask)
+	ret0, _ := ret[0].(*querier.AnclaxTask)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -116,10 +116,10 @@ func (mr *MockModelInterfaceMockRecorder) CreateTask(ctx, arg any) *gomock.Call 
 }
 
 // CreateUser mocks base method.
-func (m *MockModelInterface) CreateUser(ctx context.Context, arg querier.CreateUserParams) (*querier.AnchorUser, error) {
+func (m *MockModelInterface) CreateUser(ctx context.Context, arg querier.CreateUserParams) (*querier.AnclaxUser, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateUser", ctx, arg)
-	ret0, _ := ret[0].(*querier.AnchorUser)
+	ret0, _ := ret[0].(*querier.AnclaxUser)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -187,10 +187,10 @@ func (mr *MockModelInterfaceMockRecorder) DeleteUserByName(ctx, name any) *gomoc
 }
 
 // GetKeyPair mocks base method.
-func (m *MockModelInterface) GetKeyPair(ctx context.Context, accessKey string) (*querier.AnchorAccessKeyPair, error) {
+func (m *MockModelInterface) GetKeyPair(ctx context.Context, accessKey string) (*querier.AnclaxAccessKeyPair, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetKeyPair", ctx, accessKey)
-	ret0, _ := ret[0].(*querier.AnchorAccessKeyPair)
+	ret0, _ := ret[0].(*querier.AnclaxAccessKeyPair)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -217,10 +217,10 @@ func (mr *MockModelInterfaceMockRecorder) GetOpaqueKey(ctx, id any) *gomock.Call
 }
 
 // GetOrg mocks base method.
-func (m *MockModelInterface) GetOrg(ctx context.Context, id int32) (*querier.AnchorOrg, error) {
+func (m *MockModelInterface) GetOrg(ctx context.Context, id int32) (*querier.AnclaxOrg, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetOrg", ctx, id)
-	ret0, _ := ret[0].(*querier.AnchorOrg)
+	ret0, _ := ret[0].(*querier.AnclaxOrg)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -232,10 +232,10 @@ func (mr *MockModelInterfaceMockRecorder) GetOrg(ctx, id any) *gomock.Call {
 }
 
 // GetOrgByName mocks base method.
-func (m *MockModelInterface) GetOrgByName(ctx context.Context, name string) (*querier.AnchorOrg, error) {
+func (m *MockModelInterface) GetOrgByName(ctx context.Context, name string) (*querier.AnclaxOrg, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetOrgByName", ctx, name)
-	ret0, _ := ret[0].(*querier.AnchorOrg)
+	ret0, _ := ret[0].(*querier.AnclaxOrg)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -247,10 +247,10 @@ func (mr *MockModelInterfaceMockRecorder) GetOrgByName(ctx, name any) *gomock.Ca
 }
 
 // GetTaskByID mocks base method.
-func (m *MockModelInterface) GetTaskByID(ctx context.Context, id int32) (*querier.AnchorTask, error) {
+func (m *MockModelInterface) GetTaskByID(ctx context.Context, id int32) (*querier.AnclaxTask, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTaskByID", ctx, id)
-	ret0, _ := ret[0].(*querier.AnchorTask)
+	ret0, _ := ret[0].(*querier.AnclaxTask)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -262,10 +262,10 @@ func (mr *MockModelInterfaceMockRecorder) GetTaskByID(ctx, id any) *gomock.Call 
 }
 
 // GetTaskByUniqueTag mocks base method.
-func (m *MockModelInterface) GetTaskByUniqueTag(ctx context.Context, uniqueTag *string) (*querier.AnchorTask, error) {
+func (m *MockModelInterface) GetTaskByUniqueTag(ctx context.Context, uniqueTag *string) (*querier.AnclaxTask, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTaskByUniqueTag", ctx, uniqueTag)
-	ret0, _ := ret[0].(*querier.AnchorTask)
+	ret0, _ := ret[0].(*querier.AnclaxTask)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -277,10 +277,10 @@ func (mr *MockModelInterfaceMockRecorder) GetTaskByUniqueTag(ctx, uniqueTag any)
 }
 
 // GetUser mocks base method.
-func (m *MockModelInterface) GetUser(ctx context.Context, id int32) (*querier.AnchorUser, error) {
+func (m *MockModelInterface) GetUser(ctx context.Context, id int32) (*querier.AnclaxUser, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetUser", ctx, id)
-	ret0, _ := ret[0].(*querier.AnchorUser)
+	ret0, _ := ret[0].(*querier.AnclaxUser)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -292,10 +292,10 @@ func (mr *MockModelInterfaceMockRecorder) GetUser(ctx, id any) *gomock.Call {
 }
 
 // GetUserByName mocks base method.
-func (m *MockModelInterface) GetUserByName(ctx context.Context, name string) (*querier.AnchorUser, error) {
+func (m *MockModelInterface) GetUserByName(ctx context.Context, name string) (*querier.AnclaxUser, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetUserByName", ctx, name)
-	ret0, _ := ret[0].(*querier.AnchorUser)
+	ret0, _ := ret[0].(*querier.AnclaxUser)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -350,10 +350,10 @@ func (mr *MockModelInterfaceMockRecorder) IncrementAttempts(ctx, id any) *gomock
 }
 
 // InsertEvent mocks base method.
-func (m *MockModelInterface) InsertEvent(ctx context.Context, spec apigen.EventSpec) (*querier.AnchorEvent, error) {
+func (m *MockModelInterface) InsertEvent(ctx context.Context, spec apigen.EventSpec) (*querier.AnclaxEvent, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "InsertEvent", ctx, spec)
-	ret0, _ := ret[0].(*querier.AnchorEvent)
+	ret0, _ := ret[0].(*querier.AnclaxEvent)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -365,10 +365,10 @@ func (mr *MockModelInterfaceMockRecorder) InsertEvent(ctx, spec any) *gomock.Cal
 }
 
 // InsertOrgOwner mocks base method.
-func (m *MockModelInterface) InsertOrgOwner(ctx context.Context, arg querier.InsertOrgOwnerParams) (*querier.AnchorOrgOwner, error) {
+func (m *MockModelInterface) InsertOrgOwner(ctx context.Context, arg querier.InsertOrgOwnerParams) (*querier.AnclaxOrgOwner, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "InsertOrgOwner", ctx, arg)
-	ret0, _ := ret[0].(*querier.AnchorOrgOwner)
+	ret0, _ := ret[0].(*querier.AnclaxOrgOwner)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -380,10 +380,10 @@ func (mr *MockModelInterfaceMockRecorder) InsertOrgOwner(ctx, arg any) *gomock.C
 }
 
 // InsertOrgUser mocks base method.
-func (m *MockModelInterface) InsertOrgUser(ctx context.Context, arg querier.InsertOrgUserParams) (*querier.AnchorOrgUser, error) {
+func (m *MockModelInterface) InsertOrgUser(ctx context.Context, arg querier.InsertOrgUserParams) (*querier.AnclaxOrgUser, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "InsertOrgUser", ctx, arg)
-	ret0, _ := ret[0].(*querier.AnchorOrgUser)
+	ret0, _ := ret[0].(*querier.AnclaxOrgUser)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -410,10 +410,10 @@ func (mr *MockModelInterfaceMockRecorder) IsUsernameExists(ctx, name any) *gomoc
 }
 
 // ListAllPendingTasks mocks base method.
-func (m *MockModelInterface) ListAllPendingTasks(ctx context.Context) ([]*querier.AnchorTask, error) {
+func (m *MockModelInterface) ListAllPendingTasks(ctx context.Context) ([]*querier.AnclaxTask, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListAllPendingTasks", ctx)
-	ret0, _ := ret[0].([]*querier.AnchorTask)
+	ret0, _ := ret[0].([]*querier.AnclaxTask)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -425,10 +425,10 @@ func (mr *MockModelInterfaceMockRecorder) ListAllPendingTasks(ctx any) *gomock.C
 }
 
 // ListOrgs mocks base method.
-func (m *MockModelInterface) ListOrgs(ctx context.Context, userID int32) ([]*querier.AnchorOrg, error) {
+func (m *MockModelInterface) ListOrgs(ctx context.Context, userID int32) ([]*querier.AnclaxOrg, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListOrgs", ctx, userID)
-	ret0, _ := ret[0].([]*querier.AnchorOrg)
+	ret0, _ := ret[0].([]*querier.AnclaxOrg)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -440,10 +440,10 @@ func (mr *MockModelInterfaceMockRecorder) ListOrgs(ctx, userID any) *gomock.Call
 }
 
 // PullTask mocks base method.
-func (m *MockModelInterface) PullTask(ctx context.Context) (*querier.AnchorTask, error) {
+func (m *MockModelInterface) PullTask(ctx context.Context) (*querier.AnclaxTask, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "PullTask", ctx)
-	ret0, _ := ret[0].(*querier.AnchorTask)
+	ret0, _ := ret[0].(*querier.AnclaxTask)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -455,10 +455,10 @@ func (mr *MockModelInterfaceMockRecorder) PullTask(ctx any) *gomock.Call {
 }
 
 // PullTaskByID mocks base method.
-func (m *MockModelInterface) PullTaskByID(ctx context.Context, id int32) (*querier.AnchorTask, error) {
+func (m *MockModelInterface) PullTaskByID(ctx context.Context, id int32) (*querier.AnclaxTask, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "PullTaskByID", ctx, id)
-	ret0, _ := ret[0].(*querier.AnchorTask)
+	ret0, _ := ret[0].(*querier.AnclaxTask)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

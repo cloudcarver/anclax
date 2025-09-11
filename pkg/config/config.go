@@ -55,10 +55,10 @@ type Config struct {
 	// (Optional) The path of file to store the initialization data, if not set, skip the initialization
 	Init string `yaml:"init"`
 
-	// (Optional) The host of the anchor server.
+	// (Optional) The host of the anclax server.
 	Host string `yaml:"host"`
 
-	// (Optional) The port of the anchor server, default is 8020
+	// (Optional) The port of the anclax server, default is 8020
 	Port int `yaml:"port"`
 
 	// The Auth configuration

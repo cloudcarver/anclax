@@ -7,37 +7,37 @@ package querier
 import (
 	"context"
 
-	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
+	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 )
 
 type Querier interface {
-	CreateKeyPair(ctx context.Context, arg CreateKeyPairParams) (*AnchorAccessKeyPair, error)
+	CreateKeyPair(ctx context.Context, arg CreateKeyPairParams) (*AnclaxAccessKeyPair, error)
 	CreateOpaqueKey(ctx context.Context, arg CreateOpaqueKeyParams) (int64, error)
-	CreateOrg(ctx context.Context, name string) (*AnchorOrg, error)
-	CreateTask(ctx context.Context, arg CreateTaskParams) (*AnchorTask, error)
-	CreateUser(ctx context.Context, arg CreateUserParams) (*AnchorUser, error)
+	CreateOrg(ctx context.Context, name string) (*AnclaxOrg, error)
+	CreateTask(ctx context.Context, arg CreateTaskParams) (*AnclaxTask, error)
+	CreateUser(ctx context.Context, arg CreateUserParams) (*AnclaxUser, error)
 	DeleteKeyPair(ctx context.Context, accessKey string) error
 	DeleteOpaqueKey(ctx context.Context, id int64) error
 	DeleteOpaqueKeys(ctx context.Context, userID int32) error
 	DeleteUserByName(ctx context.Context, name string) error
-	GetKeyPair(ctx context.Context, accessKey string) (*AnchorAccessKeyPair, error)
+	GetKeyPair(ctx context.Context, accessKey string) (*AnclaxAccessKeyPair, error)
 	GetOpaqueKey(ctx context.Context, id int64) ([]byte, error)
-	GetOrg(ctx context.Context, id int32) (*AnchorOrg, error)
-	GetOrgByName(ctx context.Context, name string) (*AnchorOrg, error)
-	GetTaskByID(ctx context.Context, id int32) (*AnchorTask, error)
-	GetTaskByUniqueTag(ctx context.Context, uniqueTag *string) (*AnchorTask, error)
-	GetUser(ctx context.Context, id int32) (*AnchorUser, error)
-	GetUserByName(ctx context.Context, name string) (*AnchorUser, error)
+	GetOrg(ctx context.Context, id int32) (*AnclaxOrg, error)
+	GetOrgByName(ctx context.Context, name string) (*AnclaxOrg, error)
+	GetTaskByID(ctx context.Context, id int32) (*AnclaxTask, error)
+	GetTaskByUniqueTag(ctx context.Context, uniqueTag *string) (*AnclaxTask, error)
+	GetUser(ctx context.Context, id int32) (*AnclaxUser, error)
+	GetUserByName(ctx context.Context, name string) (*AnclaxUser, error)
 	GetUserDefaultOrg(ctx context.Context, userID int32) (int32, error)
 	IncrementAttempts(ctx context.Context, id int32) error
-	InsertEvent(ctx context.Context, spec apigen.EventSpec) (*AnchorEvent, error)
-	InsertOrgOwner(ctx context.Context, arg InsertOrgOwnerParams) (*AnchorOrgOwner, error)
-	InsertOrgUser(ctx context.Context, arg InsertOrgUserParams) (*AnchorOrgUser, error)
+	InsertEvent(ctx context.Context, spec apigen.EventSpec) (*AnclaxEvent, error)
+	InsertOrgOwner(ctx context.Context, arg InsertOrgOwnerParams) (*AnclaxOrgOwner, error)
+	InsertOrgUser(ctx context.Context, arg InsertOrgUserParams) (*AnclaxOrgUser, error)
 	IsUsernameExists(ctx context.Context, name string) (bool, error)
-	ListAllPendingTasks(ctx context.Context) ([]*AnchorTask, error)
-	ListOrgs(ctx context.Context, userID int32) ([]*AnchorOrg, error)
-	PullTask(ctx context.Context) (*AnchorTask, error)
-	PullTaskByID(ctx context.Context, id int32) (*AnchorTask, error)
+	ListAllPendingTasks(ctx context.Context) ([]*AnclaxTask, error)
+	ListOrgs(ctx context.Context, userID int32) ([]*AnclaxOrg, error)
+	PullTask(ctx context.Context) (*AnclaxTask, error)
+	PullTaskByID(ctx context.Context, id int32) (*AnclaxTask, error)
 	RestoreUserByName(ctx context.Context, name string) error
 	SetUserDefaultOrg(ctx context.Context, arg SetUserDefaultOrgParams) error
 	UpdateTask(ctx context.Context, arg UpdateTaskParams) error

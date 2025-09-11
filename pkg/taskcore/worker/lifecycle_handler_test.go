@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudcarver/anchor/pkg/taskcore"
-	"github.com/cloudcarver/anchor/pkg/utils"
-	"github.com/cloudcarver/anchor/pkg/zcore/model"
-	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
-	"github.com/cloudcarver/anchor/pkg/zgen/querier"
+	"github.com/cloudcarver/anclax/pkg/taskcore"
+	"github.com/cloudcarver/anclax/pkg/utils"
+	"github.com/cloudcarver/anclax/pkg/zcore/model"
+	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
+	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -35,7 +35,7 @@ func TestHandleCronjob(t *testing.T) {
 	)
 
 	handler := &TaskLifeCycleHandler{
-		model: mockModel,
+		model:       mockModel,
 		taskHandler: mockTaskHandler,
 		now: func() time.Time {
 			return currTime
@@ -74,7 +74,7 @@ func TestHandleCompleted(t *testing.T) {
 	mockTaskHandler := NewMockTaskHandler(ctrl)
 
 	handler := &TaskLifeCycleHandler{
-		model: mockModel,
+		model:       mockModel,
 		taskHandler: mockTaskHandler,
 	}
 
@@ -88,7 +88,7 @@ func TestHandleCompleted(t *testing.T) {
 		TaskCompleted: &apigen.EventTaskCompleted{
 			TaskID: taskID,
 		},
-	}).Return(&querier.AnchorEvent{}, nil)
+	}).Return(&querier.AnclaxEvent{}, nil)
 
 	mockTxm.EXPECT().UpdateTaskStatus(context.Background(), querier.UpdateTaskStatusParams{
 		ID:     taskID,
@@ -113,7 +113,7 @@ func TestHandleFailed(t *testing.T) {
 	mockTaskHandler := NewMockTaskHandler(ctrl)
 
 	handler := &TaskLifeCycleHandler{
-		model: mockModel,
+		model:       mockModel,
 		taskHandler: mockTaskHandler,
 	}
 
@@ -131,7 +131,7 @@ func TestHandleFailed(t *testing.T) {
 			TaskID: taskID,
 			Error:  err.Error(),
 		},
-	}).Return(&querier.AnchorEvent{}, nil)
+	}).Return(&querier.AnclaxEvent{}, nil)
 
 	mockTaskHandler.EXPECT().OnTaskFailed(context.Background(), gomock.Any(), &task.Spec, taskID).Return(nil)
 
@@ -161,7 +161,7 @@ func TestHandleFailedWithRetryPolicy(t *testing.T) {
 	mockTaskHandler := NewMockTaskHandler(ctrl)
 
 	handler := &TaskLifeCycleHandler{
-		model: mockModel,
+		model:       mockModel,
 		taskHandler: mockTaskHandler,
 		now: func() time.Time {
 			return currTime
@@ -188,7 +188,7 @@ func TestHandleFailedWithRetryPolicy(t *testing.T) {
 			TaskID: taskID,
 			Error:  err.Error(),
 		},
-	}).Return(&querier.AnchorEvent{}, nil)
+	}).Return(&querier.AnclaxEvent{}, nil)
 
 	mockTxm.EXPECT().UpdateTaskStartedAt(context.Background(), querier.UpdateTaskStartedAtParams{
 		ID:        taskID,
@@ -217,7 +217,7 @@ func TestHandleFailed_ErrRetryTaskWithoutErrorEvent(t *testing.T) {
 	mockTaskHandler := NewMockTaskHandler(ctrl)
 
 	handler := &TaskLifeCycleHandler{
-		model: mockModel,
+		model:       mockModel,
 		taskHandler: mockTaskHandler,
 		now: func() time.Time {
 			return currTime
@@ -263,7 +263,7 @@ func TestHandleFailed_ErrFatalTask(t *testing.T) {
 	mockTaskHandler := NewMockTaskHandler(ctrl)
 
 	handler := &TaskLifeCycleHandler{
-		model: mockModel,
+		model:       mockModel,
 		taskHandler: mockTaskHandler,
 		now: func() time.Time {
 			return currTime
@@ -290,7 +290,7 @@ func TestHandleFailed_ErrFatalTask(t *testing.T) {
 			TaskID: taskID,
 			Error:  taskcore.ErrFatalTask.Error(),
 		},
-	}).Return(&querier.AnchorEvent{}, nil)
+	}).Return(&querier.AnclaxEvent{}, nil)
 
 	mockTaskHandler.EXPECT().OnTaskFailed(context.Background(), gomock.Any(), &task.Spec, taskID).Return(nil)
 
@@ -316,7 +316,7 @@ func TestHandleFailed_ErrFatalTask_Cronjob(t *testing.T) {
 	mockTaskHandler := NewMockTaskHandler(ctrl)
 
 	handler := &TaskLifeCycleHandler{
-		model: mockModel,
+		model:       mockModel,
 		taskHandler: mockTaskHandler,
 	}
 
@@ -340,7 +340,7 @@ func TestHandleFailed_ErrFatalTask_Cronjob(t *testing.T) {
 			TaskID: taskID,
 			Error:  taskcore.ErrFatalTask.Error(),
 		},
-	}).Return(&querier.AnchorEvent{}, nil)
+	}).Return(&querier.AnclaxEvent{}, nil)
 
 	// Note: For cronjobs, OnTaskFailed and UpdateTaskStatus should NOT be called
 	// because cronjobs are designed to run again regardless of failures
@@ -368,7 +368,7 @@ func TestHandleFailedWithMaxAttempts(t *testing.T) {
 	mockTaskHandler := NewMockTaskHandler(ctrl)
 
 	handler := &TaskLifeCycleHandler{
-		model: mockModel,
+		model:       mockModel,
 		taskHandler: mockTaskHandler,
 		now: func() time.Time {
 			return currTime
@@ -396,7 +396,7 @@ func TestHandleFailedWithMaxAttempts(t *testing.T) {
 			TaskID: taskID,
 			Error:  err.Error(),
 		},
-	}).Return(&querier.AnchorEvent{}, nil)
+	}).Return(&querier.AnclaxEvent{}, nil)
 
 	mockTxm.EXPECT().UpdateTaskStartedAt(context.Background(), querier.UpdateTaskStartedAtParams{
 		ID:        taskID,
@@ -424,7 +424,7 @@ func TestHandleFailedExceedsMaxAttempts(t *testing.T) {
 	mockTaskHandler := NewMockTaskHandler(ctrl)
 
 	handler := &TaskLifeCycleHandler{
-		model: mockModel,
+		model:       mockModel,
 		taskHandler: mockTaskHandler,
 	}
 
@@ -449,7 +449,7 @@ func TestHandleFailedExceedsMaxAttempts(t *testing.T) {
 			TaskID: taskID,
 			Error:  err.Error(),
 		},
-	}).Return(&querier.AnchorEvent{}, nil)
+	}).Return(&querier.AnclaxEvent{}, nil)
 
 	mockTaskHandler.EXPECT().OnTaskFailed(context.Background(), gomock.Any(), &task.Spec, taskID).Return(nil)
 

@@ -13,7 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	macaroons "github.com/cloudcarver/anchor/pkg/macaroons"
+	macaroons "github.com/cloudcarver/anclax/pkg/macaroons"
 	fiber "github.com/gofiber/fiber/v2"
 	gomock "go.uber.org/mock/gomock"
 )

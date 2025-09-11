@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/cloudcarver/anchor/pkg/config"
-	"github.com/cloudcarver/anchor/pkg/globalctx"
-	"github.com/cloudcarver/anchor/pkg/logger"
+	"github.com/cloudcarver/anclax/pkg/config"
+	"github.com/cloudcarver/anclax/pkg/globalctx"
+	"github.com/cloudcarver/anclax/pkg/logger"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/zap"
@@ -20,21 +20,21 @@ var log = logger.NewLogAgent("metrics")
 
 var WorkerGoroutines = promauto.NewGauge(
 	prometheus.GaugeOpts{
-		Name: "anchor_worker_goroutines",
+		Name: "anclax_worker_goroutines",
 		Help: "The number of goroutines that are running",
 	},
 )
 
 var PulledTasks = promauto.NewCounter(
 	prometheus.CounterOpts{
-		Name: "anchor_pulled_tasks",
+		Name: "anclax_pulled_tasks",
 		Help: "The number of tasks that have been pulled",
 	},
 )
 
 var RunTaskErrors = promauto.NewCounter(
 	prometheus.CounterOpts{
-		Name: "anchor_run_task_internal_errors",
+		Name: "anclax_run_task_internal_errors",
 		Help: "The number of internal errors during running tasks, not related to the task logic. This is expected to be 0.",
 	},
 )

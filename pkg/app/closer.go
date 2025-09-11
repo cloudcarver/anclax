@@ -1,6 +1,6 @@
 package app
 
-import "github.com/cloudcarver/anchor/pkg/zcore/model"
+import "github.com/cloudcarver/anclax/pkg/zcore/model"
 
 type Closer struct {
 	closers []func()

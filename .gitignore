@@ -1,4 +1,5 @@
 bin/*
+.anclax/*
 .anchor/*
 coverage.out
 coverage.html

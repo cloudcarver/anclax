@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/cloudcarver/anchor/pkg/utils"
-	"github.com/cloudcarver/anchor/pkg/zcore/model"
-	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
-	"github.com/cloudcarver/anchor/pkg/zgen/querier"
+	"github.com/cloudcarver/anclax/pkg/utils"
+	"github.com/cloudcarver/anclax/pkg/zcore/model"
+	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
+	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 	"github.com/jackc/pgx/v5"
 	"github.com/pkg/errors"
 )

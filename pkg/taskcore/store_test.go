@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudcarver/anchor/pkg/utils"
-	"github.com/cloudcarver/anchor/pkg/zcore/model"
-	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
-	"github.com/cloudcarver/anchor/pkg/zgen/querier"
+	"github.com/cloudcarver/anclax/pkg/utils"
+	"github.com/cloudcarver/anclax/pkg/zcore/model"
+	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
+	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
