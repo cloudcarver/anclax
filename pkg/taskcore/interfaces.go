@@ -24,9 +24,9 @@ type TaskStoreInterface interface {
 
 	UpdateCronJob(ctx context.Context, taskID int32, cronExpression string, spec json.RawMessage) error
 
-	PauseCronJob(ctx context.Context, taskID int32) error
+	PauseJob(ctx context.Context, taskID int32) error
 
-	ResumeCronJob(ctx context.Context, taskID int32) error
+	ResumeJob(ctx context.Context, taskID int32) error
 
 	WithTx(tx pgx.Tx) TaskStoreInterface
 }

@@ -88,7 +88,7 @@ func (m *Model) RunTransaction(ctx context.Context, f func(model ModelInterface)
 	})
 }
 
-func NewModel(cfg *config.Config) (ModelInterface, error) {
+func NewModel(cfg *config.Config, libCfg *config.LibConfig) (ModelInterface, error) {
 	var dsn string
 	if cfg.Pg.DSN != nil {
 		dsn = *cfg.Pg.DSN
@@ -110,8 +110,8 @@ func NewModel(cfg *config.Config) (ModelInterface, error) {
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to parse pgxpool config: %s", utils.ReplaceSensitiveStringBySha256(dsn, cfg.Pg.Password))
 	}
-	config.MaxConns = 30
-	config.MinConns = 5
+	config.MaxConns = libCfg.Pg.MaxConnections
+	config.MinConns = libCfg.Pg.MinConnections
 
 	var (
 		retryLimit = 10

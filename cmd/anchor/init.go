@@ -23,6 +23,7 @@ const (
 	Mockgen     = "mockgen"
 
 	binDir = "bin"
+	tmpDir = "tmp"
 )
 
 var initCmd = &cli.Command{

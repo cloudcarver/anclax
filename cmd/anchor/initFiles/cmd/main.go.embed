@@ -17,6 +17,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer app.Close()
 
 	if utils.UnwrapOrDefault(init, false) {
 		log.Println("initialization completed")

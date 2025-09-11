@@ -14,6 +14,9 @@ oapi-codegen:
   path: api/v1.yaml
   out: pkg/zgen/apigen/spec_gen.go
   package: apigen
+  config:
+    output-options:
+      skip-prune: true
 
 wire:
   path: ./wire

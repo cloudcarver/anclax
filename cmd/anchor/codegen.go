@@ -8,6 +8,7 @@ import (
 	"github.com/cloudcarver/anchor"
 	task_codegen "github.com/cloudcarver/anchor/pkg/codegen/task"
 	xware_codegen "github.com/cloudcarver/anchor/pkg/codegen/xware"
+	"github.com/oasdiff/yaml"
 	"github.com/pkg/errors"
 	"github.com/urfave/cli/v2"
 )
@@ -291,7 +292,22 @@ func genOapi(workdir string, config *OapiCodegenConfig) error {
 	if err := os.MkdirAll(filepath.Dir(filepath.Join(workdir, config.Out)), 0755); err != nil {
 		return errors.Wrap(err, "failed to create output directory")
 	}
-	cmd := exec.Command(command("oapi-codegen"), "-generate", "types,fiber,client", "-package", config.Package, "-o", config.Out, config.Path)
+
+	var args []string
+	if config.Config != nil {
+		configPath := filepath.Join(storePath, "oapi-config.yaml")
+		yamlData, err := yaml.Marshal(config.Config)
+		if err != nil {
+			return errors.Wrap(err, "failed to marshal config")
+		}
+		if err := os.WriteFile(configPath, yamlData, 0644); err != nil {
+			return errors.Wrap(err, "failed to write config file")
+		}
+		args = append(args, "-config", configPath)
+	}
+	args = append(args, "-generate", "types,fiber,client", "-package", config.Package, "-o", config.Out, config.Path)
+
+	cmd := exec.Command(command("oapi-codegen"), args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Dir = workdir

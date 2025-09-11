@@ -16,6 +16,10 @@ func (a *App) Start() error {
 	return a.AnchorApp.Start()
 }
 
+func (a *App) Close() {
+	a.AnchorApp.Close()
+}
+
 type Plugin struct {
 	serverInterface apigen.ServerInterface
 	validator       apigen.Validator

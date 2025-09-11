@@ -84,7 +84,7 @@ func (s *TaskStore) UpdateCronJob(ctx context.Context, taskID int32, cronExpress
 	return nil
 }
 
-func (s *TaskStore) PauseCronJob(ctx context.Context, taskID int32) error {
+func (s *TaskStore) PauseJob(ctx context.Context, taskID int32) error {
 	if err := s.model.UpdateTaskStatus(ctx, querier.UpdateTaskStatusParams{
 		ID:     taskID,
 		Status: string(apigen.Paused),
@@ -94,7 +94,7 @@ func (s *TaskStore) PauseCronJob(ctx context.Context, taskID int32) error {
 	return nil
 }
 
-func (s *TaskStore) ResumeCronJob(ctx context.Context, taskID int32) error {
+func (s *TaskStore) ResumeJob(ctx context.Context, taskID int32) error {
 	if err := s.model.UpdateTaskStatus(ctx, querier.UpdateTaskStatusParams{
 		ID:     taskID,
 		Status: string(apigen.Pending),

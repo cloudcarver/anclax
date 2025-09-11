@@ -29,7 +29,7 @@ import (
 
 func InitializeApplication(cfg *config.Config, libCfg *config.LibConfig) (*app.Application, error) {
 	globalContext := globalctx.New()
-	modelInterface, err := model.NewModel(cfg)
+	modelInterface, err := model.NewModel(cfg, libCfg)
 	if err != nil {
 		return nil, err
 	}

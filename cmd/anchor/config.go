@@ -4,6 +4,7 @@ type OapiCodegenConfig struct {
 	Path    string `yaml:"path"`
 	Out     string `yaml:"out"`
 	Package string `yaml:"package"`
+	Config  any    `yaml:"config,omitempty"`
 }
 
 type WireConfig struct {
