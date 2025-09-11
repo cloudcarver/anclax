@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/cloudcarver/anchor/pkg/taskcore/types"
 	"github.com/cloudcarver/anchor/pkg/zcore/model"
 	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
 	"github.com/cloudcarver/anchor/pkg/zgen/querier"
@@ -84,7 +85,7 @@ func (s *TaskStore) UpdateCronJob(ctx context.Context, taskID int32, cronExpress
 	return nil
 }
 
-func (s *TaskStore) PauseJob(ctx context.Context, taskID int32) error {
+func (s *TaskStore) PauseTask(ctx context.Context, taskID int32) error {
 	if err := s.model.UpdateTaskStatus(ctx, querier.UpdateTaskStatusParams{
 		ID:     taskID,
 		Status: string(apigen.Paused),
@@ -94,7 +95,7 @@ func (s *TaskStore) PauseJob(ctx context.Context, taskID int32) error {
 	return nil
 }
 
-func (s *TaskStore) ResumeJob(ctx context.Context, taskID int32) error {
+func (s *TaskStore) ResumeTask(ctx context.Context, taskID int32) error {
 	if err := s.model.UpdateTaskStatus(ctx, querier.UpdateTaskStatusParams{
 		ID:     taskID,
 		Status: string(apigen.Pending),
@@ -102,4 +103,13 @@ func (s *TaskStore) ResumeJob(ctx context.Context, taskID int32) error {
 		return errors.Wrapf(err, "failed to resume task")
 	}
 	return nil
+}
+
+func (s *TaskStore) GetTaskByUniqueTag(ctx context.Context, uniqueTag string) (*apigen.Task, error) {
+	task, err := s.model.GetTaskByUniqueTag(ctx, &uniqueTag)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get task by unique tag")
+	}
+	ret := types.TaskToAPI(task)
+	return &ret, nil
 }

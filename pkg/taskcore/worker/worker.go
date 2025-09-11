@@ -9,9 +9,9 @@ import (
 	"github.com/cloudcarver/anchor/pkg/logger"
 	"github.com/cloudcarver/anchor/pkg/metrics"
 	"github.com/cloudcarver/anchor/pkg/taskcore"
+	"github.com/cloudcarver/anchor/pkg/taskcore/types"
 	"github.com/cloudcarver/anchor/pkg/zcore/model"
 	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
-	"github.com/cloudcarver/anchor/pkg/zgen/querier"
 	"github.com/jackc/pgx/v5"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -47,19 +47,6 @@ func NewWorker(globalCtx *globalctx.GlobalContext, cfg *config.Config, model mod
 	return w, nil
 }
 
-func taskToAPI(task *querier.AnchorTask) apigen.Task {
-	return apigen.Task{
-		ID:         task.ID,
-		CreatedAt:  task.CreatedAt,
-		Spec:       task.Spec,
-		StartedAt:  task.StartedAt,
-		Status:     apigen.TaskStatus(task.Status),
-		UpdatedAt:  task.UpdatedAt,
-		Attempts:   task.Attempts,
-		Attributes: task.Attributes,
-	}
-}
-
 func (w *Worker) Start() {
 	ticker := time.NewTicker(w.pollInterval)
 	defer ticker.Stop()
@@ -92,7 +79,7 @@ func (w *Worker) pullAndRun(parentCtx context.Context) error {
 
 		metrics.PulledTasks.Inc()
 
-		task := taskToAPI(qtask)
+		task := types.TaskToAPI(qtask)
 
 		return w.runTaskWithTx(parentCtx, tx, task)
 
@@ -111,7 +98,7 @@ func (w *Worker) RunTask(ctx context.Context, taskID int32) error {
 			}
 			return err
 		}
-		task := taskToAPI(qtask)
+		task := types.TaskToAPI(qtask)
 		return w.runTaskWithTx(ctx, tx, task)
 	})
 }

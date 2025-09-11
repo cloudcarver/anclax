@@ -24,9 +24,11 @@ type TaskStoreInterface interface {
 
 	UpdateCronJob(ctx context.Context, taskID int32, cronExpression string, spec json.RawMessage) error
 
-	PauseJob(ctx context.Context, taskID int32) error
+	PauseTask(ctx context.Context, taskID int32) error
 
-	ResumeJob(ctx context.Context, taskID int32) error
+	ResumeTask(ctx context.Context, taskID int32) error
 
 	WithTx(tx pgx.Tx) TaskStoreInterface
+
+	GetTaskByUniqueTag(ctx context.Context, uniqueTag string) (*apigen.Task, error)
 }

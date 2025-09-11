@@ -43,18 +43,33 @@ func (m *MockTaskStoreInterface) EXPECT() *MockTaskStoreInterfaceMockRecorder {
 	return m.recorder
 }
 
-// PauseJob mocks base method.
-func (m *MockTaskStoreInterface) PauseJob(ctx context.Context, taskID int32) error {
+// GetTaskByUniqueTag mocks base method.
+func (m *MockTaskStoreInterface) GetTaskByUniqueTag(ctx context.Context, uniqueTag string) (*apigen.Task, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PauseJob", ctx, taskID)
+	ret := m.ctrl.Call(m, "GetTaskByUniqueTag", ctx, uniqueTag)
+	ret0, _ := ret[0].(*apigen.Task)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetTaskByUniqueTag indicates an expected call of GetTaskByUniqueTag.
+func (mr *MockTaskStoreInterfaceMockRecorder) GetTaskByUniqueTag(ctx, uniqueTag any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTaskByUniqueTag", reflect.TypeOf((*MockTaskStoreInterface)(nil).GetTaskByUniqueTag), ctx, uniqueTag)
+}
+
+// PauseTask mocks base method.
+func (m *MockTaskStoreInterface) PauseTask(ctx context.Context, taskID int32) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PauseTask", ctx, taskID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// PauseJob indicates an expected call of PauseJob.
-func (mr *MockTaskStoreInterfaceMockRecorder) PauseJob(ctx, taskID any) *gomock.Call {
+// PauseTask indicates an expected call of PauseTask.
+func (mr *MockTaskStoreInterfaceMockRecorder) PauseTask(ctx, taskID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PauseJob", reflect.TypeOf((*MockTaskStoreInterface)(nil).PauseJob), ctx, taskID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PauseTask", reflect.TypeOf((*MockTaskStoreInterface)(nil).PauseTask), ctx, taskID)
 }
 
 // PushTask mocks base method.
@@ -72,18 +87,18 @@ func (mr *MockTaskStoreInterfaceMockRecorder) PushTask(ctx, task any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PushTask", reflect.TypeOf((*MockTaskStoreInterface)(nil).PushTask), ctx, task)
 }
 
-// ResumeJob mocks base method.
-func (m *MockTaskStoreInterface) ResumeJob(ctx context.Context, taskID int32) error {
+// ResumeTask mocks base method.
+func (m *MockTaskStoreInterface) ResumeTask(ctx context.Context, taskID int32) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ResumeJob", ctx, taskID)
+	ret := m.ctrl.Call(m, "ResumeTask", ctx, taskID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// ResumeJob indicates an expected call of ResumeJob.
-func (mr *MockTaskStoreInterfaceMockRecorder) ResumeJob(ctx, taskID any) *gomock.Call {
+// ResumeTask indicates an expected call of ResumeTask.
+func (mr *MockTaskStoreInterfaceMockRecorder) ResumeTask(ctx, taskID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResumeJob", reflect.TypeOf((*MockTaskStoreInterface)(nil).ResumeJob), ctx, taskID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResumeTask", reflect.TypeOf((*MockTaskStoreInterface)(nil).ResumeTask), ctx, taskID)
 }
 
 // UpdateCronJob mocks base method.

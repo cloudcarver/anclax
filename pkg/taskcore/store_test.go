@@ -80,7 +80,7 @@ func TestPauseCronJob(t *testing.T) {
 		model: mockModel,
 	}
 
-	err := taskStore.PauseJob(ctx, taskID)
+	err := taskStore.PauseTask(ctx, taskID)
 	require.NoError(t, err)
 }
 
@@ -103,6 +103,6 @@ func TestResumeCronJob(t *testing.T) {
 	taskStore := &TaskStore{
 		model: mockModel,
 	}
-	err := taskStore.ResumeJob(ctx, taskID)
+	err := taskStore.ResumeTask(ctx, taskID)
 	require.NoError(t, err)
 }
