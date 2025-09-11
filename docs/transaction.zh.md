@@ -1,12 +1,12 @@
-# Anchor 中的事务管理
+# Anclax 中的事务管理
 
-Anchor 被设计为一个**单一内聚的终极后端框架**，建立在一个核心原则之上：**`WithTx` 模式**。每个与数据库交互的组件都提供独立方法和接受 `pgx.Tx` 的事务变体，实现在单个事务内无缝组合操作。
+Anclax 被设计为一个**单一内聚的终极后端框架**，建立在一个核心原则之上：**`WithTx` 模式**。每个与数据库交互的组件都提供独立方法和接受 `pgx.Tx` 的事务变体，实现在单个事务内无缝组合操作。
 
-本文档解释了 Anchor 的事务系统如何工作，重点关注 `WithTx` 模式如何使插件系统、任务执行、钩子和服务方法协同工作。
+本文档解释了 Anclax 的事务系统如何工作，重点关注 `WithTx` 模式如何使插件系统、任务执行、钩子和服务方法协同工作。
 
 ## 核心原则：`WithTx` 模式
 
-Anchor 的架构建立在一个基本原则之上：**每个数据库操作都应该有独立和事务两种形式**：
+Anclax 的架构建立在一个基本原则之上：**每个数据库操作都应该有独立和事务两种形式**：
 
 - **独立方法**：处理自己的事务生命周期
 - **`WithTx` 方法**：接受现有事务并参与其中
@@ -22,7 +22,7 @@ Anchor 的架构建立在一个基本原则之上：**每个数据库操作都�
 
 ### 核心模式：`pgx.Tx` 传播
 
-Anchor 使用一致的模式在函数边界间传播 PostgreSQL 事务（`pgx.Tx`）：
+Anclax 使用一致的模式在函数边界间传播 PostgreSQL 事务（`pgx.Tx`）：
 
 ```go
 // 基本模式：函数同时接受上下文和事务
@@ -70,7 +70,7 @@ func (m *Model) RunTransactionWithTx(ctx context.Context, f func(tx pgx.Tx, mode
 
 ### 插件接口
 
-Anchor 中的插件实现一个简单的接口，允许它们与系统的不同部分集成：
+Anclax 中的插件实现一个简单的接口，允许它们与系统的不同部分集成：
 
 ```go
 type Plugin struct {
@@ -79,9 +79,9 @@ type Plugin struct {
     taskHandler     worker.TaskHandler
 }
 
-func (p *Plugin) Plug(anchorApp *anchor_app.Application) {
-    p.PlugToFiberApp(anchorApp.GetServer().GetApp())
-    p.PlugToWorker(anchorApp.GetWorker())
+func (p *Plugin) Plug(anclaxApp *anclax_app.Application) {
+    p.PlugToFiberApp(anclaxApp.GetServer().GetApp())
+    p.PlugToWorker(anclaxApp.GetWorker())
 }
 ```
 
@@ -98,7 +98,7 @@ func (p *Plugin) Plug(anchorApp *anchor_app.Application) {
 
 ### 跨组件的通用应用
 
-Anchor 中每个执行数据库操作的组件都遵循 `WithTx` 模式：
+Anclax 中每个执行数据库操作的组件都遵循 `WithTx` 模式：
 
 #### 1. 模型层
 ```go
@@ -146,7 +146,7 @@ type TaskStoreInterface interface {
 
 ### 服务方法：复杂业务逻辑的事务化
 
-Anchor 的服务层通过为所有业务操作提供事务变体，展示了 `WithTx` 模式的威力：
+Anclax 的服务层通过为所有业务操作提供事务变体，展示了 `WithTx` 模式的威力：
 
 #### 示例：用户创建服务
 
@@ -355,13 +355,13 @@ func (e *Executor) ExecuteIncrementCounter(ctx context.Context, tx pgx.Tx, param
 
 ### 钩子类型
 
-Anchor 提供两种类型的钩子：
+Anclax 提供两种类型的钩子：
 
 1. **事务钩子**：在同一事务内执行
 2. **异步钩子**：通过任务系统异步执行
 
 ```go
-type AnchorHookInterface interface {
+type AnclaxHookInterface interface {
     // 事务钩子 - 在同一 tx 内执行
     OnUserCreated(ctx context.Context, tx pgx.Tx, userID int32) error
     
@@ -601,7 +601,7 @@ func (e *Executor) ExecuteProcessPayment(ctx context.Context, tx pgx.Tx, params 
 
 ## 结论：`WithTx` 模式作为基础
 
-Anchor 通过普遍应用 `WithTx` 模式实现成为**单一内聚的终极后端框架**的目标。这个核心原则提供：
+Anclax 通过普遍应用 `WithTx` 模式实现成为**单一内聚的终极后端框架**的目标。这个核心原则提供：
 
 ### 框架级一致性
 - **每个组件**都遵循相同的事务模式
@@ -622,4 +622,4 @@ Anchor 通过普遍应用 `WithTx` 模式实现成为**单一内聚的终极后�
 
 `WithTx` 模式将可能是分离组件集合的东西转变为真正内聚的框架，其中每个部分都事务性地协同工作。这种设计使开发者能够构建复杂、可靠的后端系统，并确信数据一致性在每个级别都得到维护。
 
-**本质上，`WithTx` 不仅仅是方法命名约定——它是使 Anchor 成为终极后端框架的架构基础。**
+**本质上，`WithTx` 不仅仅是方法命名约定——它是使 Anclax 成为终极后端框架的架构基础。**

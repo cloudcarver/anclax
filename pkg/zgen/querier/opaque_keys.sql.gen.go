@@ -10,7 +10,7 @@ import (
 )
 
 const createOpaqueKey = `-- name: CreateOpaqueKey :one
-INSERT INTO anchor.opaque_keys (user_id, key) VALUES ($1, $2) RETURNING id
+INSERT INTO anclax.opaque_keys (user_id, key) VALUES ($1, $2) RETURNING id
 `
 
 type CreateOpaqueKeyParams struct {
@@ -26,7 +26,7 @@ func (q *Queries) CreateOpaqueKey(ctx context.Context, arg CreateOpaqueKeyParams
 }
 
 const deleteOpaqueKey = `-- name: DeleteOpaqueKey :exec
-DELETE FROM anchor.opaque_keys WHERE id = $1
+DELETE FROM anclax.opaque_keys WHERE id = $1
 `
 
 func (q *Queries) DeleteOpaqueKey(ctx context.Context, id int64) error {
@@ -35,7 +35,7 @@ func (q *Queries) DeleteOpaqueKey(ctx context.Context, id int64) error {
 }
 
 const deleteOpaqueKeys = `-- name: DeleteOpaqueKeys :exec
-DELETE FROM anchor.opaque_keys WHERE user_id = $1
+DELETE FROM anclax.opaque_keys WHERE user_id = $1
 `
 
 func (q *Queries) DeleteOpaqueKeys(ctx context.Context, userID int32) error {
@@ -44,7 +44,7 @@ func (q *Queries) DeleteOpaqueKeys(ctx context.Context, userID int32) error {
 }
 
 const getOpaqueKey = `-- name: GetOpaqueKey :one
-SELECT key FROM anchor.opaque_keys WHERE id = $1
+SELECT key FROM anclax.opaque_keys WHERE id = $1
 `
 
 func (q *Queries) GetOpaqueKey(ctx context.Context, id int64) ([]byte, error) {

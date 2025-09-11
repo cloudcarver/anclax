@@ -1,7 +1,7 @@
 BEGIN;
 
-DROP TABLE IF EXISTS anchor.users;
-DROP TABLE IF EXISTS anchor.keys;
-DROP TABLE IF EXISTS anchor.opaque_tokens;
+DROP TABLE IF EXISTS anclax.users;
+DROP TABLE IF EXISTS anclax.keys;
+DROP TABLE IF EXISTS anclax.opaque_tokens;
 
 COMMIT;

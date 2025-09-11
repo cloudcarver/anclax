@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cloudcarver/anchor/dev/tools"
+	"github.com/cloudcarver/anclax/dev/tools"
 	"github.com/urfave/cli/v2"
 )
 

@@ -10,12 +10,12 @@ import (
 )
 
 const createOrg = `-- name: CreateOrg :one
-INSERT INTO anchor.orgs (name) VALUES ($1) RETURNING id, name, tz, created_at, updated_at
+INSERT INTO anclax.orgs (name) VALUES ($1) RETURNING id, name, tz, created_at, updated_at
 `
 
-func (q *Queries) CreateOrg(ctx context.Context, name string) (*AnchorOrg, error) {
+func (q *Queries) CreateOrg(ctx context.Context, name string) (*AnclaxOrg, error) {
 	row := q.db.QueryRow(ctx, createOrg, name)
-	var i AnchorOrg
+	var i AnclaxOrg
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -27,12 +27,12 @@ func (q *Queries) CreateOrg(ctx context.Context, name string) (*AnchorOrg, error
 }
 
 const getOrg = `-- name: GetOrg :one
-SELECT id, name, tz, created_at, updated_at FROM anchor.orgs WHERE id = $1
+SELECT id, name, tz, created_at, updated_at FROM anclax.orgs WHERE id = $1
 `
 
-func (q *Queries) GetOrg(ctx context.Context, id int32) (*AnchorOrg, error) {
+func (q *Queries) GetOrg(ctx context.Context, id int32) (*AnclaxOrg, error) {
 	row := q.db.QueryRow(ctx, getOrg, id)
-	var i AnchorOrg
+	var i AnclaxOrg
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -44,12 +44,12 @@ func (q *Queries) GetOrg(ctx context.Context, id int32) (*AnchorOrg, error) {
 }
 
 const getOrgByName = `-- name: GetOrgByName :one
-SELECT id, name, tz, created_at, updated_at FROM anchor.orgs WHERE name = $1
+SELECT id, name, tz, created_at, updated_at FROM anclax.orgs WHERE name = $1
 `
 
-func (q *Queries) GetOrgByName(ctx context.Context, name string) (*AnchorOrg, error) {
+func (q *Queries) GetOrgByName(ctx context.Context, name string) (*AnclaxOrg, error) {
 	row := q.db.QueryRow(ctx, getOrgByName, name)
-	var i AnchorOrg
+	var i AnclaxOrg
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -61,7 +61,7 @@ func (q *Queries) GetOrgByName(ctx context.Context, name string) (*AnchorOrg, er
 }
 
 const insertOrgOwner = `-- name: InsertOrgOwner :one
-INSERT INTO anchor.org_owners (org_id, user_id) VALUES ($1, $2) RETURNING org_id, user_id, created_at
+INSERT INTO anclax.org_owners (org_id, user_id) VALUES ($1, $2) RETURNING org_id, user_id, created_at
 `
 
 type InsertOrgOwnerParams struct {
@@ -69,15 +69,15 @@ type InsertOrgOwnerParams struct {
 	UserID int32
 }
 
-func (q *Queries) InsertOrgOwner(ctx context.Context, arg InsertOrgOwnerParams) (*AnchorOrgOwner, error) {
+func (q *Queries) InsertOrgOwner(ctx context.Context, arg InsertOrgOwnerParams) (*AnclaxOrgOwner, error) {
 	row := q.db.QueryRow(ctx, insertOrgOwner, arg.OrgID, arg.UserID)
-	var i AnchorOrgOwner
+	var i AnclaxOrgOwner
 	err := row.Scan(&i.OrgID, &i.UserID, &i.CreatedAt)
 	return &i, err
 }
 
 const insertOrgUser = `-- name: InsertOrgUser :one
-INSERT INTO anchor.org_users (org_id, user_id) VALUES ($1, $2) RETURNING org_id, user_id, created_at, updated_at
+INSERT INTO anclax.org_users (org_id, user_id) VALUES ($1, $2) RETURNING org_id, user_id, created_at, updated_at
 `
 
 type InsertOrgUserParams struct {
@@ -85,9 +85,9 @@ type InsertOrgUserParams struct {
 	UserID int32
 }
 
-func (q *Queries) InsertOrgUser(ctx context.Context, arg InsertOrgUserParams) (*AnchorOrgUser, error) {
+func (q *Queries) InsertOrgUser(ctx context.Context, arg InsertOrgUserParams) (*AnclaxOrgUser, error) {
 	row := q.db.QueryRow(ctx, insertOrgUser, arg.OrgID, arg.UserID)
-	var i AnchorOrgUser
+	var i AnclaxOrgUser
 	err := row.Scan(
 		&i.OrgID,
 		&i.UserID,
@@ -99,20 +99,20 @@ func (q *Queries) InsertOrgUser(ctx context.Context, arg InsertOrgUserParams) (*
 
 const listOrgs = `-- name: ListOrgs :many
 SELECT orgs.id, orgs.name, orgs.tz, orgs.created_at, orgs.updated_at
-FROM anchor.org_users 
-JOIN anchor.orgs AS orgs ON anchor.org_users.org_id = orgs.id
-WHERE anchor.org_users.user_id = $1
+FROM anclax.org_users 
+JOIN anclax.orgs AS orgs ON anclax.org_users.org_id = orgs.id
+WHERE anclax.org_users.user_id = $1
 `
 
-func (q *Queries) ListOrgs(ctx context.Context, userID int32) ([]*AnchorOrg, error) {
+func (q *Queries) ListOrgs(ctx context.Context, userID int32) ([]*AnclaxOrg, error) {
 	rows, err := q.db.Query(ctx, listOrgs, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []*AnchorOrg
+	var items []*AnclaxOrg
 	for rows.Next() {
-		var i AnchorOrg
+		var i AnclaxOrg
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,

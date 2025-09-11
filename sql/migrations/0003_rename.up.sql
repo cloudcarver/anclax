@@ -1,0 +1,5 @@
+BEGIN;
+
+ALTER SCHEMA anchor RENAME TO anclax;
+
+COMMIT;

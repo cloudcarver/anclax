@@ -4,20 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Overview
 
-Anchor is a framework for building serverless and reliable applications with Go. It provides authentication & authorization with Macaroons, asynchronous task management with at-least-once delivery, database query interface with sqlc, HTTP API server with Fiber, and a plugin system.
+Anclax is a framework for building serverless and reliable applications with Go. It provides authentication & authorization with Macaroons, asynchronous task management with at-least-once delivery, database query interface with sqlc, HTTP API server with Fiber, and a plugin system.
 
 ## Development Commands
 
 ### Core Commands
-- `anchor generate` - Generate code from YAML specifications (API, tasks, database queries)
-- `anchor init .` - Initialize a new Anchor project
+- `anclax generate` - Generate code from YAML specifications (API, tasks, database queries)
+- `anclax init .` - Initialize a new Anclax project
 - `make dev` - Start development environment with Docker Compose
 - `make reload` - Restart development containers
 - `make db` - Connect to PostgreSQL database
 - `make test` - Run integration tests (requires Python test setup)
 - `make prepare-test` - Set up Python test environment
 - `make ut` - Run unit tests with coverage report
-- `make gen` - Copy templates from examples/simple to cmd/anchor/initFiles
+- `make gen` - Copy templates from examples/simple to cmd/anclax/initFiles
 
 ### Web Development (Next.js frontend)
 - `cd web && npm run dev` - Start Next.js development server
@@ -26,10 +26,10 @@ Anchor is a framework for building serverless and reliable applications with Go.
 
 ## Code Generation Architecture
 
-Anchor uses a sophisticated code generation system driven by YAML specifications:
+Anclax uses a sophisticated code generation system driven by YAML specifications:
 
 ### Key Configuration Files
-- `anchor.yaml` - Main configuration defining external tools, code generation paths, and mock generation
+- `anclax.yaml` - Main configuration defining external tools, code generation paths, and mock generation
 - `api/v1.yaml` - OpenAPI 3.0 specification for HTTP APIs
 - `api/tasks.yaml` - Task definitions for async job processing
 - `dev/sqlc.yaml` - Database query generation configuration
@@ -43,7 +43,7 @@ Anchor uses a sophisticated code generation system driven by YAML specifications
 ### Code Generation Flow
 1. Define schemas in YAML files (`api/v1.yaml`, `api/tasks.yaml`)
 2. Write SQL queries in `sql/queries/` directory
-3. Run `anchor generate` to generate Go interfaces and types
+3. Run `anclax generate` to generate Go interfaces and types
 4. Implement the generated interfaces in your application code
 5. Use dependency injection (Wire) to wire components together
 
@@ -63,7 +63,7 @@ Anchor uses a sophisticated code generation system driven by YAML specifications
 - **Event-Driven**: Task system processes events asynchronously with cron job support
 
 ### Key Directories
-- `cmd/anchor/` - CLI tool for project initialization and code generation
+- `cmd/anclax/` - CLI tool for project initialization and code generation
 - `pkg/` - Core framework packages
 - `examples/simple/` - Example application showing framework usage
 - `web/` - Next.js frontend with generated TypeScript client

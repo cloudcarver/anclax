@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 
-	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
-	"github.com/cloudcarver/anchor/pkg/zgen/querier"
+	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
+	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 	"github.com/pkg/errors"
 )
 

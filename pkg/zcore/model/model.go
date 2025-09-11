@@ -6,10 +6,10 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/cloudcarver/anchor/pkg/config"
-	"github.com/cloudcarver/anchor/pkg/logger"
-	"github.com/cloudcarver/anchor/pkg/utils"
-	"github.com/cloudcarver/anchor/pkg/zgen/querier"
+	"github.com/cloudcarver/anclax/pkg/config"
+	"github.com/cloudcarver/anclax/pkg/logger"
+	"github.com/cloudcarver/anclax/pkg/utils"
+	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
@@ -17,7 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pkg/errors"
 
-	"github.com/cloudcarver/anchor"
+	"github.com/cloudcarver/anclax"
 )
 
 var log = logger.NewLogAgent("model")
@@ -150,7 +150,7 @@ func NewModel(cfg *config.Config, libCfg *config.LibConfig) (ModelInterface, err
 		time.Sleep(3 * time.Second)
 	}
 
-	d, err := iofs.New(anchor.Migrations, "sql/migrations")
+	d, err := iofs.New(anclax.Migrations, "sql/migrations")
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create migration source driver")
 	}

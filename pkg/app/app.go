@@ -3,16 +3,16 @@ package app
 import (
 	"context"
 
-	"github.com/cloudcarver/anchor/pkg/auth"
-	"github.com/cloudcarver/anchor/pkg/config"
-	"github.com/cloudcarver/anchor/pkg/globalctx"
-	"github.com/cloudcarver/anchor/pkg/hooks"
-	"github.com/cloudcarver/anchor/pkg/macaroons"
-	"github.com/cloudcarver/anchor/pkg/metrics"
-	"github.com/cloudcarver/anchor/pkg/server"
-	"github.com/cloudcarver/anchor/pkg/service"
-	"github.com/cloudcarver/anchor/pkg/taskcore"
-	"github.com/cloudcarver/anchor/pkg/taskcore/worker"
+	"github.com/cloudcarver/anclax/pkg/auth"
+	"github.com/cloudcarver/anclax/pkg/config"
+	"github.com/cloudcarver/anclax/pkg/globalctx"
+	"github.com/cloudcarver/anclax/pkg/hooks"
+	"github.com/cloudcarver/anclax/pkg/macaroons"
+	"github.com/cloudcarver/anclax/pkg/metrics"
+	"github.com/cloudcarver/anclax/pkg/server"
+	"github.com/cloudcarver/anclax/pkg/service"
+	"github.com/cloudcarver/anclax/pkg/taskcore"
+	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	"github.com/pkg/errors"
 )
 
@@ -30,7 +30,7 @@ type Application struct {
 	auth          auth.AuthInterface
 	taskStore     taskcore.TaskStoreInterface
 	service       service.ServiceInterface
-	hooks         hooks.AnchorHookInterface
+	hooks         hooks.AnclaxHookInterface
 	caveatParser  macaroons.CaveatParserInterface
 	globalctx     *globalctx.GlobalContext
 	closers       []func()
@@ -46,7 +46,7 @@ func NewApplication(
 	auth auth.AuthInterface,
 	taskStore taskcore.TaskStoreInterface,
 	service service.ServiceInterface,
-	hooks hooks.AnchorHookInterface,
+	hooks hooks.AnclaxHookInterface,
 	caveatParser macaroons.CaveatParserInterface,
 	closer *Closer,
 ) (*Application, error) {
@@ -111,7 +111,7 @@ func (a *Application) GetService() service.ServiceInterface {
 	return a.service
 }
 
-func (a *Application) GetHooks() hooks.AnchorHookInterface {
+func (a *Application) GetHooks() hooks.AnclaxHookInterface {
 	return a.hooks
 }
 

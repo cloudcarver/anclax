@@ -1,9 +1,9 @@
 openapi: 3.0.0
 
 info:
-  title: Anchor
+  title: Anclax
   version: "1.0"
-  description: API for interacting with Anchor
+  description: API for interacting with Anclax
 
 servers:
   - url: /api/v1

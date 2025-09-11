@@ -1,4 +1,4 @@
-module github.com/cloudcarver/anchor
+module github.com/cloudcarver/anclax
 
 go 1.24.1
 

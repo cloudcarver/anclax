@@ -13,37 +13,37 @@ import (
 	context "context"
 	reflect "reflect"
 
-	macaroons "github.com/cloudcarver/anchor/pkg/macaroons"
+	macaroons "github.com/cloudcarver/anclax/pkg/macaroons"
 	pgx "github.com/jackc/pgx/v5"
 	gomock "go.uber.org/mock/gomock"
 )
 
-// MockAnchorHookInterface is a mock of AnchorHookInterface interface.
-type MockAnchorHookInterface struct {
+// MockAnclaxHookInterface is a mock of AnclaxHookInterface interface.
+type MockAnclaxHookInterface struct {
 	ctrl     *gomock.Controller
-	recorder *MockAnchorHookInterfaceMockRecorder
+	recorder *MockAnclaxHookInterfaceMockRecorder
 	isgomock struct{}
 }
 
-// MockAnchorHookInterfaceMockRecorder is the mock recorder for MockAnchorHookInterface.
-type MockAnchorHookInterfaceMockRecorder struct {
-	mock *MockAnchorHookInterface
+// MockAnclaxHookInterfaceMockRecorder is the mock recorder for MockAnclaxHookInterface.
+type MockAnclaxHookInterfaceMockRecorder struct {
+	mock *MockAnclaxHookInterface
 }
 
-// NewMockAnchorHookInterface creates a new mock instance.
-func NewMockAnchorHookInterface(ctrl *gomock.Controller) *MockAnchorHookInterface {
-	mock := &MockAnchorHookInterface{ctrl: ctrl}
-	mock.recorder = &MockAnchorHookInterfaceMockRecorder{mock}
+// NewMockAnclaxHookInterface creates a new mock instance.
+func NewMockAnclaxHookInterface(ctrl *gomock.Controller) *MockAnclaxHookInterface {
+	mock := &MockAnclaxHookInterface{ctrl: ctrl}
+	mock.recorder = &MockAnclaxHookInterfaceMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockAnchorHookInterface) EXPECT() *MockAnchorHookInterfaceMockRecorder {
+func (m *MockAnclaxHookInterface) EXPECT() *MockAnclaxHookInterfaceMockRecorder {
 	return m.recorder
 }
 
 // OnCreateToken mocks base method.
-func (m *MockAnchorHookInterface) OnCreateToken(ctx context.Context, userID int32, macaroon *macaroons.Macaroon) error {
+func (m *MockAnclaxHookInterface) OnCreateToken(ctx context.Context, userID int32, macaroon *macaroons.Macaroon) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "OnCreateToken", ctx, userID, macaroon)
 	ret0, _ := ret[0].(error)
@@ -51,13 +51,13 @@ func (m *MockAnchorHookInterface) OnCreateToken(ctx context.Context, userID int3
 }
 
 // OnCreateToken indicates an expected call of OnCreateToken.
-func (mr *MockAnchorHookInterfaceMockRecorder) OnCreateToken(ctx, userID, macaroon any) *gomock.Call {
+func (mr *MockAnclaxHookInterfaceMockRecorder) OnCreateToken(ctx, userID, macaroon any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnCreateToken", reflect.TypeOf((*MockAnchorHookInterface)(nil).OnCreateToken), ctx, userID, macaroon)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnCreateToken", reflect.TypeOf((*MockAnclaxHookInterface)(nil).OnCreateToken), ctx, userID, macaroon)
 }
 
 // OnOrgCreated mocks base method.
-func (m *MockAnchorHookInterface) OnOrgCreated(ctx context.Context, tx pgx.Tx, orgID int32) error {
+func (m *MockAnclaxHookInterface) OnOrgCreated(ctx context.Context, tx pgx.Tx, orgID int32) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "OnOrgCreated", ctx, tx, orgID)
 	ret0, _ := ret[0].(error)
@@ -65,13 +65,13 @@ func (m *MockAnchorHookInterface) OnOrgCreated(ctx context.Context, tx pgx.Tx, o
 }
 
 // OnOrgCreated indicates an expected call of OnOrgCreated.
-func (mr *MockAnchorHookInterfaceMockRecorder) OnOrgCreated(ctx, tx, orgID any) *gomock.Call {
+func (mr *MockAnclaxHookInterfaceMockRecorder) OnOrgCreated(ctx, tx, orgID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnOrgCreated", reflect.TypeOf((*MockAnchorHookInterface)(nil).OnOrgCreated), ctx, tx, orgID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnOrgCreated", reflect.TypeOf((*MockAnclaxHookInterface)(nil).OnOrgCreated), ctx, tx, orgID)
 }
 
 // OnUserCreated mocks base method.
-func (m *MockAnchorHookInterface) OnUserCreated(ctx context.Context, tx pgx.Tx, userID int32) error {
+func (m *MockAnclaxHookInterface) OnUserCreated(ctx context.Context, tx pgx.Tx, userID int32) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "OnUserCreated", ctx, tx, userID)
 	ret0, _ := ret[0].(error)
@@ -79,43 +79,43 @@ func (m *MockAnchorHookInterface) OnUserCreated(ctx context.Context, tx pgx.Tx, 
 }
 
 // OnUserCreated indicates an expected call of OnUserCreated.
-func (mr *MockAnchorHookInterfaceMockRecorder) OnUserCreated(ctx, tx, userID any) *gomock.Call {
+func (mr *MockAnclaxHookInterfaceMockRecorder) OnUserCreated(ctx, tx, userID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnUserCreated", reflect.TypeOf((*MockAnchorHookInterface)(nil).OnUserCreated), ctx, tx, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnUserCreated", reflect.TypeOf((*MockAnclaxHookInterface)(nil).OnUserCreated), ctx, tx, userID)
 }
 
 // RegisterOnCreateToken mocks base method.
-func (m *MockAnchorHookInterface) RegisterOnCreateToken(hook OnCreateToken) {
+func (m *MockAnclaxHookInterface) RegisterOnCreateToken(hook OnCreateToken) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "RegisterOnCreateToken", hook)
 }
 
 // RegisterOnCreateToken indicates an expected call of RegisterOnCreateToken.
-func (mr *MockAnchorHookInterfaceMockRecorder) RegisterOnCreateToken(hook any) *gomock.Call {
+func (mr *MockAnclaxHookInterfaceMockRecorder) RegisterOnCreateToken(hook any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterOnCreateToken", reflect.TypeOf((*MockAnchorHookInterface)(nil).RegisterOnCreateToken), hook)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterOnCreateToken", reflect.TypeOf((*MockAnclaxHookInterface)(nil).RegisterOnCreateToken), hook)
 }
 
 // RegisterOnOrgCreated mocks base method.
-func (m *MockAnchorHookInterface) RegisterOnOrgCreated(hook OnOrgCreated) {
+func (m *MockAnclaxHookInterface) RegisterOnOrgCreated(hook OnOrgCreated) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "RegisterOnOrgCreated", hook)
 }
 
 // RegisterOnOrgCreated indicates an expected call of RegisterOnOrgCreated.
-func (mr *MockAnchorHookInterfaceMockRecorder) RegisterOnOrgCreated(hook any) *gomock.Call {
+func (mr *MockAnclaxHookInterfaceMockRecorder) RegisterOnOrgCreated(hook any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterOnOrgCreated", reflect.TypeOf((*MockAnchorHookInterface)(nil).RegisterOnOrgCreated), hook)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterOnOrgCreated", reflect.TypeOf((*MockAnclaxHookInterface)(nil).RegisterOnOrgCreated), hook)
 }
 
 // RegisterOnUserCreated mocks base method.
-func (m *MockAnchorHookInterface) RegisterOnUserCreated(hook OnUserCreated) {
+func (m *MockAnclaxHookInterface) RegisterOnUserCreated(hook OnUserCreated) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "RegisterOnUserCreated", hook)
 }
 
 // RegisterOnUserCreated indicates an expected call of RegisterOnUserCreated.
-func (mr *MockAnchorHookInterfaceMockRecorder) RegisterOnUserCreated(hook any) *gomock.Call {
+func (mr *MockAnclaxHookInterfaceMockRecorder) RegisterOnUserCreated(hook any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterOnUserCreated", reflect.TypeOf((*MockAnchorHookInterface)(nil).RegisterOnUserCreated), hook)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterOnUserCreated", reflect.TypeOf((*MockAnclaxHookInterface)(nil).RegisterOnUserCreated), hook)
 }

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
+	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -20,7 +20,7 @@ type TaskHandler interface {
 	HandleTask(ctx context.Context, tx pgx.Tx, spec TaskSpec) error
 
 	RegisterTaskHandler(handler TaskHandler)
-	
+
 	OnTaskFailed(ctx context.Context, tx pgx.Tx, failedTaskSpec TaskSpec, taskID int32) error
 }
 

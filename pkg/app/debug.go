@@ -7,9 +7,9 @@ import (
 	"net/http/pprof"
 	"time"
 
-	"github.com/cloudcarver/anchor/pkg/config"
-	"github.com/cloudcarver/anchor/pkg/globalctx"
-	"github.com/cloudcarver/anchor/pkg/logger"
+	"github.com/cloudcarver/anclax/pkg/config"
+	"github.com/cloudcarver/anclax/pkg/globalctx"
+	"github.com/cloudcarver/anclax/pkg/logger"
 	"go.uber.org/zap"
 )
 

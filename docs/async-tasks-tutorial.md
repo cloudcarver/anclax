@@ -1,10 +1,10 @@
-# Async Tasks in Anchor
+# Async Tasks in Anclax
 
 English | [中文](async-tasks-tutorial.zh.md)
 
 > 📚 **Looking for technical details?** Check out the [Technical Reference](async-tasks-technical.md) for comprehensive coverage of the underlying architecture, lifecycle, and advanced features.
 
-Anchor lets you run background tasks that don't block your web requests. For example, you can send emails, process images, or generate reports without making users wait.
+Anclax lets you run background tasks that don't block your web requests. For example, you can send emails, process images, or generate reports without making users wait.
 
 ## Table of Contents
 
@@ -20,7 +20,7 @@ Anchor lets you run background tasks that don't block your web requests. For exa
 
 Think of async tasks like hiring someone to do work for you later. Instead of doing everything right away when a user makes a request, you can:
 
-1. **Create a task** - Tell Anchor what work needs to be done
+1. **Create a task** - Tell Anclax what work needs to be done
 2. **Queue it up** - Put the task in a to-do list
 3. **Let workers handle it** - Background workers pick up tasks and do the work
 4. **Get guarantees** - Tasks will run at least once, even if something goes wrong
@@ -97,7 +97,7 @@ parameters:
 After defining tasks, run code generation:
 
 ```bash
-anchor generate
+anclax generate
 ```
 
 This generates interfaces in `pkg/zgen/taskgen/`:
@@ -576,7 +576,7 @@ func (e *Executor) OnSendNotificationFailed(ctx context.Context, taskID int32, p
 
 ### Real-World Example: Delete Operation with Failure Handling
 
-This example from the Anchor codebase shows how to implement a task that deletes sensitive data with proper failure handling:
+This example from the Anclax codebase shows how to implement a task that deletes sensitive data with proper failure handling:
 
 **Task Definition (api/tasks.yaml):**
 ```yaml
@@ -599,7 +599,7 @@ tasks:
 ```
 
 **Generated Types:**
-After running `anchor generate`, you get:
+After running `anclax generate`, you get:
 ```go
 type DeleteOpaqueKeyParameters struct {
     KeyID int64 `json:"keyID"`
@@ -682,7 +682,7 @@ This example demonstrates:
 
 ## Worker Configuration
 
-The worker runs automatically when you start your Anchor application. You can configure worker behavior:
+The worker runs automatically when you start your Anclax application. You can configure worker behavior:
 
 ```go
 // Disable worker for specific environments

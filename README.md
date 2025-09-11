@@ -1,4 +1,4 @@
-# ⚓ Anchor
+# ⚓ Anclax
 
 English | [中文](README.zh.md)
 
@@ -6,11 +6,11 @@ English | [中文](README.zh.md)
 
 Build serverless, reliable apps at lightspeed ⚡ — with confidence 🛡️.
 
-Anchor is a definition‑first framework for small–medium apps (single PostgreSQL). Define APIs and tasks as schemas; generated code moves correctness to compile time.
+Anclax is a definition‑first framework for small–medium apps (single PostgreSQL). Define APIs and tasks as schemas; generated code moves correctness to compile time.
 
 ### Highlights ✨
 
-- **YAML-first, codegen-backed**: Define HTTP and task schemas in YAML; Anchor generates strongly-typed interfaces so missing implementations fail at compile time, not in prod.
+- **YAML-first, codegen-backed**: Define HTTP and task schemas in YAML; Anclax generates strongly-typed interfaces so missing implementations fail at compile time, not in prod.
 - **Async tasks you can trust**: At-least-once delivery, automatic retries, and cron scheduling out of the box.
 - **Transaction-safe flows**: A `WithTx` pattern ensures hooks always run and side effects are consistent.
 - **Typed database layer**: Powered by `sqlc` for safe, fast queries.
@@ -19,49 +19,49 @@ Anchor is a definition‑first framework for small–medium apps (single Postgre
 - **Pluggable architecture**: First-class plugin system for clean modularity.
 - **Ergonomic DI**: Wire-based dependency injection keeps code testable and explicit.
 
-### Why Anchor? (The problem it solves) 🤔
+### Why Anclax? (The problem it solves) 🤔
 
-- **Glue-code fatigue**: Many teams stitch HTTP, DB, tasks, DI, and auth by hand, leaving implicit contracts and runtime surprises. Anchor makes those contracts explicit and generated.
-- **Background jobs are hard**: Idempotency, retries, and delivery guarantees are non-trivial. Anchor ships a task engine with at-least-once semantics and cron.
+- **Glue-code fatigue**: Many teams stitch HTTP, DB, tasks, DI, and auth by hand, leaving implicit contracts and runtime surprises. Anclax makes those contracts explicit and generated.
+- **Background jobs are hard**: Idempotency, retries, and delivery guarantees are non-trivial. Anclax ships a task engine with at-least-once semantics and cron.
 - **Consistency across boundaries**: Keep handlers, tasks, and hooks transactional using `WithTx` so invariants hold.
 - **Confidence and testability**: Every generated interface is mockable; behavior is easy to test.
 
 ### Key advantages 🏆
 
 - **Compile-time confidence**: Schema → interfaces → concrete implementations you cannot forget to write.
-- **Productivity**: `anchor init` + `anchor gen` reduces boilerplate and wiring.
+- **Productivity**: `anclax init` + `anclax gen` reduces boilerplate and wiring.
 - **Extensibility**: Clean plugin boundaries and event-driven architecture.
 - **Predictability**: Singletons for core services, DI for clarity, and well-defined lifecycles.
 
 ## Architecture 🏗️
 
-Anchor helps you build quickly while staying scalable and production‑ready.
+Anclax helps you build quickly while staying scalable and production‑ready.
 
 - **Single PostgreSQL backbone**: One PostgreSQL database powers both transactional business logic and the durable task queue, keeping state consistent and operations simple. For many products, a well‑provisioned instance (e.g., 32 vCPU) goes a very long way.
 - **Stateless application nodes**: HTTP servers are stateless and horizontally scalable; you can run multiple replicas without coordination concerns.
 - **Task queue as integration fabric**: Use async tasks to decouple modules. For example, when a payment completes, enqueue an `OrderFinished` task and do any factory‑module inserts in its handler—no factory logic inside the payment module.
-- **Built‑in worker, flexible deployment**: Anchor includes an async task worker. Run it in‑process, as separate long‑running workers, or disable it for serverless HTTP (e.g., AWS Lambda) while keeping workers on regular servers.
-- **Monolith, not microservices**: Anchor favors a pragmatic, scalable monolith and is not aimed at multi‑million QPS microservice fleets.
+- **Built‑in worker, flexible deployment**: Anclax includes an async task worker. Run it in‑process, as separate long‑running workers, or disable it for serverless HTTP (e.g., AWS Lambda) while keeping workers on regular servers.
+- **Monolith, not microservices**: Anclax favors a pragmatic, scalable monolith and is not aimed at multi‑million QPS microservice fleets.
 
 These choices maximize early velocity and give you a clear, reliable path to scale with confidence.
 
 ## Quick start 🚀
 
 ```bash
-go install github.com/cloudcarver/anchor/cmd/anchor@latest
-anchor init . github.com/my/app
-anchor gen
+go install github.com/cloudcarver/anclax/cmd/anclax@latest
+anclax init . github.com/my/app
+anclax gen
 ```
 
 ## Hands-on: try it now 🧑‍💻
 
 ```bash
 # 1) Scaffold into folder 'demo'
-anchor init demo github.com/you/demo
+anclax init demo github.com/you/demo
 
 # 2) Generate code (can be re-run anytime)
 cd demo
-anchor gen
+anclax gen
 
 # 3) Start the stack (DB + API + worker)
 docker compose up
@@ -98,7 +98,7 @@ tasks:
 3) Generate and implement 🛠️
 
 ```bash
-anchor gen
+anclax gen
 ```
 
 ```go
@@ -236,12 +236,12 @@ You can run custom logic before the app starts by providing an `Init` function:
 
 ```go
 // Runs before the application starts
-func Init(anchorApp *anchor_app.Application, taskrunner taskgen.TaskRunner, myapp anchor_app.Plugin) (*app.App, error) {
-    if err := anchorApp.Plug(myapp); err != nil {
+func Init(anclaxApp *anclax_app.Application, taskrunner taskgen.TaskRunner, myapp anclax_app.Plugin) (*app.App, error) {
+    if err := anclaxApp.Plug(myapp); err != nil {
         return nil, err
     }
 
-    if _, err := anchorApp.GetService().CreateNewUser(context.Background(), "test", "test"); err != nil {
+    if _, err := anclaxApp.GetService().CreateNewUser(context.Background(), "test", "test"); err != nil {
         return nil, err
     }
     if _, err := taskrunner.RunAutoIncrementCounter(context.Background(), &taskgen.AutoIncrementCounterParameters{
@@ -250,23 +250,23 @@ func Init(anchorApp *anchor_app.Application, taskrunner taskgen.TaskRunner, myap
         return nil, err
     }
 
-    return &app.App{ AnchorApp: anchorApp }, nil
+    return &app.App{ AnclaxApp: anclaxApp }, nil
 }
 ```
 
-To customize how the Anchor application is constructed, override `InitAnchorApplication`:
+To customize how the Anclax application is constructed, override `InitAnclaxApplication`:
 
 ```go
-func InitAnchorApplication(cfg *config.Config) (*anchor_app.Application, error) {
-    anchorApp, err := anchor_wire.InitializeApplication(&cfg.Anchor, anchor_config.DefaultLibConfig())
+func InitAnclaxApplication(cfg *config.Config) (*anclax_app.Application, error) {
+    anclaxApp, err := anclax_wire.InitializeApplication(&cfg.Anclax, anclax_config.DefaultLibConfig())
     if err != nil {
         return nil, err
     }
-    return anchorApp, nil
+    return anclaxApp, nil
 }
 ```
 
-Need more dependencies inside `Init`? Add them as parameters (e.g., `model.ModelInterface`) and run `anchor gen`.
+Need more dependencies inside `Init`? Add them as parameters (e.g., `model.ModelInterface`) and run `anclax gen`.
 
 ## Documentation 📚
 

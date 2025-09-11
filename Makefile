@@ -28,7 +28,7 @@ ut:
 	@go tool cover -func coverage.out | fgrep total | awk '{print "Coverage:", $$3}'
 
 gen:
-	go run cmd/dev/main.go copy-templates --src examples/simple --dst cmd/anchor/initFiles --exclude .anchor,go.sum
+	go run cmd/dev/main.go copy-templates --src examples/simple --dst cmd/anclax/initFiles --exclude .anclax,go.sum
 
 install: gen
-	go install ./cmd/anchor
+	go install ./cmd/anclax

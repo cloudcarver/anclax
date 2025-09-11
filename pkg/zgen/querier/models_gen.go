@@ -7,30 +7,30 @@ package querier
 import (
 	"time"
 
-	"github.com/cloudcarver/anchor/pkg/zgen/apigen"
+	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 )
 
-type AnchorAccessKeyPair struct {
+type AnclaxAccessKeyPair struct {
 	AccessKey string
 	SecretKey string
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
 
-type AnchorAccessRule struct {
+type AnclaxAccessRule struct {
 	Name        string
 	Description string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
 
-type AnchorEvent struct {
+type AnclaxEvent struct {
 	ID        int32
 	Spec      apigen.EventSpec
 	CreatedAt time.Time
 }
 
-type AnchorOpaqueKey struct {
+type AnclaxOpaqueKey struct {
 	ID        int64
 	Key       []byte
 	UserID    int32
@@ -38,7 +38,7 @@ type AnchorOpaqueKey struct {
 	UpdatedAt time.Time
 }
 
-type AnchorOrg struct {
+type AnclaxOrg struct {
 	ID        int32
 	Name      string
 	Tz        string
@@ -46,20 +46,20 @@ type AnchorOrg struct {
 	UpdatedAt time.Time
 }
 
-type AnchorOrgOwner struct {
+type AnclaxOrgOwner struct {
 	OrgID     int32
 	UserID    int32
 	CreatedAt time.Time
 }
 
-type AnchorOrgUser struct {
+type AnclaxOrgUser struct {
 	OrgID     int32
 	UserID    int32
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
 
-type AnchorRole struct {
+type AnclaxRole struct {
 	ID          int32
 	OrgID       int32
 	Name        string
@@ -68,14 +68,14 @@ type AnchorRole struct {
 	UpdatedAt   time.Time
 }
 
-type AnchorRoleAccessRule struct {
+type AnclaxRoleAccessRule struct {
 	RoleID         int32
 	AccessRuleName string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }
 
-type AnchorTask struct {
+type AnclaxTask struct {
 	ID         int32
 	Attributes apigen.TaskAttributes
 	Spec       apigen.TaskSpec
@@ -87,7 +87,7 @@ type AnchorTask struct {
 	Attempts   int32
 }
 
-type AnchorUser struct {
+type AnclaxUser struct {
 	ID           int32
 	Name         string
 	PasswordHash string
@@ -97,13 +97,13 @@ type AnchorUser struct {
 	DeletedAt    *time.Time
 }
 
-type AnchorUserDefaultOrg struct {
+type AnclaxUserDefaultOrg struct {
 	UserID    int32
 	OrgID     int32
 	CreatedAt time.Time
 }
 
-type AnchorUsersRole struct {
+type AnclaxUsersRole struct {
 	UserID    int32
 	RoleID    int32
 	CreatedAt time.Time

@@ -10,7 +10,7 @@ import (
 )
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO anchor.users (
+INSERT INTO anclax.users (
     name,
     password_hash,
     password_salt
@@ -25,9 +25,9 @@ type CreateUserParams struct {
 	PasswordSalt string
 }
 
-func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (*AnchorUser, error) {
+func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (*AnclaxUser, error) {
 	row := q.db.QueryRow(ctx, createUser, arg.Name, arg.PasswordHash, arg.PasswordSalt)
-	var i AnchorUser
+	var i AnclaxUser
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -41,7 +41,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (*Anchor
 }
 
 const deleteUserByName = `-- name: DeleteUserByName :exec
-UPDATE anchor.users SET deleted_at = CURRENT_TIMESTAMP WHERE name = $1
+UPDATE anclax.users SET deleted_at = CURRENT_TIMESTAMP WHERE name = $1
 `
 
 func (q *Queries) DeleteUserByName(ctx context.Context, name string) error {
@@ -50,13 +50,13 @@ func (q *Queries) DeleteUserByName(ctx context.Context, name string) error {
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id, name, password_hash, password_salt, created_at, updated_at, deleted_at FROM anchor.users
+SELECT id, name, password_hash, password_salt, created_at, updated_at, deleted_at FROM anclax.users
 WHERE id = $1 AND deleted_at IS NULL
 `
 
-func (q *Queries) GetUser(ctx context.Context, id int32) (*AnchorUser, error) {
+func (q *Queries) GetUser(ctx context.Context, id int32) (*AnclaxUser, error) {
 	row := q.db.QueryRow(ctx, getUser, id)
-	var i AnchorUser
+	var i AnclaxUser
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -70,12 +70,12 @@ func (q *Queries) GetUser(ctx context.Context, id int32) (*AnchorUser, error) {
 }
 
 const getUserByName = `-- name: GetUserByName :one
-SELECT id, name, password_hash, password_salt, created_at, updated_at, deleted_at FROM anchor.users WHERE name = $1 AND deleted_at IS NULL
+SELECT id, name, password_hash, password_salt, created_at, updated_at, deleted_at FROM anclax.users WHERE name = $1 AND deleted_at IS NULL
 `
 
-func (q *Queries) GetUserByName(ctx context.Context, name string) (*AnchorUser, error) {
+func (q *Queries) GetUserByName(ctx context.Context, name string) (*AnclaxUser, error) {
 	row := q.db.QueryRow(ctx, getUserByName, name)
-	var i AnchorUser
+	var i AnclaxUser
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -89,7 +89,7 @@ func (q *Queries) GetUserByName(ctx context.Context, name string) (*AnchorUser, 
 }
 
 const getUserDefaultOrg = `-- name: GetUserDefaultOrg :one
-SELECT org_id FROM anchor.user_default_orgs
+SELECT org_id FROM anclax.user_default_orgs
 WHERE user_id = $1
 `
 
@@ -101,7 +101,7 @@ func (q *Queries) GetUserDefaultOrg(ctx context.Context, userID int32) (int32, e
 }
 
 const isUsernameExists = `-- name: IsUsernameExists :one
-SELECT EXISTS (SELECT 1 FROM anchor.users WHERE name = $1)
+SELECT EXISTS (SELECT 1 FROM anclax.users WHERE name = $1)
 `
 
 func (q *Queries) IsUsernameExists(ctx context.Context, name string) (bool, error) {
@@ -112,7 +112,7 @@ func (q *Queries) IsUsernameExists(ctx context.Context, name string) (bool, erro
 }
 
 const restoreUserByName = `-- name: RestoreUserByName :exec
-UPDATE anchor.users SET deleted_at = NULL WHERE name = $1
+UPDATE anclax.users SET deleted_at = NULL WHERE name = $1
 `
 
 func (q *Queries) RestoreUserByName(ctx context.Context, name string) error {
@@ -121,7 +121,7 @@ func (q *Queries) RestoreUserByName(ctx context.Context, name string) error {
 }
 
 const setUserDefaultOrg = `-- name: SetUserDefaultOrg :exec
-INSERT INTO anchor.user_default_orgs (user_id, org_id)
+INSERT INTO anclax.user_default_orgs (user_id, org_id)
 VALUES ($1, $2)
 ON CONFLICT (user_id) DO UPDATE SET org_id = $2
 `
@@ -137,7 +137,7 @@ func (q *Queries) SetUserDefaultOrg(ctx context.Context, arg SetUserDefaultOrgPa
 }
 
 const updateUserPassword = `-- name: UpdateUserPassword :exec
-UPDATE anchor.users SET password_hash = $2, password_salt = $3 WHERE id = $1
+UPDATE anclax.users SET password_hash = $2, password_salt = $3 WHERE id = $1
 `
 
 type UpdateUserPasswordParams struct {

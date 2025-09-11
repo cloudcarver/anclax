@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudcarver/anchor/pkg/macaroons/store"
-	store_mock "github.com/cloudcarver/anchor/pkg/macaroons/store/mock"
+	"github.com/cloudcarver/anclax/pkg/macaroons/store"
+	store_mock "github.com/cloudcarver/anclax/pkg/macaroons/store/mock"
 	"github.com/gofiber/fiber/v2"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"

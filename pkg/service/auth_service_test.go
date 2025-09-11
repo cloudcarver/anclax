@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/cloudcarver/anchor/pkg/auth"
-	"github.com/cloudcarver/anchor/pkg/hooks"
-	"github.com/cloudcarver/anchor/pkg/zcore/model"
-	"github.com/cloudcarver/anchor/pkg/zgen/querier"
+	"github.com/cloudcarver/anclax/pkg/auth"
+	"github.com/cloudcarver/anclax/pkg/hooks"
+	"github.com/cloudcarver/anclax/pkg/zcore/model"
+	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -20,15 +20,15 @@ func TestCreateNewUser(t *testing.T) {
 
 	mockModel := model.NewMockModelInterfaceWithTransaction(ctrl)
 	mockAuth := auth.NewMockAuthInterface(ctrl)
-	mockHooks := hooks.NewMockAnchorHookInterface(ctrl)
+	mockHooks := hooks.NewMockAnclaxHookInterface(ctrl)
 
 	var (
 		orgID  = int32(101)
 		userID = int32(102)
-		org    = &querier.AnchorOrg{
+		org    = &querier.AnclaxOrg{
 			ID: orgID,
 		}
-		user = &querier.AnchorUser{
+		user = &querier.AnclaxUser{
 			ID: userID,
 		}
 		username = "testuser"
@@ -89,11 +89,11 @@ func TestUpdateUserPassword(t *testing.T) {
 
 	mockModel := model.NewMockModelInterfaceWithTransaction(ctrl)
 	mockAuth := auth.NewMockAuthInterface(ctrl)
-	mockHooks := hooks.NewMockAnchorHookInterface(ctrl)
+	mockHooks := hooks.NewMockAnclaxHookInterface(ctrl)
 
 	var (
 		userID = int32(102)
-		user   = &querier.AnchorUser{
+		user   = &querier.AnclaxUser{
 			ID: userID,
 		}
 		username = "testuser"

@@ -1,10 +1,10 @@
-# Anchor 中的异步任务
+# Anclax 中的异步任务
 
 [English](async-tasks-technical.md) | 中文
 
 > 🚀 **异步任务新手？** 从[教程指南](async-tasks-tutorial.zh.md)开始，了解分步示例和实用模式。
 
-本文档提供了 Anchor 异步任务系统的全面概述，涵盖用户体验流程和底层技术机制。
+本文档提供了 Anclax 异步任务系统的全面概述，涵盖用户体验流程和底层技术机制。
 
 ## 目录
 
@@ -17,7 +17,7 @@
 
 ## 概述
 
-Anchor 的异步任务系统提供了一种强大、可靠的方式来执行后台工作，具有至少一次交付保证。该系统围绕一个简单的原则设计：声明式定义任务，在代码中实现它们，让框架处理排队、重试和监控的所有复杂性。
+Anclax 的异步任务系统提供了一种强大、可靠的方式来执行后台工作，具有至少一次交付保证。该系统围绕一个简单的原则设计：声明式定义任务，在代码中实现它们，让框架处理排队、重试和监控的所有复杂性。
 
 ### 主要优势
 
@@ -60,10 +60,10 @@ tasks:
 
 ### 2. 代码生成阶段
 
-用户运行 `anchor gen` 来生成类型安全的接口：
+用户运行 `anclax gen` 来生成类型安全的接口：
 
 ```bash
-anchor gen
+anclax gen
 ```
 
 **幕后发生的事情：**
@@ -151,7 +151,7 @@ func (h *Handler) RegisterUser(c *fiber.Ctx) error {
 
 ```sql
 -- 核心任务表
-CREATE TABLE anchor_tasks (
+CREATE TABLE anclax_tasks (
     id SERIAL PRIMARY KEY,
     spec JSONB NOT NULL,           -- 任务类型和参数
     attributes JSONB NOT NULL,     -- 重试策略、超时等
@@ -163,9 +163,9 @@ CREATE TABLE anchor_tasks (
 );
 
 -- Cron 作业调度
-CREATE TABLE anchor_cron_jobs (
+CREATE TABLE anclax_cron_jobs (
     id SERIAL PRIMARY KEY,
-    task_id INTEGER REFERENCES anchor_tasks(id),
+    task_id INTEGER REFERENCES anclax_tasks(id),
     cron_expression TEXT NOT NULL,
     next_run TIMESTAMP NOT NULL,
     enabled BOOLEAN DEFAULT true

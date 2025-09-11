@@ -3,7 +3,7 @@ package auth
 import (
 	"strings"
 
-	macaroons "github.com/cloudcarver/anchor/pkg/macaroons"
+	macaroons "github.com/cloudcarver/anclax/pkg/macaroons"
 	"github.com/gofiber/fiber/v2"
 	"github.com/pkg/errors"
 )

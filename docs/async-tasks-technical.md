@@ -1,10 +1,10 @@
-# Async Tasks in Anchor
+# Async Tasks in Anclax
 
 English | [中文](async-tasks-technical.zh.md)
 
 > 🚀 **New to async tasks?** Start with the [Tutorial Guide](async-tasks-tutorial.md) for step-by-step examples and practical usage patterns.
 
-This document provides a comprehensive overview of Anchor's async task system, covering both the user experience flow and the underlying technical mechanisms.
+This document provides a comprehensive overview of Anclax's async task system, covering both the user experience flow and the underlying technical mechanisms.
 
 ## Table of Contents
 
@@ -17,7 +17,7 @@ This document provides a comprehensive overview of Anchor's async task system, c
 
 ## Overview
 
-Anchor's async task system provides a robust, reliable way to execute background work with at-least-once delivery guarantees. The system is designed around a simple principle: define tasks declaratively, implement them in code, and let the framework handle all the complexity of queuing, retrying, and monitoring.
+Anclax's async task system provides a robust, reliable way to execute background work with at-least-once delivery guarantees. The system is designed around a simple principle: define tasks declaratively, implement them in code, and let the framework handle all the complexity of queuing, retrying, and monitoring.
 
 ### Key Benefits
 
@@ -60,10 +60,10 @@ tasks:
 
 ### 2. Code Generation Phase
 
-Users run `anchor gen` to generate type-safe interfaces:
+Users run `anclax gen` to generate type-safe interfaces:
 
 ```bash
-anchor gen
+anclax gen
 ```
 
 **What happens behind the scenes:**
@@ -151,7 +151,7 @@ The async task system uses several database tables:
 
 ```sql
 -- Core task table
-CREATE TABLE anchor_tasks (
+CREATE TABLE anclax_tasks (
     id SERIAL PRIMARY KEY,
     spec JSONB NOT NULL,           -- Task type and parameters
     attributes JSONB NOT NULL,     -- Retry policy, timeout, etc.
@@ -163,9 +163,9 @@ CREATE TABLE anchor_tasks (
 );
 
 -- Cron job scheduling
-CREATE TABLE anchor_cron_jobs (
+CREATE TABLE anclax_cron_jobs (
     id SERIAL PRIMARY KEY,
-    task_id INTEGER REFERENCES anchor_tasks(id),
+    task_id INTEGER REFERENCES anclax_tasks(id),
     cron_expression TEXT NOT NULL,
     next_run TIMESTAMP NOT NULL,
     enabled BOOLEAN DEFAULT true

@@ -1,0 +1,62 @@
+externals:
+  oapi-codegen: v2.4.1
+  wire: v0.6.0
+  sqlc: v1.27.0
+  mockgen: v0.5.0
+  anclax: v0.3.39
+
+clean:
+  - pkg/zgen/apigen/*_gen.go
+  - pkg/zgen/querier/*
+  - pkg/zgen/taskgen/*
+
+oapi-codegen:
+  path: api/v1.yaml
+  out: pkg/zgen/apigen/spec_gen.go
+  package: apigen
+  config:
+    output-options:
+      skip-prune: true
+
+wire:
+  path: ./wire
+
+xware:
+  path: api/v1.yaml
+  out: pkg/zgen/apigen/scopes_extend_gen.go
+  package: apigen
+
+task-handler:
+  path: api/tasks.yaml
+  package: taskgen
+  out: pkg/zgen/taskgen/runner_gen.go
+
+sqlc:
+  path: dev/sqlc.yaml
+
+mockgen:
+  files:
+    - source: pkg/zcore/model/model.go
+      destination: pkg/zcore/model/mock_gen.go
+      package: model
+    - source: pkg/macaroons/interfaces.go
+      destination: pkg/macaroons/mock_gen.go
+      package: macaroons
+    - source: pkg/macaroons/store/interfaces.go
+      destination: pkg/macaroons/store/mock_gen.go
+      package: store
+    - source: pkg/auth/auth.go
+      destination: pkg/auth/mock_gen.go
+      package: auth
+    - source: pkg/taskcore/interfaces.go
+      destination: pkg/taskcore/mock_gen.go
+      package: taskcore
+    - source: pkg/taskcore/worker/interfaces.go
+      destination: pkg/taskcore/worker/mock_gen.go
+      package: worker
+    - source: pkg/zgen/taskgen/runner_gen.go
+      destination: pkg/zgen/taskgen/runner_gen_mock.go
+      package: taskgen
+    - source: pkg/hooks/hooks.go
+      destination: pkg/hooks/mock_gen.go
+      package: hooks

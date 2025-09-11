@@ -7,11 +7,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/cloudcarver/anchor/pkg/config"
-	"github.com/cloudcarver/anchor/pkg/hooks"
-	"github.com/cloudcarver/anchor/pkg/macaroons"
-	"github.com/cloudcarver/anchor/pkg/utils"
-	"github.com/cloudcarver/anchor/pkg/zgen/querier"
+	"github.com/cloudcarver/anclax/pkg/config"
+	"github.com/cloudcarver/anclax/pkg/hooks"
+	"github.com/cloudcarver/anclax/pkg/macaroons"
+	"github.com/cloudcarver/anclax/pkg/utils"
+	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 	"github.com/gofiber/fiber/v2"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -26,7 +26,7 @@ func TestAuth_Authfunc(t *testing.T) {
 	mockCaveatParser := macaroons.NewMockCaveatParserInterface(ctrl)
 	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)
 	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
-	mockHooks := hooks.NewMockAnchorHookInterface(ctrl)
+	mockHooks := hooks.NewMockAnclaxHookInterface(ctrl)
 	auth, err := NewAuth(&config.Config{}, mockMacaroons, mockCaveatParser, mockHooks)
 	require.NoError(t, err)
 
@@ -147,7 +147,7 @@ func TestAuth_CreateToken(t *testing.T) {
 	mockCaveatParser := macaroons.NewMockCaveatParserInterface(ctrl)
 	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)
 	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
-	mockHooks := hooks.NewMockAnchorHookInterface(ctrl)
+	mockHooks := hooks.NewMockAnclaxHookInterface(ctrl)
 	auth, err := NewAuth(&config.Config{}, mockMacaroons, mockCaveatParser, mockHooks)
 	require.NoError(t, err)
 
@@ -155,7 +155,7 @@ func TestAuth_CreateToken(t *testing.T) {
 	userID := int32(1)
 	keyID := int64(123)
 
-	user := &querier.AnchorUser{
+	user := &querier.AnclaxUser{
 		ID: userID,
 	}
 
@@ -165,7 +165,7 @@ func TestAuth_CreateToken(t *testing.T) {
 	require.NoError(t, err)
 	testCases := []struct {
 		name          string
-		user          *querier.AnchorUser
+		user          *querier.AnclaxUser
 		setupMock     func()
 		expectedKeyID int64
 		expectedToken string
@@ -232,7 +232,7 @@ func TestAuth_CreateRefreshToken(t *testing.T) {
 	mockCaveatParser := macaroons.NewMockCaveatParserInterface(ctrl)
 	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)
 	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
-	mockHooks := hooks.NewMockAnchorHookInterface(ctrl)
+	mockHooks := hooks.NewMockAnclaxHookInterface(ctrl)
 	auth, err := NewAuth(&config.Config{}, mockMacaroons, mockCaveatParser, mockHooks)
 	require.NoError(t, err)
 
@@ -309,7 +309,7 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 	mockCaveatParser := macaroons.NewMockCaveatParserInterface(ctrl)
 	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)
 	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
-	mockHooks := hooks.NewMockAnchorHookInterface(ctrl)
+	mockHooks := hooks.NewMockAnclaxHookInterface(ctrl)
 	auth, err := NewAuth(&config.Config{}, mockMacaroons, mockCaveatParser, mockHooks)
 
 	require.NoError(t, err)
@@ -388,7 +388,7 @@ func TestAuth_InvalidateUserTokens(t *testing.T) {
 	mockCaveatParser := macaroons.NewMockCaveatParserInterface(ctrl)
 	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)
 	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
-	mockHooks := hooks.NewMockAnchorHookInterface(ctrl)
+	mockHooks := hooks.NewMockAnclaxHookInterface(ctrl)
 	auth, err := NewAuth(&config.Config{}, mockMacaroons, mockCaveatParser, mockHooks)
 	require.NoError(t, err)
 
@@ -585,7 +585,7 @@ func TestNewAuth(t *testing.T) {
 	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)
 	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
 
-	mockHooks := hooks.NewMockAnchorHookInterface(ctrl)
+	mockHooks := hooks.NewMockAnclaxHookInterface(ctrl)
 	auth, err := NewAuth(&config.Config{}, mockMacaroons, mockCaveatParser, mockHooks)
 	require.NoError(t, err)
 	require.NotNil(t, auth)
