@@ -39,7 +39,7 @@ var cleanCmd = &cli.Command{
 	Action: runClean,
 }
 
-func writeAnchorDef(outdir string) error {
+func writeAnclaxDef(outdir string) error {
 	if err := os.MkdirAll(outdir, 0755); err != nil {
 		return errors.Wrap(err, "failed to create anclax def directory")
 	}
@@ -269,13 +269,13 @@ func _codegen(config *Config, workdir string) error {
 		}
 	}
 
-	if config.AnchorDef != "" {
-		if filepath.IsAbs(config.AnchorDef) {
-			if err := writeAnchorDef(config.AnchorDef); err != nil {
+	if config.AnclaxDef != "" {
+		if filepath.IsAbs(config.AnclaxDef) {
+			if err := writeAnclaxDef(config.AnclaxDef); err != nil {
 				return errors.Wrap(err, "failed to write anclax def")
 			}
 		} else {
-			if err := writeAnchorDef(filepath.Join(workdir, config.AnchorDef)); err != nil {
+			if err := writeAnclaxDef(filepath.Join(workdir, config.AnclaxDef)); err != nil {
 				return errors.Wrap(err, "failed to write anclax def")
 			}
 		}

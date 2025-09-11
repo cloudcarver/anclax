@@ -46,5 +46,5 @@ type Config struct {
 	Sqlc        *SqlcConfig        `yaml:"sqlc,omitempty"`
 	TaskHandler *TaskHandlerConfig `yaml:"task-handler,omitempty"`
 	CleanItems  []string           `yaml:"clean,omitempty"`
-	AnchorDef   string             `yaml:"anclaxdef,omitempty"`
+	AnclaxDef   string             `yaml:"anclaxdef,omitempty"`
 }

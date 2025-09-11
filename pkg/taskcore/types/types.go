@@ -5,7 +5,7 @@ import (
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 )
 
-func TaskToAPI(task *querier.AnchorTask) apigen.Task {
+func TaskToAPI(task *querier.AnclaxTask) apigen.Task {
 	return apigen.Task{
 		ID:         task.ID,
 		CreatedAt:  task.CreatedAt,

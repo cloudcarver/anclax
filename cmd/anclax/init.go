@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	Anchor      = "anclax"
+	Anclax      = "anclax"
 	OapiCodegen = "oapi-codegen"
 	Wire        = "wire"
 	Sqlc        = "sqlc"

@@ -7,7 +7,7 @@ import (
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 )
 
-func orgToApigen(org *querier.AnchorOrg) *apigen.Org {
+func orgToApigen(org *querier.AnclaxOrg) *apigen.Org {
 	return &apigen.Org{
 		ID:        org.ID,
 		Name:      org.Name,

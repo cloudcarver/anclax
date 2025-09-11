@@ -8,7 +8,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func taskToApiTask(task *querier.AnchorTask) *apigen.Task {
+func taskToApiTask(task *querier.AnclaxTask) *apigen.Task {
 	return &apigen.Task{
 		ID:         task.ID,
 		Attributes: task.Attributes,

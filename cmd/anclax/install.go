@@ -13,7 +13,7 @@ var installMap = map[string]string{
 	Wire:        "github.com/google/wire/cmd/wire",
 	Sqlc:        "github.com/sqlc-dev/sqlc/cmd/sqlc",
 	Mockgen:     "go.uber.org/mock/mockgen",
-	Anchor:      "github.com/cloudcarver/anclax/cmd/anclax",
+	Anclax:      "github.com/cloudcarver/anclax/cmd/anclax",
 }
 
 var installCmd = &cli.Command{

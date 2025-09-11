@@ -20,7 +20,7 @@ var versionCmd = &cli.Command{
 func main() {
 	app := &cli.App{
 		Name:  "anclax",
-		Usage: "Anchor is a tool for quickly building production-ready web applications with confidence",
+		Usage: "Anclax is a tool for quickly building production-ready web applications with confidence",
 		Commands: []*cli.Command{
 			genCmd,
 			initCmd,
