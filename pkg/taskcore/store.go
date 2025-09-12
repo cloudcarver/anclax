@@ -14,6 +14,8 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
+var ErrTaskNotFound = errors.New("task not found")
+
 type TaskStore struct {
 	now func() time.Time
 
@@ -108,6 +110,9 @@ func (s *TaskStore) ResumeTask(ctx context.Context, taskID int32) error {
 func (s *TaskStore) GetTaskByUniqueTag(ctx context.Context, uniqueTag string) (*apigen.Task, error) {
 	task, err := s.model.GetTaskByUniqueTag(ctx, &uniqueTag)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrTaskNotFound
+		}
 		return nil, errors.Wrapf(err, "failed to get task by unique tag")
 	}
 	ret := types.TaskToAPI(task)
