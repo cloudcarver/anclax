@@ -37,6 +37,14 @@ func (s *TaskStore) WithTx(tx pgx.Tx) TaskStoreInterface {
 }
 
 func (s *TaskStore) PushTask(ctx context.Context, task *apigen.Task) (int32, error) {
+	if task.UniqueTag != nil {
+		task, err := s.model.GetTaskByUniqueTag(ctx, task.UniqueTag)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return 0, errors.Wrap(err, "failed to check task by unique tag before push")
+		}
+		return task.ID, nil
+	}
+
 	createdTask, err := s.model.CreateTask(ctx, querier.CreateTaskParams{
 		Attributes: task.Attributes,
 		Spec:       task.Spec,
@@ -45,13 +53,6 @@ func (s *TaskStore) PushTask(ctx context.Context, task *apigen.Task) (int32, err
 		UniqueTag:  task.UniqueTag,
 	})
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) && task.UniqueTag != nil {
-			task, err := s.model.GetTaskByUniqueTag(ctx, task.UniqueTag)
-			if err != nil {
-				return 0, errors.Wrap(err, "failed to get task by unique tag")
-			}
-			return task.ID, nil
-		}
 		return 0, errors.Wrap(err, "failed to push task")
 	}
 	return createdTask.ID, nil
