@@ -30,6 +30,8 @@ type Server struct {
 	serverInterface apigen.ServerInterface
 	validator       apigen.Validator
 	libCfg          *config.LibConfig
+	skipLogRequest  func(c *fiber.Ctx) bool
+	skipLogResponse func(c *fiber.Ctx) bool
 }
 
 func NewServer(
@@ -91,6 +93,38 @@ func NewServer(
 		Middlewares: middlewares,
 	})
 
+	s.skipLogRequest = func(c *fiber.Ctx) bool { return false }
+	s.skipLogResponse = func(c *fiber.Ctx) bool { return false }
+
+	if libCfg.Log.RequestPathPrefix != nil && libCfg.Log.HealthCheckPath != nil {
+		var (
+			prefix     = *libCfg.Log.RequestPathPrefix
+			healthPath = *libCfg.Log.HealthCheckPath
+		)
+		s.skipLogRequest = func(c *fiber.Ctx) bool {
+			return !strings.HasPrefix(c.Path(), prefix) || c.Path() == healthPath
+		}
+		s.skipLogResponse = func(c *fiber.Ctx) bool {
+			return !strings.HasPrefix(c.Path(), prefix) || (c.Path() == healthPath && c.Response().StatusCode() < 400)
+		}
+	} else if libCfg.Log.RequestPathPrefix != nil && libCfg.Log.HealthCheckPath == nil {
+		var prefix = *libCfg.Log.RequestPathPrefix
+		s.skipLogRequest = func(c *fiber.Ctx) bool {
+			return !strings.HasPrefix(c.Path(), prefix)
+		}
+		s.skipLogResponse = func(c *fiber.Ctx) bool {
+			return !strings.HasPrefix(c.Path(), prefix)
+		}
+	} else if libCfg.Log.RequestPathPrefix == nil && libCfg.Log.HealthCheckPath != nil {
+		var healthPath = *libCfg.Log.HealthCheckPath
+		s.skipLogRequest = func(c *fiber.Ctx) bool {
+			return c.Path() == healthPath
+		}
+		s.skipLogResponse = func(c *fiber.Ctx) bool {
+			return c.Path() == healthPath && c.Response().StatusCode() < 400
+		}
+	}
+
 	return s, nil
 }
 
@@ -109,20 +143,19 @@ func (s *Server) registerMiddleware() {
 	s.app.Use(func(c *fiber.Ctx) error {
 		// log request
 		start := time.Now()
-		if strings.HasPrefix(c.Path(), "/api") {
+		if !s.skipLogRequest(c) {
 			log.Info(
 				"request",
 				zap.String("method", c.Method()),
 				zap.String("path", c.Path()),
 				zap.String("request-id", c.Locals(requestid.ConfigDefault.ContextKey).(string)),
 			)
-
 		}
 
 		err := c.Next()
 
 		// log response
-		if strings.HasPrefix(c.Path(), "/api") {
+		if !s.skipLogResponse(c) {
 			end := time.Now()
 			log.Info(
 				"response",
