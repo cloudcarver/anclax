@@ -39,10 +39,13 @@ func (s *TaskStore) WithTx(tx pgx.Tx) TaskStoreInterface {
 func (s *TaskStore) PushTask(ctx context.Context, task *apigen.Task) (int32, error) {
 	if task.UniqueTag != nil {
 		task, err := s.model.GetTaskByUniqueTag(ctx, task.UniqueTag)
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-			return 0, errors.Wrap(err, "failed to check task by unique tag before push")
+		if err != nil {
+			if !errors.Is(err, pgx.ErrNoRows) {
+				return 0, errors.Wrap(err, "failed to check task by unique tag before push")
+			}
+		} else {
+			return task.ID, nil
 		}
-		return task.ID, nil
 	}
 
 	createdTask, err := s.model.CreateTask(ctx, querier.CreateTaskParams{
