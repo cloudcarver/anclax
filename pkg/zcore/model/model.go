@@ -90,21 +90,29 @@ func (m *Model) RunTransaction(ctx context.Context, f func(model ModelInterface)
 
 func NewModel(cfg *config.Config, libCfg *config.LibConfig) (ModelInterface, error) {
 	var dsn string
+	var dbURL *url.URL
 	if cfg.Pg.DSN != nil {
-		dsn = *cfg.Pg.DSN
+		rawURL, err := url.Parse(*cfg.Pg.DSN)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to parse DSN")
+		}
+		q := rawURL.Query()
+		q.Set("x-migrations-table", "anchor_migrations")
+		rawURL.RawQuery = q.Encode()
+		dbURL = rawURL
 	} else {
 		if cfg.Pg.User == "" || cfg.Pg.Host == "" || cfg.Pg.Port == 0 || cfg.Pg.Db == "" {
 			return nil, errors.New("either dsn or user, host, port, db must be set")
 		}
-		url := &url.URL{
+		dbURL = &url.URL{
 			Scheme:   "postgres",
 			User:     url.UserPassword(cfg.Pg.User, cfg.Pg.Password),
 			Host:     fmt.Sprintf("%s:%d", cfg.Pg.Host, cfg.Pg.Port),
 			Path:     cfg.Pg.Db,
 			RawQuery: "sslmode=" + utils.IfElse(cfg.Pg.SSLMode == "", "require", cfg.Pg.SSLMode) + "&x-migrations-table=anchor_migrations",
 		}
-		dsn = url.String()
 	}
+	dsn = dbURL.String()
 
 	config, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
