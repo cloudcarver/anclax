@@ -101,7 +101,7 @@ func NewModel(cfg *config.Config, libCfg *config.LibConfig) (ModelInterface, err
 			User:     url.UserPassword(cfg.Pg.User, cfg.Pg.Password),
 			Host:     fmt.Sprintf("%s:%d", cfg.Pg.Host, cfg.Pg.Port),
 			Path:     cfg.Pg.Db,
-			RawQuery: "sslmode=" + utils.IfElse(cfg.Pg.SSLMode == "", "require", cfg.Pg.SSLMode),
+			RawQuery: "sslmode=" + utils.IfElse(cfg.Pg.SSLMode == "", "require", cfg.Pg.SSLMode) + "&x-migrations-table=anchor_migrations",
 		}
 		dsn = url.String()
 	}
