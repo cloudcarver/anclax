@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-![social preview](docs/images/social-preview.jpg)
+![social preview](docs/images/social-preview.png)
 
 以光速 ⚡、并且更有把握 🛡️ 地构建无服务器、可靠的应用。
 
