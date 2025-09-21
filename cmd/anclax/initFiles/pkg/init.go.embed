@@ -12,7 +12,6 @@ import (
 	anclax_wire "github.com/cloudcarver/anclax/wire"
 
 	anclax_app "github.com/cloudcarver/anclax/pkg/app"
-	"github.com/cloudcarver/anclax/pkg/taskcore"
 )
 
 func ProvidePluginMeta() anclax_app.PluginMeta {
@@ -40,11 +39,11 @@ func Init(anclaxApp *anclax_app.Application, taskrunner taskgen.TaskRunner, myap
 	if _, err := anclaxApp.GetService().CreateNewUser(ctx, "test", "test"); err != nil {
 		return nil, err
 	}
-	if _, err := taskrunner.RunAutoIncrementCounter(ctx, &taskgen.AutoIncrementCounterParameters{
-		Amount: 1,
-	}, taskcore.WithUniqueTag("auto-increment-counter")); err != nil {
-		return nil, err
-	}
+	// if _, err := taskrunner.RunAutoIncrementCounter(ctx, &taskgen.AutoIncrementCounterParameters{
+	// 	Amount: 1,
+	// }, taskcore.WithUniqueTag("auto-increment-counter")); err != nil {
+	// 	return nil, err
+	// }
 
 	// closer
 	anclaxApp.RegisterCloser(model.Close)
