@@ -47,14 +47,6 @@ Anclax helps you build quickly while staying scalable and production‑ready.
 
 These choices maximize early velocity and give you a clear, reliable path to scale with confidence.
 
-## Quick start 🚀
-
-```bash
-go install github.com/cloudcarver/anclax/cmd/anclax@latest
-anclax init . github.com/my/app
-anclax gen
-```
-
 ## Hands-on: try it now 🧑‍💻
 
 ```bash
