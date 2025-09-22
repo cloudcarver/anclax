@@ -47,7 +47,7 @@ func InitializeApplication(cfg *config.Config, libCfg *config.LibConfig) (*app.A
 	serviceInterface := service.NewService(cfg, modelInterface, authInterface, anclaxHookInterface)
 	serverInterface := controller.NewController(serviceInterface, authInterface, cfg)
 	validator := controller.NewValidator(modelInterface, authInterface)
-	websocketController := ws.NewWebsocketController(globalContext)
+	websocketController := ws.NewWebsocketController(globalContext, libCfg)
 	serverServer, err := server.NewServer(cfg, libCfg, globalContext, authInterface, serverInterface, validator, websocketController)
 	if err != nil {
 		return nil, err
