@@ -45,14 +45,6 @@ Anclax 让你在保持可扩展、面向生产的可靠性的同时，依然能�
 
 这些选择让你在早期拥有极高的迭代速度，同时在演进与增长过程中保持清晰、可靠的扩展路径。
 
-## 快速开始 🚀
-
-```bash
-go install github.com/cloudcarver/anclax/cmd/anclax@latest
-anclax init . github.com/my/app
-anclax gen
-```
-
 ## 上手实践：现在就跑起来 🧑‍💻
 
 ```bash
