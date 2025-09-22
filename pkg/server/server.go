@@ -6,16 +6,19 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cloudcarver/anclax/lib/ws"
 	"github.com/cloudcarver/anclax/pkg/auth"
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/globalctx"
 	"github.com/cloudcarver/anclax/pkg/logger"
 	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
+	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/gofiber/fiber/v2/middleware/requestid"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -171,6 +174,21 @@ func (s *Server) registerMiddleware() {
 		}
 		return err
 	})
+}
+
+func (s *Server) RegisterWebsocketHandler(path string, controller *ws.WebsocketController) {
+	s.app.Use("/ws", func(c *fiber.Ctx) error {
+		if websocket.IsWebSocketUpgrade(c) {
+			c.Locals("allowed", true)
+			c.Locals("ws_request_id", uuid.New().String())
+			return c.Next()
+		}
+		return fiber.ErrUpgradeRequired
+	})
+
+	s.app.Get("/ws", websocket.New(func(c *websocket.Conn) {
+		controller.HandleConn(c)
+	}))
 }
 
 func (s *Server) Listen() error {
