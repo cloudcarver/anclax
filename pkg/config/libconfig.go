@@ -15,10 +15,19 @@ type LogCfg struct {
 	HealthCheckPath *string
 }
 
+type WsCfg struct {
+	// (optional) Default is false, set to true to enable websocket support.
+	EnableWebsocket bool
+
+	// (optional) Default is /ws, the path to accept websocket connections.
+	WebSocketPath string
+}
+
 type LibConfig struct {
 	Cors *cors.Config
 	Pg   *PgCfg
 	Log  LogCfg
+	Ws   *WsCfg
 }
 
 func DefaultLibConfig() *LibConfig {

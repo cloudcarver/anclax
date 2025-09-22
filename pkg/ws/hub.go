@@ -3,7 +3,6 @@ package ws
 import (
 	"sync"
 
-	"github.com/cloudcarver/anclax/pkg/globalctx"
 	"github.com/pkg/errors"
 )
 
@@ -18,7 +17,7 @@ type Hub struct {
 	topicRooms map[string]map[string]*Session
 }
 
-func NewHub(gctx *globalctx.GlobalContext) *Hub {
+func NewHub() *Hub {
 	return &Hub{
 		topicRooms: make(map[string]map[string]*Session),
 	}

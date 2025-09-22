@@ -18,10 +18,11 @@ import (
 var wslog = logger.NewLogAgent("websocket")
 
 var (
-	ErrCloseReceived = errors.New("close frame received")
-	ErrBackpressure  = errors.New("backpressure encountered")
-	ErrBiz           = errors.New("business error")
-	ErrBadRequest    = errors.New("bad request")
+	ErrCloseReceived        = errors.New("close frame received")
+	ErrBackpressure         = errors.New("backpressure encountered")
+	ErrBiz                  = errors.New("business error")
+	ErrBadRequest           = errors.New("bad request")
+	ErrHandlerNotRegistered = errors.New("handler not registered")
 )
 
 const (
@@ -113,21 +114,35 @@ func (c *Ctx) SetID(id string) {
 	c.ID = &id
 }
 
-type MessageHandler interface {
-	Handle(ctx *Ctx, data []byte) error
-	OnSessionCreated(s *Session) error
-}
+type OnSessionCreated func(s *Session) error
+type MessageHandlerFunc func(ctx *Ctx, data []byte) error
 
 type WebsocketController struct {
-	ctx     context.Context
-	handler MessageHandler
+	ctx              context.Context
+	handle           MessageHandlerFunc
+	onSessionCreated OnSessionCreated
+	hub              *Hub
 }
 
-func NewWebsocketController(globalCtx *globalctx.GlobalContext, handler MessageHandler) *WebsocketController {
+func NewWebsocketController(globalCtx *globalctx.GlobalContext) *WebsocketController {
 	return &WebsocketController{
-		ctx:     globalCtx.Context(),
-		handler: handler,
+		ctx:              globalCtx.Context(),
+		handle:           func(ctx *Ctx, data []byte) error { return ErrHandlerNotRegistered },
+		onSessionCreated: func(s *Session) error { return nil },
+		hub:              NewHub(),
 	}
+}
+
+func (w *WebsocketController) SetMessageHandler(f MessageHandlerFunc) {
+	w.handle = f
+}
+
+func (w *WebsocketController) SetOnSessionCreated(f OnSessionCreated) {
+	w.onSessionCreated = f
+}
+
+func (w *WebsocketController) Hub() *Hub {
+	return w.hub
 }
 
 func (w *WebsocketController) HandleConn(c *websocket.Conn) {
@@ -146,7 +161,7 @@ func (w *WebsocketController) HandleConn(c *websocket.Conn) {
 
 	wslog.Info("WebSocket connection established", zap.String(wsSessionIDKey, session.ID()))
 
-	if err := w.handler.OnSessionCreated(session); err != nil {
+	if err := w.onSessionCreated(session); err != nil {
 		wslog.Error("failed to handle session creation", zap.Error(err), zap.String(wsSessionIDKey, session.ID()))
 		return
 	}
@@ -222,7 +237,7 @@ func (w *WebsocketController) HandleConn(c *websocket.Conn) {
 				continue
 			}
 
-			if err := w.handler.Handle(wsCtx, msg); err != nil {
+			if err := w.handle(wsCtx, msg); err != nil {
 				if errors.Is(err, ErrBiz) {
 					if err := wsCtx.SendError(err); err != nil {
 						closeConn(errors.Wrap(err, "failed to write error response"))

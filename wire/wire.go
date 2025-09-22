@@ -18,6 +18,7 @@ import (
 	"github.com/cloudcarver/anclax/pkg/service"
 	"github.com/cloudcarver/anclax/pkg/taskcore"
 	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
+	"github.com/cloudcarver/anclax/pkg/ws"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
 	"github.com/google/wire"
@@ -45,6 +46,7 @@ func InitializeApplication(cfg *config.Config, libCfg *config.LibConfig) (*app.A
 		taskgen.NewTaskRunner,
 		asynctask.NewExecutor,
 		hooks.NewBaseHook,
+		ws.NewWebsocketController,
 	)
 	return nil, nil
 }

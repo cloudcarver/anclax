@@ -21,6 +21,7 @@ import (
 	"github.com/cloudcarver/anclax/pkg/service"
 	"github.com/cloudcarver/anclax/pkg/taskcore"
 	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
+	"github.com/cloudcarver/anclax/pkg/ws"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
 )
@@ -46,7 +47,8 @@ func InitializeApplication(cfg *config.Config, libCfg *config.LibConfig) (*app.A
 	serviceInterface := service.NewService(cfg, modelInterface, authInterface, anclaxHookInterface)
 	serverInterface := controller.NewController(serviceInterface, authInterface, cfg)
 	validator := controller.NewValidator(modelInterface, authInterface)
-	serverServer, err := server.NewServer(cfg, libCfg, globalContext, authInterface, serverInterface, validator)
+	websocketController := ws.NewWebsocketController(globalContext)
+	serverServer, err := server.NewServer(cfg, libCfg, globalContext, authInterface, serverInterface, validator, websocketController)
 	if err != nil {
 		return nil, err
 	}

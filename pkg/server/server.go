@@ -6,12 +6,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cloudcarver/anclax/lib/ws"
 	"github.com/cloudcarver/anclax/pkg/auth"
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/globalctx"
 	"github.com/cloudcarver/anclax/pkg/logger"
 	"github.com/cloudcarver/anclax/pkg/utils"
+	"github.com/cloudcarver/anclax/pkg/ws"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
@@ -32,6 +32,7 @@ type Server struct {
 	globalCtx       *globalctx.GlobalContext
 	serverInterface apigen.ServerInterface
 	validator       apigen.Validator
+	wsc             *ws.WebsocketController
 	libCfg          *config.LibConfig
 	skipLogRequest  func(c *fiber.Ctx) bool
 	skipLogResponse func(c *fiber.Ctx) bool
@@ -44,6 +45,7 @@ func NewServer(
 	auth auth.AuthInterface,
 	serverInterface apigen.ServerInterface,
 	validator apigen.Validator,
+	wsc *ws.WebsocketController,
 ) (*Server, error) {
 	// create fiber app
 	app := fiber.New(fiber.Config{
@@ -74,6 +76,7 @@ func NewServer(
 		globalCtx:       globalCtx,
 		validator:       validator,
 		libCfg:          libCfg,
+		wsc:             wsc,
 	}
 
 	s.registerMiddleware()
@@ -95,6 +98,28 @@ func NewServer(
 		BaseURL:     "/api/v1",
 		Middlewares: middlewares,
 	})
+
+	if libCfg.Ws != nil && libCfg.Ws.EnableWebsocket {
+		var wsPath = "/ws"
+		if libCfg.Ws.WebSocketPath != "" {
+			wsPath = "/" + strings.Trim(libCfg.Ws.WebSocketPath, "/")
+		}
+
+		s.app.Use(wsPath, func(c *fiber.Ctx) error {
+			if websocket.IsWebSocketUpgrade(c) {
+				c.Locals("allowed", true)
+				c.Locals("ws_request_id", uuid.New().String())
+				return c.Next()
+			}
+			return fiber.ErrUpgradeRequired
+		})
+
+		s.app.Get(wsPath, websocket.New(func(c *websocket.Conn) {
+			wsc.HandleConn(c)
+		}))
+
+		log.Infof("WebSocket enabled at path: %s", wsPath)
+	}
 
 	s.skipLogRequest = func(c *fiber.Ctx) bool { return false }
 	s.skipLogResponse = func(c *fiber.Ctx) bool { return false }
@@ -176,19 +201,8 @@ func (s *Server) registerMiddleware() {
 	})
 }
 
-func (s *Server) RegisterWebsocketHandler(path string, controller *ws.WebsocketController) {
-	s.app.Use("/ws", func(c *fiber.Ctx) error {
-		if websocket.IsWebSocketUpgrade(c) {
-			c.Locals("allowed", true)
-			c.Locals("ws_request_id", uuid.New().String())
-			return c.Next()
-		}
-		return fiber.ErrUpgradeRequired
-	})
-
-	s.app.Get("/ws", websocket.New(func(c *websocket.Conn) {
-		controller.HandleConn(c)
-	}))
+func (s *Server) Websocket() *ws.WebsocketController {
+	return ws.NewWebsocketController(s.globalCtx)
 }
 
 func (s *Server) Listen() error {
