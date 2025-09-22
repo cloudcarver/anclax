@@ -202,7 +202,7 @@ func (s *Server) registerMiddleware() {
 }
 
 func (s *Server) Websocket() *ws.WebsocketController {
-	return ws.NewWebsocketController(s.globalCtx)
+	return s.wsc
 }
 
 func (s *Server) Listen() error {

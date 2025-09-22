@@ -65,7 +65,7 @@ func (h *Hub) Unsubscribe(topic string, s *Session) error {
 	return nil
 }
 
-func (h *Hub) BroadcastExcept(topic string, data any, exceptID string) {
+func (h *Hub) broadcastExcept(topic string, data any, exceptID string) {
 	h.mu.RLock()
 	sessions, ok := h.topicRooms[topic]
 	h.mu.RUnlock()

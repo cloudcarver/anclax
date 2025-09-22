@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 
+	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/globalctx"
 	"github.com/cloudcarver/anclax/pkg/logger"
 	"github.com/gofiber/contrib/websocket"
@@ -26,11 +27,11 @@ var (
 )
 
 const (
-	idleTimeout  = 40 * time.Second
-	pingInterval = 30 * time.Second
-	writeWait    = 10 * time.Second
+	defaultIdleTimeout  = 40 * time.Second
+	defaultPingInterval = 30 * time.Second
+	defaultWriteWait    = 10 * time.Second
 
-	wsSessionIDKey = "ws_session_id"
+	defaultWsSessionIDKey = "ws_session_id"
 )
 
 type BufMsg struct {
@@ -39,35 +40,43 @@ type BufMsg struct {
 }
 
 type Session struct {
-	id       string
-	conn     *websocket.Conn
-	writeBuf chan<- BufMsg
-	closers  []func() error
-	cancel   context.CancelCauseFunc
+	id           string
+	conn         *websocket.Conn
+	writeBuf     chan<- BufMsg
+	onClose      []func() error
+	cancel       context.CancelCauseFunc
+	close        func(err error)
+	sessionIDKey string
+	hub          *Hub
 }
 
-func NewSession(conn *websocket.Conn, writeBuf chan<- BufMsg, cancel context.CancelCauseFunc) *Session {
+func NewSession(conn *websocket.Conn, writeBuf chan<- BufMsg, cancel context.CancelCauseFunc, sessionIDKey string, hub *Hub) *Session {
 	id := uuid.New().String()
-	conn.Locals(wsSessionIDKey, id)
+	conn.Locals(sessionIDKey, id)
 	return &Session{
-		conn:     conn,
-		writeBuf: writeBuf,
-		closers:  make([]func() error, 0),
-		cancel:   cancel,
-		id:       id,
+		conn:         conn,
+		writeBuf:     writeBuf,
+		onClose:      make([]func() error, 0),
+		cancel:       cancel,
+		id:           id,
+		sessionIDKey: sessionIDKey,
+		hub:          hub,
 	}
 }
-
-func (s *Session) Close() {
-	for _, closer := range s.closers {
+func (s *Session) release() {
+	for _, closer := range s.onClose {
 		if err := closer(); err != nil {
-			wslog.Error("failed to close resource", zap.Error(err), zap.String(wsSessionIDKey, s.ID()))
+			wslog.Error("failed to close resource", zap.Error(err), zap.String(s.sessionIDKey, s.ID()))
 		}
 	}
 }
 
-func (s *Session) RegisterCloser(closer func() error) {
-	s.closers = append(s.closers, closer)
+func (s *Session) Close(err error) {
+	s.cancel(err)
+}
+
+func (s *Session) RegisterOnClose(closer func() error) {
+	s.onClose = append(s.onClose, closer)
 }
 
 func (s *Session) ID() string {
@@ -76,6 +85,10 @@ func (s *Session) ID() string {
 
 func (s *Session) Conn() *websocket.Conn {
 	return s.conn
+}
+
+func (s *Session) Broadcast(topic string, data any) {
+	s.hub.broadcastExcept(topic, data, s.id)
 }
 
 func (s *Session) WriteTextMessage(data any) error {
@@ -125,14 +138,46 @@ type WebsocketController struct {
 	handle           MessageHandlerFunc
 	onSessionCreated OnSessionCreated
 	hub              *Hub
+
+	readLimit      int64
+	idleTimeout    time.Duration
+	pingInterval   time.Duration
+	writeWait      time.Duration
+	wsSessionIDKey string
 }
 
-func NewWebsocketController(globalCtx *globalctx.GlobalContext) *WebsocketController {
+func NewWebsocketController(globalCtx *globalctx.GlobalContext, libCfg *config.LibConfig) *WebsocketController {
+	var readLimit int64 = 1024 * 1024 // 1MB
+	if libCfg.Ws != nil && libCfg.Ws.ReadLimit > 0 {
+		readLimit = libCfg.Ws.ReadLimit
+	}
+	var idleTimeout = defaultIdleTimeout
+	if libCfg.Ws != nil && libCfg.Ws.IdleTimeoutSeconds > 0 {
+		idleTimeout = time.Duration(libCfg.Ws.IdleTimeoutSeconds) * time.Second
+	}
+	var pingInterval = defaultPingInterval
+	if libCfg.Ws != nil && libCfg.Ws.PingIntervalSeconds > 0 {
+		pingInterval = time.Duration(libCfg.Ws.PingIntervalSeconds) * time.Second
+	}
+	var writeWait = defaultWriteWait
+	if libCfg.Ws != nil && libCfg.Ws.WriteWaitSeconds > 0 {
+		writeWait = time.Duration(libCfg.Ws.WriteWaitSeconds) * time.Second
+	}
+	var wsSessionIDKey = defaultWsSessionIDKey
+	if libCfg.Ws != nil && libCfg.Ws.SessionIDKey != "" {
+		wsSessionIDKey = libCfg.Ws.SessionIDKey
+	}
+
 	return &WebsocketController{
 		ctx:              globalCtx.Context(),
 		handle:           func(ctx *Ctx, data []byte) error { return ErrHandlerNotRegistered },
 		onSessionCreated: func(s *Session) error { return nil },
 		hub:              NewHub(),
+		readLimit:        readLimit,
+		idleTimeout:      idleTimeout,
+		pingInterval:     pingInterval,
+		writeWait:        writeWait,
+		wsSessionIDKey:   wsSessionIDKey,
 	}
 }
 
@@ -159,32 +204,34 @@ func (w *WebsocketController) HandleConn(c *websocket.Conn) {
 	)
 	defer close(writeBuf)
 
-	session := NewSession(c, writeBuf, cancel)
-	defer session.Close()
-
-	wslog.Info("WebSocket connection established", zap.String(wsSessionIDKey, session.ID()))
-
-	if err := w.onSessionCreated(session); err != nil {
-		wslog.Error("failed to handle session creation", zap.Error(err), zap.String(wsSessionIDKey, session.ID()))
-		return
-	}
+	session := NewSession(c, writeBuf, cancel, w.wsSessionIDKey, w.hub)
+	defer session.release()
 
 	closeConn := func(err error) {
 		onceClose.Do(func() {
 			if errors.Is(err, ErrCloseReceived) {
-				wslog.Info("WebSocket connection closed by client", zap.String(wsSessionIDKey, session.ID()))
+				wslog.Info("WebSocket connection closed by client", zap.String(w.wsSessionIDKey, session.ID()))
 			} else {
-				wslog.Info("Closing WebSocket connection", zap.Error(err), zap.String(wsSessionIDKey, session.ID()))
+				wslog.Info("Closing WebSocket connection", zap.Error(err), zap.String(w.wsSessionIDKey, session.ID()))
 			}
 			cancel(err)
 		})
 	}
 
-	c.SetReadLimit(100 * 1024 /* 100KB */)
-	_ = c.SetReadDeadline(time.Now().Add(idleTimeout))
+	session.close = closeConn
+
+	wslog.Info("WebSocket connection established", zap.String(w.wsSessionIDKey, session.ID()))
+
+	if err := w.onSessionCreated(session); err != nil {
+		wslog.Error("error on session created hook", zap.Error(err), zap.String(w.wsSessionIDKey, session.ID()))
+		return
+	}
+
+	c.SetReadLimit(w.readLimit)
+	_ = c.SetReadDeadline(time.Now().Add(w.idleTimeout))
 
 	c.SetPongHandler(func(string) error {
-		return c.SetReadDeadline(time.Now().Add(idleTimeout))
+		return c.SetReadDeadline(time.Now().Add(w.idleTimeout))
 	})
 
 	c.SetCloseHandler(func(code int, text string) error {
@@ -196,19 +243,19 @@ func (w *WebsocketController) HandleConn(c *websocket.Conn) {
 
 	// writer
 	go func() {
-		pingTicker := time.NewTicker(pingInterval)
+		pingTicker := time.NewTicker(w.pingInterval)
 		defer pingTicker.Stop()
 		defer close(writeDone)
 
 		for {
 			select {
 			case <-ctx.Done():
-				_ = c.SetWriteDeadline(time.Now().Add(writeWait))
-				_ = c.WriteControl(websocket.CloseMessage, []byte{}, time.Now().Add(writeWait))
+				_ = c.SetWriteDeadline(time.Now().Add(w.writeWait))
+				_ = c.WriteControl(websocket.CloseMessage, []byte{}, time.Now().Add(w.writeWait))
 				_ = c.Close()
 				return
 			case <-pingTicker.C:
-				if err := c.WriteControl(websocket.PingMessage, nil, time.Now().Add(writeWait)); err != nil {
+				if err := c.WriteControl(websocket.PingMessage, nil, time.Now().Add(w.writeWait)); err != nil {
 					closeConn(errors.Wrap(err, "failed to send ping"))
 					return
 				}
@@ -216,7 +263,7 @@ func (w *WebsocketController) HandleConn(c *websocket.Conn) {
 				if !ok {
 					return
 				}
-				_ = c.SetWriteDeadline(time.Now().Add(writeWait))
+				_ = c.SetWriteDeadline(time.Now().Add(w.writeWait))
 				if err := c.WriteMessage(m.mt, m.msg); err != nil {
 					closeConn(errors.Wrap(err, "write message error"))
 					return
