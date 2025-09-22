@@ -12,7 +12,7 @@ var versionCmd = &cli.Command{
 	Name:  "version",
 	Usage: "Show the version of anclax",
 	Action: func(c *cli.Context) error {
-		fmt.Println("v0.6.12")
+		fmt.Println("v0.6.13")
 		return nil
 	},
 }

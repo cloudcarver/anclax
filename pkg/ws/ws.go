@@ -74,8 +74,8 @@ func (s *Session) ID() string {
 	return s.id
 }
 
-func (s *Session) Locals(key string, value ...any) any {
-	return s.conn.Locals(key, value...)
+func (s *Session) Conn() *websocket.Conn {
+	return s.conn
 }
 
 func (s *Session) WriteTextMessage(data any) error {
@@ -100,7 +100,10 @@ type Ctx struct {
 }
 
 func NewCtx(ctx context.Context, s *Session) *Ctx {
-	return &Ctx{Context: ctx, Session: s}
+	return &Ctx{
+		Context: ctx,
+		Session: s,
+	}
 }
 
 func (c *Ctx) SendError(err error) error {
