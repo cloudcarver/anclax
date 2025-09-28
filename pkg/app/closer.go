@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	"go.uber.org/zap"
@@ -24,6 +25,8 @@ func NewCloserManager() *CloserManager {
 func (cm *CloserManager) Close() {
 	ctx, cancel := context.WithTimeout(context.Background(), DefaultGracefulShutdownTimeout)
 	defer cancel()
+
+	slices.Reverse(cm.closers)
 
 	for _, closer := range cm.closers {
 		if err := closer(ctx); err != nil {
