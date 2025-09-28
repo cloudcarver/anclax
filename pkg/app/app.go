@@ -13,6 +13,7 @@ import (
 	"github.com/cloudcarver/anclax/pkg/service"
 	"github.com/cloudcarver/anclax/pkg/taskcore"
 	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
+	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/pkg/errors"
 )
 
@@ -33,7 +34,7 @@ type Application struct {
 	hooks         hooks.AnclaxHookInterface
 	caveatParser  macaroons.CaveatParserInterface
 	globalctx     *globalctx.GlobalContext
-	closers       []func()
+	cm            *CloserManager
 }
 
 func NewApplication(
@@ -48,7 +49,8 @@ func NewApplication(
 	service service.ServiceInterface,
 	hooks hooks.AnclaxHookInterface,
 	caveatParser macaroons.CaveatParserInterface,
-	closer *Closer,
+	cm *CloserManager,
+	model model.ModelInterface,
 ) (*Application, error) {
 
 	if cfg.TestAccount != nil {
@@ -69,9 +71,13 @@ func NewApplication(
 		hooks:         hooks,
 		caveatParser:  caveatParser,
 		globalctx:     globalctx,
+		cm:            cm,
 	}
 
-	app.RegisterCloser(closer.closers...)
+	cm.Register(func(_ context.Context) error {
+		model.Close()
+		return nil
+	})
 
 	return app, nil
 }
@@ -85,10 +91,12 @@ func (a *Application) Start() error {
 	return a.server.Listen()
 }
 
+func (a *Application) GetCloserManager() *CloserManager {
+	return a.cm
+}
+
 func (a *Application) Close() {
-	for _, closer := range a.closers {
-		closer()
-	}
+	a.cm.Close()
 }
 
 func (a *Application) GetServer() *server.Server {
@@ -117,10 +125,6 @@ func (a *Application) GetHooks() hooks.AnclaxHookInterface {
 
 func (a *Application) GetCaveatParser() macaroons.CaveatParserInterface {
 	return a.caveatParser
-}
-
-func (a *Application) RegisterCloser(closers ...func()) {
-	a.closers = append(a.closers, closers...)
 }
 
 func (a *Application) GetGlobalCtx() *globalctx.GlobalContext {

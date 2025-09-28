@@ -1,17 +1,37 @@
 package app
 
-import "github.com/cloudcarver/anclax/pkg/zcore/model"
+import (
+	"context"
+	"time"
 
-type Closer struct {
-	closers []func()
+	"go.uber.org/zap"
+)
+
+const (
+	DefaultGracefulShutdownTimeout = 5 * time.Second
+)
+
+type Closer func(ctx context.Context) error
+
+type CloserManager struct {
+	closers []Closer
 }
 
-func NewCloser(model model.ModelInterface) *Closer {
-	closers := []func(){
-		model.Close,
-	}
+func NewCloserManager() *CloserManager {
+	return &CloserManager{}
+}
 
-	return &Closer{
-		closers: closers,
+func (cm *CloserManager) Close() {
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultGracefulShutdownTimeout)
+	defer cancel()
+
+	for _, closer := range cm.closers {
+		if err := closer(ctx); err != nil {
+			log.Error("error in graceful shutdown", zap.Error(err))
+		}
 	}
+}
+
+func (cm *CloserManager) Register(closers ...Closer) {
+	cm.closers = append(cm.closers, closers...)
 }

@@ -28,7 +28,7 @@ func InitializeApplication(cfg *config.Config, libCfg *config.LibConfig) (*app.A
 	wire.Build(
 		app.NewDebugServer,
 		app.NewApplication,
-		app.NewCloser,
+		app.NewCloserManager,
 		service.NewService,
 		controller.NewController,
 		controller.NewValidator,
