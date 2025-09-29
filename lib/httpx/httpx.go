@@ -307,6 +307,10 @@ func NewResponseHelper(res *http.Response) *ResponseHelper {
 	return &ResponseHelper{res}
 }
 
+func (rh *ResponseHelper) Bytes() ([]byte, error) {
+	return io.ReadAll(rh.Body)
+}
+
 func (rh *ResponseHelper) Text() string {
 	raw, err := io.ReadAll(rh.Body)
 	if err != nil {
