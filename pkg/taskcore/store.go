@@ -29,7 +29,7 @@ func NewTaskStore(model model.ModelInterface) TaskStoreInterface {
 	}
 }
 
-func (s *TaskStore) WithTx(tx pgx.Tx) TaskStoreInterface {
+func (s *TaskStore) WithTx(tx model.Tx) TaskStoreInterface {
 	return &TaskStore{
 		now:   s.now,
 		model: s.model.SpawnWithTx(tx),

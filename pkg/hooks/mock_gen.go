@@ -14,7 +14,7 @@ import (
 	reflect "reflect"
 
 	macaroons "github.com/cloudcarver/anclax/pkg/macaroons"
-	pgx "github.com/jackc/pgx/v5"
+	model "github.com/cloudcarver/anclax/pkg/zcore/model"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -57,7 +57,7 @@ func (mr *MockAnclaxHookInterfaceMockRecorder) OnCreateToken(ctx, userID, macaro
 }
 
 // OnOrgCreated mocks base method.
-func (m *MockAnclaxHookInterface) OnOrgCreated(ctx context.Context, tx pgx.Tx, orgID int32) error {
+func (m *MockAnclaxHookInterface) OnOrgCreated(ctx context.Context, tx model.Tx, orgID int32) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "OnOrgCreated", ctx, tx, orgID)
 	ret0, _ := ret[0].(error)
@@ -71,7 +71,7 @@ func (mr *MockAnclaxHookInterfaceMockRecorder) OnOrgCreated(ctx, tx, orgID any) 
 }
 
 // OnUserCreated mocks base method.
-func (m *MockAnclaxHookInterface) OnUserCreated(ctx context.Context, tx pgx.Tx, userID int32) error {
+func (m *MockAnclaxHookInterface) OnUserCreated(ctx context.Context, tx model.Tx, userID int32) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "OnUserCreated", ctx, tx, userID)
 	ret0, _ := ret[0].(error)

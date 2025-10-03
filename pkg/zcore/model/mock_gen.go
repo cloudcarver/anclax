@@ -16,8 +16,120 @@ import (
 	apigen "github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	querier "github.com/cloudcarver/anclax/pkg/zgen/querier"
 	pgx "github.com/jackc/pgx/v5"
+	pgconn "github.com/jackc/pgx/v5/pgconn"
 	gomock "go.uber.org/mock/gomock"
 )
+
+// MockTx is a mock of Tx interface.
+type MockTx struct {
+	ctrl     *gomock.Controller
+	recorder *MockTxMockRecorder
+	isgomock struct{}
+}
+
+// MockTxMockRecorder is the mock recorder for MockTx.
+type MockTxMockRecorder struct {
+	mock *MockTx
+}
+
+// NewMockTx creates a new mock instance.
+func NewMockTx(ctrl *gomock.Controller) *MockTx {
+	mock := &MockTx{ctrl: ctrl}
+	mock.recorder = &MockTxMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockTx) EXPECT() *MockTxMockRecorder {
+	return m.recorder
+}
+
+// Commit mocks base method.
+func (m *MockTx) Commit(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Commit", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Commit indicates an expected call of Commit.
+func (mr *MockTxMockRecorder) Commit(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Commit", reflect.TypeOf((*MockTx)(nil).Commit), ctx)
+}
+
+// Exec mocks base method.
+func (m *MockTx) Exec(arg0 context.Context, arg1 string, arg2 ...any) (pgconn.CommandTag, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{arg0, arg1}
+	for _, a := range arg2 {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "Exec", varargs...)
+	ret0, _ := ret[0].(pgconn.CommandTag)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Exec indicates an expected call of Exec.
+func (mr *MockTxMockRecorder) Exec(arg0, arg1 any, arg2 ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{arg0, arg1}, arg2...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Exec", reflect.TypeOf((*MockTx)(nil).Exec), varargs...)
+}
+
+// Query mocks base method.
+func (m *MockTx) Query(arg0 context.Context, arg1 string, arg2 ...any) (pgx.Rows, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{arg0, arg1}
+	for _, a := range arg2 {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "Query", varargs...)
+	ret0, _ := ret[0].(pgx.Rows)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Query indicates an expected call of Query.
+func (mr *MockTxMockRecorder) Query(arg0, arg1 any, arg2 ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{arg0, arg1}, arg2...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Query", reflect.TypeOf((*MockTx)(nil).Query), varargs...)
+}
+
+// QueryRow mocks base method.
+func (m *MockTx) QueryRow(arg0 context.Context, arg1 string, arg2 ...any) pgx.Row {
+	m.ctrl.T.Helper()
+	varargs := []any{arg0, arg1}
+	for _, a := range arg2 {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "QueryRow", varargs...)
+	ret0, _ := ret[0].(pgx.Row)
+	return ret0
+}
+
+// QueryRow indicates an expected call of QueryRow.
+func (mr *MockTxMockRecorder) QueryRow(arg0, arg1 any, arg2 ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{arg0, arg1}, arg2...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryRow", reflect.TypeOf((*MockTx)(nil).QueryRow), varargs...)
+}
+
+// Rollback mocks base method.
+func (m *MockTx) Rollback(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Rollback", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Rollback indicates an expected call of Rollback.
+func (mr *MockTxMockRecorder) Rollback(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Rollback", reflect.TypeOf((*MockTx)(nil).Rollback), ctx)
+}
 
 // MockModelInterface is a mock of ModelInterface interface.
 type MockModelInterface struct {
@@ -498,7 +610,7 @@ func (mr *MockModelInterfaceMockRecorder) RunTransaction(ctx, f any) *gomock.Cal
 }
 
 // RunTransactionWithTx mocks base method.
-func (m *MockModelInterface) RunTransactionWithTx(ctx context.Context, f func(pgx.Tx, ModelInterface) error) error {
+func (m *MockModelInterface) RunTransactionWithTx(ctx context.Context, f func(Tx, ModelInterface) error) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RunTransactionWithTx", ctx, f)
 	ret0, _ := ret[0].(error)
@@ -526,7 +638,7 @@ func (mr *MockModelInterfaceMockRecorder) SetUserDefaultOrg(ctx, arg any) *gomoc
 }
 
 // SpawnWithTx mocks base method.
-func (m *MockModelInterface) SpawnWithTx(tx pgx.Tx) ModelInterface {
+func (m *MockModelInterface) SpawnWithTx(tx Tx) ModelInterface {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SpawnWithTx", tx)
 	ret0, _ := ret[0].(ModelInterface)

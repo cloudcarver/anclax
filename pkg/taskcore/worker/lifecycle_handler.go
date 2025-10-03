@@ -8,7 +8,6 @@ import (
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
-	"github.com/jackc/pgx/v5"
 	"github.com/pkg/errors"
 	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"
@@ -28,7 +27,7 @@ func NewTaskLifeCycleHandler(model model.ModelInterface, taskHandler TaskHandler
 	}
 }
 
-func (a *TaskLifeCycleHandler) HandleAttributes(ctx context.Context, tx pgx.Tx, task apigen.Task) error {
+func (a *TaskLifeCycleHandler) HandleAttributes(ctx context.Context, tx model.Tx, task apigen.Task) error {
 	if a.isCronjob(task) {
 		return a.handleCronjob(ctx, tx, task)
 	}
@@ -39,7 +38,7 @@ func (a *TaskLifeCycleHandler) isCronjob(task apigen.Task) bool {
 	return task.Attributes.Cronjob != nil
 }
 
-func (a *TaskLifeCycleHandler) HandleFailed(ctx context.Context, tx pgx.Tx, task apigen.Task, err error) error {
+func (a *TaskLifeCycleHandler) HandleFailed(ctx context.Context, tx model.Tx, task apigen.Task, err error) error {
 	txm := a.model.SpawnWithTx(tx)
 	// insert error event if the error is not intentional
 	if err != taskcore.ErrRetryTaskWithoutErrorEvent {
@@ -94,7 +93,7 @@ func (a *TaskLifeCycleHandler) HandleFailed(ctx context.Context, tx pgx.Tx, task
 	return nil
 }
 
-func (a *TaskLifeCycleHandler) HandleCompleted(ctx context.Context, tx pgx.Tx, task apigen.Task) error {
+func (a *TaskLifeCycleHandler) HandleCompleted(ctx context.Context, tx model.Tx, task apigen.Task) error {
 	txm := a.model.SpawnWithTx(tx)
 	// the event must be reported
 	if _, err := txm.InsertEvent(ctx, apigen.EventSpec{
@@ -121,7 +120,7 @@ func (a *TaskLifeCycleHandler) HandleCompleted(ctx context.Context, tx pgx.Tx, t
 	return nil
 }
 
-func (a *TaskLifeCycleHandler) handleCronjob(ctx context.Context, tx pgx.Tx, task apigen.Task) error {
+func (a *TaskLifeCycleHandler) handleCronjob(ctx context.Context, tx model.Tx, task apigen.Task) error {
 	if task.Attributes.Cronjob == nil {
 		return errors.Errorf("")
 	}

@@ -26,18 +26,24 @@ var (
 	ErrAlreadyInTransaction = errors.New("already in transaction")
 )
 
+type Tx interface {
+	querier.DBTX
+	Commit(ctx context.Context) error
+	Rollback(ctx context.Context) error
+}
+
 type ModelInterface interface {
 	querier.Querier
 	RunTransaction(ctx context.Context, f func(model ModelInterface) error) error
-	RunTransactionWithTx(ctx context.Context, f func(tx pgx.Tx, model ModelInterface) error) error
+	RunTransactionWithTx(ctx context.Context, f func(tx Tx, model ModelInterface) error) error
 	InTransaction() bool
-	SpawnWithTx(tx pgx.Tx) ModelInterface
+	SpawnWithTx(tx Tx) ModelInterface
 	Close()
 }
 
 type Model struct {
 	querier.Querier
-	beginTx       func(ctx context.Context) (pgx.Tx, error)
+	beginTx       func(ctx context.Context) (Tx, error)
 	p             *pgxpool.Pool
 	inTransaction bool
 }
@@ -52,26 +58,35 @@ func (m *Model) InTransaction() bool {
 	return m.inTransaction
 }
 
-func (m *Model) BeginTx(ctx context.Context) (pgx.Tx, error) {
+func (m *Model) BeginTx(ctx context.Context) (Tx, error) {
 	return m.beginTx(ctx)
 }
 
-func (m *Model) SpawnWithTx(tx pgx.Tx) ModelInterface {
+func (m *Model) SpawnWithTx(tx Tx) ModelInterface {
 	return &Model{
 		Querier: querier.New(tx),
-		beginTx: func(ctx context.Context) (pgx.Tx, error) {
+		beginTx: func(ctx context.Context) (Tx, error) {
 			return nil, ErrAlreadyInTransaction
 		},
 		inTransaction: true,
 	}
 }
 
-func (m *Model) RunTransactionWithTx(ctx context.Context, f func(tx pgx.Tx, model ModelInterface) error) error {
+func (m *Model) RunTransactionWithTx(ctx context.Context, f func(tx Tx, model ModelInterface) error) (retErr error) {
 	tx, err := m.beginTx(ctx)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+
+	defer func() {
+		if retErr != nil {
+			rbCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := tx.Rollback(rbCtx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+				log.Errorf("failed to rollback transaction: %s", err.Error())
+			}
+		}
+	}()
 
 	txm := m.SpawnWithTx(tx)
 
@@ -83,7 +98,7 @@ func (m *Model) RunTransactionWithTx(ctx context.Context, f func(tx pgx.Tx, mode
 }
 
 func (m *Model) RunTransaction(ctx context.Context, f func(model ModelInterface) error) error {
-	return m.RunTransactionWithTx(ctx, func(_ pgx.Tx, model ModelInterface) error {
+	return m.RunTransactionWithTx(ctx, func(_ Tx, model ModelInterface) error {
 		return f(model)
 	})
 }
@@ -174,5 +189,11 @@ func NewModel(cfg *config.Config, libCfg *config.LibConfig) (ModelInterface, err
 		}
 	}
 
-	return &Model{Querier: querier.New(p), beginTx: p.Begin, p: p}, nil
+	return &Model{
+		Querier: querier.New(p),
+		beginTx: func(ctx context.Context) (Tx, error) {
+			return p.Begin(ctx)
+		},
+		p: p,
+	}, nil
 }

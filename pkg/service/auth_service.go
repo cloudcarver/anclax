@@ -109,7 +109,7 @@ type UserCreated struct {
 
 func (s *Service) CreateNewUser(ctx context.Context, username, password string) (*UserCreated, error) {
 	var ret *UserCreated
-	if err := s.m.RunTransactionWithTx(ctx, func(tx pgx.Tx, txm model.ModelInterface) error {
+	if err := s.m.RunTransactionWithTx(ctx, func(tx model.Tx, txm model.ModelInterface) error {
 		u, err := s.CreateNewUserWithTx(ctx, tx, username, password)
 		ret = u
 		return err
@@ -119,7 +119,7 @@ func (s *Service) CreateNewUser(ctx context.Context, username, password string) 
 	return ret, nil
 }
 
-func (s *Service) CreateNewUserWithTx(ctx context.Context, tx pgx.Tx, username, password string) (*UserCreated, error) {
+func (s *Service) CreateNewUserWithTx(ctx context.Context, tx model.Tx, username, password string) (*UserCreated, error) {
 	salt, hash, err := s.generateSaltAndHash(password)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to generate hash and salt")

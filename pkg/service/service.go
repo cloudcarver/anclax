@@ -11,7 +11,6 @@ import (
 	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
-	"github.com/jackc/pgx/v5"
 	"github.com/pkg/errors"
 )
 
@@ -41,7 +40,7 @@ type ServiceInterface interface {
 	// Create a new user and its default organization
 	CreateNewUser(ctx context.Context, username, password string) (*UserCreated, error)
 
-	CreateNewUserWithTx(ctx context.Context, tx pgx.Tx, username, password string) (*UserCreated, error)
+	CreateNewUserWithTx(ctx context.Context, tx model.Tx, username, password string) (*UserCreated, error)
 
 	GetUserIDByUsername(ctx context.Context, username string) (int32, error)
 
