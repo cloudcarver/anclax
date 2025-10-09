@@ -38,11 +38,11 @@ const (
 
 type ServiceInterface interface {
 	// Create a new user and its default organization
-	CreateNewUser(ctx context.Context, username, password string) (*UserCreated, error)
+	CreateNewUser(ctx context.Context, username, password string) (*UserMeta, error)
 
-	CreateNewUserWithTx(ctx context.Context, tx model.Tx, username, password string) (*UserCreated, error)
+	CreateNewUserWithTx(ctx context.Context, tx model.Tx, username, password string) (*UserMeta, error)
 
-	GetUserIDByUsername(ctx context.Context, username string) (int32, error)
+	GetUserByUserName(ctx context.Context, username string) (*UserMeta, error)
 
 	// IsUsernameExists returns true if the username exists
 	IsUsernameExists(ctx context.Context, username string) (bool, error)

@@ -18,3 +18,5 @@ SELECT orgs.*
 FROM anclax.org_users 
 JOIN anclax.orgs AS orgs ON anclax.org_users.org_id = orgs.id
 WHERE anclax.org_users.user_id = $1;
+
+-- name: GetUserDefaultOrg :one

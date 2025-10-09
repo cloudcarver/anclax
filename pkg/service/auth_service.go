@@ -91,24 +91,13 @@ func (s *Service) RefreshToken(ctx context.Context, userID int32, refreshToken s
 	}, nil
 }
 
-func (s *Service) GetUserIDByUsername(ctx context.Context, username string) (int32, error) {
-	user, err := s.m.GetUserByName(ctx, username)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return 0, errors.Wrapf(ErrUserNotFound, "user %s not found", username)
-		}
-		return 0, errors.Wrapf(err, "failed to get user by name")
-	}
-	return user.ID, nil
-}
-
-type UserCreated struct {
+type UserMeta struct {
 	OrgID  int32
 	UserID int32
 }
 
-func (s *Service) CreateNewUser(ctx context.Context, username, password string) (*UserCreated, error) {
-	var ret *UserCreated
+func (s *Service) CreateNewUser(ctx context.Context, username, password string) (*UserMeta, error) {
+	var ret *UserMeta
 	if err := s.m.RunTransactionWithTx(ctx, func(tx model.Tx, txm model.ModelInterface) error {
 		u, err := s.CreateNewUserWithTx(ctx, tx, username, password)
 		ret = u
@@ -119,7 +108,7 @@ func (s *Service) CreateNewUser(ctx context.Context, username, password string) 
 	return ret, nil
 }
 
-func (s *Service) CreateNewUserWithTx(ctx context.Context, tx model.Tx, username, password string) (*UserCreated, error) {
+func (s *Service) CreateNewUserWithTx(ctx context.Context, tx model.Tx, username, password string) (*UserMeta, error) {
 	salt, hash, err := s.generateSaltAndHash(password)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to generate hash and salt")
@@ -170,7 +159,7 @@ func (s *Service) CreateNewUserWithTx(ctx context.Context, tx model.Tx, username
 		return nil, errors.Wrapf(err, "failed to set user default org")
 	}
 
-	return &UserCreated{
+	return &UserMeta{
 		OrgID:  org.ID,
 		UserID: user.ID,
 	}, nil
@@ -225,4 +214,22 @@ func (s *Service) UpdateUserPassword(ctx context.Context, username, password str
 
 func (s *Service) IsUsernameExists(ctx context.Context, username string) (bool, error) {
 	return s.m.IsUsernameExists(ctx, username)
+}
+
+func (s *Service) GetUserByUserName(ctx context.Context, username string) (*UserMeta, error) {
+	user, err := s.m.GetUserByName(ctx, username)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, errors.Wrapf(ErrUserNotFound, "user %s not found", username)
+		}
+		return nil, errors.Wrapf(err, "failed to get user by name")
+	}
+	orgID, err := s.m.GetUserDefaultOrg(ctx, user.ID)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get user default org ID")
+	}
+	return &UserMeta{
+		OrgID:  orgID,
+		UserID: user.ID,
+	}, nil
 }
