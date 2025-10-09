@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
@@ -98,7 +99,7 @@ type UserMeta struct {
 
 func (s *Service) CreateNewUser(ctx context.Context, username, password string) (*UserMeta, error) {
 	var ret *UserMeta
-	if err := s.m.RunTransactionWithTx(ctx, func(tx model.Tx, txm model.ModelInterface) error {
+	if err := s.m.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
 		u, err := s.CreateNewUserWithTx(ctx, tx, username, password)
 		ret = u
 		return err
@@ -108,7 +109,7 @@ func (s *Service) CreateNewUser(ctx context.Context, username, password string) 
 	return ret, nil
 }
 
-func (s *Service) CreateNewUserWithTx(ctx context.Context, tx model.Tx, username, password string) (*UserMeta, error) {
+func (s *Service) CreateNewUserWithTx(ctx context.Context, tx core.Tx, username, password string) (*UserMeta, error) {
 	salt, hash, err := s.generateSaltAndHash(password)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to generate hash and salt")

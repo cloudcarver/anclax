@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cloudcarver/anclax/pkg/zcore/model"
+	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/cloudcarver/anclax/pkg/taskcore"
 	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
@@ -36,7 +36,7 @@ type TaskRunner interface { {{range .Functions}}
 {{.Description}}
 	Run{{upperFirst .Name}}(ctx context.Context, params *{{.ParameterType}}, overrides ...taskcore.TaskOverride) (int32, error)
 {{.Description}}
-	Run{{upperFirst .Name}}WithTx(ctx context.Context, tx model.Tx, params *{{.ParameterType}}, overrides ...taskcore.TaskOverride) (int32, error)
+	Run{{upperFirst .Name}}WithTx(ctx context.Context, tx core.Tx, params *{{.ParameterType}}, overrides ...taskcore.TaskOverride) (int32, error)
 {{end}}}
 
 type Client struct {
@@ -56,7 +56,7 @@ func (c *Client) Run{{upperFirst .Name}}(ctx context.Context, params *{{.Paramet
 	return c.run{{upperFirst .Name}}(ctx, c.taskStore, params, overrides...)
 }
 
-func (c *Client) Run{{upperFirst .Name}}WithTx(ctx context.Context, tx model.Tx, params *{{.ParameterType}}, overrides ...taskcore.TaskOverride) (int32, error) {
+func (c *Client) Run{{upperFirst .Name}}WithTx(ctx context.Context, tx core.Tx, params *{{.ParameterType}}, overrides ...taskcore.TaskOverride) (int32, error) {
 	return c.run{{upperFirst .Name}}(ctx, c.taskStore.WithTx(tx), params, overrides...)
 }
 
@@ -112,10 +112,10 @@ func (r *{{.ParameterType}}) Marshal() (json.RawMessage, error) {
 
 type ExecutorInterface interface { {{range .Functions}}
 {{.Description}}
-	Execute{{upperFirst .Name}}(ctx context.Context, tx model.Tx, params *{{.ParameterType}}) error
+	Execute{{upperFirst .Name}}(ctx context.Context, tx core.Tx, params *{{.ParameterType}}) error
 {{if .Events}}{{if .Events.OnFailed}}
 	// Hook called when {{.Name}} fails
-	On{{upperFirst .Name}}Failed(ctx context.Context, taskID int32, params *{{.ParameterType}}, tx model.Tx) error{{end}}{{end}}
+	On{{upperFirst .Name}}Failed(ctx context.Context, taskID int32, params *{{.ParameterType}}, tx core.Tx) error{{end}}{{end}}
 {{end}}}
 
 type TaskHandler struct {
@@ -134,7 +134,7 @@ func (f *TaskHandler) RegisterTaskHandler(handler worker.TaskHandler) {
 	f.externalTaskHandler = append(f.externalTaskHandler, handler)
 }
 
-func (f *TaskHandler) HandleTask(ctx context.Context, tx model.Tx, spec worker.TaskSpec) error {
+func (f *TaskHandler) HandleTask(ctx context.Context, tx core.Tx, spec worker.TaskSpec) error {
 	for _, handler := range f.externalTaskHandler {
 		if err := handler.HandleTask(ctx, tx, spec); err != nil {
 			if errors.Is(err, worker.ErrUnknownTaskType) {
@@ -158,7 +158,7 @@ func (f *TaskHandler) HandleTask(ctx context.Context, tx model.Tx, spec worker.T
 	}
 }
 
-func (f *TaskHandler) OnTaskFailed(ctx context.Context, tx model.Tx, failedTaskSpec worker.TaskSpec, taskID int32) error {
+func (f *TaskHandler) OnTaskFailed(ctx context.Context, tx core.Tx, failedTaskSpec worker.TaskSpec, taskID int32) error {
 	for _, handler := range f.externalTaskHandler {
 		if err := handler.OnTaskFailed(ctx, tx, failedTaskSpec, taskID); err != nil {
 			if errors.Is(err, worker.ErrUnknownTaskType) {

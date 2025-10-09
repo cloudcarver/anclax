@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/auth"
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/hooks"
@@ -40,7 +41,7 @@ type ServiceInterface interface {
 	// Create a new user and its default organization
 	CreateNewUser(ctx context.Context, username, password string) (*UserMeta, error)
 
-	CreateNewUserWithTx(ctx context.Context, tx model.Tx, username, password string) (*UserMeta, error)
+	CreateNewUserWithTx(ctx context.Context, tx core.Tx, username, password string) (*UserMeta, error)
 
 	GetUserByUserName(ctx context.Context, username string) (*UserMeta, error)
 

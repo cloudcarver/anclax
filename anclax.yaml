@@ -60,3 +60,6 @@ mockgen:
     - source: pkg/hooks/hooks.go
       destination: pkg/hooks/mock_gen.go
       package: hooks
+    - source: core/types.go
+      destination: core/mock_types.go
+      package: core

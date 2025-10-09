@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/cloudcarver/anclax/pkg/zcore/model"
+	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 )
 
@@ -28,7 +28,7 @@ type TaskStoreInterface interface {
 
 	ResumeTask(ctx context.Context, taskID int32) error
 
-	WithTx(tx model.Tx) TaskStoreInterface
+	WithTx(tx core.Tx) TaskStoreInterface
 
 	GetTaskByUniqueTag(ctx context.Context, uniqueTag string) (*apigen.Task, error)
 }

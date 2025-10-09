@@ -13,8 +13,8 @@ import (
 	context "context"
 	reflect "reflect"
 
+	core "github.com/cloudcarver/anclax/core"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore"
-	model "github.com/cloudcarver/anclax/pkg/zcore/model"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -63,7 +63,7 @@ func (mr *MockTaskRunnerMockRecorder) RunDeleteOpaqueKey(ctx, params any, overri
 }
 
 // RunDeleteOpaqueKeyWithTx mocks base method.
-func (m *MockTaskRunner) RunDeleteOpaqueKeyWithTx(ctx context.Context, tx model.Tx, params *DeleteOpaqueKeyParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+func (m *MockTaskRunner) RunDeleteOpaqueKeyWithTx(ctx context.Context, tx core.Tx, params *DeleteOpaqueKeyParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, tx, params}
 	for _, a := range overrides {
@@ -107,7 +107,7 @@ func (m *MockExecutorInterface) EXPECT() *MockExecutorInterfaceMockRecorder {
 }
 
 // ExecuteDeleteOpaqueKey mocks base method.
-func (m *MockExecutorInterface) ExecuteDeleteOpaqueKey(ctx context.Context, tx model.Tx, params *DeleteOpaqueKeyParameters) error {
+func (m *MockExecutorInterface) ExecuteDeleteOpaqueKey(ctx context.Context, tx core.Tx, params *DeleteOpaqueKeyParameters) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ExecuteDeleteOpaqueKey", ctx, tx, params)
 	ret0, _ := ret[0].(error)
@@ -121,7 +121,7 @@ func (mr *MockExecutorInterfaceMockRecorder) ExecuteDeleteOpaqueKey(ctx, tx, par
 }
 
 // OnDeleteOpaqueKeyFailed mocks base method.
-func (m *MockExecutorInterface) OnDeleteOpaqueKeyFailed(ctx context.Context, taskID int32, params *DeleteOpaqueKeyParameters, tx model.Tx) error {
+func (m *MockExecutorInterface) OnDeleteOpaqueKeyFailed(ctx context.Context, taskID int32, params *DeleteOpaqueKeyParameters, tx core.Tx) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "OnDeleteOpaqueKeyFailed", ctx, taskID, params, tx)
 	ret0, _ := ret[0].(error)

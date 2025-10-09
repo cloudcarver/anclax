@@ -4,7 +4,7 @@ import (
 	"fmt"
 	reflect "reflect"
 
-	"github.com/cloudcarver/anclax/pkg/zcore/model"
+	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -43,6 +43,6 @@ func NewMockTaskStoreInterfaceWithTx(ctrl *gomock.Controller) *MockTaskStoreInte
 	}
 }
 
-func (m *MockTaskStoreInterfaceExtended) WithTx(tx model.Tx) TaskStoreInterface {
+func (m *MockTaskStoreInterfaceExtended) WithTx(tx core.Tx) TaskStoreInterface {
 	return m
 }

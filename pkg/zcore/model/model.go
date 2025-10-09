@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/logger"
 	"github.com/cloudcarver/anclax/pkg/utils"
@@ -26,24 +27,18 @@ var (
 	ErrAlreadyInTransaction = errors.New("already in transaction")
 )
 
-type Tx interface {
-	querier.DBTX
-	Commit(ctx context.Context) error
-	Rollback(ctx context.Context) error
-}
-
 type ModelInterface interface {
 	querier.Querier
 	RunTransaction(ctx context.Context, f func(model ModelInterface) error) error
-	RunTransactionWithTx(ctx context.Context, f func(tx Tx, model ModelInterface) error) error
+	RunTransactionWithTx(ctx context.Context, f func(tx core.Tx, model ModelInterface) error) error
 	InTransaction() bool
-	SpawnWithTx(tx Tx) ModelInterface
+	SpawnWithTx(tx core.Tx) ModelInterface
 	Close()
 }
 
 type Model struct {
 	querier.Querier
-	beginTx       func(ctx context.Context) (Tx, error)
+	beginTx       func(ctx context.Context) (core.Tx, error)
 	p             *pgxpool.Pool
 	inTransaction bool
 }
@@ -58,21 +53,21 @@ func (m *Model) InTransaction() bool {
 	return m.inTransaction
 }
 
-func (m *Model) BeginTx(ctx context.Context) (Tx, error) {
+func (m *Model) BeginTx(ctx context.Context) (core.Tx, error) {
 	return m.beginTx(ctx)
 }
 
-func (m *Model) SpawnWithTx(tx Tx) ModelInterface {
+func (m *Model) SpawnWithTx(tx core.Tx) ModelInterface {
 	return &Model{
 		Querier: querier.New(tx),
-		beginTx: func(ctx context.Context) (Tx, error) {
+		beginTx: func(ctx context.Context) (core.Tx, error) {
 			return nil, ErrAlreadyInTransaction
 		},
 		inTransaction: true,
 	}
 }
 
-func (m *Model) RunTransactionWithTx(ctx context.Context, f func(tx Tx, model ModelInterface) error) (retErr error) {
+func (m *Model) RunTransactionWithTx(ctx context.Context, f func(tx core.Tx, model ModelInterface) error) (retErr error) {
 	tx, err := m.beginTx(ctx)
 	if err != nil {
 		return err
@@ -98,7 +93,7 @@ func (m *Model) RunTransactionWithTx(ctx context.Context, f func(tx Tx, model Mo
 }
 
 func (m *Model) RunTransaction(ctx context.Context, f func(model ModelInterface) error) error {
-	return m.RunTransactionWithTx(ctx, func(_ Tx, model ModelInterface) error {
+	return m.RunTransactionWithTx(ctx, func(_ core.Tx, model ModelInterface) error {
 		return f(model)
 	})
 }
@@ -191,7 +186,7 @@ func NewModel(cfg *config.Config, libCfg *config.LibConfig) (ModelInterface, err
 
 	return &Model{
 		Querier: querier.New(p),
-		beginTx: func(ctx context.Context) (Tx, error) {
+		beginTx: func(ctx context.Context) (core.Tx, error) {
 			return p.Begin(ctx)
 		},
 		p: p,

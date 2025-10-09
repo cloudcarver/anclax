@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/taskcore/types"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
@@ -29,7 +30,7 @@ func NewTaskStore(model model.ModelInterface) TaskStoreInterface {
 	}
 }
 
-func (s *TaskStore) WithTx(tx model.Tx) TaskStoreInterface {
+func (s *TaskStore) WithTx(tx core.Tx) TaskStoreInterface {
 	return &TaskStore{
 		now:   s.now,
 		model: s.model.SpawnWithTx(tx),

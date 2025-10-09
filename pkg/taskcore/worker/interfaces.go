@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/cloudcarver/anclax/pkg/zcore/model"
+	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 )
 
@@ -17,17 +17,17 @@ type TaskSpec interface {
 }
 
 type TaskHandler interface {
-	HandleTask(ctx context.Context, tx model.Tx, spec TaskSpec) error
+	HandleTask(ctx context.Context, tx core.Tx, spec TaskSpec) error
 
 	RegisterTaskHandler(handler TaskHandler)
 
-	OnTaskFailed(ctx context.Context, tx model.Tx, failedTaskSpec TaskSpec, taskID int32) error
+	OnTaskFailed(ctx context.Context, tx core.Tx, failedTaskSpec TaskSpec, taskID int32) error
 }
 
 type TaskLifeCycleHandlerInterface interface {
-	HandleAttributes(ctx context.Context, tx model.Tx, task apigen.Task) error
-	HandleFailed(ctx context.Context, tx model.Tx, task apigen.Task, err error) error
-	HandleCompleted(ctx context.Context, tx model.Tx, task apigen.Task) error
+	HandleAttributes(ctx context.Context, tx core.Tx, task apigen.Task) error
+	HandleFailed(ctx context.Context, tx core.Tx, task apigen.Task, err error) error
+	HandleCompleted(ctx context.Context, tx core.Tx, task apigen.Task) error
 }
 
 type WorkerInterface interface {

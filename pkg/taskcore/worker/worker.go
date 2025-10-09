@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/globalctx"
 	"github.com/cloudcarver/anclax/pkg/logger"
@@ -68,7 +69,7 @@ func (w *Worker) Start() {
 }
 
 func (w *Worker) pullAndRun(parentCtx context.Context) error {
-	if err := w.model.RunTransactionWithTx(parentCtx, func(tx model.Tx, txm model.ModelInterface) error {
+	if err := w.model.RunTransactionWithTx(parentCtx, func(tx core.Tx, txm model.ModelInterface) error {
 		qtask, err := txm.PullTask(parentCtx)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
@@ -90,7 +91,7 @@ func (w *Worker) pullAndRun(parentCtx context.Context) error {
 }
 
 func (w *Worker) RunTask(ctx context.Context, taskID int32) error {
-	return w.model.RunTransactionWithTx(ctx, func(tx model.Tx, txm model.ModelInterface) error {
+	return w.model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
 		qtask, err := txm.PullTaskByID(ctx, taskID)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
@@ -103,7 +104,7 @@ func (w *Worker) RunTask(ctx context.Context, taskID int32) error {
 	})
 }
 
-func (w *Worker) runTaskWithTx(_ctx context.Context, tx model.Tx, task apigen.Task) error {
+func (w *Worker) runTaskWithTx(_ctx context.Context, tx core.Tx, task apigen.Task) error {
 	txm := w.model.SpawnWithTx(tx)
 
 	// increment attempts
