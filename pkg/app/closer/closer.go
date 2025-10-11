@@ -5,9 +5,11 @@ import (
 	"slices"
 	"time"
 
-	"github.com/gofiber/fiber/v2/log"
+	"github.com/cloudcarver/anclax/pkg/logger"
 	"go.uber.org/zap"
 )
+
+var log = logger.NewLogAgent("closer")
 
 const (
 	DefaultGracefulShutdownTimeout = 5 * time.Second
@@ -24,6 +26,8 @@ func NewCloserManager() *CloserManager {
 }
 
 func (cm *CloserManager) Close() {
+	log.Info("gracefully shutting down application")
+
 	ctx, cancel := context.WithTimeout(context.Background(), DefaultGracefulShutdownTimeout)
 	defer cancel()
 
