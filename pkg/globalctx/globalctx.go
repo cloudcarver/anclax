@@ -38,3 +38,7 @@ func New() *GlobalContext {
 func (g *GlobalContext) Context() context.Context {
 	return g.ctx
 }
+
+func (g *GlobalContext) Cancel() {
+	g.cancelFunc()
+}

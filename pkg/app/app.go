@@ -81,6 +81,7 @@ func (a *Application) Start() error {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Error("application received panic, shutting down", zap.Any("panic", r))
+			a.globalctx.Cancel()
 			a.Close()
 			panic(r)
 		}
