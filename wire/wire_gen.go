@@ -8,6 +8,7 @@ package wire
 
 import (
 	"github.com/cloudcarver/anclax/pkg/app"
+	"github.com/cloudcarver/anclax/pkg/app/closer"
 	"github.com/cloudcarver/anclax/pkg/asynctask"
 	"github.com/cloudcarver/anclax/pkg/auth"
 	"github.com/cloudcarver/anclax/pkg/config"
@@ -30,7 +31,8 @@ import (
 
 func InitializeApplication(cfg *config.Config, libCfg *config.LibConfig) (*app.Application, error) {
 	globalContext := globalctx.New()
-	modelInterface, err := model.NewModel(cfg, libCfg)
+	closerManager := closer.NewCloserManager()
+	modelInterface, err := model.NewModel(cfg, libCfg, closerManager)
 	if err != nil {
 		return nil, err
 	}
@@ -60,8 +62,7 @@ func InitializeApplication(cfg *config.Config, libCfg *config.LibConfig) (*app.A
 		return nil, err
 	}
 	debugServer := app.NewDebugServer(cfg, globalContext)
-	closerManager := app.NewCloserManager()
-	application, err := app.NewApplication(globalContext, cfg, serverServer, metricsServer, workerInterface, debugServer, authInterface, taskStoreInterface, serviceInterface, anclaxHookInterface, caveatParserInterface, closerManager, modelInterface)
+	application, err := app.NewApplication(globalContext, cfg, serverServer, metricsServer, workerInterface, debugServer, authInterface, taskStoreInterface, serviceInterface, anclaxHookInterface, caveatParserInterface, closerManager)
 	if err != nil {
 		return nil, err
 	}

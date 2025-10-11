@@ -5,6 +5,7 @@ package wire
 
 import (
 	"github.com/cloudcarver/anclax/pkg/app"
+	"github.com/cloudcarver/anclax/pkg/app/closer"
 	"github.com/cloudcarver/anclax/pkg/asynctask"
 	"github.com/cloudcarver/anclax/pkg/auth"
 	"github.com/cloudcarver/anclax/pkg/config"
@@ -28,7 +29,7 @@ func InitializeApplication(cfg *config.Config, libCfg *config.LibConfig) (*app.A
 	wire.Build(
 		app.NewDebugServer,
 		app.NewApplication,
-		app.NewCloserManager,
+		closer.NewCloserManager,
 		service.NewService,
 		controller.NewController,
 		controller.NewValidator,

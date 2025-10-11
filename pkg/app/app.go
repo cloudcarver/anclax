@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 
+	"github.com/cloudcarver/anclax/pkg/app/closer"
 	"github.com/cloudcarver/anclax/pkg/auth"
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/globalctx"
@@ -13,8 +14,8 @@ import (
 	"github.com/cloudcarver/anclax/pkg/service"
 	"github.com/cloudcarver/anclax/pkg/taskcore"
 	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
-	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type PluginMeta struct {
@@ -34,7 +35,7 @@ type Application struct {
 	hooks         hooks.AnclaxHookInterface
 	caveatParser  macaroons.CaveatParserInterface
 	globalctx     *globalctx.GlobalContext
-	cm            *CloserManager
+	cm            *closer.CloserManager
 }
 
 func NewApplication(
@@ -49,8 +50,7 @@ func NewApplication(
 	service service.ServiceInterface,
 	hooks hooks.AnclaxHookInterface,
 	caveatParser macaroons.CaveatParserInterface,
-	cm *CloserManager,
-	model model.ModelInterface,
+	cm *closer.CloserManager,
 ) (*Application, error) {
 
 	if cfg.TestAccount != nil {
@@ -74,15 +74,18 @@ func NewApplication(
 		cm:            cm,
 	}
 
-	cm.Register(func(_ context.Context) error {
-		model.Close()
-		return nil
-	})
-
 	return app, nil
 }
 
 func (a *Application) Start() error {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error("application received panic, shutting down", zap.Any("panic", r))
+			a.Close()
+			panic(r)
+		}
+	}()
+
 	go a.debugServer.Start()
 	go a.prometheus.Start()
 	if !a.disableWorker {
@@ -91,7 +94,7 @@ func (a *Application) Start() error {
 	return a.server.Listen()
 }
 
-func (a *Application) GetCloserManager() *CloserManager {
+func (a *Application) GetCloserManager() *closer.CloserManager {
 	return a.cm
 }
 

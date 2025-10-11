@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cloudcarver/anclax/core"
+	"github.com/cloudcarver/anclax/pkg/app/closer"
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/logger"
 	"github.com/cloudcarver/anclax/pkg/utils"
@@ -44,6 +45,7 @@ type Model struct {
 }
 
 func (m *Model) Close() {
+	log.Info("gracefully closing model")
 	if m.p != nil {
 		m.p.Close()
 	}
@@ -74,12 +76,11 @@ func (m *Model) RunTransactionWithTx(ctx context.Context, f func(tx core.Tx, mod
 	}
 
 	defer func() {
-		if retErr != nil {
-			rbCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			if err := tx.Rollback(rbCtx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-				log.Errorf("failed to rollback transaction: %s", err.Error())
-			}
+		rbCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := tx.Rollback(rbCtx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			log.Errorf("failed to rollback transaction: %s", err.Error())
 		}
 	}()
 
@@ -98,7 +99,7 @@ func (m *Model) RunTransaction(ctx context.Context, f func(model ModelInterface)
 	})
 }
 
-func NewModel(cfg *config.Config, libCfg *config.LibConfig) (ModelInterface, error) {
+func NewModel(cfg *config.Config, libCfg *config.LibConfig, cm *closer.CloserManager) (ModelInterface, error) {
 	var dsn string
 	if cfg.Pg.DSN != nil {
 		dsn = *cfg.Pg.DSN
@@ -184,11 +185,18 @@ func NewModel(cfg *config.Config, libCfg *config.LibConfig) (ModelInterface, err
 		}
 	}
 
-	return &Model{
+	ret := &Model{
 		Querier: querier.New(p),
 		beginTx: func(ctx context.Context) (core.Tx, error) {
 			return p.Begin(ctx)
 		},
 		p: p,
-	}, nil
+	}
+
+	cm.Register(func(ctx context.Context) error {
+		ret.Close()
+		return nil
+	})
+
+	return ret, nil
 }

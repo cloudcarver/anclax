@@ -1,10 +1,11 @@
-package app
+package closer
 
 import (
 	"context"
 	"slices"
 	"time"
 
+	"github.com/gofiber/fiber/v2/log"
 	"go.uber.org/zap"
 )
 
