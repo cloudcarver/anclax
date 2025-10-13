@@ -4,7 +4,20 @@ import (
 	"sync"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.uber.org/zap"
 )
+
+var subscriptionGauge = promauto.NewGauge(prometheus.GaugeOpts{
+	Name: "anclax_hub_subscriptions",
+	Help: "Current number of websocket subscriptions",
+})
+
+var broadcastErrorCounter = promauto.NewCounter(prometheus.CounterOpts{
+	Name: "anclax_ws_broadcast_errors_total",
+	Help: "Total number of websocket broadcast errors",
+})
 
 var (
 	ErrTopicAlreadyExists = errors.New("topic already exists")
@@ -47,6 +60,7 @@ func (h *Hub) Subscribe(topic string, s *Session) error {
 		return errors.Wrapf(ErrAlreadySubscribed, "session %s already subscribed to topic %s", s.id, topic)
 	}
 	rooms[s.id] = s
+	subscriptionGauge.Inc()
 	return nil
 }
 
@@ -62,6 +76,7 @@ func (h *Hub) Unsubscribe(topic string, s *Session) error {
 		return nil
 	}
 	delete(rooms, s.id)
+	subscriptionGauge.Dec()
 	return nil
 }
 
@@ -78,7 +93,15 @@ func (h *Hub) broadcastExcept(topic string, data any, exceptID string) {
 		if id == exceptID {
 			continue
 		}
-		s.WriteTextMessage(data)
+		if err := s.WriteTextMessage(data); err != nil {
+			broadcastErrorCounter.Inc()
+			wslog.Error(
+				"failed to write text message while broadcasting",
+				zap.Error(err),
+				zap.String("topic", topic),
+				zap.String("session_id", s.id),
+			)
+		}
 	}
 }
 
@@ -90,6 +113,14 @@ func (h *Hub) Broadcast(topic string, data any) {
 		return
 	}
 	for _, s := range rooms {
-		s.WriteTextMessage(data)
+		if err := s.WriteTextMessage(data); err != nil {
+			broadcastErrorCounter.Inc()
+			wslog.Error(
+				"failed to write text message while broadcasting",
+				zap.Error(err),
+				zap.String("topic", topic),
+				zap.String("session_id", s.id),
+			)
+		}
 	}
 }
