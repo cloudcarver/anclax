@@ -106,6 +106,19 @@ func (s *Session) WriteTextMessage(data any) error {
 	}
 }
 
+func (s *Session) WriteBinaryMessage(data []byte) error {
+	if data == nil {
+		data = []byte{}
+	}
+	select {
+	case s.writeBuf <- BufMsg{mt: websocket.BinaryMessage, msg: data}:
+		return nil
+	default:
+		s.cancel(ErrBackpressure)
+		return ErrBackpressure
+	}
+}
+
 type Ctx struct {
 	context.Context
 	*Session
