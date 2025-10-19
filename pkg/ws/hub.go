@@ -93,3 +93,35 @@ func (h *Hub) Broadcast(topic string, data any) {
 		s.WriteTextMessage(data)
 	}
 }
+
+// broadcastExceptBinary sends a binary payload to all subscribers of a topic
+// except the session identified by exceptID.
+func (h *Hub) broadcastExceptBinary(topic string, data []byte, exceptID string) {
+	h.mu.RLock()
+	sessions, ok := h.topicRooms[topic]
+	h.mu.RUnlock()
+
+	if !ok {
+		return
+	}
+
+	for id, s := range sessions {
+		if id == exceptID {
+			continue
+		}
+		s.WriteBinaryMessage(data)
+	}
+}
+
+// BroadcastBinary sends a binary payload to all subscribers of a topic.
+func (h *Hub) BroadcastBinary(topic string, data []byte) {
+	h.mu.RLock()
+	rooms, ok := h.topicRooms[topic]
+	h.mu.RUnlock()
+	if !ok {
+		return
+	}
+	for _, s := range rooms {
+		s.WriteBinaryMessage(data)
+	}
+}

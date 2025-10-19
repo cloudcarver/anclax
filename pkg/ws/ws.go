@@ -91,6 +91,12 @@ func (s *Session) Broadcast(topic string, data any) {
 	s.hub.broadcastExcept(topic, data, s.id)
 }
 
+// BroadcastBinary broadcasts a binary payload to all sessions subscribed to
+// the topic, except the current session.
+func (s *Session) BroadcastBinary(topic string, data []byte) {
+	s.hub.broadcastExceptBinary(topic, data, s.id)
+}
+
 func (s *Session) WriteTextMessage(data any) error {
 	msg, err := json.Marshal(data)
 	if err != nil {
