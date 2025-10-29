@@ -8,7 +8,7 @@ Build serverless, reliable apps at lightspeed ⚡ — with confidence 🛡️.
 
 Anclax is a definition‑first framework for small–medium apps (single PostgreSQL). Define APIs and tasks as schemas; generated code moves correctness to compile time.
 
-Join our [Discord server](https://discord.gg/RUWwRJ57).
+Join our [Discord server](https://discord.gg/XxXXbyF59H).
 
 ### Highlights ✨
 
