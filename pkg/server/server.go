@@ -201,7 +201,7 @@ func (s *Server) registerMiddleware() {
 				zap.Error(err),
 			}
 			ct := string(c.Response().Header.ContentType())
-			if ct == fiber.MIMEOctetStream || ct == "text/event-stream" || c.Locals(ContextKeyDisableBodyLog, false).(bool) {
+			if ct != fiber.MIMEOctetStream && ct != "text/event-stream" && !c.Locals(ContextKeyDisableBodyLog, false).(bool) {
 				fields = append(fields, zap.String("body", utils.TruncateString(string(c.Response().Body()), 512)))
 			}
 			log.Info(
