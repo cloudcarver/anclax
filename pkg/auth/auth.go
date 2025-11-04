@@ -95,6 +95,8 @@ func (a *Auth) Authfunc(c *fiber.Ctx) error {
 		return errors.Wrapf(fiber.ErrUnauthorized, "failed to parse macaroon token, token: %s, err: %v", tokenString, err)
 	}
 
+	c.Locals(ContextKeyMacaroon, token)
+
 	for _, caveat := range token.Caveats() {
 		if err := caveat.Validate(c); err != nil {
 			return errors.Wrapf(fiber.ErrUnauthorized, "failed to validate caveat, token: %s, err: %v", tokenString, err)
@@ -164,4 +166,12 @@ func GetOrgID(c *fiber.Ctx) (int32, error) {
 		return 0, ErrUserIdentityNotExist
 	}
 	return orgID, nil
+}
+
+func GetToken(c *fiber.Ctx) (*macaroons.Macaroon, error) {
+	token, ok := c.Locals(ContextKeyMacaroon).(*macaroons.Macaroon)
+	if !ok {
+		return nil, ErrUserIdentityNotExist
+	}
+	return token, nil
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"embed"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -39,28 +40,46 @@ var cleanCmd = &cli.Command{
 	Action: runClean,
 }
 
+func copyEmbedDir(fs embed.FS, srcDir string, destDir string) error {
+	entries, err := fs.ReadDir(srcDir)
+	if err != nil {
+		return errors.Wrapf(err, "failed to read embedded directory %s", srcDir)
+	}
+
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return errors.Wrapf(err, "failed to create directory %s", destDir)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			if err := copyEmbedDir(fs, filepath.Join(srcDir, entry.Name()), filepath.Join(destDir, entry.Name())); err != nil {
+				return err
+			}
+		} else {
+			content, err := fs.ReadFile(filepath.Join(srcDir, entry.Name()))
+			if err != nil {
+				return errors.Wrapf(err, "failed to read embedded file %s", filepath.Join(srcDir, entry.Name()))
+			}
+			if err := os.WriteFile(filepath.Join(destDir, entry.Name()), content, 0644); err != nil {
+				return errors.Wrapf(err, "failed to write embedded file %s", filepath.Join(destDir, entry.Name()))
+			}
+		}
+	}
+	return nil
+}
+
 func writeAnclaxDef(outdir string) error {
 	if err := os.MkdirAll(outdir, 0755); err != nil {
 		return errors.Wrap(err, "failed to create anclax def directory")
 	}
 
 	// write migrations files
-	files, err := anclax.Migrations.ReadDir("sql/migrations")
-	if err != nil {
-		return errors.Wrap(err, "failed to read migrations files")
+	if err := copyEmbedDir(anclax.Migrations, "sql/migrations", filepath.Join(outdir, "sql", "migrations")); err != nil {
+		return errors.Wrap(err, "failed to copy migrations files")
 	}
-	targetDir := filepath.Join(outdir, "sql", "migrations")
-	if err := os.MkdirAll(targetDir, 0755); err != nil {
-		return errors.Wrap(err, "failed to create migrations directory")
-	}
-	for _, file := range files {
-		content, err := anclax.Migrations.ReadFile(filepath.Join("sql/migrations", file.Name()))
-		if err != nil {
-			return errors.Wrap(err, "failed to read migrations file")
-		}
-		if err := os.WriteFile(filepath.Join(targetDir, file.Name()), content, 0644); err != nil {
-			return errors.Wrap(err, "failed to write migrations file")
-		}
+
+	// write api spec files
+	if err := copyEmbedDir(anclax.API, "api", filepath.Join(outdir, "api")); err != nil {
+		return errors.Wrap(err, "failed to copy api spec files")
 	}
 
 	return nil
