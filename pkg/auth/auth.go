@@ -23,7 +23,10 @@ const (
 	DefaultTimeoutRefreshToken = time.Hour * 2
 )
 
-var ErrUserIdentityNotExist = errors.New("user identity not exists")
+var (
+	ErrUserIdentityNotExist = errors.New("user identity not exists")
+	ErrInvalidRefreshToken  = errors.New("invalid refresh token")
+)
 
 type User struct {
 	ID             int32
@@ -34,22 +37,27 @@ type User struct {
 type AuthInterface interface {
 	Authfunc(c *fiber.Ctx) error
 
-	// CreateToken creates a macaroon token for the given user, the userID is required to track all generated keys.
-	// When the user logout, all keys will be invalidated.
-	CreateToken(ctx context.Context, userID int32, orgID int32, caveats ...macaroons.Caveat) (int64, string, error)
+	// CreateTokenWithRefreshToken creates both access token and refresh token
+	CreateUserTokens(ctx context.Context, userID int32, orgID int32, caveats ...macaroons.Caveat) (*macaroons.Macaroon, *macaroons.Macaroon, error)
 
-	// CreateRefreshToken returns a refresh token
-	CreateRefreshToken(ctx context.Context, accessKeyID int64, userID int32) (string, error)
+	// CreateToken creates a macaroon token, the userID is required to track all generated keys.
+	CreateToken(ctx context.Context, userID *int32, caveats ...macaroons.Caveat) (*macaroons.Macaroon, error)
 
-	// ParseRefreshToken parses the given refresh token and returns the user ID
-	ParseRefreshToken(ctx context.Context, refreshToken string) (int32, error)
+	// CreateRefreshToken creates a refresh token for the given userID and access token
+	CreateRefreshToken(ctx context.Context, userID *int32, accessToken *macaroons.Macaroon) (*macaroons.Macaroon, error)
+
+	// ParseRefreshToken parses the given refresh token and returns the carrying info
+	ParseRefreshToken(ctx context.Context, refreshToken string) (*macaroons.Macaroon, *RefreshOnlyCaveat, error)
 
 	// InvalidateUserTokens invalidates all tokens for the given user
 	InvalidateUserTokens(ctx context.Context, userID int32) error
+
+	// InvalidateToken invalidates the token with the given key ID
+	InvalidateToken(ctx context.Context, keyID int64) error
 }
 
 type Auth struct {
-	macaroonsParser     macaroons.MacaroonParserInterface
+	macaroonManager     macaroons.MacaroonManagerInterface
 	hooks               hooks.AnclaxHookInterface
 	timeoutAccessToken  time.Duration
 	timeoutRefreshToken time.Duration
@@ -58,7 +66,7 @@ type Auth struct {
 // Ensure AuthService implements AuthServiceInterface
 var _ AuthInterface = (*Auth)(nil)
 
-func NewAuth(cfg *config.Config, macaroonsParser macaroons.MacaroonParserInterface, caveatParser macaroons.CaveatParserInterface, hooks hooks.AnclaxHookInterface) (AuthInterface, error) {
+func NewAuth(cfg *config.Config, macaroonManager macaroons.MacaroonManagerInterface, caveatParser macaroons.CaveatParserInterface, hooks hooks.AnclaxHookInterface) (AuthInterface, error) {
 	if err := caveatParser.Register(CaveatUserContext, func() macaroons.Caveat {
 		return &UserContextCaveat{}
 	}); err != nil {
@@ -71,7 +79,7 @@ func NewAuth(cfg *config.Config, macaroonsParser macaroons.MacaroonParserInterfa
 	}
 
 	return &Auth{
-		macaroonsParser:     macaroonsParser,
+		macaroonManager:     macaroonManager,
 		hooks:               hooks,
 		timeoutAccessToken:  utils.UnwrapOrDefault(cfg.Auth.AccessExpiry, DefaultTimeoutAccessToken),
 		timeoutRefreshToken: utils.UnwrapOrDefault(cfg.Auth.RefreshExpiry, DefaultTimeoutRefreshToken),
@@ -90,14 +98,14 @@ func (a *Auth) Authfunc(c *fiber.Ctx) error {
 		tokenString = authHeader[7:]
 	}
 
-	token, err := a.macaroonsParser.Parse(c.Context(), tokenString)
+	token, err := a.macaroonManager.Parse(c.Context(), tokenString)
 	if err != nil {
 		return errors.Wrapf(fiber.ErrUnauthorized, "failed to parse macaroon token, token: %s, err: %v", tokenString, err)
 	}
 
 	c.Locals(ContextKeyMacaroon, token)
 
-	for _, caveat := range token.Caveats() {
+	for _, caveat := range token.Caveats {
 		if err := caveat.Validate(c); err != nil {
 			return errors.Wrapf(fiber.ErrUnauthorized, "failed to validate caveat, token: %s, err: %v", tokenString, err)
 		}
@@ -106,50 +114,66 @@ func (a *Auth) Authfunc(c *fiber.Ctx) error {
 	return nil
 }
 
-func (a *Auth) CreateToken(ctx context.Context, userID int32, orgID int32, caveats ...macaroons.Caveat) (int64, string, error) {
-	token, err := a.macaroonsParser.CreateToken(ctx, userID, append(caveats, NewUserContextCaveat(userID, orgID)), a.timeoutAccessToken)
+func (a *Auth) CreateUserTokens(ctx context.Context, userID int32, orgID int32, caveats ...macaroons.Caveat) (*macaroons.Macaroon, *macaroons.Macaroon, error) {
+	accessToken, err := a.macaroonManager.CreateToken(ctx, append(caveats, NewUserContextCaveat(userID, orgID)), a.timeoutAccessToken, &userID)
 	if err != nil {
-		return 0, "", errors.Wrap(err, "failed to create macaroon token")
+		return nil, nil, errors.Wrap(err, "failed to create macaroon token")
 	}
 
-	if err := a.hooks.OnCreateToken(ctx, userID, token); err != nil {
-		return 0, "", errors.Wrap(err, "failed to call hook")
+	refreshToken, err := a.CreateRefreshToken(ctx, &userID, accessToken)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to create refresh token")
 	}
 
-	return token.KeyID(), token.StringToken(), nil
+	if err := a.hooks.OnUserTokensCreated(ctx, userID, accessToken); err != nil {
+		return nil, nil, errors.Wrap(err, "failed to call hook")
+	}
+
+	return accessToken, refreshToken, nil
 }
 
-func (a *Auth) CreateRefreshToken(ctx context.Context, accessKeyID int64, userID int32) (string, error) {
-	token, err := a.macaroonsParser.CreateToken(ctx, userID, []macaroons.Caveat{
-		NewRefreshOnlyCaveat(userID, accessKeyID),
-	}, a.timeoutRefreshToken)
+func (a *Auth) CreateToken(ctx context.Context, userID *int32, caveats ...macaroons.Caveat) (*macaroons.Macaroon, error) {
+	token, err := a.macaroonManager.CreateToken(ctx, caveats, a.timeoutAccessToken, userID)
 	if err != nil {
-		return "", errors.Wrap(err, "failed to create macaroon token")
+		return nil, errors.Wrap(err, "failed to create macaroon token")
 	}
-	return token.StringToken(), nil
+	return token, nil
 }
 
-func (a *Auth) ParseRefreshToken(ctx context.Context, refreshToken string) (int32, error) {
-	token, err := a.macaroonsParser.Parse(ctx, refreshToken)
+func (a *Auth) CreateRefreshToken(ctx context.Context, userID *int32, accessToken *macaroons.Macaroon) (*macaroons.Macaroon, error) {
+	token, err := a.macaroonManager.CreateToken(ctx, []macaroons.Caveat{
+		NewRefreshOnlyCaveat(userID, accessToken),
+	}, a.timeoutRefreshToken, userID)
 	if err != nil {
-		return 0, errors.Wrapf(err, "failed to parse macaroon token, token: %s", refreshToken)
+		return nil, errors.Wrap(err, "failed to create macaroon token")
+	}
+	return token, nil
+}
+
+func (a *Auth) ParseRefreshToken(ctx context.Context, refreshToken string) (*macaroons.Macaroon, *RefreshOnlyCaveat, error) {
+	token, err := a.macaroonManager.Parse(ctx, refreshToken)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "failed to parse macaroon token, token: %s", refreshToken)
 	}
 
-	for _, caveat := range token.Caveats() {
-		if caveat.Type() == CaveatRefreshOnly {
-			roc, ok := caveat.(*RefreshOnlyCaveat)
-			if !ok {
-				return 0, errors.Errorf("caveat is not a RefreshOnlyCaveat even though it has type %s", CaveatRefreshOnly)
-			}
-			return roc.UserID, nil
-		}
+	if len(token.Caveats) != 1 {
+		return nil, nil, errors.Wrap(ErrInvalidRefreshToken, "refresh token must have exactly one caveat")
 	}
 
-	return 0, errors.New("no userID found in refresh token")
+	roc, ok := token.Caveats[0].(*RefreshOnlyCaveat)
+	if !ok {
+		return nil, nil, errors.Wrapf(ErrInvalidRefreshToken, "caveat is not a RefreshOnlyCaveat even though it has type %s", CaveatRefreshOnly)
+	}
+
+	return token, roc, nil
 }
 
 func (a *Auth) InvalidateUserTokens(ctx context.Context, userID int32) error {
-	return a.macaroonsParser.InvalidateUserTokens(ctx, userID)
+	return a.macaroonManager.InvalidateUserTokens(ctx, userID)
+}
+
+func (a *Auth) InvalidateToken(ctx context.Context, keyID int64) error {
+	return a.macaroonManager.InvalidateToken(ctx, keyID)
 }
 
 func GetUserID(c *fiber.Ctx) (int32, error) {

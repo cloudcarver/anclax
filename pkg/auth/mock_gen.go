@@ -57,39 +57,73 @@ func (mr *MockAuthInterfaceMockRecorder) Authfunc(c any) *gomock.Call {
 }
 
 // CreateRefreshToken mocks base method.
-func (m *MockAuthInterface) CreateRefreshToken(ctx context.Context, accessKeyID int64, userID int32) (string, error) {
+func (m *MockAuthInterface) CreateRefreshToken(ctx context.Context, userID *int32, accessToken *macaroons.Macaroon) (*macaroons.Macaroon, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateRefreshToken", ctx, accessKeyID, userID)
-	ret0, _ := ret[0].(string)
+	ret := m.ctrl.Call(m, "CreateRefreshToken", ctx, userID, accessToken)
+	ret0, _ := ret[0].(*macaroons.Macaroon)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateRefreshToken indicates an expected call of CreateRefreshToken.
-func (mr *MockAuthInterfaceMockRecorder) CreateRefreshToken(ctx, accessKeyID, userID any) *gomock.Call {
+func (mr *MockAuthInterfaceMockRecorder) CreateRefreshToken(ctx, userID, accessToken any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateRefreshToken", reflect.TypeOf((*MockAuthInterface)(nil).CreateRefreshToken), ctx, accessKeyID, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateRefreshToken", reflect.TypeOf((*MockAuthInterface)(nil).CreateRefreshToken), ctx, userID, accessToken)
 }
 
 // CreateToken mocks base method.
-func (m *MockAuthInterface) CreateToken(ctx context.Context, userID, orgID int32, caveats ...macaroons.Caveat) (int64, string, error) {
+func (m *MockAuthInterface) CreateToken(ctx context.Context, userID *int32, caveats ...macaroons.Caveat) (*macaroons.Macaroon, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, userID}
+	for _, a := range caveats {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "CreateToken", varargs...)
+	ret0, _ := ret[0].(*macaroons.Macaroon)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateToken indicates an expected call of CreateToken.
+func (mr *MockAuthInterfaceMockRecorder) CreateToken(ctx, userID any, caveats ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, userID}, caveats...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateToken", reflect.TypeOf((*MockAuthInterface)(nil).CreateToken), varargs...)
+}
+
+// CreateUserTokens mocks base method.
+func (m *MockAuthInterface) CreateUserTokens(ctx context.Context, userID, orgID int32, caveats ...macaroons.Caveat) (*macaroons.Macaroon, *macaroons.Macaroon, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, userID, orgID}
 	for _, a := range caveats {
 		varargs = append(varargs, a)
 	}
-	ret := m.ctrl.Call(m, "CreateToken", varargs...)
-	ret0, _ := ret[0].(int64)
-	ret1, _ := ret[1].(string)
+	ret := m.ctrl.Call(m, "CreateUserTokens", varargs...)
+	ret0, _ := ret[0].(*macaroons.Macaroon)
+	ret1, _ := ret[1].(*macaroons.Macaroon)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
 
-// CreateToken indicates an expected call of CreateToken.
-func (mr *MockAuthInterfaceMockRecorder) CreateToken(ctx, userID, orgID any, caveats ...any) *gomock.Call {
+// CreateUserTokens indicates an expected call of CreateUserTokens.
+func (mr *MockAuthInterfaceMockRecorder) CreateUserTokens(ctx, userID, orgID any, caveats ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]any{ctx, userID, orgID}, caveats...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateToken", reflect.TypeOf((*MockAuthInterface)(nil).CreateToken), varargs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateUserTokens", reflect.TypeOf((*MockAuthInterface)(nil).CreateUserTokens), varargs...)
+}
+
+// InvalidateToken mocks base method.
+func (m *MockAuthInterface) InvalidateToken(ctx context.Context, keyID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InvalidateToken", ctx, keyID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// InvalidateToken indicates an expected call of InvalidateToken.
+func (mr *MockAuthInterfaceMockRecorder) InvalidateToken(ctx, keyID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InvalidateToken", reflect.TypeOf((*MockAuthInterface)(nil).InvalidateToken), ctx, keyID)
 }
 
 // InvalidateUserTokens mocks base method.
@@ -107,12 +141,13 @@ func (mr *MockAuthInterfaceMockRecorder) InvalidateUserTokens(ctx, userID any) *
 }
 
 // ParseRefreshToken mocks base method.
-func (m *MockAuthInterface) ParseRefreshToken(ctx context.Context, refreshToken string) (int32, error) {
+func (m *MockAuthInterface) ParseRefreshToken(ctx context.Context, refreshToken string) (*macaroons.Macaroon, *RefreshOnlyCaveat, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ParseRefreshToken", ctx, refreshToken)
-	ret0, _ := ret[0].(int32)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret0, _ := ret[0].(*macaroons.Macaroon)
+	ret1, _ := ret[1].(*RefreshOnlyCaveat)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // ParseRefreshToken indicates an expected call of ParseRefreshToken.

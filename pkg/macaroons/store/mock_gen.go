@@ -42,18 +42,18 @@ func (m *MockKeyStore) EXPECT() *MockKeyStoreMockRecorder {
 }
 
 // Create mocks base method.
-func (m *MockKeyStore) Create(ctx context.Context, userID int32, key []byte, ttl time.Duration) (int64, error) {
+func (m *MockKeyStore) Create(ctx context.Context, key []byte, ttl time.Duration, userID *int32) (int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Create", ctx, userID, key, ttl)
+	ret := m.ctrl.Call(m, "Create", ctx, key, ttl, userID)
 	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Create indicates an expected call of Create.
-func (mr *MockKeyStoreMockRecorder) Create(ctx, userID, key, ttl any) *gomock.Call {
+func (mr *MockKeyStoreMockRecorder) Create(ctx, key, ttl, userID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockKeyStore)(nil).Create), ctx, userID, key, ttl)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockKeyStore)(nil).Create), ctx, key, ttl, userID)
 }
 
 // Delete mocks base method.

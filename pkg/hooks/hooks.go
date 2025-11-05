@@ -21,7 +21,7 @@ type (
 type AnclaxHookInterface interface {
 	OnOrgCreated(ctx context.Context, tx core.Tx, orgID int32) error
 
-	OnCreateToken(ctx context.Context, userID int32, macaroon *macaroons.Macaroon) error
+	OnUserTokensCreated(ctx context.Context, userID int32, macaroon *macaroons.Macaroon) error
 
 	OnUserCreated(ctx context.Context, tx core.Tx, userID int32) error
 
@@ -62,7 +62,7 @@ func (b *BaseHook) RegisterOnCreateToken(hook OnCreateToken) {
 	b.OnCreateTokenHooks = append(b.OnCreateTokenHooks, hook)
 }
 
-func (b *BaseHook) OnCreateToken(ctx context.Context, userID int32, macaroon *macaroons.Macaroon) error {
+func (b *BaseHook) OnUserTokensCreated(ctx context.Context, userID int32, macaroon *macaroons.Macaroon) error {
 	for _, hook := range b.OnCreateTokenHooks {
 		if err := hook(ctx, userID, macaroon); err != nil {
 			return err

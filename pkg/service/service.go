@@ -59,7 +59,7 @@ type ServiceInterface interface {
 
 	SignInWithPassword(ctx context.Context, params apigen.SignInRequest) (*apigen.Credentials, error)
 
-	RefreshToken(ctx context.Context, userID int32, refreshToken string) (*apigen.Credentials, error)
+	RefreshToken(ctx context.Context, refreshToken string) (*apigen.Credentials, error)
 
 	ListTasks(ctx context.Context) ([]apigen.Task, error)
 

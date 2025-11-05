@@ -40,9 +40,9 @@ func InitializeApplication(cfg *config.Config, libCfg *config.LibConfig) (*app.A
 	taskRunner := taskgen.NewTaskRunner(taskStoreInterface)
 	keyStore := store.NewStore(modelInterface, taskRunner)
 	caveatParserInterface := macaroons.NewCaveatParser()
-	macaroonParserInterface := macaroons.NewMacaroonManager(keyStore, caveatParserInterface)
+	macaroonManagerInterface := macaroons.NewMacaroonManager(keyStore, caveatParserInterface)
 	anclaxHookInterface := hooks.NewBaseHook()
-	authInterface, err := auth.NewAuth(cfg, macaroonParserInterface, caveatParserInterface, anclaxHookInterface)
+	authInterface, err := auth.NewAuth(cfg, macaroonManagerInterface, caveatParserInterface, anclaxHookInterface)
 	if err != nil {
 		return nil, err
 	}

@@ -25,19 +25,14 @@ func (s *Service) SignIn(ctx context.Context, userID int32) (*apigen.Credentials
 		return nil, errors.Wrapf(err, "failed to get user default org")
 	}
 
-	keyID, token, err := s.auth.CreateToken(ctx, userID, orgID)
+	token, refreshToken, err := s.auth.CreateUserTokens(ctx, userID, orgID)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create token")
 	}
 
-	refreshToken, err := s.auth.CreateRefreshToken(ctx, keyID, userID)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to generate refresh token")
-	}
-
 	return &apigen.Credentials{
-		AccessToken:  token,
-		RefreshToken: refreshToken,
+		AccessToken:  token.StringToken(),
+		RefreshToken: refreshToken.StringToken(),
 		TokenType:    apigen.Bearer,
 	}, nil
 }
@@ -61,33 +56,35 @@ func (s *Service) SignInWithPassword(ctx context.Context, params apigen.SignInRe
 	return s.SignIn(ctx, user.ID)
 }
 
-func (s *Service) RefreshToken(ctx context.Context, userID int32, refreshToken string) (*apigen.Credentials, error) {
-	user, err := s.m.GetUser(ctx, userID)
+func (s *Service) RefreshToken(ctx context.Context, token string) (*apigen.Credentials, error) {
+	refreshToken, roc, err := s.auth.ParseRefreshToken(ctx, token)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get user by id: %d", userID)
-	}
-	if err := s.auth.InvalidateUserTokens(ctx, userID); err != nil {
-		return nil, errors.Wrapf(err, "failed to invalidate user tokens")
+		return nil, errors.Wrapf(err, "failed to parse refresh token")
 	}
 
-	orgID, err := s.m.GetUserDefaultOrg(ctx, userID)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get user default org")
+	if roc.UserID != nil {
+		if err := s.auth.InvalidateUserTokens(ctx, *roc.UserID); err != nil {
+			return nil, errors.Wrapf(err, "failed to invalidate user tokens")
+		}
 	}
 
-	keyID, accessToken, err := s.auth.CreateToken(ctx, user.ID, orgID)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to create token")
+	if err := s.auth.InvalidateToken(ctx, refreshToken.KeyID()); err != nil {
+		return nil, errors.Wrapf(err, "failed to invalidate refresh token")
 	}
 
-	newRefreshToken, err := s.auth.CreateRefreshToken(ctx, keyID, userID)
+	accessToken, err := s.auth.CreateToken(ctx, roc.UserID, roc.AccessToken.Caveats...)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to generate refresh token")
+		return nil, errors.Wrapf(err, "failed to create access token")
+	}
+
+	newRefreshToken, err := s.auth.CreateRefreshToken(ctx, roc.UserID, accessToken)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to create refresh token")
 	}
 
 	return &apigen.Credentials{
-		AccessToken:  accessToken,
-		RefreshToken: newRefreshToken,
+		AccessToken:  accessToken.StringToken(),
+		RefreshToken: newRefreshToken.StringToken(),
 		TokenType:    apigen.Bearer,
 	}, nil
 }

@@ -20,21 +20,16 @@ var (
 )
 
 type Macaroon struct {
-	keyID   int64
-	caveats []Caveat
+	Caveats []Caveat `json:"caveats"`
 
-	signature []byte
-
+	keyID             int64
+	signature         []byte
 	encodedToken      string
 	encodedTokenNoSig string
 }
 
 func (m *Macaroon) StringToken() string {
 	return m.encodedToken
-}
-
-func (m *Macaroon) Caveats() []Caveat {
-	return m.caveats
 }
 
 func (m *Macaroon) KeyID() int64 {
@@ -57,32 +52,32 @@ func (m *Macaroon) AddCaveat(caveat Caveat) error {
 
 	m.encodedTokenNoSig = m.encodedTokenNoSig + "." + encodedCaveat
 	m.encodedToken = m.encodedTokenNoSig + "." + encodedSignature
-	m.caveats = append(m.caveats, caveat)
+	m.Caveats = append(m.Caveats, caveat)
 	m.signature = sig
 	return nil
 }
 
-type MacaroonsParser struct {
+type MacaroonsManager struct {
 	keyStore     store.KeyStore
 	caveatParser CaveatParserInterface
 
 	randomKey func() ([]byte, error)
 }
 
-func NewMacaroonManager(keyStore store.KeyStore, caveatParser CaveatParserInterface) MacaroonParserInterface {
-	return &MacaroonsParser{
+func NewMacaroonManager(keyStore store.KeyStore, caveatParser CaveatParserInterface) MacaroonManagerInterface {
+	return &MacaroonsManager{
 		keyStore:     keyStore,
 		caveatParser: caveatParser,
 		randomKey:    randomKey,
 	}
 }
 
-func (m *MacaroonsParser) CreateToken(ctx context.Context, userID int32, caveats []Caveat, ttl time.Duration) (*Macaroon, error) {
+func (m *MacaroonsManager) CreateToken(ctx context.Context, caveats []Caveat, ttl time.Duration, userID *int32) (*Macaroon, error) {
 	key, err := m.randomKey()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate random key")
 	}
-	keyID, err := m.keyStore.Create(ctx, userID, key, ttl)
+	keyID, err := m.keyStore.Create(ctx, key, ttl, userID)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get key")
 	}
@@ -115,14 +110,14 @@ func CreateMacaroon(keyID int64, key []byte, caveats []Caveat) (*Macaroon, error
 
 	return &Macaroon{
 		keyID:             keyID,
-		caveats:           caveats,
+		Caveats:           caveats,
 		signature:         signature,
 		encodedTokenNoSig: encodedTokenNoSig,
 		encodedToken:      token,
 	}, nil
 }
 
-func (m *MacaroonsParser) Parse(ctx context.Context, token string) (*Macaroon, error) {
+func (m *MacaroonsManager) Parse(ctx context.Context, token string) (*Macaroon, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) < 2 {
 		return nil, errors.Wrap(ErrMalformedToken, "token must contain at least 2 parts")
@@ -172,19 +167,29 @@ func (m *MacaroonsParser) Parse(ctx context.Context, token string) (*Macaroon, e
 
 	return &Macaroon{
 		keyID:             keyID,
-		caveats:           caveats,
+		Caveats:           caveats,
 		signature:         signature,
 		encodedTokenNoSig: strings.TrimSuffix(token, "."+encodedSignature),
 		encodedToken:      token,
 	}, nil
 }
 
-func (m *MacaroonsParser) InvalidateUserTokens(ctx context.Context, userID int32) error {
+func (m *MacaroonsManager) InvalidateUserTokens(ctx context.Context, userID int32) error {
 	if err := m.keyStore.DeleteUserKeys(ctx, userID); err != nil {
 		if errors.Is(err, store.ErrKeyNotFound) {
 			return nil
 		}
 		return errors.Wrap(err, "failed to delete user keys")
+	}
+	return nil
+}
+
+func (m *MacaroonsManager) InvalidateToken(ctx context.Context, keyID int64) error {
+	if err := m.keyStore.Delete(ctx, keyID); err != nil {
+		if errors.Is(err, store.ErrKeyNotFound) {
+			return nil
+		}
+		return errors.Wrap(err, "failed to delete key")
 	}
 	return nil
 }
