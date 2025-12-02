@@ -73,7 +73,7 @@ func writeAnclaxDef(outdir string) error {
 	}
 
 	// write migrations files
-	if err := copyEmbedDir(anclax.Migrations, "sql/migrations", filepath.Join(outdir, "sql", "migrations")); err != nil {
+	if err := copyEmbedDir(anclax.Migrations, "sql", filepath.Join(outdir, "sql")); err != nil {
 		return errors.Wrap(err, "failed to copy migrations files")
 	}
 
