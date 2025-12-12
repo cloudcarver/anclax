@@ -13,9 +13,9 @@ import (
 	context "context"
 	reflect "reflect"
 
+	core "github.com/cloudcarver/anclax/core"
 	apigen "github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	querier "github.com/cloudcarver/anclax/pkg/zgen/querier"
-	pgx "github.com/jackc/pgx/v5"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -159,7 +159,7 @@ func (mr *MockModelInterfaceMockRecorder) DeleteOpaqueKey(ctx, id any) *gomock.C
 }
 
 // DeleteOpaqueKeys mocks base method.
-func (m *MockModelInterface) DeleteOpaqueKeys(ctx context.Context, userID int32) error {
+func (m *MockModelInterface) DeleteOpaqueKeys(ctx context.Context, userID *int32) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteOpaqueKeys", ctx, userID)
 	ret0, _ := ret[0].(error)
@@ -498,7 +498,7 @@ func (mr *MockModelInterfaceMockRecorder) RunTransaction(ctx, f any) *gomock.Cal
 }
 
 // RunTransactionWithTx mocks base method.
-func (m *MockModelInterface) RunTransactionWithTx(ctx context.Context, f func(pgx.Tx, ModelInterface) error) error {
+func (m *MockModelInterface) RunTransactionWithTx(ctx context.Context, f func(core.Tx, ModelInterface) error) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RunTransactionWithTx", ctx, f)
 	ret0, _ := ret[0].(error)
@@ -526,7 +526,7 @@ func (mr *MockModelInterfaceMockRecorder) SetUserDefaultOrg(ctx, arg any) *gomoc
 }
 
 // SpawnWithTx mocks base method.
-func (m *MockModelInterface) SpawnWithTx(tx pgx.Tx) ModelInterface {
+func (m *MockModelInterface) SpawnWithTx(tx core.Tx) ModelInterface {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SpawnWithTx", tx)
 	ret0, _ := ret[0].(ModelInterface)

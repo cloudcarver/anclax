@@ -5,7 +5,11 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/cloudcarver/anclax/pkg/logger"
 )
+
+var log = logger.NewLogAgent("globalctx")
 
 type GlobalContext struct {
 	ctx        context.Context
@@ -37,4 +41,9 @@ func New() *GlobalContext {
 
 func (g *GlobalContext) Context() context.Context {
 	return g.ctx
+}
+
+func (g *GlobalContext) Cancel() {
+	log.Info("global context cancellation initiated")
+	g.cancelFunc()
 }

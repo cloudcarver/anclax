@@ -14,8 +14,8 @@ import (
 	json "encoding/json"
 	reflect "reflect"
 
+	core "github.com/cloudcarver/anclax/core"
 	apigen "github.com/cloudcarver/anclax/pkg/zgen/apigen"
-	pgx "github.com/jackc/pgx/v5"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -96,7 +96,7 @@ func (m *MockTaskHandler) EXPECT() *MockTaskHandlerMockRecorder {
 }
 
 // HandleTask mocks base method.
-func (m *MockTaskHandler) HandleTask(ctx context.Context, tx pgx.Tx, spec TaskSpec) error {
+func (m *MockTaskHandler) HandleTask(ctx context.Context, tx core.Tx, spec TaskSpec) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "HandleTask", ctx, tx, spec)
 	ret0, _ := ret[0].(error)
@@ -110,7 +110,7 @@ func (mr *MockTaskHandlerMockRecorder) HandleTask(ctx, tx, spec any) *gomock.Cal
 }
 
 // OnTaskFailed mocks base method.
-func (m *MockTaskHandler) OnTaskFailed(ctx context.Context, tx pgx.Tx, failedTaskSpec TaskSpec, taskID int32) error {
+func (m *MockTaskHandler) OnTaskFailed(ctx context.Context, tx core.Tx, failedTaskSpec TaskSpec, taskID int32) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "OnTaskFailed", ctx, tx, failedTaskSpec, taskID)
 	ret0, _ := ret[0].(error)
@@ -160,7 +160,7 @@ func (m *MockTaskLifeCycleHandlerInterface) EXPECT() *MockTaskLifeCycleHandlerIn
 }
 
 // HandleAttributes mocks base method.
-func (m *MockTaskLifeCycleHandlerInterface) HandleAttributes(ctx context.Context, tx pgx.Tx, task apigen.Task) error {
+func (m *MockTaskLifeCycleHandlerInterface) HandleAttributes(ctx context.Context, tx core.Tx, task apigen.Task) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "HandleAttributes", ctx, tx, task)
 	ret0, _ := ret[0].(error)
@@ -174,7 +174,7 @@ func (mr *MockTaskLifeCycleHandlerInterfaceMockRecorder) HandleAttributes(ctx, t
 }
 
 // HandleCompleted mocks base method.
-func (m *MockTaskLifeCycleHandlerInterface) HandleCompleted(ctx context.Context, tx pgx.Tx, task apigen.Task) error {
+func (m *MockTaskLifeCycleHandlerInterface) HandleCompleted(ctx context.Context, tx core.Tx, task apigen.Task) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "HandleCompleted", ctx, tx, task)
 	ret0, _ := ret[0].(error)
@@ -188,7 +188,7 @@ func (mr *MockTaskLifeCycleHandlerInterfaceMockRecorder) HandleCompleted(ctx, tx
 }
 
 // HandleFailed mocks base method.
-func (m *MockTaskLifeCycleHandlerInterface) HandleFailed(ctx context.Context, tx pgx.Tx, task apigen.Task, err error) error {
+func (m *MockTaskLifeCycleHandlerInterface) HandleFailed(ctx context.Context, tx core.Tx, task apigen.Task, err error) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "HandleFailed", ctx, tx, task, err)
 	ret0, _ := ret[0].(error)

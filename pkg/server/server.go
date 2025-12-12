@@ -24,6 +24,12 @@ import (
 
 var log = logger.NewLogAgent("server")
 
+const ContextKeyDisableBodyLog = "anclax_disable_body_log"
+
+func DisableBodyLog(c *fiber.Ctx) {
+	c.Locals(ContextKeyDisableBodyLog, true)
+}
+
 type Server struct {
 	app             *fiber.App
 	host            string
@@ -185,16 +191,22 @@ func (s *Server) registerMiddleware() {
 		// log response
 		if !s.skipLogResponse(c) {
 			end := time.Now()
-			log.Info(
-				"response",
+			fields := []zap.Field{
 				zap.Int("status", c.Response().StatusCode()),
 				zap.String("method", c.Method()),
 				zap.String("path", c.Path()),
 				zap.String("token", fmt.Sprintf("%v", c.Get("Authorization"))),
 				zap.String("request-id", c.Locals(requestid.ConfigDefault.ContextKey).(string)),
 				zap.Float32("latency-ms", float32(end.Sub(start).Milliseconds())),
-				zap.String("body", utils.TruncateString(string(c.Response().Body()), 512)),
 				zap.Error(err),
+			}
+			ct := string(c.Response().Header.ContentType())
+			if ct != fiber.MIMEOctetStream && ct != "text/event-stream" && !c.Locals(ContextKeyDisableBodyLog, false).(bool) {
+				fields = append(fields, zap.String("body", utils.TruncateString(string(c.Response().Body()), 512)))
+			}
+			log.Info(
+				"response",
+				fields...,
 			)
 		}
 		return err

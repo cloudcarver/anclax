@@ -91,6 +91,12 @@ func (s *Session) Broadcast(topic string, data any) {
 	s.hub.broadcastExcept(topic, data, s.id)
 }
 
+// BroadcastBinary broadcasts a binary payload to all sessions subscribed to
+// the topic, except the current session.
+func (s *Session) BroadcastBinary(topic string, data []byte) {
+	s.hub.broadcastExceptBinary(topic, data, s.id)
+}
+
 func (s *Session) WriteTextMessage(data any) error {
 	msg, err := json.Marshal(data)
 	if err != nil {
@@ -99,6 +105,19 @@ func (s *Session) WriteTextMessage(data any) error {
 
 	select {
 	case s.writeBuf <- BufMsg{mt: websocket.TextMessage, msg: msg}:
+		return nil
+	default:
+		s.cancel(ErrBackpressure)
+		return ErrBackpressure
+	}
+}
+
+func (s *Session) WriteBinaryMessage(data []byte) error {
+	if data == nil {
+		data = []byte{}
+	}
+	select {
+	case s.writeBuf <- BufMsg{mt: websocket.BinaryMessage, msg: data}:
 		return nil
 	default:
 		s.cancel(ErrBackpressure)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/auth"
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/hooks"
@@ -11,7 +12,6 @@ import (
 	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
-	"github.com/jackc/pgx/v5"
 	"github.com/pkg/errors"
 )
 
@@ -39,11 +39,11 @@ const (
 
 type ServiceInterface interface {
 	// Create a new user and its default organization
-	CreateNewUser(ctx context.Context, username, password string) (*UserCreated, error)
+	CreateNewUser(ctx context.Context, username, password string) (*UserMeta, error)
 
-	CreateNewUserWithTx(ctx context.Context, tx pgx.Tx, username, password string) (*UserCreated, error)
+	CreateNewUserWithTx(ctx context.Context, tx core.Tx, username, password string) (*UserMeta, error)
 
-	GetUserIDByUsername(ctx context.Context, username string) (int32, error)
+	GetUserByUserName(ctx context.Context, username string) (*UserMeta, error)
 
 	// IsUsernameExists returns true if the username exists
 	IsUsernameExists(ctx context.Context, username string) (bool, error)
@@ -59,7 +59,7 @@ type ServiceInterface interface {
 
 	SignInWithPassword(ctx context.Context, params apigen.SignInRequest) (*apigen.Credentials, error)
 
-	RefreshToken(ctx context.Context, userID int32, refreshToken string) (*apigen.Credentials, error)
+	RefreshToken(ctx context.Context, refreshToken string) (*apigen.Credentials, error)
 
 	ListTasks(ctx context.Context) ([]apigen.Task, error)
 

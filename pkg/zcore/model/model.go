@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/cloudcarver/anclax/core"
+	"github.com/cloudcarver/anclax/pkg/app/closer"
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/logger"
 	"github.com/cloudcarver/anclax/pkg/utils"
@@ -29,20 +31,21 @@ var (
 type ModelInterface interface {
 	querier.Querier
 	RunTransaction(ctx context.Context, f func(model ModelInterface) error) error
-	RunTransactionWithTx(ctx context.Context, f func(tx pgx.Tx, model ModelInterface) error) error
+	RunTransactionWithTx(ctx context.Context, f func(tx core.Tx, model ModelInterface) error) error
 	InTransaction() bool
-	SpawnWithTx(tx pgx.Tx) ModelInterface
+	SpawnWithTx(tx core.Tx) ModelInterface
 	Close()
 }
 
 type Model struct {
 	querier.Querier
-	beginTx       func(ctx context.Context) (pgx.Tx, error)
+	beginTx       func(ctx context.Context) (core.Tx, error)
 	p             *pgxpool.Pool
 	inTransaction bool
 }
 
 func (m *Model) Close() {
+	log.Info("gracefully closing model")
 	if m.p != nil {
 		m.p.Close()
 	}
@@ -52,26 +55,34 @@ func (m *Model) InTransaction() bool {
 	return m.inTransaction
 }
 
-func (m *Model) BeginTx(ctx context.Context) (pgx.Tx, error) {
+func (m *Model) BeginTx(ctx context.Context) (core.Tx, error) {
 	return m.beginTx(ctx)
 }
 
-func (m *Model) SpawnWithTx(tx pgx.Tx) ModelInterface {
+func (m *Model) SpawnWithTx(tx core.Tx) ModelInterface {
 	return &Model{
 		Querier: querier.New(tx),
-		beginTx: func(ctx context.Context) (pgx.Tx, error) {
+		beginTx: func(ctx context.Context) (core.Tx, error) {
 			return nil, ErrAlreadyInTransaction
 		},
 		inTransaction: true,
 	}
 }
 
-func (m *Model) RunTransactionWithTx(ctx context.Context, f func(tx pgx.Tx, model ModelInterface) error) error {
+func (m *Model) RunTransactionWithTx(ctx context.Context, f func(tx core.Tx, model ModelInterface) error) (retErr error) {
 	tx, err := m.beginTx(ctx)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+
+	defer func() {
+		rbCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := tx.Rollback(rbCtx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			log.Errorf("failed to rollback transaction: %s", err.Error())
+		}
+	}()
 
 	txm := m.SpawnWithTx(tx)
 
@@ -83,12 +94,12 @@ func (m *Model) RunTransactionWithTx(ctx context.Context, f func(tx pgx.Tx, mode
 }
 
 func (m *Model) RunTransaction(ctx context.Context, f func(model ModelInterface) error) error {
-	return m.RunTransactionWithTx(ctx, func(_ pgx.Tx, model ModelInterface) error {
+	return m.RunTransactionWithTx(ctx, func(_ core.Tx, model ModelInterface) error {
 		return f(model)
 	})
 }
 
-func NewModel(cfg *config.Config, libCfg *config.LibConfig) (ModelInterface, error) {
+func NewModel(cfg *config.Config, libCfg *config.LibConfig, cm *closer.CloserManager) (ModelInterface, error) {
 	var dsn string
 	if cfg.Pg.DSN != nil {
 		dsn = *cfg.Pg.DSN
@@ -174,5 +185,18 @@ func NewModel(cfg *config.Config, libCfg *config.LibConfig) (ModelInterface, err
 		}
 	}
 
-	return &Model{Querier: querier.New(p), beginTx: p.Begin, p: p}, nil
+	ret := &Model{
+		Querier: querier.New(p),
+		beginTx: func(ctx context.Context) (core.Tx, error) {
+			return p.Begin(ctx)
+		},
+		p: p,
+	}
+
+	cm.Register(func(ctx context.Context) error {
+		ret.Close()
+		return nil
+	})
+
+	return ret, nil
 }

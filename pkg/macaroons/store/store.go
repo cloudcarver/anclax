@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/taskcore"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
@@ -30,9 +31,9 @@ func NewStore(model model.ModelInterface, taskRunner runner.TaskRunner) KeyStore
 	}
 }
 
-func (s *Store) Create(ctx context.Context, userID int32, key []byte, ttl time.Duration) (int64, error) {
+func (s *Store) Create(ctx context.Context, key []byte, ttl time.Duration, userID *int32) (int64, error) {
 	var ret int64
-	if err := s.model.RunTransaction(ctx, func(txm model.ModelInterface) error {
+	if err := s.model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
 		keyID, err := txm.CreateOpaqueKey(ctx, querier.CreateOpaqueKeyParams{
 			UserID: userID,
 			Key:    key,
@@ -44,7 +45,7 @@ func (s *Store) Create(ctx context.Context, userID int32, key []byte, ttl time.D
 		ret = keyID
 
 		if ttl > 0 {
-			if _, err := s.taskRunner.RunDeleteOpaqueKey(ctx, &runner.DeleteOpaqueKeyParameters{
+			if _, err := s.taskRunner.RunDeleteOpaqueKeyWithTx(ctx, tx, &runner.DeleteOpaqueKeyParameters{
 				KeyID: keyID,
 			}, taskcore.WithStartedAt(s.now().Add(ttl))); err != nil {
 				return errors.Wrap(err, "failed to run task to delete key")
@@ -81,7 +82,7 @@ func (s *Store) Delete(ctx context.Context, keyID int64) error {
 }
 
 func (s *Store) DeleteUserKeys(ctx context.Context, userID int32) error {
-	err := s.model.DeleteOpaqueKeys(ctx, userID)
+	err := s.model.DeleteOpaqueKeys(ctx, &userID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrKeyNotFound

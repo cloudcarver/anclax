@@ -18,7 +18,7 @@ type Querier interface {
 	CreateUser(ctx context.Context, arg CreateUserParams) (*AnclaxUser, error)
 	DeleteKeyPair(ctx context.Context, accessKey string) error
 	DeleteOpaqueKey(ctx context.Context, id int64) error
-	DeleteOpaqueKeys(ctx context.Context, userID int32) error
+	DeleteOpaqueKeys(ctx context.Context, userID *int32) error
 	DeleteUserByName(ctx context.Context, name string) error
 	GetKeyPair(ctx context.Context, accessKey string) (*AnclaxAccessKeyPair, error)
 	GetOpaqueKey(ctx context.Context, id int64) ([]byte, error)

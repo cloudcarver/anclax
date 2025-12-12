@@ -100,7 +100,7 @@ type RequestContext struct {
 	path    string
 	body    io.Reader
 	headers http.Header
-	query   map[string]string
+	query   map[string][]string
 	errors  []error
 }
 
@@ -119,7 +119,7 @@ func (c *HTTPClient) startRequest(ctx context.Context, method string, path strin
 		c:       c,
 		ctx:     ctx,
 		method:  method,
-		query:   map[string]string{},
+		query:   map[string][]string{},
 		headers: headers,
 		path:    path,
 	}
@@ -148,8 +148,8 @@ func (rc *RequestContext) handleErr(err error) {
 	rc.errors = append(rc.errors, err)
 }
 
-func (rc *RequestContext) WithQuery(key string, val string) *RequestContext {
-	rc.query[key] = val
+func (rc *RequestContext) WithQuery(key string, vals ...string) *RequestContext {
+	rc.query[key] = append(rc.query[key], vals...)
 	return rc
 }
 
@@ -288,7 +288,11 @@ func (rc *RequestContext) Do() (*ResponseHelper, error) {
 	// query
 	query := req.URL.Query()
 	for k, v := range rc.query {
-		query.Add(k, v)
+		for _, vv := range v {
+			fmt.Println(k, vv)
+			query.Add(k, vv)
+			fmt.Println(query.Encode())
+		}
 	}
 	req.URL.RawQuery = query.Encode()
 
@@ -305,6 +309,10 @@ func (rc *RequestContext) Do() (*ResponseHelper, error) {
 
 func NewResponseHelper(res *http.Response) *ResponseHelper {
 	return &ResponseHelper{res}
+}
+
+func (rh *ResponseHelper) Bytes() ([]byte, error) {
+	return io.ReadAll(rh.Body)
 }
 
 func (rh *ResponseHelper) Text() string {

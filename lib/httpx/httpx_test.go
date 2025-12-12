@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	neturl "net/url"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -92,18 +92,18 @@ func TestWithQuery(t *testing.T) {
 	var (
 		base = "http://test.example"
 		path = "/test"
-		k    = "上升波"
-		v    = "value-/\\%$#?&=+"
+		k    = "kk"
+		v    = []string{"value-/\\%$#?&=+", "上升波"}
 	)
 	d := &NoopHTTPDelegate{}
 	c := NewHTTPClient(base, d)
-	rc := c.startRequest(context.Background(), "GET", path).WithQuery(k, v)
-	assert.Equal(t, rc.query[k], v)
-
+	rc := c.startRequest(context.Background(), "GET", path).WithQuery(k, v...)
 	_, err := rc.Do()
 	require.NoError(t, err)
-	assert.Equal(t, v, d.GetQuery(k))
-	assert.Equal(t, fmt.Sprintf("%s%s?%s=%s", base, path, neturl.QueryEscape(k), neturl.QueryEscape(v)), d.req.URL.String())
+
+	req := d.GetRequest()
+
+	assert.Equal(t, fmt.Sprintf("%s=%s&%s=%s", url.QueryEscape(k), url.QueryEscape(v[0]), url.QueryEscape(k), url.QueryEscape(v[1])), req.URL.Query().Encode())
 }
 
 func TestWithJSON(t *testing.T) {
@@ -117,7 +117,7 @@ func TestWithJSON(t *testing.T) {
 	_, err = rc.Do()
 	require.NoError(t, err)
 
-	bodyRaw, err := d.GetRequestBody()
+	bodyRaw, err := io.ReadAll(d.GetRequest().Body)
 	require.NoError(t, err)
 
 	assert.Equal(t, jsonRaw, bodyRaw)

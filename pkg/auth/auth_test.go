@@ -22,7 +22,7 @@ func TestAuth_Authfunc(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockMacaroons := macaroons.NewMockMacaroonParserInterface(ctrl)
+	mockMacaroons := macaroons.NewMockMacaroonManagerInterface(ctrl)
 	mockCaveatParser := macaroons.NewMockCaveatParserInterface(ctrl)
 	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)
 	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
@@ -143,12 +143,11 @@ func TestAuth_CreateToken(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockMacaroons := macaroons.NewMockMacaroonParserInterface(ctrl)
+	mockMacaroons := macaroons.NewMockMacaroonManagerInterface(ctrl)
 	mockCaveatParser := macaroons.NewMockCaveatParserInterface(ctrl)
 	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)
 	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
-	mockHooks := hooks.NewMockAnclaxHookInterface(ctrl)
-	auth, err := NewAuth(&config.Config{}, mockMacaroons, mockCaveatParser, mockHooks)
+	auth, err := NewAuth(&config.Config{}, mockMacaroons, mockCaveatParser, nil)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -158,8 +157,6 @@ func TestAuth_CreateToken(t *testing.T) {
 	user := &querier.AnclaxUser{
 		ID: userID,
 	}
-
-	orgID := int32(101)
 
 	macaroon, err := macaroons.CreateMacaroon(123, []byte("key"), nil)
 	require.NoError(t, err)
@@ -177,11 +174,10 @@ func TestAuth_CreateToken(t *testing.T) {
 			setupMock: func() {
 				mockMacaroons.EXPECT().CreateToken(
 					gomock.Any(),
-					userID,
-					gomock.Any(), // Here we expect a UserContextCaveat but it's difficult to match in tests
+					nil,
 					DefaultTimeoutAccessToken,
+					&userID,
 				).Return(macaroon, nil)
-				mockHooks.EXPECT().OnCreateToken(gomock.Any(), userID, macaroon).Return(nil)
 			},
 			expectedKeyID: keyID,
 			expectedToken: macaroon.StringToken(),
@@ -193,9 +189,9 @@ func TestAuth_CreateToken(t *testing.T) {
 			setupMock: func() {
 				mockMacaroons.EXPECT().CreateToken(
 					gomock.Any(),
-					userID,
-					gomock.Any(),
+					nil,
 					DefaultTimeoutAccessToken,
+					&userID,
 				).Return(nil, errors.New("token creation failed"))
 			},
 			expectedKeyID: 0,
@@ -208,17 +204,15 @@ func TestAuth_CreateToken(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.setupMock()
 
-			gotKeyID, gotToken, err := auth.CreateToken(ctx, tc.user.ID, orgID)
+			token, err := auth.CreateToken(ctx, &tc.user.ID)
 
 			if tc.expectedError != nil {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tc.expectedError.Error())
-				require.Equal(t, tc.expectedKeyID, gotKeyID)
-				require.Equal(t, tc.expectedToken, gotToken)
 			} else {
 				require.NoError(t, err)
-				require.Equal(t, tc.expectedKeyID, gotKeyID)
-				require.Equal(t, tc.expectedToken, gotToken)
+				require.Equal(t, tc.expectedKeyID, token.KeyID())
+				require.Equal(t, tc.expectedToken, token.StringToken())
 			}
 		})
 	}
@@ -228,7 +222,7 @@ func TestAuth_CreateRefreshToken(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockMacaroons := macaroons.NewMockMacaroonParserInterface(ctrl)
+	mockMacaroons := macaroons.NewMockMacaroonManagerInterface(ctrl)
 	mockCaveatParser := macaroons.NewMockCaveatParserInterface(ctrl)
 	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)
 	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
@@ -239,6 +233,9 @@ func TestAuth_CreateRefreshToken(t *testing.T) {
 	ctx := context.Background()
 	userID := int32(1)
 	accessKeyID := int64(123)
+
+	accessToken, err := macaroons.CreateMacaroon(0, []byte("key"), nil)
+	require.NoError(t, err)
 
 	macaroon, err := macaroons.CreateMacaroon(0, []byte("key"), nil)
 	require.NoError(t, err)
@@ -258,9 +255,9 @@ func TestAuth_CreateRefreshToken(t *testing.T) {
 			setupMock: func() {
 				mockMacaroons.EXPECT().CreateToken(
 					gomock.Any(),
-					userID,
-					gomock.Any(), // Expect RefreshOnlyCaveat but difficult to match in tests
+					gomock.Any(),
 					DefaultTimeoutRefreshToken,
+					&userID,
 				).Return(macaroon, nil)
 			},
 			expectedToken: macaroon.StringToken(),
@@ -273,9 +270,9 @@ func TestAuth_CreateRefreshToken(t *testing.T) {
 			setupMock: func() {
 				mockMacaroons.EXPECT().CreateToken(
 					gomock.Any(),
-					userID,
 					gomock.Any(),
 					DefaultTimeoutRefreshToken,
+					&userID,
 				).Return(nil, errors.New("token creation failed"))
 			},
 			expectedToken: "",
@@ -287,15 +284,14 @@ func TestAuth_CreateRefreshToken(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.setupMock()
 
-			gotToken, err := auth.CreateRefreshToken(ctx, tc.accessKeyID, tc.userID)
+			gotToken, err := auth.CreateRefreshToken(ctx, &userID, accessToken)
 
 			if tc.expectedError != nil {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tc.expectedError.Error())
-				require.Equal(t, tc.expectedToken, gotToken)
 			} else {
 				require.NoError(t, err)
-				require.Equal(t, tc.expectedToken, gotToken)
+				require.Equal(t, tc.expectedToken, gotToken.StringToken())
 			}
 		})
 	}
@@ -305,7 +301,7 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockMacaroons := macaroons.NewMockMacaroonParserInterface(ctrl)
+	mockMacaroons := macaroons.NewMockMacaroonManagerInterface(ctrl)
 	mockCaveatParser := macaroons.NewMockCaveatParserInterface(ctrl)
 	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)
 	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
@@ -317,12 +313,18 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 	ctx := context.Background()
 	userID := int32(1)
 
-	refreshCaveat := NewRefreshOnlyCaveat(userID, 456)
+	accessTokenCaveats := []macaroons.Caveat{
+		NewUserContextCaveat(101, 102),
+	}
+
+	accessToken, err := macaroons.CreateMacaroon(0, []byte("key"), accessTokenCaveats)
+	require.NoError(t, err)
+
+	refreshCaveat := NewRefreshOnlyCaveat(&userID, accessToken)
 	macaroon, err := macaroons.CreateMacaroon(0, []byte("key"), []macaroons.Caveat{refreshCaveat})
 	require.NoError(t, err)
 
 	noRefreshCaveat := macaroons.NewMockCaveat(ctrl)
-	noRefreshCaveat.EXPECT().Type().Return("not_refresh")
 	noRefreshMacaroon, err := macaroons.CreateMacaroon(0, []byte("key"), []macaroons.Caveat{noRefreshCaveat})
 	require.NoError(t, err)
 
@@ -358,7 +360,7 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 				mockMacaroons.EXPECT().Parse(gomock.Any(), noRefreshMacaroon.StringToken()).Return(noRefreshMacaroon, nil)
 			},
 			expectedUserID: 0,
-			expectedError:  errors.New("no userID found in refresh token"),
+			expectedError:  ErrInvalidRefreshToken,
 		},
 	}
 
@@ -366,15 +368,15 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.setupMock()
 
-			gotUserID, err := auth.ParseRefreshToken(ctx, tc.refreshToken)
+			token, roc, err := auth.ParseRefreshToken(ctx, tc.refreshToken)
 
 			if tc.expectedError != nil {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tc.expectedError.Error())
-				require.Equal(t, tc.expectedUserID, gotUserID)
 			} else {
 				require.NoError(t, err)
-				require.Equal(t, tc.expectedUserID, gotUserID)
+				require.Equal(t, macaroon, token)
+				require.ElementsMatch(t, accessTokenCaveats, roc.AccessToken.Caveats)
 			}
 		})
 	}
@@ -384,7 +386,7 @@ func TestAuth_InvalidateUserTokens(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockMacaroons := macaroons.NewMockMacaroonParserInterface(ctrl)
+	mockMacaroons := macaroons.NewMockMacaroonManagerInterface(ctrl)
 	mockCaveatParser := macaroons.NewMockCaveatParserInterface(ctrl)
 	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)
 	mockCaveatParser.EXPECT().Register(CaveatRefreshOnly, gomock.Any()).Return(nil)
@@ -579,7 +581,7 @@ func TestNewAuth(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockMacaroons := macaroons.NewMockMacaroonParserInterface(ctrl)
+	mockMacaroons := macaroons.NewMockMacaroonManagerInterface(ctrl)
 	mockCaveatParser := macaroons.NewMockCaveatParserInterface(ctrl)
 
 	mockCaveatParser.EXPECT().Register(CaveatUserContext, gomock.Any()).Return(nil)

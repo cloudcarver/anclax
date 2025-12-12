@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/cloudcarver/anclax/pkg/taskcore"
 	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/pkg/errors"
-	"github.com/jackc/pgx/v5"
 )
 
 func init() {
@@ -29,7 +29,7 @@ type TaskRunner interface {
     // Delete an opaque key
 	RunDeleteOpaqueKey(ctx context.Context, params *DeleteOpaqueKeyParameters, overrides ...taskcore.TaskOverride) (int32, error)
     // Delete an opaque key
-	RunDeleteOpaqueKeyWithTx(ctx context.Context, tx pgx.Tx, params *DeleteOpaqueKeyParameters, overrides ...taskcore.TaskOverride) (int32, error)
+	RunDeleteOpaqueKeyWithTx(ctx context.Context, tx core.Tx, params *DeleteOpaqueKeyParameters, overrides ...taskcore.TaskOverride) (int32, error)
 }
 
 type Client struct {
@@ -49,7 +49,7 @@ func (c *Client) RunDeleteOpaqueKey(ctx context.Context, params *DeleteOpaqueKey
 	return c.runDeleteOpaqueKey(ctx, c.taskStore, params, overrides...)
 }
 
-func (c *Client) RunDeleteOpaqueKeyWithTx(ctx context.Context, tx pgx.Tx, params *DeleteOpaqueKeyParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+func (c *Client) RunDeleteOpaqueKeyWithTx(ctx context.Context, tx core.Tx, params *DeleteOpaqueKeyParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 	return c.runDeleteOpaqueKey(ctx, c.taskStore.WithTx(tx), params, overrides...)
 }
 
@@ -104,10 +104,10 @@ func (r *DeleteOpaqueKeyParameters) Marshal() (json.RawMessage, error) {
 
 type ExecutorInterface interface { 
     // Delete an opaque key
-	ExecuteDeleteOpaqueKey(ctx context.Context, tx pgx.Tx, params *DeleteOpaqueKeyParameters) error
+	ExecuteDeleteOpaqueKey(ctx context.Context, tx core.Tx, params *DeleteOpaqueKeyParameters) error
 
 	// Hook called when deleteOpaqueKey fails
-	OnDeleteOpaqueKeyFailed(ctx context.Context, taskID int32, params *DeleteOpaqueKeyParameters, tx pgx.Tx) error
+	OnDeleteOpaqueKeyFailed(ctx context.Context, taskID int32, params *DeleteOpaqueKeyParameters, tx core.Tx) error
 }
 
 type TaskHandler struct {
@@ -126,7 +126,7 @@ func (f *TaskHandler) RegisterTaskHandler(handler worker.TaskHandler) {
 	f.externalTaskHandler = append(f.externalTaskHandler, handler)
 }
 
-func (f *TaskHandler) HandleTask(ctx context.Context, tx pgx.Tx, spec worker.TaskSpec) error {
+func (f *TaskHandler) HandleTask(ctx context.Context, tx core.Tx, spec worker.TaskSpec) error {
 	for _, handler := range f.externalTaskHandler {
 		if err := handler.HandleTask(ctx, tx, spec); err != nil {
 			if errors.Is(err, worker.ErrUnknownTaskType) {
@@ -150,7 +150,7 @@ func (f *TaskHandler) HandleTask(ctx context.Context, tx pgx.Tx, spec worker.Tas
 	}
 }
 
-func (f *TaskHandler) OnTaskFailed(ctx context.Context, tx pgx.Tx, failedTaskSpec worker.TaskSpec, taskID int32) error {
+func (f *TaskHandler) OnTaskFailed(ctx context.Context, tx core.Tx, failedTaskSpec worker.TaskSpec, taskID int32) error {
 	for _, handler := range f.externalTaskHandler {
 		if err := handler.OnTaskFailed(ctx, tx, failedTaskSpec, taskID); err != nil {
 			if errors.Is(err, worker.ErrUnknownTaskType) {

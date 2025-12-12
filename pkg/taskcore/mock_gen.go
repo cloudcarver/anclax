@@ -14,8 +14,8 @@ import (
 	json "encoding/json"
 	reflect "reflect"
 
+	core "github.com/cloudcarver/anclax/core"
 	apigen "github.com/cloudcarver/anclax/pkg/zgen/apigen"
-	pgx "github.com/jackc/pgx/v5"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -116,7 +116,7 @@ func (mr *MockTaskStoreInterfaceMockRecorder) UpdateCronJob(ctx, taskID, cronExp
 }
 
 // WithTx mocks base method.
-func (m *MockTaskStoreInterface) WithTx(tx pgx.Tx) TaskStoreInterface {
+func (m *MockTaskStoreInterface) WithTx(tx core.Tx) TaskStoreInterface {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "WithTx", tx)
 	ret0, _ := ret[0].(TaskStoreInterface)

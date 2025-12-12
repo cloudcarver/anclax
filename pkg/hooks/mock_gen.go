@@ -13,8 +13,8 @@ import (
 	context "context"
 	reflect "reflect"
 
+	core "github.com/cloudcarver/anclax/core"
 	macaroons "github.com/cloudcarver/anclax/pkg/macaroons"
-	pgx "github.com/jackc/pgx/v5"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -42,22 +42,8 @@ func (m *MockAnclaxHookInterface) EXPECT() *MockAnclaxHookInterfaceMockRecorder 
 	return m.recorder
 }
 
-// OnCreateToken mocks base method.
-func (m *MockAnclaxHookInterface) OnCreateToken(ctx context.Context, userID int32, macaroon *macaroons.Macaroon) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "OnCreateToken", ctx, userID, macaroon)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// OnCreateToken indicates an expected call of OnCreateToken.
-func (mr *MockAnclaxHookInterfaceMockRecorder) OnCreateToken(ctx, userID, macaroon any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnCreateToken", reflect.TypeOf((*MockAnclaxHookInterface)(nil).OnCreateToken), ctx, userID, macaroon)
-}
-
 // OnOrgCreated mocks base method.
-func (m *MockAnclaxHookInterface) OnOrgCreated(ctx context.Context, tx pgx.Tx, orgID int32) error {
+func (m *MockAnclaxHookInterface) OnOrgCreated(ctx context.Context, tx core.Tx, orgID int32) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "OnOrgCreated", ctx, tx, orgID)
 	ret0, _ := ret[0].(error)
@@ -71,7 +57,7 @@ func (mr *MockAnclaxHookInterfaceMockRecorder) OnOrgCreated(ctx, tx, orgID any) 
 }
 
 // OnUserCreated mocks base method.
-func (m *MockAnclaxHookInterface) OnUserCreated(ctx context.Context, tx pgx.Tx, userID int32) error {
+func (m *MockAnclaxHookInterface) OnUserCreated(ctx context.Context, tx core.Tx, userID int32) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "OnUserCreated", ctx, tx, userID)
 	ret0, _ := ret[0].(error)
@@ -82,6 +68,20 @@ func (m *MockAnclaxHookInterface) OnUserCreated(ctx context.Context, tx pgx.Tx, 
 func (mr *MockAnclaxHookInterfaceMockRecorder) OnUserCreated(ctx, tx, userID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnUserCreated", reflect.TypeOf((*MockAnclaxHookInterface)(nil).OnUserCreated), ctx, tx, userID)
+}
+
+// OnUserTokensCreated mocks base method.
+func (m *MockAnclaxHookInterface) OnUserTokensCreated(ctx context.Context, userID int32, macaroon *macaroons.Macaroon) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "OnUserTokensCreated", ctx, userID, macaroon)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// OnUserTokensCreated indicates an expected call of OnUserTokensCreated.
+func (mr *MockAnclaxHookInterfaceMockRecorder) OnUserTokensCreated(ctx, userID, macaroon any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnUserTokensCreated", reflect.TypeOf((*MockAnclaxHookInterface)(nil).OnUserTokensCreated), ctx, userID, macaroon)
 }
 
 // RegisterOnCreateToken mocks base method.

@@ -33,7 +33,7 @@ type AnclaxEvent struct {
 type AnclaxOpaqueKey struct {
 	ID        int64
 	Key       []byte
-	UserID    int32
+	UserID    *int32
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

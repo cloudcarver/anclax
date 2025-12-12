@@ -46,7 +46,7 @@ func TestCreate(t *testing.T) {
 		now:        func() time.Time { return currTime },
 	}
 
-	ret, err := store.Create(ctx, userID, key, ttl)
+	ret, err := store.Create(ctx, key, ttl, &userID)
 	require.NoError(t, err)
 	require.Equal(t, keyID, ret)
 }

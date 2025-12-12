@@ -3,7 +3,7 @@ externals:
   wire: v0.6.0
   sqlc: v1.27.0
   mockgen: v0.5.0
-  anclax: v0.3.39
+  anclax: v0.7.0
 
 clean:
   - pkg/zgen/apigen/*_gen.go
@@ -60,3 +60,6 @@ mockgen:
     - source: pkg/hooks/hooks.go
       destination: pkg/hooks/mock_gen.go
       package: hooks
+    - source: core/types.go
+      destination: core/mock_types.go
+      package: core

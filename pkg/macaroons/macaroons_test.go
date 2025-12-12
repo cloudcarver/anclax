@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/cloudcarver/anclax/pkg/macaroons/store"
-	store_mock "github.com/cloudcarver/anclax/pkg/macaroons/store/mock"
 	"github.com/gofiber/fiber/v2"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -29,7 +28,7 @@ func TestMacaroonManager_CreateMacaroon(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	keyStore := store_mock.NewMockKeyStore(ctrl)
+	keyStore := store.NewMockKeyStore(ctrl)
 	caveatParser := NewMockCaveatParserInterface(ctrl)
 
 	var (
@@ -53,19 +52,19 @@ func TestMacaroonManager_CreateMacaroon(t *testing.T) {
 	caveatParser.EXPECT().Parse(encodedCaveat1).Return(caveats[0], nil)
 	caveatParser.EXPECT().Parse(encodedCaveat2).Return(caveats[1], nil)
 
-	manager := &MacaroonsParser{
+	manager := &MacaroonsManager{
 		keyStore:     keyStore,
 		caveatParser: caveatParser,
 		randomKey:    func() ([]byte, error) { return []byte("key"), nil },
 	}
 
-	macaroon, err := manager.CreateToken(context.Background(), userID, caveats, ttl)
+	macaroon, err := manager.CreateToken(context.Background(), caveats, ttl, &userID)
 	require.NoError(t, err)
 
 	parsed, err := manager.Parse(context.Background(), macaroon.StringToken())
 	require.NoError(t, err)
 	require.Equal(t, keyID, parsed.keyID)
-	require.Equal(t, caveats, parsed.caveats)
+	require.Equal(t, caveats, parsed.Caveats)
 
 	macaroon.AddCaveat(&TestCaveat{Data: "caveat3"})
 	require.NoError(t, err)
@@ -79,14 +78,14 @@ func TestMacaroonManager_CreateMacaroon(t *testing.T) {
 
 	parsed, err = manager.Parse(context.Background(), macaroon.StringToken())
 	require.NoError(t, err)
-	require.Equal(t, append(caveats, &TestCaveat{Data: "caveat3"}), parsed.caveats)
+	require.Equal(t, append(caveats, &TestCaveat{Data: "caveat3"}), parsed.Caveats)
 }
 
 func TestInvalidateUserTokens(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	keyStore := store_mock.NewMockKeyStore(ctrl)
+	keyStore := store.NewMockKeyStore(ctrl)
 
 	var testCases = []struct {
 		name string
@@ -114,7 +113,7 @@ func TestInvalidateUserTokens(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			keyStore.EXPECT().DeleteUserKeys(gomock.Any(), userID).Return(tc.err)
 
-			manager := &MacaroonsParser{
+			manager := &MacaroonsManager{
 				keyStore: keyStore,
 			}
 

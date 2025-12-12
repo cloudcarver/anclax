@@ -60,12 +60,7 @@ func (controller *Controller) RefreshToken(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusBadRequest)
 	}
 
-	userID, err := controller.auth.ParseRefreshToken(c.Context(), params.RefreshToken)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).SendString(err.Error())
-	}
-
-	credentials, err := controller.svc.RefreshToken(c.Context(), userID, params.RefreshToken)
+	credentials, err := controller.svc.RefreshToken(c.Context(), params.RefreshToken)
 	if err != nil {
 		if errors.Is(err, service.ErrRefreshTokenExpired) {
 			return c.SendStatus(fiber.StatusUnauthorized)
