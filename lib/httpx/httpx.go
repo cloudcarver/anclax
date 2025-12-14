@@ -289,9 +289,7 @@ func (rc *RequestContext) Do() (*ResponseHelper, error) {
 	query := req.URL.Query()
 	for k, v := range rc.query {
 		for _, vv := range v {
-			fmt.Println(k, vv)
 			query.Add(k, vv)
-			fmt.Println(query.Encode())
 		}
 	}
 	req.URL.RawQuery = query.Encode()
