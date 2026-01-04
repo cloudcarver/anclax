@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/cloudcarver/anclax/pkg/taskcore"
 	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/pkg/errors"
-	"github.com/jackc/pgx/v5"
 )
 
 func init() {
@@ -31,12 +31,12 @@ type TaskRunner interface {
     // Increment the counter
 	RunAutoIncrementCounter(ctx context.Context, params *AutoIncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error)
     // Increment the counter
-	RunAutoIncrementCounterWithTx(ctx context.Context, tx pgx.Tx, params *AutoIncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error)
+	RunAutoIncrementCounterWithTx(ctx context.Context, tx core.Tx, params *AutoIncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error)
 
     // Increment the counter
 	RunIncrementCounter(ctx context.Context, params *IncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error)
     // Increment the counter
-	RunIncrementCounterWithTx(ctx context.Context, tx pgx.Tx, params *IncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error)
+	RunIncrementCounterWithTx(ctx context.Context, tx core.Tx, params *IncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error)
 }
 
 type Client struct {
@@ -56,7 +56,7 @@ func (c *Client) RunAutoIncrementCounter(ctx context.Context, params *AutoIncrem
 	return c.runAutoIncrementCounter(ctx, c.taskStore, params, overrides...)
 }
 
-func (c *Client) RunAutoIncrementCounterWithTx(ctx context.Context, tx pgx.Tx, params *AutoIncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+func (c *Client) RunAutoIncrementCounterWithTx(ctx context.Context, tx core.Tx, params *AutoIncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 	return c.runAutoIncrementCounter(ctx, c.taskStore.WithTx(tx), params, overrides...)
 }
 
@@ -100,7 +100,7 @@ func (c *Client) RunIncrementCounter(ctx context.Context, params *IncrementCount
 	return c.runIncrementCounter(ctx, c.taskStore, params, overrides...)
 }
 
-func (c *Client) RunIncrementCounterWithTx(ctx context.Context, tx pgx.Tx, params *IncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+func (c *Client) RunIncrementCounterWithTx(ctx context.Context, tx core.Tx, params *IncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 	return c.runIncrementCounter(ctx, c.taskStore.WithTx(tx), params, overrides...)
 }
 
@@ -167,11 +167,11 @@ func (r *IncrementCounterParameters) Marshal() (json.RawMessage, error) {
 
 type ExecutorInterface interface { 
     // Increment the counter
-	ExecuteAutoIncrementCounter(ctx context.Context, tx pgx.Tx, params *AutoIncrementCounterParameters) error
+	ExecuteAutoIncrementCounter(ctx context.Context, tx core.Tx, params *AutoIncrementCounterParameters) error
 
 
     // Increment the counter
-	ExecuteIncrementCounter(ctx context.Context, tx pgx.Tx, params *IncrementCounterParameters) error
+	ExecuteIncrementCounter(ctx context.Context, tx core.Tx, params *IncrementCounterParameters) error
 
 }
 
@@ -191,7 +191,7 @@ func (f *TaskHandler) RegisterTaskHandler(handler worker.TaskHandler) {
 	f.externalTaskHandler = append(f.externalTaskHandler, handler)
 }
 
-func (f *TaskHandler) HandleTask(ctx context.Context, tx pgx.Tx, spec worker.TaskSpec) error {
+func (f *TaskHandler) HandleTask(ctx context.Context, tx core.Tx, spec worker.TaskSpec) error {
 	for _, handler := range f.externalTaskHandler {
 		if err := handler.HandleTask(ctx, tx, spec); err != nil {
 			if errors.Is(err, worker.ErrUnknownTaskType) {
@@ -222,7 +222,7 @@ func (f *TaskHandler) HandleTask(ctx context.Context, tx pgx.Tx, spec worker.Tas
 	}
 }
 
-func (f *TaskHandler) OnTaskFailed(ctx context.Context, tx pgx.Tx, failedTaskSpec worker.TaskSpec, taskID int32) error {
+func (f *TaskHandler) OnTaskFailed(ctx context.Context, tx core.Tx, failedTaskSpec worker.TaskSpec, taskID int32) error {
 	for _, handler := range f.externalTaskHandler {
 		if err := handler.OnTaskFailed(ctx, tx, failedTaskSpec, taskID); err != nil {
 			if errors.Is(err, worker.ErrUnknownTaskType) {

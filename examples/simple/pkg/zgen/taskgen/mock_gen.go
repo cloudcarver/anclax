@@ -13,8 +13,8 @@ import (
 	context "context"
 	reflect "reflect"
 
+	core "github.com/cloudcarver/anclax/core"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore"
-	pgx "github.com/jackc/pgx/v5"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -63,7 +63,7 @@ func (mr *MockTaskRunnerMockRecorder) RunAutoIncrementCounter(ctx, params any, o
 }
 
 // RunAutoIncrementCounterWithTx mocks base method.
-func (m *MockTaskRunner) RunAutoIncrementCounterWithTx(ctx context.Context, tx pgx.Tx, params *AutoIncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+func (m *MockTaskRunner) RunAutoIncrementCounterWithTx(ctx context.Context, tx core.Tx, params *AutoIncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, tx, params}
 	for _, a := range overrides {
@@ -103,7 +103,7 @@ func (mr *MockTaskRunnerMockRecorder) RunIncrementCounter(ctx, params any, overr
 }
 
 // RunIncrementCounterWithTx mocks base method.
-func (m *MockTaskRunner) RunIncrementCounterWithTx(ctx context.Context, tx pgx.Tx, params *IncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+func (m *MockTaskRunner) RunIncrementCounterWithTx(ctx context.Context, tx core.Tx, params *IncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, tx, params}
 	for _, a := range overrides {
@@ -147,7 +147,7 @@ func (m *MockExecutorInterface) EXPECT() *MockExecutorInterfaceMockRecorder {
 }
 
 // ExecuteAutoIncrementCounter mocks base method.
-func (m *MockExecutorInterface) ExecuteAutoIncrementCounter(ctx context.Context, tx pgx.Tx, params *AutoIncrementCounterParameters) error {
+func (m *MockExecutorInterface) ExecuteAutoIncrementCounter(ctx context.Context, tx core.Tx, params *AutoIncrementCounterParameters) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ExecuteAutoIncrementCounter", ctx, tx, params)
 	ret0, _ := ret[0].(error)
@@ -161,7 +161,7 @@ func (mr *MockExecutorInterfaceMockRecorder) ExecuteAutoIncrementCounter(ctx, tx
 }
 
 // ExecuteIncrementCounter mocks base method.
-func (m *MockExecutorInterface) ExecuteIncrementCounter(ctx context.Context, tx pgx.Tx, params *IncrementCounterParameters) error {
+func (m *MockExecutorInterface) ExecuteIncrementCounter(ctx context.Context, tx core.Tx, params *IncrementCounterParameters) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ExecuteIncrementCounter", ctx, tx, params)
 	ret0, _ := ret[0].(error)
