@@ -1,19 +1,19 @@
 # Database
 
-schemas -> `sql/migrations`
-queries -> `sql/queries`
+Schemas live in `sql/migrations`.
+Queries live in `sql/queries`.
 
-These 2 files are single source of truth. Use `anclax gen` after modification and code will be generated into `pkg/zgen/querier`.
+These two directories are the source of truth. Run `anclax gen` after modifications to regenerate `pkg/zgen/querier`.
 
 Follow these rules when defining database schema and queries:
-1. Define JSONB column schema in `api/v1.yaml` and let `anclax gen` generate the Go type in `pkg/zgen/apigen`. Then define the type mapping in `sqlc.yaml`. 
-2. For required field, use NOT NULL. NULLABLE column will be a pointer type in Go. 
-3. If the ID is publicly exposed, use UUID type. 
-4. Use proper indexing according to query patterns.
-5. Queries define the bulding blocks, assemble them in service layer.
+1. Define JSONB column schema in `api/v1.yaml` and let `anclax gen` generate Go types in `pkg/zgen/apigen`. Then map the type in `sqlc.yaml`.
+2. For required fields, use `NOT NULL`. Nullable columns become pointer types in Go.
+3. If an ID is publicly exposed, use UUID.
+4. Add indexes based on query patterns.
+5. Queries define the building blocks; assemble them in the service layer.
 
 The generated code is wrapped by `pkg/zcore/model`. 
-To run a transaction, use these according to the use case:
+To run a transaction, use these based on the use case:
 ```go
 // The callback is in tx, return error to rollback, return nil to commit.
 RunTransactionWithTx(ctx context.Context, f func(tx core.Tx, model ModelInterface) error) (retErr error)

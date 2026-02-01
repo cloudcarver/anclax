@@ -1,8 +1,7 @@
 # Dependency Injection
 
-Anclax uses wire for dependency injection.
-
-We prefer the singleton pattern.
+Anclax uses Wire for dependency injection.
+Prefer the singleton pattern.
 
 Use provider to create the object:
 ```go
@@ -12,7 +11,7 @@ func NewMyModule(config *config.Config) MyModuleInterface {
 }
 ```
 
-Register provider in `./wire/wire.go`, ignore `./wire/wire_gen.go`. 
+Register providers in `./wire/wire.go`. Ignore `./wire/wire_gen.go`.
 
 You can pass an object registered in the wire in another provider:
 ```go
@@ -20,6 +19,6 @@ func NewMyService(myModule MyModuleInterface, querier model.ModelInterface) MySe
     return &MyService{myModule: myModule, model: querier}
 }
 ```
-Then wire_gen.go calls the factory methods in the right order.
+Then `wire_gen.go` calls the factory methods in the right order.
 
 If a provider is updated, run `anclax gen` to regenerate code.

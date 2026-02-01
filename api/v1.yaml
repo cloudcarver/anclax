@@ -200,7 +200,13 @@ components:
         uniqueTag:
           type: string
           description: Unique tag of the task
+        workerId:
+          type: string
+          description: Worker ID that currently owns the task
         startedAt:
+          type: string
+          format: date-time
+        lockedAt:
           type: string
           format: date-time
         createdAt:
@@ -240,6 +246,10 @@ components:
           $ref: "#/components/schemas/TaskCronjob"
         retryPolicy:
           $ref: "#/components/schemas/TaskRetryPolicy"
+        labels:
+          type: array
+          items:
+            type: string
 
     TaskRetryPolicy:
       type: object

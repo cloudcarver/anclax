@@ -41,6 +41,21 @@ type Worker struct {
 
 	// (Optional) The interval of the poll, default is 1 second
 	PollInterval *time.Duration `yaml:"pollinterval"`
+
+	// (Optional) Heartbeat interval for worker registry, default is 3s
+	HeartbeatInterval *time.Duration `yaml:"heartbeatInterval"`
+
+	// (Optional) Task lock TTL, default is 9s
+	LockTTL *time.Duration `yaml:"lockTtl"`
+
+	// (Optional) Task lock refresh interval, default is heartbeat interval
+	LockRefreshInterval *time.Duration `yaml:"lockRefreshInterval"`
+
+	// (Optional) Worker labels for task filtering
+	Labels []string `yaml:"labels"`
+
+	// (Optional) Static worker ID (UUID). If unset, a random UUID is generated.
+	WorkerID *string `yaml:"workerId"`
 }
 
 type Debug struct {

@@ -9,6 +9,8 @@ import (
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/pkg/errors"
 	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"
@@ -18,13 +20,15 @@ type TaskLifeCycleHandler struct {
 	model       model.ModelInterface
 	taskHandler TaskHandler
 	now         func() time.Time
+	workerID    uuid.UUID
 }
 
-func NewTaskLifeCycleHandler(model model.ModelInterface, taskHandler TaskHandler) *TaskLifeCycleHandler {
+func NewTaskLifeCycleHandler(model model.ModelInterface, taskHandler TaskHandler, workerID uuid.UUID) *TaskLifeCycleHandler {
 	return &TaskLifeCycleHandler{
 		model:       model,
 		taskHandler: taskHandler,
 		now:         time.Now,
+		workerID:    workerID,
 	}
 }
 
@@ -41,6 +45,9 @@ func (a *TaskLifeCycleHandler) isCronjob(task apigen.Task) bool {
 
 func (a *TaskLifeCycleHandler) HandleFailed(ctx context.Context, tx core.Tx, task apigen.Task, err error) error {
 	txm := a.model.SpawnWithTx(tx)
+	if err := a.ensureOwnership(ctx, txm, task.ID); err != nil {
+		return err
+	}
 	// insert error event if the error is not intentional
 	if err != taskcore.ErrRetryTaskWithoutErrorEvent {
 		if _, err := txm.InsertEvent(ctx, apigen.EventSpec{
@@ -57,6 +64,9 @@ func (a *TaskLifeCycleHandler) HandleFailed(ctx context.Context, tx core.Tx, tas
 	// cronjob should be run again no matter what (fatal or not)
 	if a.isCronjob(task) {
 		log.Info("cronjob failed, will be run again", zap.Int32("task_id", task.ID))
+		if err := a.releaseLock(ctx, txm, task.ID); err != nil {
+			return err
+		}
 		return nil
 	}
 
@@ -69,11 +79,18 @@ func (a *TaskLifeCycleHandler) HandleFailed(ctx context.Context, tx core.Tx, tas
 			}
 			nextTime := a.now().Add(interval)
 			log.Info("task failed, schedule next run", zap.Int32("task_id", task.ID), zap.Time("next_time", nextTime))
-			if err := txm.UpdateTaskStartedAt(ctx, querier.UpdateTaskStartedAtParams{
+			if _, err := txm.UpdateTaskStartedAtByWorker(ctx, querier.UpdateTaskStartedAtByWorkerParams{
 				ID:        task.ID,
 				StartedAt: &nextTime,
+				WorkerID:  a.workerIDParam(),
 			}); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return taskcore.ErrTaskLockLost
+				}
 				return errors.Wrap(err, "update task started at")
+			}
+			if err := a.releaseLock(ctx, txm, task.ID); err != nil {
+				return err
 			}
 			return nil
 		}
@@ -85,10 +102,14 @@ func (a *TaskLifeCycleHandler) HandleFailed(ctx context.Context, tx core.Tx, tas
 	}
 
 	// update task status to failed
-	if err := txm.UpdateTaskStatus(ctx, querier.UpdateTaskStatusParams{
-		ID:     task.ID,
-		Status: string(apigen.Failed),
+	if _, err := txm.UpdateTaskStatusByWorker(ctx, querier.UpdateTaskStatusByWorkerParams{
+		ID:       task.ID,
+		Status:   string(apigen.Failed),
+		WorkerID: a.workerIDParam(),
 	}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return taskcore.ErrTaskLockLost
+		}
 		return errors.Wrap(err, "update task status")
 	}
 	return nil
@@ -96,6 +117,9 @@ func (a *TaskLifeCycleHandler) HandleFailed(ctx context.Context, tx core.Tx, tas
 
 func (a *TaskLifeCycleHandler) HandleCompleted(ctx context.Context, tx core.Tx, task apigen.Task) error {
 	txm := a.model.SpawnWithTx(tx)
+	if err := a.ensureOwnership(ctx, txm, task.ID); err != nil {
+		return err
+	}
 	// the event must be reported
 	if _, err := txm.InsertEvent(ctx, apigen.EventSpec{
 		Type: apigen.TaskCompleted,
@@ -109,13 +133,20 @@ func (a *TaskLifeCycleHandler) HandleCompleted(ctx context.Context, tx core.Tx, 
 	// cronjob should be run again anyway, no need to update status
 	if a.isCronjob(task) {
 		log.Info("cronjob success, will be run again", zap.Int32("task_id", task.ID))
+		if err := a.releaseLock(ctx, txm, task.ID); err != nil {
+			return err
+		}
 		return nil
 	}
 
-	if err := txm.UpdateTaskStatus(ctx, querier.UpdateTaskStatusParams{
-		ID:     task.ID,
-		Status: string(apigen.Completed),
+	if _, err := txm.UpdateTaskStatusByWorker(ctx, querier.UpdateTaskStatusByWorkerParams{
+		ID:       task.ID,
+		Status:   string(apigen.Completed),
+		WorkerID: a.workerIDParam(),
 	}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return taskcore.ErrTaskLockLost
+		}
 		return errors.Wrap(err, "update task status")
 	}
 	return nil
@@ -135,11 +166,45 @@ func (a *TaskLifeCycleHandler) handleCronjob(ctx context.Context, tx core.Tx, ta
 		return errors.Wrapf(err, "failed to parse cron expression: %s", cronjob.CronExpression)
 	}
 	nextTime := cron.Next(a.now())
-	if err := txm.UpdateTaskStartedAt(ctx, querier.UpdateTaskStartedAtParams{
+	if _, err := txm.UpdateTaskStartedAtByWorker(ctx, querier.UpdateTaskStartedAtByWorkerParams{
 		ID:        task.ID,
 		StartedAt: &nextTime,
+		WorkerID:  a.workerIDParam(),
 	}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return taskcore.ErrTaskLockLost
+		}
 		return errors.Wrap(err, "failed to update task started at")
 	}
 	return nil
+}
+
+func (a *TaskLifeCycleHandler) ensureOwnership(ctx context.Context, txm model.ModelInterface, taskID int32) error {
+	if _, err := txm.VerifyTaskOwnership(ctx, querier.VerifyTaskOwnershipParams{
+		ID:       taskID,
+		WorkerID: a.workerIDParam(),
+	}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return taskcore.ErrTaskLockLost
+		}
+		return errors.Wrap(err, "verify task ownership")
+	}
+	return nil
+}
+
+func (a *TaskLifeCycleHandler) releaseLock(ctx context.Context, txm model.ModelInterface, taskID int32) error {
+	if _, err := txm.ReleaseTaskLockByWorker(ctx, querier.ReleaseTaskLockByWorkerParams{
+		ID:       taskID,
+		WorkerID: a.workerIDParam(),
+	}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return taskcore.ErrTaskLockLost
+		}
+		return errors.Wrap(err, "release task lock")
+	}
+	return nil
+}
+
+func (a *TaskLifeCycleHandler) workerIDParam() uuid.NullUUID {
+	return uuid.NullUUID{UUID: a.workerID, Valid: true}
 }

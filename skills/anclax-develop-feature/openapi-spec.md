@@ -1,12 +1,12 @@
 # OpenAPI Spec
 
-`anclax gen` generates code from OpenAPI spec in `api/v1.yaml`. The generated code is in `pkg/zgen/apigen`
+`anclax gen` generates code from the OpenAPI spec in `api/v1.yaml`. Generated code lives in `pkg/zgen/apigen`.
 
 Follow these rules when writing OpenAPI spec:
-1. Always use `required` for required fields. If the field is not required, it will be a pointer type in Go
-2. Always define schema in advance, use schema reference (`$ref`) and no inline schema
-3. Define clear operationId for each API, which will be the method name in handler
-4. Follow the concise part of RESTful API design principles, no need to be strictly RESTful
-5. Use HTTP codes for conventional purposes, like 201 for created, 204 for no content, 402 for payment required, etc. Only explicitly define codes when the code is special, codes like 200, 400, 401, 403, 404, 500, ...are implicitly defined if no response body needed.
-6. For error message, just send string in body. If it is unexpected error, DO NOT expose the internal error message, just return err and Anclax will log it.
-7. Use plural nouns for resource names in paths, like `/users`, `/orders`
+1. Use `required` for required fields. Non-required fields become pointer types in Go.
+2. Define schemas under `components/schemas` and reference them with `$ref`. Avoid inline schemas.
+3. Set clear `operationId` values; they map to handler method names.
+4. Follow pragmatic REST conventions; strict REST is not required.
+5. Use HTTP status codes conventionally (201 created, 204 no content, 402 payment required). Define explicit responses only when a response body is needed or behavior is special.
+6. For error messages, return a string body for expected errors. For unexpected errors, return the error and let Anclax log details without exposing internals.
+7. Use plural nouns in paths (e.g., `/users`, `/orders`).

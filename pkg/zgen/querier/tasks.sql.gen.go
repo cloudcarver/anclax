@@ -10,11 +10,130 @@ import (
 	"time"
 
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
+	"github.com/google/uuid"
 )
+
+const claimTask = `-- name: ClaimTask :one
+UPDATE anclax.tasks
+SET
+    locked_at = CURRENT_TIMESTAMP,
+    worker_id = $1,
+    attempts = attempts + 1,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = (
+    SELECT t.id FROM anclax.tasks t
+    WHERE
+        t.status = 'pending'
+        AND (
+            t.started_at IS NULL OR t.started_at < NOW()
+        )
+        AND (
+            t.locked_at IS NULL OR t.locked_at < $2
+        )
+        AND (
+            $3::bool = false
+            OR t.attributes->'labels' IS NULL
+            OR jsonb_array_length(t.attributes->'labels') = 0
+            OR (t.attributes->'labels' ?| $4::text[])
+        )
+    ORDER BY RANDOM()
+    LIMIT 1
+)
+RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id
+`
+
+type ClaimTaskParams struct {
+	WorkerID   uuid.NullUUID
+	LockExpiry *time.Time
+	HasLabels  bool
+	Labels     []string
+}
+
+func (q *Queries) ClaimTask(ctx context.Context, arg ClaimTaskParams) (*AnclaxTask, error) {
+	row := q.db.QueryRow(ctx, claimTask,
+		arg.WorkerID,
+		arg.LockExpiry,
+		arg.HasLabels,
+		arg.Labels,
+	)
+	var i AnclaxTask
+	err := row.Scan(
+		&i.ID,
+		&i.Attributes,
+		&i.Spec,
+		&i.Status,
+		&i.UniqueTag,
+		&i.StartedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Attempts,
+		&i.LockedAt,
+		&i.WorkerID,
+	)
+	return &i, err
+}
+
+const claimTaskByID = `-- name: ClaimTaskByID :one
+UPDATE anclax.tasks
+SET
+    locked_at = CURRENT_TIMESTAMP,
+    worker_id = $1,
+    attempts = attempts + 1,
+    updated_at = CURRENT_TIMESTAMP
+WHERE
+    id = $2
+    AND status = 'pending'
+    AND (
+        started_at IS NULL OR started_at < NOW()
+    )
+    AND (
+        locked_at IS NULL OR locked_at < $3
+    )
+    AND (
+        $4::bool = false
+        OR attributes->'labels' IS NULL
+        OR jsonb_array_length(attributes->'labels') = 0
+        OR (attributes->'labels' ?| $5::text[])
+    )
+RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id
+`
+
+type ClaimTaskByIDParams struct {
+	WorkerID   uuid.NullUUID
+	ID         int32
+	LockExpiry *time.Time
+	HasLabels  bool
+	Labels     []string
+}
+
+func (q *Queries) ClaimTaskByID(ctx context.Context, arg ClaimTaskByIDParams) (*AnclaxTask, error) {
+	row := q.db.QueryRow(ctx, claimTaskByID,
+		arg.WorkerID,
+		arg.ID,
+		arg.LockExpiry,
+		arg.HasLabels,
+		arg.Labels,
+	)
+	var i AnclaxTask
+	err := row.Scan(
+		&i.ID,
+		&i.Attributes,
+		&i.Spec,
+		&i.Status,
+		&i.UniqueTag,
+		&i.StartedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Attempts,
+		&i.LockedAt,
+		&i.WorkerID,
+	)
+	return &i, err
+}
 
 const createTask = `-- name: CreateTask :one
 INSERT INTO anclax.tasks (attributes, spec, status, started_at, unique_tag)
-VALUES ($1, $2, $3, $4, $5) ON CONFLICT (unique_tag) DO NOTHING RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts
+VALUES ($1, $2, $3, $4, $5) ON CONFLICT (unique_tag) DO NOTHING RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id
 `
 
 type CreateTaskParams struct {
@@ -44,12 +163,14 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (*Anclax
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Attempts,
+		&i.LockedAt,
+		&i.WorkerID,
 	)
 	return &i, err
 }
 
 const getTaskByID = `-- name: GetTaskByID :one
-SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts FROM anclax.tasks
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id FROM anclax.tasks
 WHERE id = $1
 `
 
@@ -66,12 +187,14 @@ func (q *Queries) GetTaskByID(ctx context.Context, id int32) (*AnclaxTask, error
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Attempts,
+		&i.LockedAt,
+		&i.WorkerID,
 	)
 	return &i, err
 }
 
 const getTaskByUniqueTag = `-- name: GetTaskByUniqueTag :one
-SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts FROM anclax.tasks
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id FROM anclax.tasks
 WHERE unique_tag = $1
 `
 
@@ -88,6 +211,8 @@ func (q *Queries) GetTaskByUniqueTag(ctx context.Context, uniqueTag *string) (*A
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Attempts,
+		&i.LockedAt,
+		&i.WorkerID,
 	)
 	return &i, err
 }
@@ -117,13 +242,12 @@ func (q *Queries) InsertEvent(ctx context.Context, spec apigen.EventSpec) (*Ancl
 }
 
 const listAllPendingTasks = `-- name: ListAllPendingTasks :many
-SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts FROM anclax.tasks
-WHERE 
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id FROM anclax.tasks
+WHERE
     status = 'pending'
     AND (
         started_at IS NULL OR started_at < NOW()
     )
-FOR UPDATE SKIP LOCKED
 `
 
 func (q *Queries) ListAllPendingTasks(ctx context.Context) ([]*AnclaxTask, error) {
@@ -145,6 +269,8 @@ func (q *Queries) ListAllPendingTasks(ctx context.Context) ([]*AnclaxTask, error
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Attempts,
+			&i.LockedAt,
+			&i.WorkerID,
 		); err != nil {
 			return nil, err
 		}
@@ -156,62 +282,42 @@ func (q *Queries) ListAllPendingTasks(ctx context.Context) ([]*AnclaxTask, error
 	return items, nil
 }
 
-const pullTask = `-- name: PullTask :one
-SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts FROM anclax.tasks
-WHERE 
-    status = 'pending'
-    AND (
-        started_at IS NULL OR started_at < NOW()
-    )
-ORDER BY RANDOM()
-FOR UPDATE SKIP LOCKED
-LIMIT 1
+const refreshTaskLock = `-- name: RefreshTaskLock :one
+UPDATE anclax.tasks
+SET locked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+WHERE id = $1 AND worker_id = $2
+RETURNING id
 `
 
-func (q *Queries) PullTask(ctx context.Context) (*AnclaxTask, error) {
-	row := q.db.QueryRow(ctx, pullTask)
-	var i AnclaxTask
-	err := row.Scan(
-		&i.ID,
-		&i.Attributes,
-		&i.Spec,
-		&i.Status,
-		&i.UniqueTag,
-		&i.StartedAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.Attempts,
-	)
-	return &i, err
+type RefreshTaskLockParams struct {
+	ID       int32
+	WorkerID uuid.NullUUID
 }
 
-const pullTaskByID = `-- name: PullTaskByID :one
-SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts FROM anclax.tasks
-WHERE 
-    status = 'pending'
-    AND id = $1
-    AND (
-        started_at IS NULL OR started_at < NOW()
-    )
-ORDER BY created_at ASC
-FOR UPDATE SKIP LOCKED
+func (q *Queries) RefreshTaskLock(ctx context.Context, arg RefreshTaskLockParams) (int32, error) {
+	row := q.db.QueryRow(ctx, refreshTaskLock, arg.ID, arg.WorkerID)
+	var id int32
+	err := row.Scan(&id)
+	return id, err
+}
+
+const releaseTaskLockByWorker = `-- name: ReleaseTaskLockByWorker :one
+UPDATE anclax.tasks
+SET locked_at = NULL, worker_id = NULL, updated_at = CURRENT_TIMESTAMP
+WHERE id = $1 AND worker_id = $2
+RETURNING id
 `
 
-func (q *Queries) PullTaskByID(ctx context.Context, id int32) (*AnclaxTask, error) {
-	row := q.db.QueryRow(ctx, pullTaskByID, id)
-	var i AnclaxTask
-	err := row.Scan(
-		&i.ID,
-		&i.Attributes,
-		&i.Spec,
-		&i.Status,
-		&i.UniqueTag,
-		&i.StartedAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.Attempts,
-	)
-	return &i, err
+type ReleaseTaskLockByWorkerParams struct {
+	ID       int32
+	WorkerID uuid.NullUUID
+}
+
+func (q *Queries) ReleaseTaskLockByWorker(ctx context.Context, arg ReleaseTaskLockByWorkerParams) (int32, error) {
+	row := q.db.QueryRow(ctx, releaseTaskLockByWorker, arg.ID, arg.WorkerID)
+	var id int32
+	err := row.Scan(&id)
+	return id, err
 }
 
 const updateTask = `-- name: UpdateTask :exec
@@ -253,6 +359,26 @@ func (q *Queries) UpdateTaskStartedAt(ctx context.Context, arg UpdateTaskStarted
 	return err
 }
 
+const updateTaskStartedAtByWorker = `-- name: UpdateTaskStartedAtByWorker :one
+UPDATE anclax.tasks
+SET started_at = $2, updated_at = CURRENT_TIMESTAMP
+WHERE id = $1 AND worker_id = $3
+RETURNING id
+`
+
+type UpdateTaskStartedAtByWorkerParams struct {
+	ID        int32
+	StartedAt *time.Time
+	WorkerID  uuid.NullUUID
+}
+
+func (q *Queries) UpdateTaskStartedAtByWorker(ctx context.Context, arg UpdateTaskStartedAtByWorkerParams) (int32, error) {
+	row := q.db.QueryRow(ctx, updateTaskStartedAtByWorker, arg.ID, arg.StartedAt, arg.WorkerID)
+	var id int32
+	err := row.Scan(&id)
+	return id, err
+}
+
 const updateTaskStatus = `-- name: UpdateTaskStatus :exec
 UPDATE anclax.tasks
 SET 
@@ -269,4 +395,45 @@ type UpdateTaskStatusParams struct {
 func (q *Queries) UpdateTaskStatus(ctx context.Context, arg UpdateTaskStatusParams) error {
 	_, err := q.db.Exec(ctx, updateTaskStatus, arg.ID, arg.Status)
 	return err
+}
+
+const updateTaskStatusByWorker = `-- name: UpdateTaskStatusByWorker :one
+UPDATE anclax.tasks
+SET
+    status = $2,
+    locked_at = NULL,
+    worker_id = NULL,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = $1 AND worker_id = $3
+RETURNING id
+`
+
+type UpdateTaskStatusByWorkerParams struct {
+	ID       int32
+	Status   string
+	WorkerID uuid.NullUUID
+}
+
+func (q *Queries) UpdateTaskStatusByWorker(ctx context.Context, arg UpdateTaskStatusByWorkerParams) (int32, error) {
+	row := q.db.QueryRow(ctx, updateTaskStatusByWorker, arg.ID, arg.Status, arg.WorkerID)
+	var id int32
+	err := row.Scan(&id)
+	return id, err
+}
+
+const verifyTaskOwnership = `-- name: VerifyTaskOwnership :one
+SELECT id FROM anclax.tasks
+WHERE id = $1 AND worker_id = $2
+`
+
+type VerifyTaskOwnershipParams struct {
+	ID       int32
+	WorkerID uuid.NullUUID
+}
+
+func (q *Queries) VerifyTaskOwnership(ctx context.Context, arg VerifyTaskOwnershipParams) (int32, error) {
+	row := q.db.QueryRow(ctx, verifyTaskOwnership, arg.ID, arg.WorkerID)
+	var id int32
+	err := row.Scan(&id)
+	return id, err
 }

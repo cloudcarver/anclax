@@ -1,6 +1,6 @@
 # CRUD Operations Example in Anclax
 
-The API spec is the single source of truth. All code are implemented by depending on it.
+The OpenAPI spec is the single source of truth. Implement everything against the generated types.
 ```yaml
 # example: v1.yaml
 paths:
@@ -22,7 +22,7 @@ paths:
                 items:
                   $ref: '#/components/schemas/HelpItem' # always use schema reference
 components:
-  schema:
+  schemas:
     GetHelpReq:
       type: object
       properties:
@@ -37,7 +37,7 @@ components:
           type: string
 ```
 
-The interface of handler or controller are generated from the API spec, it translates the service layer to HTTP APIs.
+Handler interfaces are generated from the API spec; handlers translate the service layer to HTTP.
 ```go
 // example: handlers.go
 func (h *Handler) GetHelp(c *fiber.Ctx) error {
@@ -56,7 +56,7 @@ func (h *Handler) GetHelp(c *fiber.Ctx) error {
 }
 ``` 
 
-The service layer implements the business logic, it translates the model types to types generated from the API spec.  
+The service layer implements the business logic and translates model types to API spec types.
 ```go
 var ErrHelpNotFound = errors.New("help items not found")
 
@@ -80,13 +80,13 @@ func helpToSpec(h *querier.Help) *apigen.HelpItem {
 }
 ```
 
-The model layer interacts with the database, its types and interfaces are generated via sqlc. 
-Define schema in `sql/migrations`, make sure write a new migration step when changing the database schema. If these changes are in the same commit, just use one new migration file. 
-Define queries in `sql/queries`, sqlc will generate types and interfaces for these queries. 
+The model layer interacts with the database. Types and interfaces are generated via sqlc.
+Define schema in `sql/migrations`. Add a new migration step when changing schema; group related changes into one new migration file per commit.
+Define queries in `sql/queries`; sqlc generates types and interfaces for these queries.
 
 ```sql
 -- name: MatchHelps :many
 SELECT * FROM helps WHERE content ILIKE '%' || $1 || '%';
 ```
 
-Check `sqlc.yaml` to see where the generated code is located.
+Check `sqlc.yaml` to see where generated code is located, then run `anclax gen` after spec/SQL changes.

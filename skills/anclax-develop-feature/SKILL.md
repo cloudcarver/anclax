@@ -1,17 +1,35 @@
 ---
 name: anclax-develop-feature
-description: Anclax is a Golang backend framework. This skill should be used when writing, reviewing or refactoring backend backed by Anclax. Triggers on tasks involving HTTP APIs, websocket, database interactions, business logic, async tasks. 
+description: Develop, review, or refactor Go services built with Anclax, including OpenAPI specs, handlers, service/business logic, database/sqlc changes, async tasks, and Wire dependency injection.
 ---
 
-# Anclax Best Practices
+# Anclax Development Workflow
 
-The idea of Anclax is to use compiler to check if the business logic meets the spec definition. 
+Use Anclax generated types as the contract between layers and keep specs/SQL as the source of truth.
 
-## Anclax Setup
+## Core flow
 
-Anclax framework generates code via anclax CLI, the config is in `anclax.yaml`. Check the config to see where the generated code is located.
+1. Inspect `anclax.yaml` to learn generation paths and enabled generators.
+2. Update sources first:
+   - OpenAPI: `api/v1.yaml`
+   - Tasks: `api/tasks.yaml`
+   - DB schema: `sql/migrations`
+   - Queries: `sql/queries`
+3. Run `anclax gen` after any spec/SQL/Wire changes.
+4. Implement code against generated interfaces and types.
+5. Add unit tests for service logic with mocks.
+
+## Layering rules
+
+- Handler: parse HTTP, call service, map errors to HTTP responses.
+- Service: implement business logic, accept and return `apigen` types.
+- Model: use `pkg/zcore/model` and sqlc-generated queries.
+- Async tasks: define in `api/tasks.yaml`, implement `taskgen.ExecutorInterface`, enqueue via `taskgen.TaskRunner`.
 
 ## References and Examples
- - [CURD operations](./crud.md): Work on CRUD operations in Anclax framework. About OpenAPI spec, handler, service, model
- - [OpenAPI Spec](./openapi-spec.md): Best practices when writing OpenAPI spec
- - [Business Logic](./business-logic.md): Best practices when writing business logic
+  - [CRUD operations](./crud.md): End-to-end CRUD flow and mapping examples.
+  - [OpenAPI Spec](./openapi-spec.md): Conventions for OpenAPI specs in Anclax.
+  - [Business Logic](./business-logic.md): Service-layer rules and error handling.
+  - [Database](./database.md): SQL/schema rules and transaction helpers.
+  - [Dependency Injection](./dependency-injestion.md): Wire DI conventions.
+  - [Async Tasks](./async-tasks.md): Task definitions, execution, retries, and hooks.
