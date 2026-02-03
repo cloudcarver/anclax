@@ -141,6 +141,13 @@ components:
 ```
 
 ### Async tasks: at-least-once, retries, cron
+- **Pain points before**: hand-building `apigen.Task` payloads and attributes was repetitive and easy to get wrong.
+- **Pain points before**: retry/cron/unique-tag logic got duplicated and drifted across services.
+- **Pain points before**: enqueueing inside a DB transaction required custom glue code.
+- **Pain points before**: task params and handler signatures could fall out of sync.
+
+**Refactor solution**: define tasks in `api/tasks.yaml`, run `anclax gen`, and use the generated `taskgen.TaskRunner` (`RunX` / `RunXWithTx`) with `taskcore` overrides when needed.
+
 ```yaml
 # api/tasks.yaml
 tasks:
@@ -161,20 +168,32 @@ tasks:
     cron: "0 * * * *"
 ```
 
+Before (manual task record):
 ```go
-// Enqueue outside a tx
-taskID, _ := taskrunner.RunSendWelcomeEmail(ctx, &taskgen.SendWelcomeEmailParameters{
-  UserId: 123, TemplateId: "welcome",
-}, taskcore.WithUniqueTag("welcome-email:123"))
+params := &taskgen.SendWelcomeEmailParameters{UserId: user.ID, TemplateId: "welcome"}
+payload, err := params.Marshal()
+if err != nil {
+  return err
+}
+
+task := &apigen.Task{
+  Spec: apigen.TaskSpec{Type: taskgen.SendWelcomeEmail, Payload: payload},
+  Attributes: apigen.TaskAttributes{
+    RetryPolicy: &apigen.TaskRetryPolicy{Interval: "5m", MaxAttempts: 3},
+  },
+  Status: apigen.Pending,
+}
+
+taskID, err := taskStore.PushTask(ctx, task)
 ```
 
+After (generated runner + transaction-safe enqueue):
 ```go
-// Enqueue atomically with your business logic
-_ = model.RunTransactionWithTx(ctx, func(tx pgx.Tx, txm model.ModelInterface) error {
-  // ... create user ...
+err := model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
   _, err := taskrunner.RunSendWelcomeEmailWithTx(ctx, tx, &taskgen.SendWelcomeEmailParameters{
-    UserId: user.ID, TemplateId: "welcome",
-  })
+    UserId: user.ID,
+    TemplateId: "welcome",
+  }, taskcore.WithUniqueTag("welcome:"+strconv.Itoa(int(user.ID))))
   return err
 })
 ```
@@ -211,18 +230,6 @@ SELECT value FROM counter LIMIT 1;
 -- name: IncrementCounter :exec
 UPDATE counter SET value = value + 1;
 ```
-
-## Running async tasks ⚙️
-
-```go
-// Trigger the incrementCounter task
-taskID, err := taskrunner.RunIncrementCounter(ctx, &taskgen.IncrementCounterParameters{})
-if err != nil {
-  // handle error
-}
-```
-
-Tasks run with at-least-once delivery guarantees and automatic retries based on your retry policy. You can also schedule tasks via cron expressions in `api/tasks.yaml`.
 
 ## Advanced: Custom initialization 🧩
 
@@ -271,5 +278,3 @@ Need more dependencies inside `Init`? Add them as parameters (e.g., `model.Model
 ## Examples 🧪
 
 - `examples/simple` — minimal end-to-end sample with HTTP, tasks, DI, and DB.
-
-
