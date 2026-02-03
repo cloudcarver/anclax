@@ -8,6 +8,14 @@
 
 Anclax 是面向小到中型应用（单个 PostgreSQL）。以模式定义 API 与任务，代码生成把正确性前移到编译期。
 
+### 推荐用法
+
+配合编码助手使用 Anclax skill：
+
+```bash
+npx skills add cloudcarver/anclax
+```
+
 ### 亮点（Highlights）✨
 
 - **YAML 优先 + 代码生成**：用 YAML 定义 HTTP 与任务的模式，自动生成强类型接口；缺失实现会在编译期暴露，而不是线上。
@@ -288,4 +296,3 @@ func InitAnclaxApplication(cfg *config.Config) (*anclax_app.Application, error) 
 ## 示例 🧪
 
 - `examples/simple` —— 一个包含 HTTP、任务、DI 与 DB 的最小端到端示例。
-

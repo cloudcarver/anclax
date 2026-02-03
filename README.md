@@ -10,6 +10,31 @@ Anclax is a definition‑first framework for small–medium apps (single Postgre
 
 Join our [Discord server](https://discord.gg/XxXXbyF59H).
 
+### Recommended setup
+
+Use the Anclax skill with the coding agent:
+
+1. Install Anclax CLI:
+
+  ```bash
+  go install github.com/cloudcarver/anclax/cmd/anclax@latest
+  ```
+
+2. Init your project:
+
+  ```bash
+  anclax init myapp github.com/me/myapp
+  cd myapp
+  ```
+
+3. Add Anclax skill to your coding agent
+
+  ```bash
+  npx skills add cloudcarver/anclax
+  ```
+
+
+
 ### Highlights ✨
 
 - **YAML-first, codegen-backed**: Define HTTP and task schemas in YAML; Anclax generates strongly-typed interfaces so missing implementations fail at compile time, not in prod.
