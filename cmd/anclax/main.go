@@ -5,14 +5,25 @@ import (
 	"log"
 	"os"
 
+	"github.com/cloudcarver/anclax"
 	"github.com/urfave/cli/v2"
 )
+
+var version = "dev"
+
+func init() {
+	data, err := anclax.Version.ReadFile("VERSION")
+	if err != nil {
+		panic(err)
+	}
+	version = string(data)
+}
 
 var versionCmd = &cli.Command{
 	Name:  "version",
 	Usage: "Show the version of anclax",
 	Action: func(c *cli.Context) error {
-		fmt.Println("v0.7.0")
+		fmt.Println(version)
 		return nil
 	},
 }

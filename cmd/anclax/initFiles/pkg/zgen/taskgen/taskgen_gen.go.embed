@@ -79,6 +79,7 @@ func (c *Client) runAutoIncrementCounter(ctx context.Context, taskstore taskcore
 	attributes.Cronjob = &apigen.TaskCronjob{
 		CronExpression: "*/5 * * * * *",
 	}
+	
 	task := &apigen.Task{
 		Attributes: attributes,
 		Spec:       spec,
@@ -120,6 +121,7 @@ func (c *Client) runIncrementCounter(ctx context.Context, taskstore taskcore.Tas
 		Interval:    "30m",
 		MaxAttempts: -1,
 	}
+	
 	
 	task := &apigen.Task{
 		Attributes: attributes,
@@ -166,13 +168,13 @@ func (r *IncrementCounterParameters) Marshal() (json.RawMessage, error) {
 }
 
 type ExecutorInterface interface { 
-    // Increment the counter
-	ExecuteAutoIncrementCounter(ctx context.Context, tx core.Tx, params *AutoIncrementCounterParameters) error
+     // Increment the counter
+	ExecuteAutoIncrementCounter(ctx context.Context, params *AutoIncrementCounterParameters) error
+ 
 
-
-    // Increment the counter
-	ExecuteIncrementCounter(ctx context.Context, tx core.Tx, params *IncrementCounterParameters) error
-
+     // Increment the counter
+	ExecuteIncrementCounter(ctx context.Context, params *IncrementCounterParameters) error
+ 
 }
 
 type TaskHandler struct {
@@ -191,9 +193,9 @@ func (f *TaskHandler) RegisterTaskHandler(handler worker.TaskHandler) {
 	f.externalTaskHandler = append(f.externalTaskHandler, handler)
 }
 
-func (f *TaskHandler) HandleTask(ctx context.Context, tx core.Tx, spec worker.TaskSpec) error {
+func (f *TaskHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) error {
 	for _, handler := range f.externalTaskHandler {
-		if err := handler.HandleTask(ctx, tx, spec); err != nil {
+		if err := handler.HandleTask(ctx, spec); err != nil {
 			if errors.Is(err, worker.ErrUnknownTaskType) {
 				continue
 			}
@@ -208,14 +210,14 @@ func (f *TaskHandler) HandleTask(ctx context.Context, tx core.Tx, spec worker.Ta
 		if err := params.Parse(spec.GetPayload()); err != nil {
 			return fmt.Errorf("failed to parse AutoIncrementCounter parameters: %w", err)
 		}
-		return f.executor.ExecuteAutoIncrementCounter(ctx, tx, &params)
+		return f.executor.ExecuteAutoIncrementCounter(ctx, &params)
 		
 	case IncrementCounter:
 		var params IncrementCounterParameters
 		if err := params.Parse(spec.GetPayload()); err != nil {
 			return fmt.Errorf("failed to parse IncrementCounter parameters: %w", err)
 		}
-		return f.executor.ExecuteIncrementCounter(ctx, tx, &params)
+		return f.executor.ExecuteIncrementCounter(ctx, &params)
 		
 	default:
 		return errors.Wrapf(worker.ErrUnknownTaskType, "unknown task type: %s", spec.GetType())

@@ -1,5 +1,6 @@
 SHELL := /bin/zsh
 PROJECT_DIR=$(shell pwd)
+ANCLAX_VERSION=$(shell cat VERSION)
 
 
 ###################################################
@@ -32,6 +33,7 @@ smoke:
 
 gen:
 	go run cmd/dev/main.go copy-templates --src examples/simple --dst cmd/anclax/initFiles --exclude .anclax,go.sum
+	sed -i -E 's@(github.com/cloudcarver/anclax )v[^ ]+@\1$(ANCLAX_VERSION)@' cmd/anclax/initFiles/go.mod.embed
 
 install: gen
 	go install ./cmd/anclax

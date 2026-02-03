@@ -1,9 +1,9 @@
 module myexampleapp
 
-go 1.24.1
+go 1.25.6
 
 require (
-	github.com/cloudcarver/anclax v0.7.2-0.20251215173407-fe6e3283f659
+	github.com/cloudcarver/anclax v0.8.0
 	github.com/gofiber/fiber/v2 v2.52.7
 	github.com/golang-migrate/migrate/v4 v4.18.3
 	github.com/google/wire v0.6.0

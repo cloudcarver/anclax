@@ -2,6 +2,12 @@
 
 This project is initialized by `anclax init` command.
 
+Use skill:
+
+```
+npx skills add cloudcarver/anclax
+```
+
 ## File structure
 
 `api`: Define API spec, the controller layer of your application.
