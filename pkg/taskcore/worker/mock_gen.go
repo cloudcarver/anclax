@@ -96,17 +96,17 @@ func (m *MockTaskHandler) EXPECT() *MockTaskHandlerMockRecorder {
 }
 
 // HandleTask mocks base method.
-func (m *MockTaskHandler) HandleTask(ctx context.Context, tx core.Tx, spec TaskSpec) error {
+func (m *MockTaskHandler) HandleTask(ctx context.Context, spec TaskSpec) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HandleTask", ctx, tx, spec)
+	ret := m.ctrl.Call(m, "HandleTask", ctx, spec)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // HandleTask indicates an expected call of HandleTask.
-func (mr *MockTaskHandlerMockRecorder) HandleTask(ctx, tx, spec any) *gomock.Call {
+func (mr *MockTaskHandlerMockRecorder) HandleTask(ctx, spec any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleTask", reflect.TypeOf((*MockTaskHandler)(nil).HandleTask), ctx, tx, spec)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleTask", reflect.TypeOf((*MockTaskHandler)(nil).HandleTask), ctx, spec)
 }
 
 // OnTaskFailed mocks base method.

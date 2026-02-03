@@ -133,6 +133,22 @@ func process(data map[string]any, onFunc func(f Function) error, onParam func(na
 			}
 		}
 
+		// parse labels
+		var labels []string
+		if _, ok := fnData["labels"]; ok {
+			labelsData, ok := fnData["labels"].([]any)
+			if !ok {
+				return errors.New("labels cannot be parsed to an array")
+			}
+			for _, label := range labelsData {
+				labelStr, ok := label.(string)
+				if !ok {
+					return errors.New("label cannot be parsed to a string")
+				}
+				labels = append(labels, labelStr)
+			}
+		}
+
 		// parse parameters (optional)
 		var structName string
 		if _, ok := fnData["parameters"]; ok {
@@ -173,6 +189,7 @@ func process(data map[string]any, onFunc func(f Function) error, onParam func(na
 			RetryPolicy:   retryPolicy,
 			Delay:         delay,
 			Events:        events,
+			Labels:        labels,
 		}); err != nil {
 			return err
 		}

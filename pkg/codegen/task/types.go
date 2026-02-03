@@ -34,6 +34,7 @@ type Function struct {
 	RetryPolicy   *RetryPolicy `yaml:"retryPolicy,omitempty"`
 	Delay         *string      `yaml:"delay,omitempty"`
 	Events        *Events      `yaml:"events,omitempty"`
+	Labels        []string     `yaml:"labels,omitempty"`
 }
 
 type CodeTemplateVars struct {

@@ -121,6 +121,7 @@ type Task struct {
 	Attributes TaskAttributes `json:"attributes"`
 	CreatedAt  time.Time      `json:"createdAt"`
 	Events     []TaskEvents   `json:"events"`
+	LockedAt   *time.Time     `json:"lockedAt,omitempty"`
 	Spec       TaskSpec       `json:"spec"`
 	StartedAt  *time.Time     `json:"startedAt,omitempty"`
 	Status     TaskStatus     `json:"status"`
@@ -128,6 +129,9 @@ type Task struct {
 	// UniqueTag Unique tag of the task
 	UniqueTag *string   `json:"uniqueTag,omitempty"`
 	UpdatedAt time.Time `json:"updatedAt"`
+
+	// WorkerId Worker ID that currently owns the task
+	WorkerId *string `json:"workerId,omitempty"`
 }
 
 // TaskEvents defines model for Task.Events.
@@ -139,6 +143,7 @@ type TaskStatus string
 // TaskAttributes defines model for TaskAttributes.
 type TaskAttributes struct {
 	Cronjob     *TaskCronjob     `json:"cronjob,omitempty"`
+	Labels      *[]string        `json:"labels,omitempty"`
 	RetryPolicy *TaskRetryPolicy `json:"retryPolicy,omitempty"`
 
 	// Timeout Timeout of the task, a valid go time duration value e.g. 1h, 1d, 1w, 1m

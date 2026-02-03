@@ -70,6 +70,7 @@ func (c *Client) runDeleteOpaqueKey(ctx context.Context, taskstore taskcore.Task
 		MaxAttempts: -1,
 	}
 	
+	
 	task := &apigen.Task{
 		Attributes: attributes,
 		Spec:       spec,
@@ -103,9 +104,9 @@ func (r *DeleteOpaqueKeyParameters) Marshal() (json.RawMessage, error) {
 }
 
 type ExecutorInterface interface { 
-    // Delete an opaque key
-	ExecuteDeleteOpaqueKey(ctx context.Context, tx core.Tx, params *DeleteOpaqueKeyParameters) error
-
+     // Delete an opaque key
+	ExecuteDeleteOpaqueKey(ctx context.Context, params *DeleteOpaqueKeyParameters) error
+ 
 	// Hook called when deleteOpaqueKey fails
 	OnDeleteOpaqueKeyFailed(ctx context.Context, taskID int32, params *DeleteOpaqueKeyParameters, tx core.Tx) error
 }
@@ -126,9 +127,9 @@ func (f *TaskHandler) RegisterTaskHandler(handler worker.TaskHandler) {
 	f.externalTaskHandler = append(f.externalTaskHandler, handler)
 }
 
-func (f *TaskHandler) HandleTask(ctx context.Context, tx core.Tx, spec worker.TaskSpec) error {
+func (f *TaskHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) error {
 	for _, handler := range f.externalTaskHandler {
-		if err := handler.HandleTask(ctx, tx, spec); err != nil {
+		if err := handler.HandleTask(ctx, spec); err != nil {
 			if errors.Is(err, worker.ErrUnknownTaskType) {
 				continue
 			}
@@ -143,7 +144,7 @@ func (f *TaskHandler) HandleTask(ctx context.Context, tx core.Tx, spec worker.Ta
 		if err := params.Parse(spec.GetPayload()); err != nil {
 			return fmt.Errorf("failed to parse deleteOpaqueKey parameters: %w", err)
 		}
-		return f.executor.ExecuteDeleteOpaqueKey(ctx, tx, &params)
+		return f.executor.ExecuteDeleteOpaqueKey(ctx, &params)
 		
 	default:
 		return errors.Wrapf(worker.ErrUnknownTaskType, "unknown task type: %s", spec.GetType())

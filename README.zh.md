@@ -139,6 +139,13 @@ components:
 ```
 
 ### 异步任务：至少一次投递、重试与定时
+- **之前的痛点**：手动构建 `apigen.Task` payload 与 attributes，重复且易错。
+- **之前的痛点**：重试/cron/unique-tag 逻辑在服务间复制并逐渐漂移。
+- **之前的痛点**：在数据库事务内入队需要自定义胶水代码。
+- **之前的痛点**：任务参数与 handler 签名容易不同步。
+
+**重构方案**：在 `api/tasks.yaml` 定义任务，运行 `anclax gen`，使用生成的 `taskgen.TaskRunner`（`RunX` / `RunXWithTx`），必要时用 `taskcore` 选项覆写。
+
 ```yaml
 # api/tasks.yaml
 tasks:
@@ -159,20 +166,32 @@ tasks:
     cron: "0 * * * *"
 ```
 
+Before（手动构建任务记录）：
 ```go
-// 在事务外入队
-taskID, _ := taskrunner.RunSendWelcomeEmail(ctx, &taskgen.SendWelcomeEmailParameters{
-  UserId: 123, TemplateId: "welcome",
-}, taskcore.WithUniqueTag("welcome-email:123"))
+params := &taskgen.SendWelcomeEmailParameters{UserId: user.ID, TemplateId: "welcome"}
+payload, err := params.Marshal()
+if err != nil {
+  return err
+}
+
+task := &apigen.Task{
+  Spec: apigen.TaskSpec{Type: taskgen.SendWelcomeEmail, Payload: payload},
+  Attributes: apigen.TaskAttributes{
+    RetryPolicy: &apigen.TaskRetryPolicy{Interval: "5m", MaxAttempts: 3},
+  },
+  Status: apigen.Pending,
+}
+
+taskID, err := taskStore.PushTask(ctx, task)
 ```
 
+After（生成 runner + 事务安全入队）：
 ```go
-// 与业务逻辑原子化入队
-_ = model.RunTransactionWithTx(ctx, func(tx pgx.Tx, txm model.ModelInterface) error {
-  // ... create user ...
+err := model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
   _, err := taskrunner.RunSendWelcomeEmailWithTx(ctx, tx, &taskgen.SendWelcomeEmailParameters{
-    UserId: user.ID, TemplateId: "welcome",
-  })
+    UserId: user.ID,
+    TemplateId: "welcome",
+  }, taskcore.WithUniqueTag("welcome:"+strconv.Itoa(int(user.ID))))
   return err
 })
 ```
@@ -269,5 +288,4 @@ func InitAnclaxApplication(cfg *config.Config) (*anclax_app.Application, error) 
 ## 示例 🧪
 
 - `examples/simple` —— 一个包含 HTTP、任务、DI 与 DB 的最小端到端示例。
-
 

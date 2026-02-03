@@ -15,6 +15,9 @@ var (
 
 	// The error of the executor is intentional, no need to insert error event
 	ErrRetryTaskWithoutErrorEvent = errors.New("retry task without error event")
+
+	// The task lock is lost to another worker
+	ErrTaskLockLost = errors.New("task lock lost")
 )
 
 type TaskOverride = func(task *apigen.Task) error

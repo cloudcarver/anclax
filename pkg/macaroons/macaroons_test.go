@@ -41,7 +41,7 @@ func TestMacaroonManager_CreateMacaroon(t *testing.T) {
 		userID = int32(1)
 	)
 
-	keyStore.EXPECT().Create(gomock.Any(), userID, []byte("key"), ttl).Return(keyID, nil)
+	keyStore.EXPECT().Create(gomock.Any(), []byte("key"), ttl, &userID).Return(keyID, nil)
 	keyStore.EXPECT().Get(gomock.Any(), keyID).Return([]byte("key"), nil).Times(2)
 
 	encodedCaveat1, err := EncodeCaveat(caveats[0])
