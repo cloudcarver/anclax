@@ -6,19 +6,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cloudcarver/anclax/lib/ws"
 	"github.com/cloudcarver/anclax/pkg/auth"
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/globalctx"
 	"github.com/cloudcarver/anclax/pkg/logger"
 	"github.com/cloudcarver/anclax/pkg/utils"
-	"github.com/cloudcarver/anclax/pkg/ws"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
-	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/gofiber/fiber/v2/middleware/requestid"
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -51,7 +49,6 @@ func NewServer(
 	auth auth.AuthInterface,
 	serverInterface apigen.ServerInterface,
 	validator apigen.Validator,
-	wsc *ws.WebsocketController,
 ) (*Server, error) {
 	// create fiber app
 	app := fiber.New(fiber.Config{
@@ -82,7 +79,6 @@ func NewServer(
 		globalCtx:       globalCtx,
 		validator:       validator,
 		libCfg:          libCfg,
-		wsc:             wsc,
 	}
 
 	s.registerMiddleware()
@@ -104,28 +100,6 @@ func NewServer(
 		BaseURL:     "/api/v1",
 		Middlewares: middlewares,
 	})
-
-	if libCfg.Ws != nil && libCfg.Ws.EnableWebsocket {
-		var wsPath = "/ws"
-		if libCfg.Ws.WebSocketPath != "" {
-			wsPath = "/" + strings.Trim(libCfg.Ws.WebSocketPath, "/")
-		}
-
-		s.app.Use(wsPath, func(c *fiber.Ctx) error {
-			if websocket.IsWebSocketUpgrade(c) {
-				c.Locals("allowed", true)
-				c.Locals("ws_request_id", uuid.New().String())
-				return c.Next()
-			}
-			return fiber.ErrUpgradeRequired
-		})
-
-		s.app.Get(wsPath, websocket.New(func(c *websocket.Conn) {
-			wsc.HandleConn(c)
-		}))
-
-		log.Infof("WebSocket enabled at path: %s", wsPath)
-	}
 
 	s.skipLogRequest = func(c *fiber.Ctx) bool { return false }
 	s.skipLogResponse = func(c *fiber.Ctx) bool { return false }

@@ -8,9 +8,12 @@ import (
 	"context"
 
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
+	"github.com/google/uuid"
 )
 
 type Querier interface {
+	ClaimTask(ctx context.Context, arg ClaimTaskParams) (*AnclaxTask, error)
+	ClaimTaskByID(ctx context.Context, arg ClaimTaskByIDParams) (*AnclaxTask, error)
 	CreateKeyPair(ctx context.Context, arg CreateKeyPairParams) (*AnclaxAccessKeyPair, error)
 	CreateOpaqueKey(ctx context.Context, arg CreateOpaqueKeyParams) (int64, error)
 	CreateOrg(ctx context.Context, name string) (*AnclaxOrg, error)
@@ -36,14 +39,20 @@ type Querier interface {
 	IsUsernameExists(ctx context.Context, name string) (bool, error)
 	ListAllPendingTasks(ctx context.Context) ([]*AnclaxTask, error)
 	ListOrgs(ctx context.Context, userID int32) ([]*AnclaxOrg, error)
-	PullTask(ctx context.Context) (*AnclaxTask, error)
-	PullTaskByID(ctx context.Context, id int32) (*AnclaxTask, error)
+	MarkWorkerOffline(ctx context.Context, id uuid.UUID) error
+	RefreshTaskLock(ctx context.Context, arg RefreshTaskLockParams) (int32, error)
+	ReleaseTaskLockByWorker(ctx context.Context, arg ReleaseTaskLockByWorkerParams) (int32, error)
 	RestoreUserByName(ctx context.Context, name string) error
 	SetUserDefaultOrg(ctx context.Context, arg SetUserDefaultOrgParams) error
 	UpdateTask(ctx context.Context, arg UpdateTaskParams) error
 	UpdateTaskStartedAt(ctx context.Context, arg UpdateTaskStartedAtParams) error
+	UpdateTaskStartedAtByWorker(ctx context.Context, arg UpdateTaskStartedAtByWorkerParams) (int32, error)
 	UpdateTaskStatus(ctx context.Context, arg UpdateTaskStatusParams) error
+	UpdateTaskStatusByWorker(ctx context.Context, arg UpdateTaskStatusByWorkerParams) (int32, error)
 	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error
+	UpdateWorkerHeartbeat(ctx context.Context, id uuid.UUID) (*AnclaxWorker, error)
+	UpsertWorker(ctx context.Context, arg UpsertWorkerParams) (*AnclaxWorker, error)
+	VerifyTaskOwnership(ctx context.Context, arg VerifyTaskOwnershipParams) (int32, error)
 }
 
 var _ Querier = (*Queries)(nil)

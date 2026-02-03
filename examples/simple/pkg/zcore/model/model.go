@@ -4,16 +4,16 @@ package model
 import (
 	"context"
 	"fmt"
-	root "myexampleapp"
 	"net/url"
 	"time"
 
+	root "myexampleapp"
 	"myexampleapp/pkg/config"
 	"myexampleapp/pkg/zgen/querier"
 
-	anclax_app "github.com/cloudcarver/anclax/pkg/app"
+	anclaxapp "github.com/cloudcarver/anclax/pkg/app"
 	"github.com/cloudcarver/anclax/pkg/logger"
-	anclax_utils "github.com/cloudcarver/anclax/pkg/utils"
+	anclaxutils "github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
@@ -48,6 +48,13 @@ func (m *Model) InTransaction() bool {
 	return m.inTransaction
 }
 
+func (m *Model) Close() {
+	log.Info("closing model...")
+	if m.p != nil {
+		m.p.Close()
+	}
+}
+
 func (m *Model) SpawnWithTx(tx pgx.Tx) ModelInterface {
 	return &Model{
 		Querier: querier.New(tx),
@@ -55,12 +62,6 @@ func (m *Model) SpawnWithTx(tx pgx.Tx) ModelInterface {
 			return nil, ErrAlreadyInTransaction
 		},
 		inTransaction: true,
-	}
-}
-
-func (m *Model) Close() {
-	if m.p != nil {
-		m.p.Close()
 	}
 }
 
@@ -85,29 +86,33 @@ func (m *Model) RunTransaction(ctx context.Context, f func(model ModelInterface)
 		return f(model)
 	})
 }
-func NewModel(cfg *config.Config, meta anclax_app.PluginMeta) (ModelInterface, error) {
+
+func NewModel(cfg *config.Config, meta anclaxapp.PluginMeta, app *anclaxapp.Application) (ModelInterface, error) {
 	anclaxCfg := cfg.Anclax
 
 	var dsn string
 	if anclaxCfg.Pg.DSN != nil {
 		dsn = *anclaxCfg.Pg.DSN
 	} else {
+		if anclaxCfg.Pg.User == "" || anclaxCfg.Pg.Host == "" || anclaxCfg.Pg.Port == 0 || anclaxCfg.Pg.Db == "" {
+			return nil, errors.New("either dsn or user, host, port, db must be set")
+		}
 		url := &url.URL{
 			Scheme:   "postgres",
 			User:     url.UserPassword(anclaxCfg.Pg.User, anclaxCfg.Pg.Password),
 			Host:     fmt.Sprintf("%s:%d", anclaxCfg.Pg.Host, anclaxCfg.Pg.Port),
 			Path:     anclaxCfg.Pg.Db,
-			RawQuery: "sslmode=" + anclax_utils.IfElse(anclaxCfg.Pg.SSLMode == "", "require", anclaxCfg.Pg.SSLMode),
+			RawQuery: "sslmode=" + anclaxutils.IfElse(anclaxCfg.Pg.SSLMode == "", "require", anclaxCfg.Pg.SSLMode),
 		}
 		dsn = url.String()
 	}
 
 	config, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to parse pgxpool config: %s", anclax_utils.ReplaceSensitiveStringBySha256(dsn, anclaxCfg.Pg.Password))
+		return nil, errors.Wrapf(err, "failed to parse pgxpool config: %s", anclaxutils.ReplaceSensitiveStringBySha256(dsn, anclaxCfg.Pg.Password))
 	}
-	config.MaxConns = 30
-	config.MinConns = 5
+	config.MaxConns = 50
+	config.MinConns = 1
 
 	var (
 		retryLimit = 10
@@ -153,7 +158,7 @@ func NewModel(cfg *config.Config, meta anclax_app.PluginMeta) (ModelInterface, e
 
 	dsnURL, err := url.Parse(dsn)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to parse dsn: %s", anclax_utils.ReplaceSensitiveStringBySha256(dsn, anclaxCfg.Pg.Password))
+		return nil, errors.Wrapf(err, "failed to parse dsn: %s", anclaxutils.ReplaceSensitiveStringBySha256(dsn, anclaxCfg.Pg.Password))
 	}
 	dsnURL.Scheme = "pgx5"
 	dsnQuery := dsnURL.Query()
@@ -170,5 +175,12 @@ func NewModel(cfg *config.Config, meta anclax_app.PluginMeta) (ModelInterface, e
 		}
 	}
 
-	return &Model{Querier: querier.New(p), beginTx: p.Begin, p: p}, nil
+	ret := &Model{Querier: querier.New(p), beginTx: p.Begin, p: p}
+
+	app.GetCloserManager().Register(func(ctx context.Context) error {
+		ret.Close()
+		return nil
+	})
+
+	return ret, nil
 }

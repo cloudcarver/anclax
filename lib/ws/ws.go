@@ -3,16 +3,16 @@ package ws
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 
-	"github.com/cloudcarver/anclax/pkg/config"
-	"github.com/cloudcarver/anclax/pkg/globalctx"
 	"github.com/cloudcarver/anclax/pkg/logger"
 	"github.com/gofiber/contrib/websocket"
+	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
 )
 
@@ -149,63 +149,96 @@ func (c *Ctx) SetID(id string) {
 	c.ID = &id
 }
 
-type OnSessionCreated func(s *Session) error
-type MessageHandlerFunc func(ctx *Ctx, data []byte) error
+type Handler interface {
+	OnSessionCreated(s *Session) error
+	Handle(ctx *Ctx, data []byte) error
+}
 
 type WebsocketController struct {
-	ctx              context.Context
-	handle           MessageHandlerFunc
-	onSessionCreated OnSessionCreated
-	hub              *Hub
+	ctx context.Context
+	hub *Hub
 
 	readLimit      int64
 	idleTimeout    time.Duration
 	pingInterval   time.Duration
 	writeWait      time.Duration
 	wsSessionIDKey string
+	wsPath         string
+
+	handler Handler
 }
 
-func NewWebsocketController(globalCtx *globalctx.GlobalContext, libCfg *config.LibConfig) *WebsocketController {
+type WsCfg struct {
+	// (optional) Default is /ws, the path to accept websocket connections.
+	WebSocketPath string
+
+	// (optional) Default is 1MB, the maximum size of a message that can be read from the websocket connection.
+	ReadLimit int64
+
+	// (optional) Default is 40 seconds, the idle timeout for the websocket connection.
+	IdleTimeoutSeconds int64
+
+	// (optional) Default is 30 seconds, the interval to send ping messages to the client.
+	PingIntervalSeconds int64
+
+	// (optional) Default is 10 seconds, the time to wait for a write to complete.
+	WriteWaitSeconds int64
+
+	// (optional) Default is ws_session_id, the key to store the session ID in the websocket connection locals.
+	SessionIDKey string
+}
+
+func New(ctrlCtx context.Context, handler Handler, cfg *WsCfg) *WebsocketController {
 	var readLimit int64 = 1024 * 1024 // 1MB
-	if libCfg.Ws != nil && libCfg.Ws.ReadLimit > 0 {
-		readLimit = libCfg.Ws.ReadLimit
+	if cfg != nil && cfg.ReadLimit > 0 {
+		readLimit = cfg.ReadLimit
 	}
 	var idleTimeout = defaultIdleTimeout
-	if libCfg.Ws != nil && libCfg.Ws.IdleTimeoutSeconds > 0 {
-		idleTimeout = time.Duration(libCfg.Ws.IdleTimeoutSeconds) * time.Second
+	if cfg != nil && cfg.IdleTimeoutSeconds > 0 {
+		idleTimeout = time.Duration(cfg.IdleTimeoutSeconds) * time.Second
 	}
 	var pingInterval = defaultPingInterval
-	if libCfg.Ws != nil && libCfg.Ws.PingIntervalSeconds > 0 {
-		pingInterval = time.Duration(libCfg.Ws.PingIntervalSeconds) * time.Second
+	if cfg != nil && cfg.PingIntervalSeconds > 0 {
+		pingInterval = time.Duration(cfg.PingIntervalSeconds) * time.Second
 	}
 	var writeWait = defaultWriteWait
-	if libCfg.Ws != nil && libCfg.Ws.WriteWaitSeconds > 0 {
-		writeWait = time.Duration(libCfg.Ws.WriteWaitSeconds) * time.Second
+	if cfg != nil && cfg.WriteWaitSeconds > 0 {
+		writeWait = time.Duration(cfg.WriteWaitSeconds) * time.Second
 	}
 	var wsSessionIDKey = defaultWsSessionIDKey
-	if libCfg.Ws != nil && libCfg.Ws.SessionIDKey != "" {
-		wsSessionIDKey = libCfg.Ws.SessionIDKey
+	if cfg != nil && cfg.SessionIDKey != "" {
+		wsSessionIDKey = cfg.SessionIDKey
+	}
+	var wsPath = "/ws"
+	if cfg != nil && cfg.WebSocketPath != "" {
+		wsPath = "/" + strings.Trim(cfg.WebSocketPath, "/")
 	}
 
 	return &WebsocketController{
-		ctx:              globalCtx.Context(),
-		handle:           func(ctx *Ctx, data []byte) error { return ErrHandlerNotRegistered },
-		onSessionCreated: func(s *Session) error { return nil },
-		hub:              NewHub(),
-		readLimit:        readLimit,
-		idleTimeout:      idleTimeout,
-		pingInterval:     pingInterval,
-		writeWait:        writeWait,
-		wsSessionIDKey:   wsSessionIDKey,
+		ctx:            ctrlCtx,
+		hub:            NewHub(),
+		readLimit:      readLimit,
+		idleTimeout:    idleTimeout,
+		pingInterval:   pingInterval,
+		writeWait:      writeWait,
+		wsSessionIDKey: wsSessionIDKey,
+		wsPath:         wsPath,
 	}
 }
 
-func (w *WebsocketController) SetMessageHandler(f MessageHandlerFunc) {
-	w.handle = f
-}
+func (w *WebsocketController) Mount(app *fiber.App) {
+	app.Use(w.wsPath, func(c *fiber.Ctx) error {
+		if websocket.IsWebSocketUpgrade(c) {
+			c.Locals("allowed", true)
+			c.Locals("ws_request_id", uuid.New().String())
+			return c.Next()
+		}
+		return fiber.ErrUpgradeRequired
+	})
 
-func (w *WebsocketController) SetOnSessionCreated(f OnSessionCreated) {
-	w.onSessionCreated = f
+	app.Get(w.wsPath, websocket.New(func(c *websocket.Conn) {
+		w.HandleConn(c)
+	}))
 }
 
 func (w *WebsocketController) Hub() *Hub {
@@ -241,7 +274,7 @@ func (w *WebsocketController) HandleConn(c *websocket.Conn) {
 
 	wslog.Info("WebSocket connection established", zap.String(w.wsSessionIDKey, session.ID()))
 
-	if err := w.onSessionCreated(session); err != nil {
+	if err := w.handler.OnSessionCreated(session); err != nil {
 		wslog.Error("error on session created hook", zap.Error(err), zap.String(w.wsSessionIDKey, session.ID()))
 		return
 	}
@@ -306,7 +339,7 @@ func (w *WebsocketController) HandleConn(c *websocket.Conn) {
 				continue
 			}
 
-			if err := w.handle(wsCtx, msg); err != nil {
+			if err := w.handler.Handle(wsCtx, msg); err != nil {
 				if errors.Is(err, ErrBiz) {
 					if err := wsCtx.SendError(err); err != nil {
 						closeConn(errors.Wrap(err, "failed to write error response"))

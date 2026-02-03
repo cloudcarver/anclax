@@ -9,12 +9,19 @@ import (
 )
 
 func taskToApiTask(task *querier.AnclaxTask) *apigen.Task {
+	var workerID *string
+	if task.WorkerID.Valid {
+		id := task.WorkerID.UUID.String()
+		workerID = &id
+	}
 	return &apigen.Task{
 		ID:         task.ID,
 		Attributes: task.Attributes,
 		Spec:       task.Spec,
 		Status:     apigen.TaskStatus(task.Status),
 		StartedAt:  task.StartedAt,
+		LockedAt:   task.LockedAt,
+		WorkerId:   workerID,
 		CreatedAt:  task.CreatedAt,
 		UpdatedAt:  task.UpdatedAt,
 		UniqueTag:  task.UniqueTag,

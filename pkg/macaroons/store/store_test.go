@@ -32,8 +32,9 @@ func TestCreate(t *testing.T) {
 	)
 
 	mockModel.EXPECT().CreateOpaqueKey(gomock.Any(), gomock.Any()).Return(keyID, nil)
-	taskRunner.EXPECT().RunDeleteOpaqueKey(
+	taskRunner.EXPECT().RunDeleteOpaqueKeyWithTx(
 		ctx,
+		gomock.Any(),
 		&taskgen.DeleteOpaqueKeyParameters{
 			KeyID: keyID,
 		},
@@ -195,9 +196,9 @@ func TestDeleteUserKeys(t *testing.T) {
 			}
 
 			if tc.err == nil {
-				model.EXPECT().DeleteOpaqueKeys(gomock.Any(), userID).Return(nil)
+				model.EXPECT().DeleteOpaqueKeys(gomock.Any(), &userID).Return(nil)
 			} else {
-				model.EXPECT().DeleteOpaqueKeys(gomock.Any(), userID).Return(tc.err)
+				model.EXPECT().DeleteOpaqueKeys(gomock.Any(), &userID).Return(tc.err)
 			}
 
 			err := store.DeleteUserKeys(ctx, userID)

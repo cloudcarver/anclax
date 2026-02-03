@@ -45,9 +45,6 @@ func Init(anclaxApp *anclax_app.Application, taskrunner taskgen.TaskRunner, myap
 	// 	return nil, err
 	// }
 
-	// closer
-	anclaxApp.RegisterCloser(model.Close)
-
 	return &app.App{
 		AnclaxApp: anclaxApp,
 	}, nil

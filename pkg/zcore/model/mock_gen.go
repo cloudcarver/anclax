@@ -16,6 +16,7 @@ import (
 	core "github.com/cloudcarver/anclax/core"
 	apigen "github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	querier "github.com/cloudcarver/anclax/pkg/zgen/querier"
+	uuid "github.com/google/uuid"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -41,6 +42,36 @@ func NewMockModelInterface(ctrl *gomock.Controller) *MockModelInterface {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockModelInterface) EXPECT() *MockModelInterfaceMockRecorder {
 	return m.recorder
+}
+
+// ClaimTask mocks base method.
+func (m *MockModelInterface) ClaimTask(ctx context.Context, arg querier.ClaimTaskParams) (*querier.AnclaxTask, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClaimTask", ctx, arg)
+	ret0, _ := ret[0].(*querier.AnclaxTask)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ClaimTask indicates an expected call of ClaimTask.
+func (mr *MockModelInterfaceMockRecorder) ClaimTask(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClaimTask", reflect.TypeOf((*MockModelInterface)(nil).ClaimTask), ctx, arg)
+}
+
+// ClaimTaskByID mocks base method.
+func (m *MockModelInterface) ClaimTaskByID(ctx context.Context, arg querier.ClaimTaskByIDParams) (*querier.AnclaxTask, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClaimTaskByID", ctx, arg)
+	ret0, _ := ret[0].(*querier.AnclaxTask)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ClaimTaskByID indicates an expected call of ClaimTaskByID.
+func (mr *MockModelInterfaceMockRecorder) ClaimTaskByID(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClaimTaskByID", reflect.TypeOf((*MockModelInterface)(nil).ClaimTaskByID), ctx, arg)
 }
 
 // Close mocks base method.
@@ -439,34 +470,48 @@ func (mr *MockModelInterfaceMockRecorder) ListOrgs(ctx, userID any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListOrgs", reflect.TypeOf((*MockModelInterface)(nil).ListOrgs), ctx, userID)
 }
 
-// PullTask mocks base method.
-func (m *MockModelInterface) PullTask(ctx context.Context) (*querier.AnclaxTask, error) {
+// MarkWorkerOffline mocks base method.
+func (m *MockModelInterface) MarkWorkerOffline(ctx context.Context, id uuid.UUID) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PullTask", ctx)
-	ret0, _ := ret[0].(*querier.AnclaxTask)
+	ret := m.ctrl.Call(m, "MarkWorkerOffline", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MarkWorkerOffline indicates an expected call of MarkWorkerOffline.
+func (mr *MockModelInterfaceMockRecorder) MarkWorkerOffline(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkWorkerOffline", reflect.TypeOf((*MockModelInterface)(nil).MarkWorkerOffline), ctx, id)
+}
+
+// RefreshTaskLock mocks base method.
+func (m *MockModelInterface) RefreshTaskLock(ctx context.Context, arg querier.RefreshTaskLockParams) (int32, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RefreshTaskLock", ctx, arg)
+	ret0, _ := ret[0].(int32)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// PullTask indicates an expected call of PullTask.
-func (mr *MockModelInterfaceMockRecorder) PullTask(ctx any) *gomock.Call {
+// RefreshTaskLock indicates an expected call of RefreshTaskLock.
+func (mr *MockModelInterfaceMockRecorder) RefreshTaskLock(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PullTask", reflect.TypeOf((*MockModelInterface)(nil).PullTask), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RefreshTaskLock", reflect.TypeOf((*MockModelInterface)(nil).RefreshTaskLock), ctx, arg)
 }
 
-// PullTaskByID mocks base method.
-func (m *MockModelInterface) PullTaskByID(ctx context.Context, id int32) (*querier.AnclaxTask, error) {
+// ReleaseTaskLockByWorker mocks base method.
+func (m *MockModelInterface) ReleaseTaskLockByWorker(ctx context.Context, arg querier.ReleaseTaskLockByWorkerParams) (int32, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PullTaskByID", ctx, id)
-	ret0, _ := ret[0].(*querier.AnclaxTask)
+	ret := m.ctrl.Call(m, "ReleaseTaskLockByWorker", ctx, arg)
+	ret0, _ := ret[0].(int32)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// PullTaskByID indicates an expected call of PullTaskByID.
-func (mr *MockModelInterfaceMockRecorder) PullTaskByID(ctx, id any) *gomock.Call {
+// ReleaseTaskLockByWorker indicates an expected call of ReleaseTaskLockByWorker.
+func (mr *MockModelInterfaceMockRecorder) ReleaseTaskLockByWorker(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PullTaskByID", reflect.TypeOf((*MockModelInterface)(nil).PullTaskByID), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReleaseTaskLockByWorker", reflect.TypeOf((*MockModelInterface)(nil).ReleaseTaskLockByWorker), ctx, arg)
 }
 
 // RestoreUserByName mocks base method.
@@ -567,6 +612,21 @@ func (mr *MockModelInterfaceMockRecorder) UpdateTaskStartedAt(ctx, arg any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateTaskStartedAt", reflect.TypeOf((*MockModelInterface)(nil).UpdateTaskStartedAt), ctx, arg)
 }
 
+// UpdateTaskStartedAtByWorker mocks base method.
+func (m *MockModelInterface) UpdateTaskStartedAtByWorker(ctx context.Context, arg querier.UpdateTaskStartedAtByWorkerParams) (int32, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateTaskStartedAtByWorker", ctx, arg)
+	ret0, _ := ret[0].(int32)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateTaskStartedAtByWorker indicates an expected call of UpdateTaskStartedAtByWorker.
+func (mr *MockModelInterfaceMockRecorder) UpdateTaskStartedAtByWorker(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateTaskStartedAtByWorker", reflect.TypeOf((*MockModelInterface)(nil).UpdateTaskStartedAtByWorker), ctx, arg)
+}
+
 // UpdateTaskStatus mocks base method.
 func (m *MockModelInterface) UpdateTaskStatus(ctx context.Context, arg querier.UpdateTaskStatusParams) error {
 	m.ctrl.T.Helper()
@@ -581,6 +641,21 @@ func (mr *MockModelInterfaceMockRecorder) UpdateTaskStatus(ctx, arg any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateTaskStatus", reflect.TypeOf((*MockModelInterface)(nil).UpdateTaskStatus), ctx, arg)
 }
 
+// UpdateTaskStatusByWorker mocks base method.
+func (m *MockModelInterface) UpdateTaskStatusByWorker(ctx context.Context, arg querier.UpdateTaskStatusByWorkerParams) (int32, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateTaskStatusByWorker", ctx, arg)
+	ret0, _ := ret[0].(int32)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateTaskStatusByWorker indicates an expected call of UpdateTaskStatusByWorker.
+func (mr *MockModelInterfaceMockRecorder) UpdateTaskStatusByWorker(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateTaskStatusByWorker", reflect.TypeOf((*MockModelInterface)(nil).UpdateTaskStatusByWorker), ctx, arg)
+}
+
 // UpdateUserPassword mocks base method.
 func (m *MockModelInterface) UpdateUserPassword(ctx context.Context, arg querier.UpdateUserPasswordParams) error {
 	m.ctrl.T.Helper()
@@ -593,4 +668,49 @@ func (m *MockModelInterface) UpdateUserPassword(ctx context.Context, arg querier
 func (mr *MockModelInterfaceMockRecorder) UpdateUserPassword(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateUserPassword", reflect.TypeOf((*MockModelInterface)(nil).UpdateUserPassword), ctx, arg)
+}
+
+// UpdateWorkerHeartbeat mocks base method.
+func (m *MockModelInterface) UpdateWorkerHeartbeat(ctx context.Context, id uuid.UUID) (*querier.AnclaxWorker, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateWorkerHeartbeat", ctx, id)
+	ret0, _ := ret[0].(*querier.AnclaxWorker)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateWorkerHeartbeat indicates an expected call of UpdateWorkerHeartbeat.
+func (mr *MockModelInterfaceMockRecorder) UpdateWorkerHeartbeat(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateWorkerHeartbeat", reflect.TypeOf((*MockModelInterface)(nil).UpdateWorkerHeartbeat), ctx, id)
+}
+
+// UpsertWorker mocks base method.
+func (m *MockModelInterface) UpsertWorker(ctx context.Context, arg querier.UpsertWorkerParams) (*querier.AnclaxWorker, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertWorker", ctx, arg)
+	ret0, _ := ret[0].(*querier.AnclaxWorker)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpsertWorker indicates an expected call of UpsertWorker.
+func (mr *MockModelInterfaceMockRecorder) UpsertWorker(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertWorker", reflect.TypeOf((*MockModelInterface)(nil).UpsertWorker), ctx, arg)
+}
+
+// VerifyTaskOwnership mocks base method.
+func (m *MockModelInterface) VerifyTaskOwnership(ctx context.Context, arg querier.VerifyTaskOwnershipParams) (int32, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "VerifyTaskOwnership", ctx, arg)
+	ret0, _ := ret[0].(int32)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// VerifyTaskOwnership indicates an expected call of VerifyTaskOwnership.
+func (mr *MockModelInterfaceMockRecorder) VerifyTaskOwnership(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "VerifyTaskOwnership", reflect.TypeOf((*MockModelInterface)(nil).VerifyTaskOwnership), ctx, arg)
 }

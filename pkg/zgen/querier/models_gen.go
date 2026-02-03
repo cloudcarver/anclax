@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
+	"github.com/google/uuid"
 )
 
 type AnclaxAccessKeyPair struct {
@@ -85,6 +86,8 @@ type AnclaxTask struct {
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 	Attempts   int32
+	LockedAt   *time.Time
+	WorkerID   uuid.NullUUID
 }
 
 type AnclaxUser struct {
@@ -108,4 +111,13 @@ type AnclaxUsersRole struct {
 	RoleID    int32
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+type AnclaxWorker struct {
+	ID            uuid.UUID
+	Labels        []byte
+	Status        string
+	LastHeartbeat time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }

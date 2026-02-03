@@ -41,3 +41,11 @@ func WithUniqueTag(uniqueTag string) TaskOverride {
 		return nil
 	}
 }
+
+func WithLabels(labels []string) TaskOverride {
+	return func(task *apigen.Task) error {
+		labelsCopy := append([]string(nil), labels...)
+		task.Attributes.Labels = &labelsCopy
+		return nil
+	}
+}
