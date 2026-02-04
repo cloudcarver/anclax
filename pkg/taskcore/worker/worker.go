@@ -173,6 +173,7 @@ func (w *Worker) releaseSlot() {
 	select {
 	case <-w.semaphore:
 	default:
+		panic("worker releaseSlot called without acquire")
 	}
 }
 
