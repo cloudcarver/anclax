@@ -39,6 +39,9 @@ type Worker struct {
 
 	EnableHTTPTrigger bool `yaml:"enableHttpTrigger"`
 
+	// (Optional) Max number of tasks to run in parallel, default is 10
+	Concurrency *int `yaml:"concurrency"`
+
 	// (Optional) The interval of the poll, default is 1 second
 	PollInterval *time.Duration `yaml:"pollinterval"`
 

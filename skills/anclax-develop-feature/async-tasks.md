@@ -111,6 +111,7 @@ Cron tasks are rescheduled every run regardless of success or failure.
 
 Worker config keys:
 - `worker.pollinterval`
+- `worker.concurrency`
 - `worker.heartbeatInterval`
 - `worker.lockTtl`
 - `worker.lockRefreshInterval`

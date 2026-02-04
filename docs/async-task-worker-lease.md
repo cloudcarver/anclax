@@ -64,6 +64,7 @@ Heartbeat is for monitoring only; task claims use `locked_at` TTL only.
 ## Config
 
 - `worker.pollinterval`
+- `worker.concurrency`
 - `worker.heartbeatInterval`
 - `worker.lockTtl`
 - `worker.lockRefreshInterval`
