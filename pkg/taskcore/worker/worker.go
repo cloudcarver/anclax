@@ -41,6 +41,8 @@ type Worker struct {
 	heartbeatInterval   time.Duration
 	lockTTL             time.Duration
 	lockRefreshInterval time.Duration
+	concurrency         int
+	semaphore           chan struct{}
 
 	now func() time.Time
 }
@@ -64,6 +66,14 @@ func NewWorker(globalCtx *globalctx.GlobalContext, cfg *config.Config, model mod
 	lockRefreshInterval := heartbeatInterval
 	if cfg.Worker.LockRefreshInterval != nil {
 		lockRefreshInterval = *cfg.Worker.LockRefreshInterval
+	}
+
+	concurrency := 10
+	if cfg.Worker.Concurrency != nil {
+		concurrency = *cfg.Worker.Concurrency
+	}
+	if concurrency < 1 {
+		concurrency = 1
 	}
 
 	workerID := uuid.New()
@@ -94,6 +104,8 @@ func NewWorker(globalCtx *globalctx.GlobalContext, cfg *config.Config, model mod
 		heartbeatInterval:   heartbeatInterval,
 		lockTTL:             lockTTL,
 		lockRefreshInterval: lockRefreshInterval,
+		concurrency:         concurrency,
+		semaphore:           make(chan struct{}, concurrency),
 		now:                 time.Now,
 	}
 
@@ -130,7 +142,45 @@ func (w *Worker) Start() {
 	}
 }
 
+func (w *Worker) tryAcquireSlot() bool {
+	if w.semaphore == nil {
+		return true
+	}
+	select {
+	case w.semaphore <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+
+func (w *Worker) acquireSlot(ctx context.Context) error {
+	if w.semaphore == nil {
+		return nil
+	}
+	select {
+	case w.semaphore <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (w *Worker) releaseSlot() {
+	if w.semaphore == nil {
+		return
+	}
+	select {
+	case <-w.semaphore:
+	default:
+	}
+}
+
 func (w *Worker) pullAndRun(parentCtx context.Context) error {
+	if !w.tryAcquireSlot() {
+		return nil
+	}
+	defer w.releaseSlot()
 	task, err := w.claimTask(parentCtx)
 	if err != nil {
 		return err
@@ -143,6 +193,10 @@ func (w *Worker) pullAndRun(parentCtx context.Context) error {
 }
 
 func (w *Worker) RunTask(ctx context.Context, taskID int32) error {
+	if err := w.acquireSlot(ctx); err != nil {
+		return err
+	}
+	defer w.releaseSlot()
 	task, err := w.claimTaskByID(ctx, taskID)
 	if err != nil {
 		return err

@@ -430,3 +430,44 @@ func TestHeartbeatUpdatesWorker(t *testing.T) {
 	err = w.heartbeat(context.Background())
 	require.NoError(t, err)
 }
+
+func TestConcurrencyDefaultsToTen(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	cfg := &config.Config{}
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockHandler := NewMockTaskHandler(ctrl)
+
+	worker, err := NewWorker(globalctx.New(), cfg, mockModel, mockHandler)
+	require.NoError(t, err)
+	w := worker.(*Worker)
+
+	require.Equal(t, 10, w.concurrency)
+	require.Len(t, w.semaphore, 0)
+	require.Equal(t, cap(w.semaphore), 10)
+}
+
+func TestConcurrencyClampToOne(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	concurrency := 0
+	cfg := &config.Config{
+		Worker: config.Worker{
+			Concurrency: &concurrency,
+		},
+	}
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockHandler := NewMockTaskHandler(ctrl)
+
+	worker, err := NewWorker(globalctx.New(), cfg, mockModel, mockHandler)
+	require.NoError(t, err)
+	w := worker.(*Worker)
+
+	require.Equal(t, 1, w.concurrency)
+	require.Len(t, w.semaphore, 0)
+	require.Equal(t, cap(w.semaphore), 1)
+}

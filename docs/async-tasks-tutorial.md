@@ -687,10 +687,10 @@ The worker runs automatically when you start your Anclax application. You can co
 ```go
 // Disable worker for specific environments
 cfg := &config.Config{
-    Worker: config.WorkerConfig{
+    Worker: config.Worker{
         Disable: true,  // Disable worker
     },
 }
 ```
 
-Workers poll the database every second for pending tasks and process them with configurable concurrency based on available goroutines.
+Workers poll the database every second for pending tasks and process them with configurable concurrency based on available goroutines. The default concurrency is 10.

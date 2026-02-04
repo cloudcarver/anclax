@@ -189,7 +189,7 @@ type TaskStoreInterface interface {
 #### 2. Worker Pool
 - Workers run as goroutines within the main application process
 - Each worker polls for pending tasks every second
-- Configurable concurrency based on available system resources
+- Configurable concurrency based on available system resources (default 10 via `worker.concurrency`)
 - Graceful shutdown handling
 
 #### 3. Task Execution Flow
