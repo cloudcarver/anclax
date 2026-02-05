@@ -7,6 +7,11 @@ description: Develop, review, or refactor Go services built with Anclax, includi
 
 Use Anclax generated types as the contract between layers and keep specs/SQL as the source of truth.
 
+## Design principles
+
+- Singleton services with dependency injection.
+- High cohesion, low coupling.
+
 ## Core flow
 
 1. Inspect `anclax.yaml` to learn generation paths and enabled generators.
@@ -27,6 +32,7 @@ Use Anclax generated types as the contract between layers and keep specs/SQL as 
 - Async tasks: define in `api/tasks.yaml`, implement `taskgen.ExecutorInterface`, enqueue via `taskgen.TaskRunner`.
 
 ## References and Examples
+  - [Config](./anclax-config.md): How to use `anclax.yaml` for generator inputs/outputs.
   - [CRUD operations](./crud.md): End-to-end CRUD flow and mapping examples.
   - [OpenAPI Spec](./openapi-spec.md): Conventions for OpenAPI specs in Anclax.
   - [Business Logic](./business-logic.md): Service-layer rules and error handling.
