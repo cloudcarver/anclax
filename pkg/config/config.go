@@ -88,6 +88,9 @@ type Config struct {
 	// The test account configuration
 	TestAccount *TestAccount `yaml:"testaccount"`
 
+	// (Optional) Whether to disable the default sign-up endpoint, default is false
+	DisableDefaultSignUp bool `yaml:"disableDefaultSignUp"`
+
 	// (Optional) The port of the metrics server, default is 9020
 	MetricsPort int `yaml:"metricsport"`
 

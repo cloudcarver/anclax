@@ -112,6 +112,15 @@ type SignInRequest struct {
 	Password string `json:"password"`
 }
 
+// SignUpRequest defines model for SignUpRequest.
+type SignUpRequest struct {
+	// Name User's name
+	Name string `json:"name"`
+
+	// Password User's password
+	Password string `json:"password"`
+}
+
 // Task defines model for Task.
 type Task struct {
 	ID int32 `json:"ID"`
@@ -167,8 +176,8 @@ type TaskRetryPolicy struct {
 // TaskSpec defines model for TaskSpec.
 type TaskSpec struct {
 	// Payload The JSONB of the spec of the task
-	Payload []byte `json:"payload"`
-	Type    string `json:"type"`
+	Payload json.RawMessage `json:"payload"`
+	Type    string          `json:"type"`
 }
 
 // RefreshTokenJSONRequestBody defines body for RefreshToken for application/json ContentType.
@@ -176,6 +185,9 @@ type RefreshTokenJSONRequestBody = RefreshTokenRequest
 
 // SignInJSONRequestBody defines body for SignIn for application/json ContentType.
 type SignInJSONRequestBody = SignInRequest
+
+// SignUpJSONRequestBody defines body for SignUp for application/json ContentType.
+type SignUpJSONRequestBody = SignUpRequest
 
 // RequestEditorFn  is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -263,6 +275,11 @@ type ClientInterface interface {
 	// SignOut request
 	SignOut(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// SignUpWithBody request with any body
+	SignUpWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SignUp(ctx context.Context, body SignUpJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListEvents request
 	ListEvents(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -326,6 +343,30 @@ func (c *Client) SignIn(ctx context.Context, body SignInJSONRequestBody, reqEdit
 
 func (c *Client) SignOut(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSignOutRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SignUpWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSignUpRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SignUp(ctx context.Context, body SignUpJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSignUpRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -487,6 +528,46 @@ func NewSignOutRequest(server string) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewSignUpRequest calls the generic SignUp builder with application/json body
+func NewSignUpRequest(server string, body SignUpJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSignUpRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewSignUpRequestWithBody generates requests for SignUp with any type of body
+func NewSignUpRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/auth/sign-up")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -662,6 +743,11 @@ type ClientWithResponsesInterface interface {
 	// SignOutWithResponse request
 	SignOutWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*SignOutResponse, error)
 
+	// SignUpWithBodyWithResponse request with any body
+	SignUpWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SignUpResponse, error)
+
+	SignUpWithResponse(ctx context.Context, body SignUpJSONRequestBody, reqEditors ...RequestEditorFn) (*SignUpResponse, error)
+
 	// ListEventsWithResponse request
 	ListEventsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListEventsResponse, error)
 
@@ -734,6 +820,28 @@ func (r SignOutResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r SignOutResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SignUpResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *Credentials
+}
+
+// Status returns HTTPResponse.Status
+func (r SignUpResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SignUpResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -870,6 +978,23 @@ func (c *ClientWithResponses) SignOutWithResponse(ctx context.Context, reqEditor
 	return ParseSignOutResponse(rsp)
 }
 
+// SignUpWithBodyWithResponse request with arbitrary body returning *SignUpResponse
+func (c *ClientWithResponses) SignUpWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SignUpResponse, error) {
+	rsp, err := c.SignUpWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSignUpResponse(rsp)
+}
+
+func (c *ClientWithResponses) SignUpWithResponse(ctx context.Context, body SignUpJSONRequestBody, reqEditors ...RequestEditorFn) (*SignUpResponse, error) {
+	rsp, err := c.SignUp(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSignUpResponse(rsp)
+}
+
 // ListEventsWithResponse request returning *ListEventsResponse
 func (c *ClientWithResponses) ListEventsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListEventsResponse, error) {
 	rsp, err := c.ListEvents(ctx, reqEditors...)
@@ -969,6 +1094,32 @@ func ParseSignOutResponse(rsp *http.Response) (*SignOutResponse, error) {
 	response := &SignOutResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParseSignUpResponse parses an HTTP response from a SignUpWithResponse call
+func ParseSignUpResponse(rsp *http.Response) (*SignUpResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SignUpResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Credentials
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
 	}
 
 	return response, nil
@@ -1079,6 +1230,9 @@ type ServerInterface interface {
 	// Sign out user
 	// (POST /auth/sign-out)
 	SignOut(c *fiber.Ctx) error
+	// Sign up user
+	// (POST /auth/sign-up)
+	SignUp(c *fiber.Ctx) error
 	// Get all events
 	// (GET /events)
 	ListEvents(c *fiber.Ctx) error
@@ -1118,6 +1272,12 @@ func (siw *ServerInterfaceWrapper) SignOut(c *fiber.Ctx) error {
 	c.Context().SetUserValue(BearerAuthScopes, []string{})
 
 	return siw.Handler.SignOut(c)
+}
+
+// SignUp operation middleware
+func (siw *ServerInterfaceWrapper) SignUp(c *fiber.Ctx) error {
+
+	return siw.Handler.SignUp(c)
 }
 
 // ListEvents operation middleware
@@ -1188,6 +1348,8 @@ func RegisterHandlersWithOptions(router fiber.Router, si ServerInterface, option
 	router.Post(options.BaseURL+"/auth/sign-in", wrapper.SignIn)
 
 	router.Post(options.BaseURL+"/auth/sign-out", wrapper.SignOut)
+
+	router.Post(options.BaseURL+"/auth/sign-up", wrapper.SignUp)
 
 	router.Get(options.BaseURL+"/events", wrapper.ListEvents)
 

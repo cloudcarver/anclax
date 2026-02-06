@@ -41,6 +41,8 @@ Run `anclax gen` after task changes. Generated code lives in `pkg/zgen/taskgen`.
 
 Implement `taskgen.ExecutorInterface`. Task execution runs outside a DB transaction; open a short transaction inside the handler if needed.
 
+The implementation should be idempotent, task is delivered at-least once.
+
 ```go
 type Executor struct {
     model model.ModelInterface
