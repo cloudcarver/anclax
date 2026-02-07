@@ -31,6 +31,9 @@ func WithWaitForTaskTimeout(timeout time.Duration) WaitForTaskOption {
 }
 
 func (s *TaskStore) WaitForTask(ctx context.Context, taskID int32, opts ...WaitForTaskOption) error {
+	// WaitForTask blocks until the task reaches a terminal state or the context ends.
+	// It polls the task status at the configured interval and respects an optional timeout.
+	// On failure, it returns an error with attempts, max attempts, and the last error event message.
 	cfg := waitForTaskConfig{pollInterval: defaultWaitForTaskPollInterval}
 	for _, opt := range opts {
 		opt(&cfg)

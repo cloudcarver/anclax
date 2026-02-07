@@ -19,6 +19,30 @@ This document provides a comprehensive overview of Anclax's async task system, c
 
 Anclax's async task system provides a robust, reliable way to execute background work with at-least-once delivery guarantees. The system is designed around a simple principle: define tasks declaratively, implement them in code, and let the framework handle all the complexity of queuing, retrying, and monitoring.
 
+### Developer Orientation (Read Before Diving In)
+
+If you're extending or debugging async tasks, start with the high-level concepts and checkpoints below.
+This prevents chasing scattered code paths and assumptions.
+
+**What you should understand first:**
+- **Task definition and generation**: tasks are declared in a spec, then code is generated. Always confirm what is generated and what is hand-written.
+- **Runtime responsibilities**: task enqueueing, worker execution, retry decisions, and events are separate concerns with different owners.
+- **Persistence contract**: tasks and events live in the database; status transitions and retries are persisted, not in-memory.
+
+**What to check (in order):**
+1. **Specs and config**: task definitions, retry policy defaults, timeouts, and generation settings.
+2. **Generated interfaces**: TaskRunner and Executor APIs that your code must implement or call.
+3. **Task store layer**: enqueueing, updating status, and helper utilities (e.g., wait-for-completion).
+4. **Worker lifecycle**: claiming/locking, executing, error handling, and retries.
+5. **Events and hooks**: how TaskError events are emitted and when failure hooks run.
+6. **Database queries**: authoritative behavior for task selection, retries, and event lookup.
+7. **Tests and examples**: validate behavior assumptions and discover edge cases.
+
+**Guiding principles:**
+- Treat generated code as the contract between layers; do not hand-edit it.
+- Treat SQL and specs as the source of truth for persistence and API types.
+- When behavior seems unclear, start from data flow (task record → worker → event) rather than searching for a single entry point.
+
 ### Key Benefits
 
 - **At-least-once delivery**: Tasks are guaranteed to execute successfully at least once
@@ -337,6 +361,32 @@ taskID, err := taskRunner.RunSendWelcomeEmail(ctx, params,
 - Overrides are applied as functional options
 - They modify the task attributes before database insertion
 - Type-safe validation ensures override compatibility
+
+### Waiting for Task Completion
+
+Sometimes you need to block until a task finishes (for tests, orchestration, or CLI workflows).
+TaskStore provides a polling helper that waits for terminal states and includes failure context.
+
+```go
+store := taskcore.NewTaskStore(model)
+err := store.WaitForTask(ctx, taskID,
+    taskcore.WithWaitForTaskPollInterval(200*time.Millisecond),
+    taskcore.WithWaitForTaskTimeout(30*time.Second),
+)
+```
+
+**How it works:**
+- Polls `GetTaskByID` until the task is `completed` or `failed`.
+- On failure, reads the most recent TaskError event and returns a message that includes:
+  - the task attempt count
+  - the retry policy max attempts
+  - the last error message from the TaskError event
+- On timeout or context cancellation, returns the context error.
+
+**Implementation references:**
+- `pkg/taskcore/wait.go` implements the polling helper.
+- `pkg/taskcore/store.go` exposes `GetTaskByID` and `GetLastTaskErrorEvent`.
+- `sql/queries/tasks.sql` defines `GetLastTaskErrorEvent` for the events table.
 
 ### Failure Hooks
 

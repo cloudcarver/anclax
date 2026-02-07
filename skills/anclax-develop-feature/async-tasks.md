@@ -2,6 +2,24 @@
 
 Use async tasks for background work with at-least-once delivery, retries, cron schedules, and failure hooks.
 
+## Developer orientation
+
+Use this checklist before diving into implementation details. It prevents chasing scattered code paths.
+
+Understand the system at a top level:
+- Tasks are defined in a spec, then code is generated. Treat generated code as the layer contract.
+- Enqueueing, worker execution, retry decisions, and events are separate responsibilities.
+- Status transitions and retries are persisted in the database, not in memory.
+
+Check in this order when debugging or adding features:
+1. Task definitions and defaults (retry, timeout, cron) in the spec/config.
+2. Generated interfaces (runner/executor) that your code must implement or call.
+3. Task store helpers (enqueue/update/status lookups/waiting utilities).
+4. Worker lifecycle (claim/lock, execute, retry, finalize).
+5. Event emission and hooks for failures.
+6. Queries/migrations that define persistence behavior.
+7. Tests/examples that capture edge cases.
+
 ## Define tasks
 
 `api/tasks.yaml` is the source of truth. Parameters follow JSON Schema.
