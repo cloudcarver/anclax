@@ -82,7 +82,8 @@ func (s *TaskStore) buildTaskFailedError(ctx context.Context, task *apigen.Task)
 
 	maxAttempts := formatMaxAttempts(task.Attributes.RetryPolicy)
 	return errors.Errorf(
-		"task %d failed (attempts=%d max_attempts=%s last_error=%s)",
+		"task %s failed (id=%d attempts=%d max_attempts=%s last_error=%s)",
+		task.Spec.Type,
 		task.ID,
 		task.Attempts,
 		maxAttempts,

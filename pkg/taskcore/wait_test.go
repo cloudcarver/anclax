@@ -41,6 +41,7 @@ func TestWaitForTaskFailed(t *testing.T) {
 	mockModel := model.NewMockModelInterface(ctrl)
 	mockModel.EXPECT().GetTaskByID(ctx, taskID).Return(&querier.AnclaxTask{
 		ID:       taskID,
+		Spec:     apigen.TaskSpec{Type: "SendWelcomeEmail"},
 		Status:   string(apigen.Failed),
 		Attempts: 3,
 		Attributes: apigen.TaskAttributes{
@@ -56,7 +57,8 @@ func TestWaitForTaskFailed(t *testing.T) {
 	store := &TaskStore{model: mockModel}
 	err := store.WaitForTask(ctx, taskID)
 	require.Error(t, err)
-	require.ErrorContains(t, err, "task 2 failed")
+	require.ErrorContains(t, err, "task SendWelcomeEmail failed")
+	require.ErrorContains(t, err, "id=2")
 	require.ErrorContains(t, err, "attempts=3")
 	require.ErrorContains(t, err, "max_attempts=3")
 	require.ErrorContains(t, err, "last_error=boom")
