@@ -116,6 +116,13 @@ INSERT INTO anclax.events (spec)
 VALUES ($1)
 RETURNING *;
 
+-- name: GetLastTaskErrorEvent :one
+SELECT * FROM anclax.events
+WHERE spec->>'type' = 'TaskError'
+  AND (spec->'taskError'->>'taskID')::int = sqlc.arg(task_id)::int
+ORDER BY created_at DESC
+LIMIT 1;
+
 -- name: GetTaskByID :one
 SELECT * FROM anclax.tasks
 WHERE id = $1;

@@ -34,4 +34,10 @@ type TaskStoreInterface interface {
 	WithTx(tx core.Tx) TaskStoreInterface
 
 	GetTaskByUniqueTag(ctx context.Context, uniqueTag string) (*apigen.Task, error)
+
+	GetTaskByID(ctx context.Context, taskID int32) (*apigen.Task, error)
+
+	GetLastTaskErrorEvent(ctx context.Context, taskID int32) (*apigen.Event, error)
+
+	WaitForTask(ctx context.Context, taskID int32, opts ...WaitForTaskOption) error
 }

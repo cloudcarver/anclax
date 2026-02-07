@@ -24,6 +24,7 @@ type Querier interface {
 	DeleteOpaqueKeys(ctx context.Context, userID *int32) error
 	DeleteUserByName(ctx context.Context, name string) error
 	GetKeyPair(ctx context.Context, accessKey string) (*AnclaxAccessKeyPair, error)
+	GetLastTaskErrorEvent(ctx context.Context, taskID int32) (*AnclaxEvent, error)
 	GetOpaqueKey(ctx context.Context, id int64) ([]byte, error)
 	GetOrg(ctx context.Context, id int32) (*AnclaxOrg, error)
 	GetOrgByName(ctx context.Context, name string) (*AnclaxOrg, error)

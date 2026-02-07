@@ -232,6 +232,21 @@ func (mr *MockModelInterfaceMockRecorder) GetKeyPair(ctx, accessKey any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKeyPair", reflect.TypeOf((*MockModelInterface)(nil).GetKeyPair), ctx, accessKey)
 }
 
+// GetLastTaskErrorEvent mocks base method.
+func (m *MockModelInterface) GetLastTaskErrorEvent(ctx context.Context, taskID int32) (*querier.AnclaxEvent, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLastTaskErrorEvent", ctx, taskID)
+	ret0, _ := ret[0].(*querier.AnclaxEvent)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetLastTaskErrorEvent indicates an expected call of GetLastTaskErrorEvent.
+func (mr *MockModelInterfaceMockRecorder) GetLastTaskErrorEvent(ctx, taskID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLastTaskErrorEvent", reflect.TypeOf((*MockModelInterface)(nil).GetLastTaskErrorEvent), ctx, taskID)
+}
+
 // GetOpaqueKey mocks base method.
 func (m *MockModelInterface) GetOpaqueKey(ctx context.Context, id int64) ([]byte, error) {
 	m.ctrl.T.Helper()

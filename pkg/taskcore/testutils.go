@@ -1,6 +1,7 @@
 package taskcore
 
 import (
+	"context"
 	"fmt"
 	reflect "reflect"
 
@@ -45,4 +46,8 @@ func NewMockTaskStoreInterfaceWithTx(ctrl *gomock.Controller) *MockTaskStoreInte
 
 func (m *MockTaskStoreInterfaceExtended) WithTx(tx core.Tx) TaskStoreInterface {
 	return m
+}
+
+func (m *MockTaskStoreInterfaceExtended) WaitForTask(ctx context.Context, taskID int32, opts ...WaitForTaskOption) error {
+	return m.MockTaskStoreInterface.WaitForTask(ctx, taskID, opts...)
 }

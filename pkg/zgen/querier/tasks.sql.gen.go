@@ -169,6 +169,21 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (*Anclax
 	return &i, err
 }
 
+const getLastTaskErrorEvent = `-- name: GetLastTaskErrorEvent :one
+SELECT id, spec, created_at FROM anclax.events
+WHERE spec->>'type' = 'TaskError'
+  AND (spec->'taskError'->>'taskID')::int = $1::int
+ORDER BY created_at DESC
+LIMIT 1
+`
+
+func (q *Queries) GetLastTaskErrorEvent(ctx context.Context, taskID int32) (*AnclaxEvent, error) {
+	row := q.db.QueryRow(ctx, getLastTaskErrorEvent, taskID)
+	var i AnclaxEvent
+	err := row.Scan(&i.ID, &i.Spec, &i.CreatedAt)
+	return &i, err
+}
+
 const getTaskByID = `-- name: GetTaskByID :one
 SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id FROM anclax.tasks
 WHERE id = $1

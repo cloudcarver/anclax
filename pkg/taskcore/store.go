@@ -15,7 +15,10 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-var ErrTaskNotFound = errors.New("task not found")
+var (
+	ErrTaskNotFound      = errors.New("task not found")
+	ErrTaskEventNotFound = errors.New("task event not found")
+)
 
 type TaskStore struct {
 	now func() time.Time
@@ -122,4 +125,31 @@ func (s *TaskStore) GetTaskByUniqueTag(ctx context.Context, uniqueTag string) (*
 	}
 	ret := types.TaskToAPI(task)
 	return &ret, nil
+}
+
+func (s *TaskStore) GetTaskByID(ctx context.Context, taskID int32) (*apigen.Task, error) {
+	task, err := s.model.GetTaskByID(ctx, taskID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrTaskNotFound
+		}
+		return nil, errors.Wrap(err, "failed to get task")
+	}
+	ret := types.TaskToAPI(task)
+	return &ret, nil
+}
+
+func (s *TaskStore) GetLastTaskErrorEvent(ctx context.Context, taskID int32) (*apigen.Event, error) {
+	event, err := s.model.GetLastTaskErrorEvent(ctx, taskID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrTaskEventNotFound
+		}
+		return nil, errors.Wrap(err, "failed to get last task error event")
+	}
+	return &apigen.Event{
+		ID:        event.ID,
+		Spec:      event.Spec,
+		CreatedAt: event.CreatedAt,
+	}, nil
 }

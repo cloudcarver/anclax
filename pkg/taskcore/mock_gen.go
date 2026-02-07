@@ -43,6 +43,36 @@ func (m *MockTaskStoreInterface) EXPECT() *MockTaskStoreInterfaceMockRecorder {
 	return m.recorder
 }
 
+// GetLastTaskErrorEvent mocks base method.
+func (m *MockTaskStoreInterface) GetLastTaskErrorEvent(ctx context.Context, taskID int32) (*apigen.Event, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLastTaskErrorEvent", ctx, taskID)
+	ret0, _ := ret[0].(*apigen.Event)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetLastTaskErrorEvent indicates an expected call of GetLastTaskErrorEvent.
+func (mr *MockTaskStoreInterfaceMockRecorder) GetLastTaskErrorEvent(ctx, taskID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLastTaskErrorEvent", reflect.TypeOf((*MockTaskStoreInterface)(nil).GetLastTaskErrorEvent), ctx, taskID)
+}
+
+// GetTaskByID mocks base method.
+func (m *MockTaskStoreInterface) GetTaskByID(ctx context.Context, taskID int32) (*apigen.Task, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetTaskByID", ctx, taskID)
+	ret0, _ := ret[0].(*apigen.Task)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetTaskByID indicates an expected call of GetTaskByID.
+func (mr *MockTaskStoreInterfaceMockRecorder) GetTaskByID(ctx, taskID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTaskByID", reflect.TypeOf((*MockTaskStoreInterface)(nil).GetTaskByID), ctx, taskID)
+}
+
 // GetTaskByUniqueTag mocks base method.
 func (m *MockTaskStoreInterface) GetTaskByUniqueTag(ctx context.Context, uniqueTag string) (*apigen.Task, error) {
 	m.ctrl.T.Helper()
@@ -113,6 +143,25 @@ func (m *MockTaskStoreInterface) UpdateCronJob(ctx context.Context, taskID int32
 func (mr *MockTaskStoreInterfaceMockRecorder) UpdateCronJob(ctx, taskID, cronExpression, spec any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateCronJob", reflect.TypeOf((*MockTaskStoreInterface)(nil).UpdateCronJob), ctx, taskID, cronExpression, spec)
+}
+
+// WaitForTask mocks base method.
+func (m *MockTaskStoreInterface) WaitForTask(ctx context.Context, taskID int32, opts ...WaitForTaskOption) error {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, taskID}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "WaitForTask", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// WaitForTask indicates an expected call of WaitForTask.
+func (mr *MockTaskStoreInterfaceMockRecorder) WaitForTask(ctx, taskID any, opts ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, taskID}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WaitForTask", reflect.TypeOf((*MockTaskStoreInterface)(nil).WaitForTask), varargs...)
 }
 
 // WithTx mocks base method.
