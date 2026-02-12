@@ -14,32 +14,76 @@ import (
 )
 
 const claimTask = `-- name: ClaimTask :one
+WITH
+    -- Eligible tasks are pending, due, unlocked, and label-compatible.
+    eligible AS (
+        SELECT t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id
+        FROM anclax.tasks t
+        WHERE
+            t.status = 'pending'
+            AND (t.started_at IS NULL OR t.started_at < NOW())
+            AND (t.locked_at IS NULL OR t.locked_at < $2)
+            AND (
+                $3::bool = false
+                OR t.attributes->'labels' IS NULL
+                OR jsonb_array_length(t.attributes->'labels') = 0
+                OR (t.attributes->'labels' ?| $4::text[])
+            )
+    ),
+    -- Any active lock on a serial key blocks the chain.
+    locked_serial_keys AS (
+        SELECT DISTINCT t.serial_key
+        FROM anclax.tasks t
+        WHERE
+            t.serial_key IS NOT NULL
+            AND t.locked_at IS NOT NULL
+            AND t.locked_at >= $2
+    ),
+    -- A serial task is claimable only if there is no earlier pending task in its chain.
+    candidate AS (
+        SELECT e.id
+        FROM eligible e
+        WHERE
+            e.serial_key IS NULL
+            OR (
+                NOT EXISTS (
+                    SELECT 1 FROM locked_serial_keys l WHERE l.serial_key = e.serial_key
+                )
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM anclax.tasks s
+                    WHERE
+                        s.serial_key = e.serial_key
+                        AND s.status = 'pending'
+                        AND ROW(
+                            s.serial_id IS NULL,
+                            COALESCE(s.serial_id, 2147483647),
+                            s.created_at,
+                            COALESCE(s.started_at, '-infinity'::timestamptz),
+                            s.id
+                        ) < ROW(
+                            e.serial_id IS NULL,
+                            COALESCE(e.serial_id, 2147483647),
+                            e.created_at,
+                            COALESCE(e.started_at, '-infinity'::timestamptz),
+                            e.id
+                        )
+                )
+            )
+        ORDER BY e.created_at, e.id
+        LIMIT 1
+    )
 UPDATE anclax.tasks
 SET
     locked_at = CURRENT_TIMESTAMP,
     worker_id = $1,
     attempts = attempts + 1,
     updated_at = CURRENT_TIMESTAMP
-WHERE id = (
-    SELECT t.id FROM anclax.tasks t
-    WHERE
-        t.status = 'pending'
-        AND (
-            t.started_at IS NULL OR t.started_at < NOW()
-        )
-        AND (
-            t.locked_at IS NULL OR t.locked_at < $2
-        )
-        AND (
-            $3::bool = false
-            OR t.attributes->'labels' IS NULL
-            OR jsonb_array_length(t.attributes->'labels') = 0
-            OR (t.attributes->'labels' ?| $4::text[])
-        )
-    ORDER BY RANDOM()
-    LIMIT 1
-)
-RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id
+WHERE
+    anclax.tasks.id = (SELECT id FROM candidate)
+    AND anclax.tasks.status = 'pending'
+    AND (anclax.tasks.locked_at IS NULL OR anclax.tasks.locked_at < $2)
+RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id
 `
 
 type ClaimTaskParams struct {
@@ -69,11 +113,69 @@ func (q *Queries) ClaimTask(ctx context.Context, arg ClaimTaskParams) (*AnclaxTa
 		&i.Attempts,
 		&i.LockedAt,
 		&i.WorkerID,
+		&i.SerialKey,
+		&i.SerialID,
 	)
 	return &i, err
 }
 
 const claimTaskByID = `-- name: ClaimTaskByID :one
+WITH
+    eligible AS (
+        SELECT t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id
+        FROM anclax.tasks t
+        WHERE
+            t.id = $3
+            AND t.status = 'pending'
+            AND (t.started_at IS NULL OR t.started_at < NOW())
+            AND (t.locked_at IS NULL OR t.locked_at < $2)
+            AND (
+                $4::bool = false
+                OR t.attributes->'labels' IS NULL
+                OR jsonb_array_length(t.attributes->'labels') = 0
+                OR (t.attributes->'labels' ?| $5::text[])
+            )
+    ),
+    locked_serial_keys AS (
+        SELECT DISTINCT t.serial_key
+        FROM anclax.tasks t
+        WHERE
+            t.serial_key IS NOT NULL
+            AND t.locked_at IS NOT NULL
+            AND t.locked_at >= $2
+    ),
+    candidate AS (
+        SELECT e.id
+        FROM eligible e
+        WHERE
+            e.serial_key IS NULL
+            OR (
+                NOT EXISTS (
+                    SELECT 1 FROM locked_serial_keys l WHERE l.serial_key = e.serial_key
+                )
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM anclax.tasks s
+                    WHERE
+                        s.serial_key = e.serial_key
+                        AND s.status = 'pending'
+                        AND ROW(
+                            s.serial_id IS NULL,
+                            COALESCE(s.serial_id, 2147483647),
+                            s.created_at,
+                            COALESCE(s.started_at, '-infinity'::timestamptz),
+                            s.id
+                        ) < ROW(
+                            e.serial_id IS NULL,
+                            COALESCE(e.serial_id, 2147483647),
+                            e.created_at,
+                            COALESCE(e.started_at, '-infinity'::timestamptz),
+                            e.id
+                        )
+                )
+            )
+        LIMIT 1
+    )
 UPDATE anclax.tasks
 SET
     locked_at = CURRENT_TIMESTAMP,
@@ -81,27 +183,16 @@ SET
     attempts = attempts + 1,
     updated_at = CURRENT_TIMESTAMP
 WHERE
-    id = $2
-    AND status = 'pending'
-    AND (
-        started_at IS NULL OR started_at < NOW()
-    )
-    AND (
-        locked_at IS NULL OR locked_at < $3
-    )
-    AND (
-        $4::bool = false
-        OR attributes->'labels' IS NULL
-        OR jsonb_array_length(attributes->'labels') = 0
-        OR (attributes->'labels' ?| $5::text[])
-    )
-RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id
+    anclax.tasks.id = (SELECT id FROM candidate)
+    AND anclax.tasks.status = 'pending'
+    AND (anclax.tasks.locked_at IS NULL OR anclax.tasks.locked_at < $2)
+RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id
 `
 
 type ClaimTaskByIDParams struct {
 	WorkerID   uuid.NullUUID
-	ID         int32
 	LockExpiry *time.Time
+	ID         int32
 	HasLabels  bool
 	Labels     []string
 }
@@ -109,8 +200,8 @@ type ClaimTaskByIDParams struct {
 func (q *Queries) ClaimTaskByID(ctx context.Context, arg ClaimTaskByIDParams) (*AnclaxTask, error) {
 	row := q.db.QueryRow(ctx, claimTaskByID,
 		arg.WorkerID,
-		arg.ID,
 		arg.LockExpiry,
+		arg.ID,
 		arg.HasLabels,
 		arg.Labels,
 	)
@@ -127,13 +218,15 @@ func (q *Queries) ClaimTaskByID(ctx context.Context, arg ClaimTaskByIDParams) (*
 		&i.Attempts,
 		&i.LockedAt,
 		&i.WorkerID,
+		&i.SerialKey,
+		&i.SerialID,
 	)
 	return &i, err
 }
 
 const createTask = `-- name: CreateTask :one
-INSERT INTO anclax.tasks (attributes, spec, status, started_at, unique_tag)
-VALUES ($1, $2, $3, $4, $5) ON CONFLICT (unique_tag) DO NOTHING RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id
+INSERT INTO anclax.tasks (attributes, spec, status, started_at, unique_tag, serial_key, serial_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (unique_tag) DO NOTHING RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id
 `
 
 type CreateTaskParams struct {
@@ -142,6 +235,8 @@ type CreateTaskParams struct {
 	Status     string
 	StartedAt  *time.Time
 	UniqueTag  *string
+	SerialKey  *string
+	SerialID   *int32
 }
 
 func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (*AnclaxTask, error) {
@@ -151,6 +246,8 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (*Anclax
 		arg.Status,
 		arg.StartedAt,
 		arg.UniqueTag,
+		arg.SerialKey,
+		arg.SerialID,
 	)
 	var i AnclaxTask
 	err := row.Scan(
@@ -165,6 +262,8 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (*Anclax
 		&i.Attempts,
 		&i.LockedAt,
 		&i.WorkerID,
+		&i.SerialKey,
+		&i.SerialID,
 	)
 	return &i, err
 }
@@ -185,7 +284,7 @@ func (q *Queries) GetLastTaskErrorEvent(ctx context.Context, taskID int32) (*Anc
 }
 
 const getTaskByID = `-- name: GetTaskByID :one
-SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id FROM anclax.tasks
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id FROM anclax.tasks
 WHERE id = $1
 `
 
@@ -204,12 +303,14 @@ func (q *Queries) GetTaskByID(ctx context.Context, id int32) (*AnclaxTask, error
 		&i.Attempts,
 		&i.LockedAt,
 		&i.WorkerID,
+		&i.SerialKey,
+		&i.SerialID,
 	)
 	return &i, err
 }
 
 const getTaskByUniqueTag = `-- name: GetTaskByUniqueTag :one
-SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id FROM anclax.tasks
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id FROM anclax.tasks
 WHERE unique_tag = $1
 `
 
@@ -228,6 +329,8 @@ func (q *Queries) GetTaskByUniqueTag(ctx context.Context, uniqueTag *string) (*A
 		&i.Attempts,
 		&i.LockedAt,
 		&i.WorkerID,
+		&i.SerialKey,
+		&i.SerialID,
 	)
 	return &i, err
 }
@@ -257,7 +360,7 @@ func (q *Queries) InsertEvent(ctx context.Context, spec apigen.EventSpec) (*Ancl
 }
 
 const listAllPendingTasks = `-- name: ListAllPendingTasks :many
-SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id FROM anclax.tasks
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id FROM anclax.tasks
 WHERE
     status = 'pending'
     AND (
@@ -286,6 +389,8 @@ func (q *Queries) ListAllPendingTasks(ctx context.Context) ([]*AnclaxTask, error
 			&i.Attempts,
 			&i.LockedAt,
 			&i.WorkerID,
+			&i.SerialKey,
+			&i.SerialID,
 		); err != nil {
 			return nil, err
 		}
@@ -337,7 +442,13 @@ func (q *Queries) ReleaseTaskLockByWorker(ctx context.Context, arg ReleaseTaskLo
 
 const updateTask = `-- name: UpdateTask :exec
 UPDATE anclax.tasks
-SET attributes = $2, spec = $3, started_at = $4, updated_at = CURRENT_TIMESTAMP
+SET
+    attributes = $2,
+    spec = $3,
+    started_at = $4,
+    serial_key = $5,
+    serial_id = $6,
+    updated_at = CURRENT_TIMESTAMP
 WHERE id = $1
 `
 
@@ -346,6 +457,8 @@ type UpdateTaskParams struct {
 	Attributes apigen.TaskAttributes
 	Spec       apigen.TaskSpec
 	StartedAt  *time.Time
+	SerialKey  *string
+	SerialID   *int32
 }
 
 func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) error {
@@ -354,6 +467,8 @@ func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) error {
 		arg.Attributes,
 		arg.Spec,
 		arg.StartedAt,
+		arg.SerialKey,
+		arg.SerialID,
 	)
 	return err
 }

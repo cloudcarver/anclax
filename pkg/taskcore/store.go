@@ -60,6 +60,10 @@ func (s *TaskStore) PushTask(ctx context.Context, task *apigen.Task) (int32, err
 			return task.ID, nil
 		}
 	}
+	serialKey, serialID, err := serialAttributesFromJSON(task.Attributes)
+	if err != nil {
+		return 0, err
+	}
 
 	createdTask, err := s.model.CreateTask(ctx, querier.CreateTaskParams{
 		Attributes: task.Attributes,
@@ -67,6 +71,8 @@ func (s *TaskStore) PushTask(ctx context.Context, task *apigen.Task) (int32, err
 		StartedAt:  task.StartedAt,
 		Status:     string(task.Status),
 		UniqueTag:  task.UniqueTag,
+		SerialKey:  serialKey,
+		SerialID:   serialID,
 	})
 	if err != nil {
 		return 0, errors.Wrap(err, "failed to push task")
@@ -95,12 +101,18 @@ func (s *TaskStore) UpdateCronJob(ctx context.Context, taskID int32, cronExpress
 	}
 
 	task.Spec.Payload = spec
+	serialKey, serialID, err := serialAttributesFromJSON(task.Attributes)
+	if err != nil {
+		return err
+	}
 
 	if err := s.model.UpdateTask(ctx, querier.UpdateTaskParams{
 		ID:         taskID,
 		Attributes: task.Attributes,
 		StartedAt:  &nextTime,
 		Spec:       task.Spec,
+		SerialKey:  serialKey,
+		SerialID:   serialID,
 	}); err != nil {
 		return errors.Wrapf(err, "failed to update task")
 	}
@@ -174,4 +186,39 @@ func (s *TaskStore) GetLastTaskErrorEvent(ctx context.Context, taskID int32) (*a
 		Spec:      event.Spec,
 		CreatedAt: event.CreatedAt,
 	}, nil
+}
+
+func serialAttributes(attributes apigen.TaskAttributes) (*string, *int32, error) {
+	if attributes.SerialKey == nil && attributes.SerialID == nil {
+		return nil, nil, nil
+	}
+	if attributes.SerialID != nil && attributes.SerialKey == nil {
+		return nil, nil, errors.New("serialID requires serialKey")
+	}
+	if attributes.SerialKey != nil && *attributes.SerialKey == "" {
+		return nil, nil, errors.New("serialKey cannot be empty")
+	}
+	return attributes.SerialKey, attributes.SerialID, nil
+}
+
+func serialAttributesFromJSON(attributes apigen.TaskAttributes) (*string, *int32, error) {
+	if attributes.SerialKey != nil || attributes.SerialID != nil {
+		return serialAttributes(attributes)
+	}
+
+	raw, err := json.Marshal(attributes)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "marshal task attributes")
+	}
+	var serial struct {
+		SerialKey *string `json:"serialKey"`
+		SerialID  *int32  `json:"serialID"`
+	}
+	if err := json.Unmarshal(raw, &serial); err != nil {
+		return nil, nil, errors.Wrap(err, "unmarshal task serial attributes")
+	}
+	return serialAttributes(apigen.TaskAttributes{
+		SerialKey: serial.SerialKey,
+		SerialID:  serial.SerialID,
+	})
 }

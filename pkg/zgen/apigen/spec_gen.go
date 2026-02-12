@@ -155,6 +155,12 @@ type TaskAttributes struct {
 	Labels      *[]string        `json:"labels,omitempty"`
 	RetryPolicy *TaskRetryPolicy `json:"retryPolicy,omitempty"`
 
+	// SerialID Optional serial order within the same serial key (lower runs first)
+	SerialID *int32 `json:"serialID,omitempty"`
+
+	// SerialKey Serial key for forcing tasks with the same key to run one by one
+	SerialKey *string `json:"serialKey,omitempty"`
+
 	// Timeout Timeout of the task, a valid go time duration value e.g. 1h, 1d, 1w, 1m
 	Timeout *string `json:"timeout,omitempty"`
 }

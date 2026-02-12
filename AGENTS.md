@@ -4,6 +4,8 @@
 
 This the official repo of the anclax framework. The anclax framework is also built on top of the anclax framework. Check anclax-develop-feature skill for more details.
 
+Internal docs can be found in the `docs` folder.
+
 ## Anclax CLI
 
 The code of anclax CLI is in `cmd/anclax`

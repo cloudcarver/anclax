@@ -88,6 +88,8 @@ type AnclaxTask struct {
 	Attempts   int32
 	LockedAt   *time.Time
 	WorkerID   uuid.NullUUID
+	SerialKey  *string
+	SerialID   *int32
 }
 
 type AnclaxUser struct {

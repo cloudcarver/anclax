@@ -112,6 +112,8 @@ Use `taskcore.TaskOverride` helpers:
 - `taskcore.WithStartedAt(time)`
 - `taskcore.WithUniqueTag(tag)`
 - `taskcore.WithLabels([]string{"billing", "critical"})`
+- `taskcore.WithSerialKey("order-42")`
+- `taskcore.WithSerialID(7)`
 
 If a unique tag already exists, the existing task ID is returned instead of inserting a new task.
 
@@ -122,6 +124,21 @@ If a unique tag already exists, the existing task ID is returned instead of inse
 - Any other error records a task error event and follows the retry policy.
 
 Cron tasks are rescheduled every run regardless of success or failure.
+
+## Serial execution
+
+Set `serialKey` to force tasks with the same key to run one-by-one. Optionally set `serialID` for explicit ordering.
+
+Ordering policy:
+- If any pending tasks for a key have `serialID`, the smallest `serialID` is always the head of the chain.
+- If no tasks have `serialID`, order by `created_at`, then `started_at` (NULL first), then `id`.
+
+Claim gating and corner cases:
+- A task with `serialID` but no `serialKey` is rejected when enqueuing.
+- Empty `serialKey` is rejected.
+- The head of the chain blocks all other tasks for the same key, even if its `started_at` is in the future.
+- `started_at` only controls eligibility; it does not reorder the serial chain.
+- Mixed tasks: if any task has `serialID`, tasks without `serialID` wait until all `serialID` tasks for that key complete.
 
 ## Worker leases and labels
 

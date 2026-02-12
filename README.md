@@ -39,6 +39,7 @@ Use the Anclax skill with the coding agent:
 
 - **YAML-first, codegen-backed**: Define HTTP and task schemas in YAML; Anclax generates strongly-typed interfaces so missing implementations fail at compile time, not in prod.
 - **Async tasks you can trust**: At-least-once delivery, automatic retries, and cron scheduling out of the box.
+- **Serial task execution**: Use `serialKey`/`serialID` to run related tasks strictly one-by-one.
 - **Transaction-safe flows**: A `WithTx` pattern ensures hooks always run and side effects are consistent.
 - **Typed database layer**: Powered by `sqlc` for safe, fast queries.
 - **Fast HTTP server**: Built on Fiber for performance and ergonomics.
@@ -109,9 +110,14 @@ paths:
 
 ```yaml
 tasks:
-  incrementCounter:
+  - name: IncrementCounter
     description: Increment the counter value
-    cron: "*/1 * * * *"
+    cronjob:
+      cronExpression: "*/1 * * * * *"
+    # Optional: serialize tasks per key
+    # attributes:
+    #   serialKey: "counter"
+    #   serialID: 1
 ```
 
 3) Generate and implement 🛠️

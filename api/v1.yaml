@@ -288,6 +288,13 @@ components:
           type: array
           items:
             type: string
+        serialKey:
+          type: string
+          description: Serial key for forcing tasks with the same key to run one by one
+        serialID:
+          type: integer
+          format: int32
+          description: Optional serial order within the same serial key (lower runs first)
 
     TaskRetryPolicy:
       type: object

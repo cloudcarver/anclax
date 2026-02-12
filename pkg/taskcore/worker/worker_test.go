@@ -67,6 +67,8 @@ func TestClaimTaskUsesLabelsAndTTL(t *testing.T) {
 				Attributes: apigen.TaskAttributes{},
 				Spec:       apigen.TaskSpec{},
 				Status:     string(apigen.Pending),
+				SerialKey:  nil,
+				SerialID:   nil,
 			}, nil
 		},
 	)
@@ -120,6 +122,8 @@ func TestClaimTaskWithoutLabels(t *testing.T) {
 				Attributes: apigen.TaskAttributes{},
 				Spec:       apigen.TaskSpec{},
 				Status:     string(apigen.Pending),
+				SerialKey:  nil,
+				SerialID:   nil,
 			}, nil
 		},
 	)

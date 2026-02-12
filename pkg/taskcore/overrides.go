@@ -49,3 +49,17 @@ func WithLabels(labels []string) TaskOverride {
 		return nil
 	}
 }
+
+func WithSerialKey(serialKey string) TaskOverride {
+	return func(task *apigen.Task) error {
+		task.Attributes.SerialKey = &serialKey
+		return nil
+	}
+}
+
+func WithSerialID(serialID int32) TaskOverride {
+	return func(task *apigen.Task) error {
+		task.Attributes.SerialID = &serialID
+		return nil
+	}
+}

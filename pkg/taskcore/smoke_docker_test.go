@@ -161,6 +161,294 @@ func TestAsyncTaskWorkerLoopSmoke(t *testing.T) {
 	})
 }
 
+func TestAsyncTaskSerialBehaviorSmoke(t *testing.T) {
+	withSmokePostgres(t, func(ctx context.Context, m model.ModelInterface) {
+		store := taskcore.NewTaskStore(m)
+		workerID := uuid.New()
+		workerIDParam := uuid.NullUUID{UUID: workerID, Valid: true}
+		lockExpiry := time.Now().Add(-1 * time.Minute)
+
+		serialKey := "serial-smoke"
+		serialID := int32(1)
+		future := time.Now().Add(10 * time.Minute)
+
+		blockedID, err := store.PushTask(ctx, &apigen.Task{
+			Attributes: apigen.TaskAttributes{SerialKey: &serialKey, SerialID: &serialID},
+			Spec:       apigen.TaskSpec{Type: "smoke-serial", Payload: json.RawMessage(`{"id":1}`)},
+			Status:     apigen.Pending,
+			StartedAt:  &future,
+		})
+		require.NoError(t, err)
+
+		laterID, err := store.PushTask(ctx, &apigen.Task{
+			Attributes: apigen.TaskAttributes{SerialKey: &serialKey},
+			Spec:       apigen.TaskSpec{Type: "smoke-serial", Payload: json.RawMessage(`{"id":2}`)},
+			Status:     apigen.Pending,
+		})
+		require.NoError(t, err)
+		require.NotEqual(t, blockedID, laterID)
+
+		_, err = m.ClaimTask(ctx, querier.ClaimTaskParams{
+			WorkerID:   workerIDParam,
+			LockExpiry: &lockExpiry,
+			HasLabels:  false,
+			Labels:     nil,
+		})
+		require.ErrorIs(t, err, pgx.ErrNoRows)
+
+		earlyID, err := store.PushTask(ctx, &apigen.Task{
+			Attributes: apigen.TaskAttributes{SerialKey: &serialKey, SerialID: &serialID},
+			Spec:       apigen.TaskSpec{Type: "smoke-serial", Payload: json.RawMessage(`{"id":0}`)},
+			Status:     apigen.Pending,
+		})
+		require.NoError(t, err)
+		require.NotEqual(t, blockedID, earlyID)
+
+		_, err = m.ClaimTask(ctx, querier.ClaimTaskParams{
+			WorkerID:   workerIDParam,
+			LockExpiry: &lockExpiry,
+			HasLabels:  false,
+			Labels:     nil,
+		})
+		require.ErrorIs(t, err, pgx.ErrNoRows)
+
+		past := time.Now().Add(-1 * time.Minute)
+		require.NoError(t, m.UpdateTaskStartedAt(ctx, querier.UpdateTaskStartedAtParams{
+			ID:        blockedID,
+			StartedAt: &past,
+		}))
+
+		claimed, err := m.ClaimTask(ctx, querier.ClaimTaskParams{
+			WorkerID:   workerIDParam,
+			LockExpiry: &lockExpiry,
+			HasLabels:  false,
+			Labels:     nil,
+		})
+		require.NoError(t, err)
+		require.Equal(t, blockedID, claimed.ID)
+
+		_, err = m.UpdateTaskStatusByWorker(ctx, querier.UpdateTaskStatusByWorkerParams{
+			ID:       claimed.ID,
+			Status:   string(apigen.Completed),
+			WorkerID: workerIDParam,
+		})
+		require.NoError(t, err)
+
+		claimed, err = m.ClaimTask(ctx, querier.ClaimTaskParams{
+			WorkerID:   workerIDParam,
+			LockExpiry: &lockExpiry,
+			HasLabels:  false,
+			Labels:     nil,
+		})
+		require.NoError(t, err)
+		require.Equal(t, earlyID, claimed.ID)
+
+		_, err = m.UpdateTaskStatusByWorker(ctx, querier.UpdateTaskStatusByWorkerParams{
+			ID:       claimed.ID,
+			Status:   string(apigen.Completed),
+			WorkerID: workerIDParam,
+		})
+		require.NoError(t, err)
+
+		claimed, err = m.ClaimTask(ctx, querier.ClaimTaskParams{
+			WorkerID:   workerIDParam,
+			LockExpiry: &lockExpiry,
+			HasLabels:  false,
+			Labels:     nil,
+		})
+		require.NoError(t, err)
+		require.Equal(t, laterID, claimed.ID)
+
+		_, err = m.UpdateTaskStatusByWorker(ctx, querier.UpdateTaskStatusByWorkerParams{
+			ID:       claimed.ID,
+			Status:   string(apigen.Completed),
+			WorkerID: workerIDParam,
+		})
+		require.NoError(t, err)
+
+		serialKeyIDs := "serial-ids"
+		serialIDOne := int32(1)
+		serialIDTwo := int32(2)
+		serialIDThree := int32(3)
+
+		idTwo, err := store.PushTask(ctx, &apigen.Task{
+			Attributes: apigen.TaskAttributes{SerialKey: &serialKeyIDs, SerialID: &serialIDTwo},
+			Spec:       apigen.TaskSpec{Type: "smoke-serial", Payload: json.RawMessage(`{"id":2}`)},
+			Status:     apigen.Pending,
+		})
+		require.NoError(t, err)
+
+		idOne, err := store.PushTask(ctx, &apigen.Task{
+			Attributes: apigen.TaskAttributes{SerialKey: &serialKeyIDs, SerialID: &serialIDOne},
+			Spec:       apigen.TaskSpec{Type: "smoke-serial", Payload: json.RawMessage(`{"id":1}`)},
+			Status:     apigen.Pending,
+		})
+		require.NoError(t, err)
+
+		idThree, err := store.PushTask(ctx, &apigen.Task{
+			Attributes: apigen.TaskAttributes{SerialKey: &serialKeyIDs, SerialID: &serialIDThree},
+			Spec:       apigen.TaskSpec{Type: "smoke-serial", Payload: json.RawMessage(`{"id":3}`)},
+			Status:     apigen.Pending,
+		})
+		require.NoError(t, err)
+
+		claimed, err = m.ClaimTask(ctx, querier.ClaimTaskParams{
+			WorkerID:   workerIDParam,
+			LockExpiry: &lockExpiry,
+			HasLabels:  false,
+			Labels:     nil,
+		})
+		require.NoError(t, err)
+		require.Equal(t, idOne, claimed.ID)
+
+		_, err = m.UpdateTaskStatusByWorker(ctx, querier.UpdateTaskStatusByWorkerParams{
+			ID:       claimed.ID,
+			Status:   string(apigen.Completed),
+			WorkerID: workerIDParam,
+		})
+		require.NoError(t, err)
+
+		claimed, err = m.ClaimTask(ctx, querier.ClaimTaskParams{
+			WorkerID:   workerIDParam,
+			LockExpiry: &lockExpiry,
+			HasLabels:  false,
+			Labels:     nil,
+		})
+		require.NoError(t, err)
+		require.Equal(t, idTwo, claimed.ID)
+
+		_, err = m.UpdateTaskStatusByWorker(ctx, querier.UpdateTaskStatusByWorkerParams{
+			ID:       claimed.ID,
+			Status:   string(apigen.Completed),
+			WorkerID: workerIDParam,
+		})
+		require.NoError(t, err)
+
+		claimed, err = m.ClaimTask(ctx, querier.ClaimTaskParams{
+			WorkerID:   workerIDParam,
+			LockExpiry: &lockExpiry,
+			HasLabels:  false,
+			Labels:     nil,
+		})
+		require.NoError(t, err)
+		require.Equal(t, idThree, claimed.ID)
+
+		_, err = m.UpdateTaskStatusByWorker(ctx, querier.UpdateTaskStatusByWorkerParams{
+			ID:       claimed.ID,
+			Status:   string(apigen.Completed),
+			WorkerID: workerIDParam,
+		})
+		require.NoError(t, err)
+
+		serialKeyNoID := "serial-noid"
+		futureHead := time.Now().Add(5 * time.Minute)
+
+		futureHeadID, err := store.PushTask(ctx, &apigen.Task{
+			Attributes: apigen.TaskAttributes{SerialKey: &serialKeyNoID},
+			Spec:       apigen.TaskSpec{Type: "smoke-serial", Payload: json.RawMessage(`{"id":10}`)},
+			Status:     apigen.Pending,
+			StartedAt:  &futureHead,
+		})
+		require.NoError(t, err)
+
+		secondID, err := store.PushTask(ctx, &apigen.Task{
+			Attributes: apigen.TaskAttributes{SerialKey: &serialKeyNoID},
+			Spec:       apigen.TaskSpec{Type: "smoke-serial", Payload: json.RawMessage(`{"id":11}`)},
+			Status:     apigen.Pending,
+		})
+		require.NoError(t, err)
+
+		_, err = m.ClaimTask(ctx, querier.ClaimTaskParams{
+			WorkerID:   workerIDParam,
+			LockExpiry: &lockExpiry,
+			HasLabels:  false,
+			Labels:     nil,
+		})
+		require.ErrorIs(t, err, pgx.ErrNoRows)
+
+		pastHead := time.Now().Add(-1 * time.Minute)
+		require.NoError(t, m.UpdateTaskStartedAt(ctx, querier.UpdateTaskStartedAtParams{
+			ID:        futureHeadID,
+			StartedAt: &pastHead,
+		}))
+
+		claimed, err = m.ClaimTask(ctx, querier.ClaimTaskParams{
+			WorkerID:   workerIDParam,
+			LockExpiry: &lockExpiry,
+			HasLabels:  false,
+			Labels:     nil,
+		})
+		require.NoError(t, err)
+		require.Equal(t, futureHeadID, claimed.ID)
+
+		_, err = m.UpdateTaskStatusByWorker(ctx, querier.UpdateTaskStatusByWorkerParams{
+			ID:       claimed.ID,
+			Status:   string(apigen.Completed),
+			WorkerID: workerIDParam,
+		})
+		require.NoError(t, err)
+
+		claimed, err = m.ClaimTask(ctx, querier.ClaimTaskParams{
+			WorkerID:   workerIDParam,
+			LockExpiry: &lockExpiry,
+			HasLabels:  false,
+			Labels:     nil,
+		})
+		require.NoError(t, err)
+		require.Equal(t, secondID, claimed.ID)
+
+		_, err = m.UpdateTaskStatusByWorker(ctx, querier.UpdateTaskStatusByWorkerParams{
+			ID:       claimed.ID,
+			Status:   string(apigen.Completed),
+			WorkerID: workerIDParam,
+		})
+		require.NoError(t, err)
+
+		serialKeyFail := "serial-fail"
+		failIDOne := int32(1)
+		failIDTwo := int32(2)
+
+		failedID, err := store.PushTask(ctx, &apigen.Task{
+			Attributes: apigen.TaskAttributes{SerialKey: &serialKeyFail, SerialID: &failIDOne},
+			Spec:       apigen.TaskSpec{Type: "smoke-serial", Payload: json.RawMessage(`{"id":20}`)},
+			Status:     apigen.Pending,
+		})
+		require.NoError(t, err)
+
+		nextID, err := store.PushTask(ctx, &apigen.Task{
+			Attributes: apigen.TaskAttributes{SerialKey: &serialKeyFail, SerialID: &failIDTwo},
+			Spec:       apigen.TaskSpec{Type: "smoke-serial", Payload: json.RawMessage(`{"id":21}`)},
+			Status:     apigen.Pending,
+		})
+		require.NoError(t, err)
+
+		claimed, err = m.ClaimTask(ctx, querier.ClaimTaskParams{
+			WorkerID:   workerIDParam,
+			LockExpiry: &lockExpiry,
+			HasLabels:  false,
+			Labels:     nil,
+		})
+		require.NoError(t, err)
+		require.Equal(t, failedID, claimed.ID)
+
+		_, err = m.UpdateTaskStatusByWorker(ctx, querier.UpdateTaskStatusByWorkerParams{
+			ID:       claimed.ID,
+			Status:   string(apigen.Failed),
+			WorkerID: workerIDParam,
+		})
+		require.NoError(t, err)
+
+		claimed, err = m.ClaimTask(ctx, querier.ClaimTaskParams{
+			WorkerID:   workerIDParam,
+			LockExpiry: &lockExpiry,
+			HasLabels:  false,
+			Labels:     nil,
+		})
+		require.NoError(t, err)
+		require.Equal(t, nextID, claimed.ID)
+	})
+}
+
 func withSmokePostgres(t *testing.T, fn func(ctx context.Context, m model.ModelInterface)) {
 	t.Helper()
 	if !dockerAvailable() {

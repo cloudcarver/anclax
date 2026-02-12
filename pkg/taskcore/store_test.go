@@ -39,6 +39,8 @@ func TestUpdateCronJob(t *testing.T) {
 				CronExpression: cronExpression,
 			},
 		},
+		SerialKey: nil,
+		SerialID:  nil,
 	}, nil)
 
 	mockModel.EXPECT().UpdateTask(ctx, utils.NewJSONValueMatcher(t, querier.UpdateTaskParams{
@@ -50,6 +52,8 @@ func TestUpdateCronJob(t *testing.T) {
 		},
 		Spec:      taskSpec,
 		StartedAt: &expectedNextTime,
+		SerialKey: nil,
+		SerialID:  nil,
 	}))
 
 	taskStore := &TaskStore{
@@ -60,6 +64,131 @@ func TestUpdateCronJob(t *testing.T) {
 	}
 	err := taskStore.UpdateCronJob(ctx, taskID, cronExpression, json.RawMessage(`{}`))
 	require.NoError(t, err)
+}
+
+func TestUpdateCronJobPreservesSerialAttributes(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	var (
+		ctx            = context.Background()
+		taskID         = int32(1)
+		cronExpression = "*/10 * * * * *"
+		serialKey      = "order-42"
+		serialID       = int32(5)
+		taskSpec       = apigen.TaskSpec{
+			Payload: json.RawMessage(`{"hello":"world"}`),
+		}
+		currentTime      = time.Date(2025, 4, 1, 12, 0, 0, 0, time.UTC)
+		expectedNextTime = time.Date(2025, 4, 1, 12, 0, 10, 0, time.UTC)
+	)
+
+	mockModel := model.NewMockModelInterface(ctrl)
+
+	mockModel.EXPECT().GetTaskByID(ctx, taskID).Return(&querier.AnclaxTask{
+		ID: taskID,
+		Attributes: apigen.TaskAttributes{
+			SerialKey: &serialKey,
+			SerialID:  &serialID,
+		},
+		SerialKey: &serialKey,
+		SerialID:  &serialID,
+	}, nil)
+
+	mockModel.EXPECT().UpdateTask(ctx, utils.NewJSONValueMatcher(t, querier.UpdateTaskParams{
+		ID: taskID,
+		Attributes: apigen.TaskAttributes{
+			Cronjob: &apigen.TaskCronjob{
+				CronExpression: cronExpression,
+			},
+			SerialKey: &serialKey,
+			SerialID:  &serialID,
+		},
+		Spec:      taskSpec,
+		StartedAt: &expectedNextTime,
+		SerialKey: &serialKey,
+		SerialID:  &serialID,
+	}))
+
+	taskStore := &TaskStore{
+		model: mockModel,
+		now: func() time.Time {
+			return currentTime
+		},
+	}
+	err := taskStore.UpdateCronJob(ctx, taskID, cronExpression, json.RawMessage(`{"hello":"world"}`))
+	require.NoError(t, err)
+}
+
+func TestPushTaskRejectsSerialIDWithoutKey(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	serialID := int32(3)
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	store := &TaskStore{model: mockModel}
+
+	_, err := store.PushTask(ctx, &apigen.Task{
+		Attributes: apigen.TaskAttributes{SerialID: &serialID},
+		Spec:       apigen.TaskSpec{Type: "serial", Payload: json.RawMessage(`{}`)},
+		Status:     apigen.Pending,
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "serialID requires serialKey")
+}
+
+func TestPushTaskRejectsEmptySerialKey(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	serialKey := ""
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	store := &TaskStore{model: mockModel}
+
+	_, err := store.PushTask(ctx, &apigen.Task{
+		Attributes: apigen.TaskAttributes{SerialKey: &serialKey},
+		Spec:       apigen.TaskSpec{Type: "serial", Payload: json.RawMessage(`{}`)},
+		Status:     apigen.Pending,
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "serialKey cannot be empty")
+}
+
+func TestPushTaskSerialAttributes(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	serialKey := "order-99"
+	serialID := int32(7)
+	spec := apigen.TaskSpec{Type: "serial", Payload: json.RawMessage(`{"id":7}`)}
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockModel.EXPECT().CreateTask(ctx, utils.NewJSONValueMatcher(t, querier.CreateTaskParams{
+		Attributes: apigen.TaskAttributes{
+			SerialKey: &serialKey,
+			SerialID:  &serialID,
+		},
+		Spec:      spec,
+		Status:    string(apigen.Pending),
+		StartedAt: nil,
+		UniqueTag: nil,
+		SerialKey: &serialKey,
+		SerialID:  &serialID,
+	})).Return(&querier.AnclaxTask{ID: 42}, nil)
+
+	store := &TaskStore{model: mockModel}
+	id, err := store.PushTask(ctx, &apigen.Task{
+		Attributes: apigen.TaskAttributes{SerialKey: &serialKey, SerialID: &serialID},
+		Spec:       spec,
+		Status:     apigen.Pending,
+	})
+	require.NoError(t, err)
+	require.Equal(t, int32(42), id)
 }
 
 func TestPauseCronJob(t *testing.T) {
@@ -123,6 +252,8 @@ func TestGetTaskByID(t *testing.T) {
 		Spec:       apigen.TaskSpec{},
 		Status:     string(apigen.Pending),
 		Attempts:   2,
+		SerialKey:  nil,
+		SerialID:   nil,
 	}, nil)
 
 	store := &TaskStore{model: mockModel}
