@@ -7,6 +7,7 @@ import (
 
 	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/taskcore/types"
+	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
@@ -64,6 +65,12 @@ func (s *TaskStore) PushTask(ctx context.Context, task *apigen.Task) (int32, err
 	if err != nil {
 		return 0, err
 	}
+	priority, weight, err := priorityAndWeightAttributes(task.Attributes)
+	if err != nil {
+		return 0, err
+	}
+	task.Attributes.Priority = utils.Ptr(priority)
+	task.Attributes.Weight = utils.Ptr(weight)
 
 	createdTask, err := s.model.CreateTask(ctx, querier.CreateTaskParams{
 		Attributes: task.Attributes,
@@ -73,6 +80,8 @@ func (s *TaskStore) PushTask(ctx context.Context, task *apigen.Task) (int32, err
 		UniqueTag:  task.UniqueTag,
 		SerialKey:  serialKey,
 		SerialID:   serialID,
+		Priority:   priority,
+		Weight:     weight,
 	})
 	if err != nil {
 		return 0, errors.Wrap(err, "failed to push task")
@@ -105,6 +114,12 @@ func (s *TaskStore) UpdateCronJob(ctx context.Context, taskID int32, cronExpress
 	if err != nil {
 		return err
 	}
+	priority, weight, err := priorityAndWeightAttributes(task.Attributes)
+	if err != nil {
+		return err
+	}
+	task.Attributes.Priority = utils.Ptr(priority)
+	task.Attributes.Weight = utils.Ptr(weight)
 
 	if err := s.model.UpdateTask(ctx, querier.UpdateTaskParams{
 		ID:         taskID,
@@ -113,6 +128,8 @@ func (s *TaskStore) UpdateCronJob(ctx context.Context, taskID int32, cronExpress
 		Spec:       task.Spec,
 		SerialKey:  serialKey,
 		SerialID:   serialID,
+		Priority:   priority,
+		Weight:     weight,
 	}); err != nil {
 		return errors.Wrapf(err, "failed to update task")
 	}
@@ -141,6 +158,36 @@ func (s *TaskStore) ResumeTask(ctx context.Context, taskID int32) error {
 		return errors.Wrapf(err, "failed to resume task")
 	}
 	return nil
+}
+
+func (s *TaskStore) UpdatePendingTaskPriorityByLabels(ctx context.Context, labels []string, priority int32) (int64, error) {
+	if priority < 0 {
+		return 0, errors.New("priority must be non-negative")
+	}
+	ret, err := s.model.UpdatePendingTaskPriorityByLabels(ctx, querier.UpdatePendingTaskPriorityByLabelsParams{
+		Priority:  priority,
+		HasLabels: len(labels) > 0,
+		Labels:    labels,
+	})
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to update pending task priority by labels")
+	}
+	return ret, nil
+}
+
+func (s *TaskStore) UpdatePendingTaskWeightByLabels(ctx context.Context, labels []string, weight int32) (int64, error) {
+	if weight < 1 {
+		return 0, errors.New("weight must be greater than or equal to 1")
+	}
+	ret, err := s.model.UpdatePendingTaskWeightByLabels(ctx, querier.UpdatePendingTaskWeightByLabelsParams{
+		Weight:    weight,
+		HasLabels: len(labels) > 0,
+		Labels:    labels,
+	})
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to update pending task weight by labels")
+	}
+	return ret, nil
 }
 
 // GetTaskByUniqueTag returns a task by unique tag.
@@ -221,4 +268,23 @@ func serialAttributesFromJSON(attributes apigen.TaskAttributes) (*string, *int32
 		SerialKey: serial.SerialKey,
 		SerialID:  serial.SerialID,
 	})
+}
+
+func priorityAndWeightAttributes(attributes apigen.TaskAttributes) (int32, int32, error) {
+	priority := int32(0)
+	if attributes.Priority != nil {
+		priority = *attributes.Priority
+	}
+	if priority < 0 {
+		return 0, 0, errors.New("priority must be non-negative")
+	}
+
+	weight := int32(1)
+	if attributes.Weight != nil {
+		weight = *attributes.Weight
+	}
+	if weight < 1 {
+		return 0, 0, errors.New("weight must be greater than or equal to 1")
+	}
+	return priority, weight, nil
 }

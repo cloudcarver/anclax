@@ -21,6 +21,8 @@ func init() {
 
 const ( 
 	DeleteOpaqueKey = "deleteOpaqueKey" 
+
+	UpdateWorkerRuntimeConfig = "updateWorkerRuntimeConfig" 
 )
 
 
@@ -30,6 +32,11 @@ type TaskRunner interface {
 	RunDeleteOpaqueKey(ctx context.Context, params *DeleteOpaqueKeyParameters, overrides ...taskcore.TaskOverride) (int32, error)
     // Delete an opaque key
 	RunDeleteOpaqueKeyWithTx(ctx context.Context, tx core.Tx, params *DeleteOpaqueKeyParameters, overrides ...taskcore.TaskOverride) (int32, error)
+
+    // Update worker runtime config and wait for alive workers to apply it
+	RunUpdateWorkerRuntimeConfig(ctx context.Context, params *UpdateWorkerRuntimeConfigParameters, overrides ...taskcore.TaskOverride) (int32, error)
+    // Update worker runtime config and wait for alive workers to apply it
+	RunUpdateWorkerRuntimeConfigWithTx(ctx context.Context, tx core.Tx, params *UpdateWorkerRuntimeConfigParameters, overrides ...taskcore.TaskOverride) (int32, error)
 }
 
 type Client struct {
@@ -88,11 +95,82 @@ func (c *Client) runDeleteOpaqueKey(ctx context.Context, taskstore taskcore.Task
 	}
 	return taskID, nil
 }
+func (c *Client) RunUpdateWorkerRuntimeConfig(ctx context.Context, params *UpdateWorkerRuntimeConfigParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runUpdateWorkerRuntimeConfig(ctx, c.taskStore, params, overrides...)
+}
+
+func (c *Client) RunUpdateWorkerRuntimeConfigWithTx(ctx context.Context, tx core.Tx, params *UpdateWorkerRuntimeConfigParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runUpdateWorkerRuntimeConfig(ctx, c.taskStore.WithTx(tx), params, overrides...)
+}
+
+func (c *Client) runUpdateWorkerRuntimeConfig(ctx context.Context, taskstore taskcore.TaskStoreInterface, params *UpdateWorkerRuntimeConfigParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	payload, err := params.Marshal()
+	if err != nil {
+		return 0, err
+	}
+
+	spec := apigen.TaskSpec{
+		Type:    UpdateWorkerRuntimeConfig,
+		Payload: payload,
+	}
+	attributes := apigen.TaskAttributes{}
+	attributes.Timeout = utils.Ptr("20s")
+	attributes.RetryPolicy = &apigen.TaskRetryPolicy{
+		Interval:    "2s",
+		MaxAttempts: -1,
+	}
+	
+	
+	task := &apigen.Task{
+		Attributes: attributes,
+		Spec:       spec,
+		Status:     apigen.Pending,
+	}
+	
+	for _, override := range overrides {
+		if err := override(task); err != nil {
+			return 0, errors.Wrap(err, "failed to apply task override")
+		}
+	}
+	taskID, err := taskstore.PushTask(ctx, task)
+	if err != nil {
+		return 0, err
+	}
+	return taskID, nil
+}
 
 
 type DeleteOpaqueKeyParameters struct { 
     // The ID of the opaque key to delete
 	KeyID int64 `json:"keyID" yaml:"keyID"`
+}
+
+
+
+type UpdateWorkerRuntimeConfigParameters struct { 
+    // Weights for labels by index
+	Weights []int32 `json:"weights" yaml:"weights"`
+
+    // Alive-worker heartbeat window duration (e.g. 15s)
+	HeartbeatTTL *string `json:"heartbeatTTL" yaml:"heartbeatTTL"`
+
+    // Fallback retry interval when ack listening is unavailable
+	NotifyInterval *string `json:"notifyInterval" yaml:"notifyInterval"`
+
+    // Ack listen timeout window for one iteration
+	ListenTimeout *string `json:"listenTimeout" yaml:"listenTimeout"`
+
+    // Correlation ID for notify and ack messages
+	RequestID *string `json:"requestID" yaml:"requestID"`
+
+    // Maximum percentage of strict-priority slots (0-100)
+	MaxStrictPercentage *int32 `json:"maxStrictPercentage" yaml:"maxStrictPercentage"`
+
+    // Default weight for unlabeled task group
+	DefaultWeight *int32 `json:"defaultWeight" yaml:"defaultWeight"`
+
+    // Label names for weighted groups
+	Labels []string `json:"labels" yaml:"labels"`
 }
 
 func (r *DeleteOpaqueKeyParameters) Parse(spec json.RawMessage) error {
@@ -102,6 +180,13 @@ func (r *DeleteOpaqueKeyParameters) Parse(spec json.RawMessage) error {
 func (r *DeleteOpaqueKeyParameters) Marshal() (json.RawMessage, error) {
 	return json.Marshal(r)
 }
+func (r *UpdateWorkerRuntimeConfigParameters) Parse(spec json.RawMessage) error {
+	return json.Unmarshal(spec, r)
+}
+
+func (r *UpdateWorkerRuntimeConfigParameters) Marshal() (json.RawMessage, error) {
+	return json.Marshal(r)
+}
 
 type ExecutorInterface interface { 
      // Delete an opaque key
@@ -109,6 +194,10 @@ type ExecutorInterface interface {
  
 	// Hook called when deleteOpaqueKey fails
 	OnDeleteOpaqueKeyFailed(ctx context.Context, taskID int32, params *DeleteOpaqueKeyParameters, tx core.Tx) error
+
+     // Update worker runtime config and wait for alive workers to apply it
+	ExecuteUpdateWorkerRuntimeConfig(ctx context.Context, params *UpdateWorkerRuntimeConfigParameters) error
+ 
 }
 
 type TaskHandler struct {
@@ -145,6 +234,13 @@ func (f *TaskHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) erro
 			return fmt.Errorf("failed to parse deleteOpaqueKey parameters: %w", err)
 		}
 		return f.executor.ExecuteDeleteOpaqueKey(ctx, &params)
+		
+	case UpdateWorkerRuntimeConfig:
+		var params UpdateWorkerRuntimeConfigParameters
+		if err := params.Parse(spec.GetPayload()); err != nil {
+			return fmt.Errorf("failed to parse updateWorkerRuntimeConfig parameters: %w", err)
+		}
+		return f.executor.ExecuteUpdateWorkerRuntimeConfig(ctx, &params)
 		
 	default:
 		return errors.Wrapf(worker.ErrUnknownTaskType, "unknown task type: %s", spec.GetType())

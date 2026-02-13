@@ -277,6 +277,14 @@ components:
     TaskAttributes:
       type: object
       properties:
+        priority:
+          type: integer
+          format: int32
+          description: Strict priority of the task. Higher number runs first. Zero means normal weighted scheduling.
+        weight:
+          type: integer
+          format: int32
+          description: Relative weight of the task within weighted scheduling (normal tasks only).
         timeout:
           type: string
           description: Timeout of the task, a valid go time duration value e.g. 1h, 1d, 1w, 1m

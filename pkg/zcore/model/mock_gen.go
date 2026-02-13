@@ -11,7 +11,9 @@ package model
 
 import (
 	context "context"
+	json "encoding/json"
 	reflect "reflect"
+	time "time"
 
 	core "github.com/cloudcarver/anclax/core"
 	apigen "github.com/cloudcarver/anclax/pkg/zgen/apigen"
@@ -42,6 +44,36 @@ func NewMockModelInterface(ctrl *gomock.Controller) *MockModelInterface {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockModelInterface) EXPECT() *MockModelInterfaceMockRecorder {
 	return m.recorder
+}
+
+// ClaimNormalTaskByGroup mocks base method.
+func (m *MockModelInterface) ClaimNormalTaskByGroup(ctx context.Context, arg querier.ClaimNormalTaskByGroupParams) (*querier.AnclaxTask, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClaimNormalTaskByGroup", ctx, arg)
+	ret0, _ := ret[0].(*querier.AnclaxTask)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ClaimNormalTaskByGroup indicates an expected call of ClaimNormalTaskByGroup.
+func (mr *MockModelInterfaceMockRecorder) ClaimNormalTaskByGroup(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClaimNormalTaskByGroup", reflect.TypeOf((*MockModelInterface)(nil).ClaimNormalTaskByGroup), ctx, arg)
+}
+
+// ClaimStrictTask mocks base method.
+func (m *MockModelInterface) ClaimStrictTask(ctx context.Context, arg querier.ClaimStrictTaskParams) (*querier.AnclaxTask, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClaimStrictTask", ctx, arg)
+	ret0, _ := ret[0].(*querier.AnclaxTask)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ClaimStrictTask indicates an expected call of ClaimStrictTask.
+func (mr *MockModelInterfaceMockRecorder) ClaimStrictTask(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClaimStrictTask", reflect.TypeOf((*MockModelInterface)(nil).ClaimStrictTask), ctx, arg)
 }
 
 // ClaimTask mocks base method.
@@ -161,6 +193,21 @@ func (mr *MockModelInterfaceMockRecorder) CreateUser(ctx, arg any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateUser", reflect.TypeOf((*MockModelInterface)(nil).CreateUser), ctx, arg)
 }
 
+// CreateWorkerRuntimeConfig mocks base method.
+func (m *MockModelInterface) CreateWorkerRuntimeConfig(ctx context.Context, payload json.RawMessage) (*querier.AnclaxWorkerRuntimeConfig, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateWorkerRuntimeConfig", ctx, payload)
+	ret0, _ := ret[0].(*querier.AnclaxWorkerRuntimeConfig)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateWorkerRuntimeConfig indicates an expected call of CreateWorkerRuntimeConfig.
+func (mr *MockModelInterfaceMockRecorder) CreateWorkerRuntimeConfig(ctx, payload any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateWorkerRuntimeConfig", reflect.TypeOf((*MockModelInterface)(nil).CreateWorkerRuntimeConfig), ctx, payload)
+}
+
 // DeleteKeyPair mocks base method.
 func (m *MockModelInterface) DeleteKeyPair(ctx context.Context, accessKey string) error {
 	m.ctrl.T.Helper()
@@ -245,6 +292,21 @@ func (m *MockModelInterface) GetLastTaskErrorEvent(ctx context.Context, taskID i
 func (mr *MockModelInterfaceMockRecorder) GetLastTaskErrorEvent(ctx, taskID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLastTaskErrorEvent", reflect.TypeOf((*MockModelInterface)(nil).GetLastTaskErrorEvent), ctx, taskID)
+}
+
+// GetLatestWorkerRuntimeConfig mocks base method.
+func (m *MockModelInterface) GetLatestWorkerRuntimeConfig(ctx context.Context) (*querier.AnclaxWorkerRuntimeConfig, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLatestWorkerRuntimeConfig", ctx)
+	ret0, _ := ret[0].(*querier.AnclaxWorkerRuntimeConfig)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetLatestWorkerRuntimeConfig indicates an expected call of GetLatestWorkerRuntimeConfig.
+func (mr *MockModelInterfaceMockRecorder) GetLatestWorkerRuntimeConfig(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLatestWorkerRuntimeConfig", reflect.TypeOf((*MockModelInterface)(nil).GetLatestWorkerRuntimeConfig), ctx)
 }
 
 // GetOpaqueKey mocks base method.
@@ -367,6 +429,21 @@ func (mr *MockModelInterfaceMockRecorder) GetUserDefaultOrg(ctx, userID any) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUserDefaultOrg", reflect.TypeOf((*MockModelInterface)(nil).GetUserDefaultOrg), ctx, userID)
 }
 
+// GetWorkerRuntimeConfigByVersion mocks base method.
+func (m *MockModelInterface) GetWorkerRuntimeConfigByVersion(ctx context.Context, version int64) (*querier.AnclaxWorkerRuntimeConfig, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetWorkerRuntimeConfigByVersion", ctx, version)
+	ret0, _ := ret[0].(*querier.AnclaxWorkerRuntimeConfig)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetWorkerRuntimeConfigByVersion indicates an expected call of GetWorkerRuntimeConfigByVersion.
+func (mr *MockModelInterfaceMockRecorder) GetWorkerRuntimeConfigByVersion(ctx, version any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetWorkerRuntimeConfigByVersion", reflect.TypeOf((*MockModelInterface)(nil).GetWorkerRuntimeConfigByVersion), ctx, version)
+}
+
 // InTransaction mocks base method.
 func (m *MockModelInterface) InTransaction() bool {
 	m.ctrl.T.Helper()
@@ -470,6 +547,36 @@ func (mr *MockModelInterfaceMockRecorder) ListAllPendingTasks(ctx any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAllPendingTasks", reflect.TypeOf((*MockModelInterface)(nil).ListAllPendingTasks), ctx)
 }
 
+// ListLaggingAliveWorkers mocks base method.
+func (m *MockModelInterface) ListLaggingAliveWorkers(ctx context.Context, arg querier.ListLaggingAliveWorkersParams) ([]uuid.UUID, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListLaggingAliveWorkers", ctx, arg)
+	ret0, _ := ret[0].([]uuid.UUID)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListLaggingAliveWorkers indicates an expected call of ListLaggingAliveWorkers.
+func (mr *MockModelInterfaceMockRecorder) ListLaggingAliveWorkers(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLaggingAliveWorkers", reflect.TypeOf((*MockModelInterface)(nil).ListLaggingAliveWorkers), ctx, arg)
+}
+
+// ListOnlineWorkerIDs mocks base method.
+func (m *MockModelInterface) ListOnlineWorkerIDs(ctx context.Context, heartbeatCutoff time.Time) ([]uuid.UUID, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListOnlineWorkerIDs", ctx, heartbeatCutoff)
+	ret0, _ := ret[0].([]uuid.UUID)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListOnlineWorkerIDs indicates an expected call of ListOnlineWorkerIDs.
+func (mr *MockModelInterfaceMockRecorder) ListOnlineWorkerIDs(ctx, heartbeatCutoff any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListOnlineWorkerIDs", reflect.TypeOf((*MockModelInterface)(nil).ListOnlineWorkerIDs), ctx, heartbeatCutoff)
+}
+
 // ListOrgs mocks base method.
 func (m *MockModelInterface) ListOrgs(ctx context.Context, userID int32) ([]*querier.AnclaxOrg, error) {
 	m.ctrl.T.Helper()
@@ -497,6 +604,34 @@ func (m *MockModelInterface) MarkWorkerOffline(ctx context.Context, id uuid.UUID
 func (mr *MockModelInterfaceMockRecorder) MarkWorkerOffline(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkWorkerOffline", reflect.TypeOf((*MockModelInterface)(nil).MarkWorkerOffline), ctx, id)
+}
+
+// NotifyWorkerRuntimeConfig mocks base method.
+func (m *MockModelInterface) NotifyWorkerRuntimeConfig(ctx context.Context, payload string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "NotifyWorkerRuntimeConfig", ctx, payload)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// NotifyWorkerRuntimeConfig indicates an expected call of NotifyWorkerRuntimeConfig.
+func (mr *MockModelInterfaceMockRecorder) NotifyWorkerRuntimeConfig(ctx, payload any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NotifyWorkerRuntimeConfig", reflect.TypeOf((*MockModelInterface)(nil).NotifyWorkerRuntimeConfig), ctx, payload)
+}
+
+// NotifyWorkerRuntimeConfigAck mocks base method.
+func (m *MockModelInterface) NotifyWorkerRuntimeConfigAck(ctx context.Context, payload string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "NotifyWorkerRuntimeConfigAck", ctx, payload)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// NotifyWorkerRuntimeConfigAck indicates an expected call of NotifyWorkerRuntimeConfigAck.
+func (mr *MockModelInterfaceMockRecorder) NotifyWorkerRuntimeConfigAck(ctx, payload any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NotifyWorkerRuntimeConfigAck", reflect.TypeOf((*MockModelInterface)(nil).NotifyWorkerRuntimeConfigAck), ctx, payload)
 }
 
 // RefreshTaskLock mocks base method.
@@ -599,6 +734,36 @@ func (mr *MockModelInterfaceMockRecorder) SpawnWithTx(tx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SpawnWithTx", reflect.TypeOf((*MockModelInterface)(nil).SpawnWithTx), tx)
 }
 
+// UpdatePendingTaskPriorityByLabels mocks base method.
+func (m *MockModelInterface) UpdatePendingTaskPriorityByLabels(ctx context.Context, arg querier.UpdatePendingTaskPriorityByLabelsParams) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdatePendingTaskPriorityByLabels", ctx, arg)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdatePendingTaskPriorityByLabels indicates an expected call of UpdatePendingTaskPriorityByLabels.
+func (mr *MockModelInterfaceMockRecorder) UpdatePendingTaskPriorityByLabels(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdatePendingTaskPriorityByLabels", reflect.TypeOf((*MockModelInterface)(nil).UpdatePendingTaskPriorityByLabels), ctx, arg)
+}
+
+// UpdatePendingTaskWeightByLabels mocks base method.
+func (m *MockModelInterface) UpdatePendingTaskWeightByLabels(ctx context.Context, arg querier.UpdatePendingTaskWeightByLabelsParams) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdatePendingTaskWeightByLabels", ctx, arg)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdatePendingTaskWeightByLabels indicates an expected call of UpdatePendingTaskWeightByLabels.
+func (mr *MockModelInterfaceMockRecorder) UpdatePendingTaskWeightByLabels(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdatePendingTaskWeightByLabels", reflect.TypeOf((*MockModelInterface)(nil).UpdatePendingTaskWeightByLabels), ctx, arg)
+}
+
 // UpdateTask mocks base method.
 func (m *MockModelInterface) UpdateTask(ctx context.Context, arg querier.UpdateTaskParams) error {
 	m.ctrl.T.Helper()
@@ -683,6 +848,20 @@ func (m *MockModelInterface) UpdateUserPassword(ctx context.Context, arg querier
 func (mr *MockModelInterfaceMockRecorder) UpdateUserPassword(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateUserPassword", reflect.TypeOf((*MockModelInterface)(nil).UpdateUserPassword), ctx, arg)
+}
+
+// UpdateWorkerAppliedConfigVersion mocks base method.
+func (m *MockModelInterface) UpdateWorkerAppliedConfigVersion(ctx context.Context, arg querier.UpdateWorkerAppliedConfigVersionParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateWorkerAppliedConfigVersion", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateWorkerAppliedConfigVersion indicates an expected call of UpdateWorkerAppliedConfigVersion.
+func (mr *MockModelInterfaceMockRecorder) UpdateWorkerAppliedConfigVersion(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateWorkerAppliedConfigVersion", reflect.TypeOf((*MockModelInterface)(nil).UpdateWorkerAppliedConfigVersion), ctx, arg)
 }
 
 // UpdateWorkerHeartbeat mocks base method.

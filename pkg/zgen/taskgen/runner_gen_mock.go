@@ -82,6 +82,46 @@ func (mr *MockTaskRunnerMockRecorder) RunDeleteOpaqueKeyWithTx(ctx, tx, params a
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunDeleteOpaqueKeyWithTx", reflect.TypeOf((*MockTaskRunner)(nil).RunDeleteOpaqueKeyWithTx), varargs...)
 }
 
+// RunUpdateWorkerRuntimeConfig mocks base method.
+func (m *MockTaskRunner) RunUpdateWorkerRuntimeConfig(ctx context.Context, params *UpdateWorkerRuntimeConfigParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, params}
+	for _, a := range overrides {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "RunUpdateWorkerRuntimeConfig", varargs...)
+	ret0, _ := ret[0].(int32)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RunUpdateWorkerRuntimeConfig indicates an expected call of RunUpdateWorkerRuntimeConfig.
+func (mr *MockTaskRunnerMockRecorder) RunUpdateWorkerRuntimeConfig(ctx, params any, overrides ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, params}, overrides...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunUpdateWorkerRuntimeConfig", reflect.TypeOf((*MockTaskRunner)(nil).RunUpdateWorkerRuntimeConfig), varargs...)
+}
+
+// RunUpdateWorkerRuntimeConfigWithTx mocks base method.
+func (m *MockTaskRunner) RunUpdateWorkerRuntimeConfigWithTx(ctx context.Context, tx core.Tx, params *UpdateWorkerRuntimeConfigParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, tx, params}
+	for _, a := range overrides {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "RunUpdateWorkerRuntimeConfigWithTx", varargs...)
+	ret0, _ := ret[0].(int32)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RunUpdateWorkerRuntimeConfigWithTx indicates an expected call of RunUpdateWorkerRuntimeConfigWithTx.
+func (mr *MockTaskRunnerMockRecorder) RunUpdateWorkerRuntimeConfigWithTx(ctx, tx, params any, overrides ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, tx, params}, overrides...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunUpdateWorkerRuntimeConfigWithTx", reflect.TypeOf((*MockTaskRunner)(nil).RunUpdateWorkerRuntimeConfigWithTx), varargs...)
+}
+
 // MockExecutorInterface is a mock of ExecutorInterface interface.
 type MockExecutorInterface struct {
 	ctrl     *gomock.Controller
@@ -118,6 +158,20 @@ func (m *MockExecutorInterface) ExecuteDeleteOpaqueKey(ctx context.Context, para
 func (mr *MockExecutorInterfaceMockRecorder) ExecuteDeleteOpaqueKey(ctx, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteDeleteOpaqueKey", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteDeleteOpaqueKey), ctx, params)
+}
+
+// ExecuteUpdateWorkerRuntimeConfig mocks base method.
+func (m *MockExecutorInterface) ExecuteUpdateWorkerRuntimeConfig(ctx context.Context, params *UpdateWorkerRuntimeConfigParameters) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExecuteUpdateWorkerRuntimeConfig", ctx, params)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ExecuteUpdateWorkerRuntimeConfig indicates an expected call of ExecuteUpdateWorkerRuntimeConfig.
+func (mr *MockExecutorInterfaceMockRecorder) ExecuteUpdateWorkerRuntimeConfig(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteUpdateWorkerRuntimeConfig", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteUpdateWorkerRuntimeConfig), ctx, params)
 }
 
 // OnDeleteOpaqueKeyFailed mocks base method.

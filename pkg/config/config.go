@@ -59,6 +59,12 @@ type Worker struct {
 
 	// (Optional) Static worker ID (UUID). If unset, a random UUID is generated.
 	WorkerID *string `yaml:"workerId"`
+
+	// (Optional) Maximum percentage (0-100) of worker concurrency allowed for strict-priority tasks. Default is 100.
+	MaxStrictPercentage *int `yaml:"maxStrictPercentage"`
+
+	// (Optional) Fallback poll interval for runtime scheduling config refresh when notifications are missed/unavailable. Disabled by default.
+	RuntimeConfigPollInterval *time.Duration `yaml:"runtimeConfigPollInterval"`
 }
 
 type Debug struct {

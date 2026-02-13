@@ -6,12 +6,16 @@ package querier
 
 import (
 	"context"
+	"encoding/json"
+	"time"
 
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/google/uuid"
 )
 
 type Querier interface {
+	ClaimNormalTaskByGroup(ctx context.Context, arg ClaimNormalTaskByGroupParams) (*AnclaxTask, error)
+	ClaimStrictTask(ctx context.Context, arg ClaimStrictTaskParams) (*AnclaxTask, error)
 	ClaimTask(ctx context.Context, arg ClaimTaskParams) (*AnclaxTask, error)
 	ClaimTaskByID(ctx context.Context, arg ClaimTaskByIDParams) (*AnclaxTask, error)
 	CreateKeyPair(ctx context.Context, arg CreateKeyPairParams) (*AnclaxAccessKeyPair, error)
@@ -19,12 +23,14 @@ type Querier interface {
 	CreateOrg(ctx context.Context, name string) (*AnclaxOrg, error)
 	CreateTask(ctx context.Context, arg CreateTaskParams) (*AnclaxTask, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (*AnclaxUser, error)
+	CreateWorkerRuntimeConfig(ctx context.Context, payload json.RawMessage) (*AnclaxWorkerRuntimeConfig, error)
 	DeleteKeyPair(ctx context.Context, accessKey string) error
 	DeleteOpaqueKey(ctx context.Context, id int64) error
 	DeleteOpaqueKeys(ctx context.Context, userID *int32) error
 	DeleteUserByName(ctx context.Context, name string) error
 	GetKeyPair(ctx context.Context, accessKey string) (*AnclaxAccessKeyPair, error)
 	GetLastTaskErrorEvent(ctx context.Context, taskID int32) (*AnclaxEvent, error)
+	GetLatestWorkerRuntimeConfig(ctx context.Context) (*AnclaxWorkerRuntimeConfig, error)
 	GetOpaqueKey(ctx context.Context, id int64) ([]byte, error)
 	GetOrg(ctx context.Context, id int32) (*AnclaxOrg, error)
 	GetOrgByName(ctx context.Context, name string) (*AnclaxOrg, error)
@@ -33,24 +39,32 @@ type Querier interface {
 	GetUser(ctx context.Context, id int32) (*AnclaxUser, error)
 	GetUserByName(ctx context.Context, name string) (*AnclaxUser, error)
 	GetUserDefaultOrg(ctx context.Context, userID int32) (int32, error)
+	GetWorkerRuntimeConfigByVersion(ctx context.Context, version int64) (*AnclaxWorkerRuntimeConfig, error)
 	IncrementAttempts(ctx context.Context, id int32) error
 	InsertEvent(ctx context.Context, spec apigen.EventSpec) (*AnclaxEvent, error)
 	InsertOrgOwner(ctx context.Context, arg InsertOrgOwnerParams) (*AnclaxOrgOwner, error)
 	InsertOrgUser(ctx context.Context, arg InsertOrgUserParams) (*AnclaxOrgUser, error)
 	IsUsernameExists(ctx context.Context, name string) (bool, error)
 	ListAllPendingTasks(ctx context.Context) ([]*AnclaxTask, error)
+	ListLaggingAliveWorkers(ctx context.Context, arg ListLaggingAliveWorkersParams) ([]uuid.UUID, error)
+	ListOnlineWorkerIDs(ctx context.Context, heartbeatCutoff time.Time) ([]uuid.UUID, error)
 	ListOrgs(ctx context.Context, userID int32) ([]*AnclaxOrg, error)
 	MarkWorkerOffline(ctx context.Context, id uuid.UUID) error
+	NotifyWorkerRuntimeConfig(ctx context.Context, payload string) error
+	NotifyWorkerRuntimeConfigAck(ctx context.Context, payload string) error
 	RefreshTaskLock(ctx context.Context, arg RefreshTaskLockParams) (int32, error)
 	ReleaseTaskLockByWorker(ctx context.Context, arg ReleaseTaskLockByWorkerParams) (int32, error)
 	RestoreUserByName(ctx context.Context, name string) error
 	SetUserDefaultOrg(ctx context.Context, arg SetUserDefaultOrgParams) error
+	UpdatePendingTaskPriorityByLabels(ctx context.Context, arg UpdatePendingTaskPriorityByLabelsParams) (int64, error)
+	UpdatePendingTaskWeightByLabels(ctx context.Context, arg UpdatePendingTaskWeightByLabelsParams) (int64, error)
 	UpdateTask(ctx context.Context, arg UpdateTaskParams) error
 	UpdateTaskStartedAt(ctx context.Context, arg UpdateTaskStartedAtParams) error
 	UpdateTaskStartedAtByWorker(ctx context.Context, arg UpdateTaskStartedAtByWorkerParams) (int32, error)
 	UpdateTaskStatus(ctx context.Context, arg UpdateTaskStatusParams) error
 	UpdateTaskStatusByWorker(ctx context.Context, arg UpdateTaskStatusByWorkerParams) (int32, error)
 	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error
+	UpdateWorkerAppliedConfigVersion(ctx context.Context, arg UpdateWorkerAppliedConfigVersionParams) error
 	UpdateWorkerHeartbeat(ctx context.Context, id uuid.UUID) (*AnclaxWorker, error)
 	UpsertWorker(ctx context.Context, arg UpsertWorkerParams) (*AnclaxWorker, error)
 	VerifyTaskOwnership(ctx context.Context, arg VerifyTaskOwnershipParams) (int32, error)

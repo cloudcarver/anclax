@@ -31,6 +31,10 @@ type TaskStoreInterface interface {
 
 	ResumeTask(ctx context.Context, taskID int32) error
 
+	UpdatePendingTaskPriorityByLabels(ctx context.Context, labels []string, priority int32) (int64, error)
+
+	UpdatePendingTaskWeightByLabels(ctx context.Context, labels []string, weight int32) (int64, error)
+
 	WithTx(tx core.Tx) TaskStoreInterface
 
 	GetTaskByUniqueTag(ctx context.Context, uniqueTag string) (*apigen.Task, error)

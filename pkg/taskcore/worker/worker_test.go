@@ -4,18 +4,21 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/globalctx"
+	"github.com/cloudcarver/anclax/pkg/metrics"
 	"github.com/cloudcarver/anclax/pkg/taskcore"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -54,14 +57,25 @@ func TestClaimTaskUsesLabelsAndTTL(t *testing.T) {
 		func(ctx context.Context, f func(core.Tx, model.ModelInterface) error) error {
 			return f(mockTx, mockTxm)
 		},
-	)
+	).Times(2)
 
-	mockTxm.EXPECT().ClaimTask(context.Background(), gomock.AssignableToTypeOf(querier.ClaimTaskParams{})).DoAndReturn(
-		func(ctx context.Context, params querier.ClaimTaskParams) (*querier.AnclaxTask, error) {
+	mockTxm.EXPECT().ClaimStrictTask(context.Background(), gomock.AssignableToTypeOf(querier.ClaimStrictTaskParams{})).DoAndReturn(
+		func(ctx context.Context, params querier.ClaimStrictTaskParams) (*querier.AnclaxTask, error) {
 			require.NotNil(t, params.LockExpiry)
 			require.Equal(t, expectedExpiry, *params.LockExpiry)
 			require.Equal(t, labels, params.Labels)
 			require.True(t, params.HasLabels)
+			return nil, pgx.ErrNoRows
+		},
+	)
+
+	mockTxm.EXPECT().ClaimNormalTaskByGroup(context.Background(), gomock.AssignableToTypeOf(querier.ClaimNormalTaskByGroupParams{})).DoAndReturn(
+		func(ctx context.Context, params querier.ClaimNormalTaskByGroupParams) (*querier.AnclaxTask, error) {
+			require.NotNil(t, params.LockExpiry)
+			require.Equal(t, expectedExpiry, *params.LockExpiry)
+			require.Equal(t, labels, params.Labels)
+			require.True(t, params.HasLabels)
+			require.Equal(t, defaultWeightGroup, params.GroupName)
 			return &querier.AnclaxTask{
 				ID:         1,
 				Attributes: apigen.TaskAttributes{},
@@ -110,13 +124,23 @@ func TestClaimTaskWithoutLabels(t *testing.T) {
 		func(ctx context.Context, f func(core.Tx, model.ModelInterface) error) error {
 			return f(mockTx, mockTxm)
 		},
-	)
+	).Times(2)
 
-	mockTxm.EXPECT().ClaimTask(context.Background(), gomock.AssignableToTypeOf(querier.ClaimTaskParams{})).DoAndReturn(
-		func(ctx context.Context, params querier.ClaimTaskParams) (*querier.AnclaxTask, error) {
+	mockTxm.EXPECT().ClaimStrictTask(context.Background(), gomock.AssignableToTypeOf(querier.ClaimStrictTaskParams{})).DoAndReturn(
+		func(ctx context.Context, params querier.ClaimStrictTaskParams) (*querier.AnclaxTask, error) {
 			require.NotNil(t, params.LockExpiry)
 			require.Equal(t, expectedExpiry, *params.LockExpiry)
 			require.False(t, params.HasLabels)
+			return nil, pgx.ErrNoRows
+		},
+	)
+
+	mockTxm.EXPECT().ClaimNormalTaskByGroup(context.Background(), gomock.AssignableToTypeOf(querier.ClaimNormalTaskByGroupParams{})).DoAndReturn(
+		func(ctx context.Context, params querier.ClaimNormalTaskByGroupParams) (*querier.AnclaxTask, error) {
+			require.NotNil(t, params.LockExpiry)
+			require.Equal(t, expectedExpiry, *params.LockExpiry)
+			require.False(t, params.HasLabels)
+			require.Equal(t, defaultWeightGroup, params.GroupName)
 			return &querier.AnclaxTask{
 				ID:         1,
 				Attributes: apigen.TaskAttributes{},
@@ -131,6 +155,103 @@ func TestClaimTaskWithoutLabels(t *testing.T) {
 	task, err := w.claimTask(context.Background())
 	require.NoError(t, err)
 	require.NotNil(t, task)
+}
+
+func TestClaimTaskSkipsStrictWhenStrictCapReached(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	lockTTL := 5 * time.Second
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockTxm := model.NewMockModelInterfaceWithTransaction(ctrl)
+	mockTx := core.NewMockTx(ctrl)
+	mockHandler := NewMockTaskHandler(ctrl)
+
+	worker, err := NewWorker(globalctx.New(), &config.Config{
+		Worker: config.Worker{
+			LockTTL: &lockTTL,
+		},
+	}, mockModel, mockHandler)
+	require.NoError(t, err)
+	w := worker.(*Worker)
+	w.strictCap = 1
+	w.strictInFlight = 1
+
+	mockModel.EXPECT().RunTransactionWithTx(context.Background(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, f func(core.Tx, model.ModelInterface) error) error {
+			return f(mockTx, mockTxm)
+		},
+	).Times(1)
+
+	mockTxm.EXPECT().ClaimNormalTaskByGroup(context.Background(), gomock.AssignableToTypeOf(querier.ClaimNormalTaskByGroupParams{})).DoAndReturn(
+		func(ctx context.Context, params querier.ClaimNormalTaskByGroupParams) (*querier.AnclaxTask, error) {
+			require.Equal(t, defaultWeightGroup, params.GroupName)
+			return &querier.AnclaxTask{
+				ID:         10,
+				Attributes: apigen.TaskAttributes{},
+				Spec:       apigen.TaskSpec{},
+				Status:     string(apigen.Pending),
+			}, nil
+		},
+	).Times(1)
+
+	task, err := w.claimTask(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, task)
+	require.Equal(t, int32(10), task.ID)
+}
+
+func TestClaimTaskTriesWeightedGroupsUntilMatch(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	lockTTL := 5 * time.Second
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockTxm := model.NewMockModelInterfaceWithTransaction(ctrl)
+	mockTx := core.NewMockTx(ctrl)
+	mockHandler := NewMockTaskHandler(ctrl)
+
+	worker, err := NewWorker(globalctx.New(), &config.Config{
+		Worker: config.Worker{
+			LockTTL: &lockTTL,
+		},
+	}, mockModel, mockHandler)
+	require.NoError(t, err)
+	w := worker.(*Worker)
+	w.strictCap = 0
+	w.weightedLabels = []string{"w1", "w2"}
+	w.normalClaimWheel = []string{"w1", "w1", "w2", defaultWeightGroup}
+	w.normalClaimWheelCursor = 0
+
+	mockModel.EXPECT().RunTransactionWithTx(context.Background(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, f func(core.Tx, model.ModelInterface) error) error {
+			return f(mockTx, mockTxm)
+		},
+	).Times(2)
+
+	call := 0
+	mockTxm.EXPECT().ClaimNormalTaskByGroup(context.Background(), gomock.AssignableToTypeOf(querier.ClaimNormalTaskByGroupParams{})).DoAndReturn(
+		func(ctx context.Context, params querier.ClaimNormalTaskByGroupParams) (*querier.AnclaxTask, error) {
+			call++
+			require.Equal(t, []string{"w1", "w2"}, params.WeightedLabels)
+			if call == 1 {
+				require.Equal(t, "w1", params.GroupName)
+				return nil, pgx.ErrNoRows
+			}
+			require.Equal(t, "w2", params.GroupName)
+			return &querier.AnclaxTask{
+				ID:         11,
+				Attributes: apigen.TaskAttributes{},
+				Spec:       apigen.TaskSpec{},
+				Status:     string(apigen.Pending),
+			}, nil
+		},
+	).Times(2)
+
+	task, err := w.claimTask(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, task)
+	require.Equal(t, int32(11), task.ID)
 }
 
 func TestRunTaskSkipsWhenLockLostBeforeExecution(t *testing.T) {
@@ -401,6 +522,7 @@ func TestRegisterWorkerUpsert(t *testing.T) {
 		func(ctx context.Context, params querier.UpsertWorkerParams) (*querier.AnclaxWorker, error) {
 			require.Equal(t, workerID, params.ID)
 			require.Equal(t, expectedLabels, params.Labels)
+			require.Equal(t, int64(0), params.AppliedConfigVersion)
 			return &querier.AnclaxWorker{}, nil
 		},
 	)
@@ -474,4 +596,249 @@ func TestConcurrencyClampToOne(t *testing.T) {
 	require.Equal(t, 1, w.concurrency)
 	require.Len(t, w.semaphore, 0)
 	require.Equal(t, cap(w.semaphore), 1)
+}
+
+func TestStrictCapForPercentage(t *testing.T) {
+	require.Equal(t, 0, strictCapForPercentage(10, 0))
+	require.Equal(t, 1, strictCapForPercentage(10, 1))
+	require.Equal(t, 3, strictCapForPercentage(10, 21))
+	require.Equal(t, 10, strictCapForPercentage(10, 100))
+}
+
+func TestTryReserveStrictInFlightIncrementsSaturationMetric(t *testing.T) {
+	w := &Worker{
+		strictCap:      1,
+		strictInFlight: 1,
+	}
+	before := testutil.ToFloat64(metrics.WorkerStrictSaturationTotal)
+	ok := w.tryReserveStrictInFlight()
+	after := testutil.ToFloat64(metrics.WorkerStrictSaturationTotal)
+	require.False(t, ok)
+	require.Equal(t, before+1, after)
+}
+
+func TestApplyRuntimeConfigUpdatesStrictMetrics(t *testing.T) {
+	w := &Worker{concurrency: 10}
+	percentage := int32(25)
+	w.applyRuntimeConfigLocked(12, runtimeConfigPayload{
+		MaxStrictPercentage: &percentage,
+		LabelWeights: map[string]int32{
+			"default": 1,
+			"w1":      2,
+		},
+	})
+
+	require.Equal(t, float64(3), testutil.ToFloat64(metrics.WorkerStrictCap))
+	require.Equal(t, float64(0), testutil.ToFloat64(metrics.WorkerStrictInFlight))
+	require.Equal(t, float64(12), testutil.ToFloat64(metrics.WorkerRuntimeConfigVersion))
+}
+
+func TestBuildClaimWheelUsesWeightsAndSortOrder(t *testing.T) {
+	wheel := buildClaimWheel(map[string]int32{
+		"w2":               1,
+		"w1":               2,
+		defaultWeightGroup: 1,
+	})
+	require.Equal(t, []string{defaultWeightGroup, "w1", "w1", "w2"}, wheel)
+}
+
+func TestApplyRuntimeConfigBuildsWheelAndCap(t *testing.T) {
+	w := &Worker{concurrency: 10}
+	percentage := int32(30)
+	w.applyRuntimeConfigLocked(5, runtimeConfigPayload{
+		MaxStrictPercentage: &percentage,
+		LabelWeights: map[string]int32{
+			"w1": 5,
+			"w2": 1,
+		},
+	})
+
+	require.Equal(t, int64(5), w.runtimeConfigVersion)
+	require.Equal(t, int32(30), w.maxStrictPercentage)
+	require.Equal(t, 3, w.strictCap)
+	require.Equal(t, []string{"w1", "w2"}, w.weightedLabels)
+	require.Contains(t, w.normalClaimWheel, defaultWeightGroup)
+}
+
+func TestNextNormalClaimGroups(t *testing.T) {
+	w := &Worker{
+		weightedLabels:   []string{"w1", "w2"},
+		normalClaimWheel: []string{"w1", "w1", "w2", defaultWeightGroup},
+	}
+
+	order1, labels1 := w.nextNormalClaimGroups()
+	order2, labels2 := w.nextNormalClaimGroups()
+	require.Equal(t, []string{"w1", "w2", defaultWeightGroup}, order1)
+	require.Equal(t, []string{"w1", "w2"}, labels1)
+	require.Equal(t, []string{"w1", "w2"}, labels2)
+	require.Equal(t, []string{"w1", "w2", defaultWeightGroup}, order2)
+}
+
+func TestApplyRuntimeConfigBuildsWheelFromDefaultKey(t *testing.T) {
+	w := &Worker{concurrency: 8}
+	w.applyRuntimeConfigLocked(3, runtimeConfigPayload{
+		LabelWeights: map[string]int32{
+			"default": 4,
+			"ops":     2,
+		},
+	})
+
+	require.Equal(t, int64(3), w.runtimeConfigVersion)
+	require.Contains(t, w.normalClaimWheel, defaultWeightGroup)
+	require.NotContains(t, w.weightedLabels, defaultWeightGroup)
+	require.Equal(t, []string{"ops"}, w.weightedLabels)
+}
+
+func TestHandleRuntimeConfigNotificationIgnoresUnknownOp(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	w := &Worker{
+		model: mockModel,
+	}
+	err := w.handleRuntimeConfigNotification(context.Background(), `{"op":"noop","params":{"request_id":"x","version":1}}`)
+	require.NoError(t, err)
+}
+
+func TestHandleRuntimeConfigNotificationRejectsInvalidJSON(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	w := &Worker{
+		model: model.NewMockModelInterface(ctrl),
+	}
+	err := w.handleRuntimeConfigNotification(context.Background(), `{`)
+	require.Error(t, err)
+}
+
+func TestRefreshRuntimeConfigNoRowsAcksCurrentVersion(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	workerID := uuid.New()
+	requestID := "req-1"
+	mockModel := model.NewMockModelInterface(ctrl)
+
+	w := &Worker{
+		model:    mockModel,
+		workerID: workerID,
+	}
+	w.applyRuntimeConfigLocked(9, runtimeConfigPayload{
+		LabelWeights: map[string]int32{defaultWeightGroup: 1},
+	})
+
+	mockModel.EXPECT().GetLatestWorkerRuntimeConfig(ctx).Return(nil, pgx.ErrNoRows)
+	mockModel.EXPECT().NotifyWorkerRuntimeConfigAck(ctx, gomock.Any()).DoAndReturn(
+		func(ctx context.Context, payload string) error {
+			var ack runtimeConfigAckNotification
+			require.NoError(t, json.Unmarshal([]byte(payload), &ack))
+			require.Equal(t, "ack", ack.Op)
+			require.Equal(t, requestID, ack.Params.RequestID)
+			require.Equal(t, workerID.String(), ack.Params.WorkerID)
+			require.Equal(t, int64(9), ack.Params.AppliedVersion)
+			return nil
+		},
+	)
+
+	err := w.refreshRuntimeConfig(ctx, requestID)
+	require.NoError(t, err)
+}
+
+func TestRefreshRuntimeConfigStaleVersionAcksWithoutApply(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	workerID := uuid.New()
+	requestID := "req-2"
+	mockModel := model.NewMockModelInterface(ctrl)
+
+	w := &Worker{
+		model:    mockModel,
+		workerID: workerID,
+	}
+	w.applyRuntimeConfigLocked(5, runtimeConfigPayload{
+		LabelWeights: map[string]int32{defaultWeightGroup: 1},
+	})
+
+	mockModel.EXPECT().GetLatestWorkerRuntimeConfig(ctx).Return(&querier.AnclaxWorkerRuntimeConfig{
+		Version: 5,
+	}, nil)
+	mockModel.EXPECT().NotifyWorkerRuntimeConfigAck(ctx, gomock.Any()).DoAndReturn(
+		func(ctx context.Context, payload string) error {
+			var ack runtimeConfigAckNotification
+			require.NoError(t, json.Unmarshal([]byte(payload), &ack))
+			require.Equal(t, requestID, ack.Params.RequestID)
+			require.Equal(t, int64(5), ack.Params.AppliedVersion)
+			return nil
+		},
+	)
+
+	err := w.refreshRuntimeConfig(ctx, requestID)
+	require.NoError(t, err)
+}
+
+func TestRefreshRuntimeConfigAppliesAndUpdatesWorkerVersion(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	workerID := uuid.New()
+	requestID := "req-3"
+	mockModel := model.NewMockModelInterface(ctrl)
+
+	w := &Worker{
+		model:       mockModel,
+		workerID:    workerID,
+		concurrency: 10,
+	}
+	w.applyRuntimeConfigLocked(1, runtimeConfigPayload{
+		LabelWeights: map[string]int32{defaultWeightGroup: 1},
+	})
+
+	payload := `{"maxStrictPercentage":20,"labelWeights":{"default":2,"w1":5}}`
+	mockModel.EXPECT().GetLatestWorkerRuntimeConfig(ctx).Return(&querier.AnclaxWorkerRuntimeConfig{
+		Version: 3,
+		Payload: json.RawMessage(payload),
+	}, nil)
+	mockModel.EXPECT().UpdateWorkerAppliedConfigVersion(ctx, querier.UpdateWorkerAppliedConfigVersionParams{
+		ID:                   workerID,
+		AppliedConfigVersion: int64(3),
+	}).Return(nil)
+	mockModel.EXPECT().NotifyWorkerRuntimeConfigAck(ctx, gomock.Any()).DoAndReturn(
+		func(ctx context.Context, payload string) error {
+			var ack runtimeConfigAckNotification
+			require.NoError(t, json.Unmarshal([]byte(payload), &ack))
+			require.Equal(t, requestID, ack.Params.RequestID)
+			require.Equal(t, int64(3), ack.Params.AppliedVersion)
+			return nil
+		},
+	)
+
+	err := w.refreshRuntimeConfig(ctx, requestID)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), w.currentRuntimeConfigVersion())
+	require.Equal(t, 2, w.strictCap) // 20% of 10 with ceil.
+}
+
+func TestRuntimeListenDSNFromConfig(t *testing.T) {
+	dsn := "postgres://u:p@h:5432/db?sslmode=disable"
+	require.Equal(t, dsn, runtimeListenDSNFromConfig(&config.Config{
+		Pg: config.Pg{DSN: &dsn},
+	}))
+
+	assembled := runtimeListenDSNFromConfig(&config.Config{
+		Pg: config.Pg{
+			User:     "postgres",
+			Password: "postgres",
+			Host:     "localhost",
+			Port:     5432,
+			Db:       "postgres",
+			SSLMode:  "disable",
+		},
+	})
+	require.True(t, strings.Contains(assembled, "postgres://postgres:postgres@localhost:5432/postgres"))
+	require.True(t, strings.Contains(assembled, "sslmode=disable"))
 }

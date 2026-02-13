@@ -39,3 +39,43 @@ func TestWithSerialIDOverride(t *testing.T) {
 	require.NotNil(t, task.Attributes.SerialID)
 	require.Equal(t, int32(7), *task.Attributes.SerialID)
 }
+
+func TestWithPriorityOverride(t *testing.T) {
+	task := &apigen.Task{
+		Attributes: apigen.TaskAttributes{},
+	}
+
+	err := WithPriority(9)(task)
+	require.NoError(t, err)
+	require.NotNil(t, task.Attributes.Priority)
+	require.Equal(t, int32(9), *task.Attributes.Priority)
+}
+
+func TestWithPriorityOverrideRejectsNegative(t *testing.T) {
+	task := &apigen.Task{
+		Attributes: apigen.TaskAttributes{},
+	}
+
+	err := WithPriority(-1)(task)
+	require.Error(t, err)
+}
+
+func TestWithWeightOverride(t *testing.T) {
+	task := &apigen.Task{
+		Attributes: apigen.TaskAttributes{},
+	}
+
+	err := WithWeight(4)(task)
+	require.NoError(t, err)
+	require.NotNil(t, task.Attributes.Weight)
+	require.Equal(t, int32(4), *task.Attributes.Weight)
+}
+
+func TestWithWeightOverrideRejectsNonPositive(t *testing.T) {
+	task := &apigen.Task{
+		Attributes: apigen.TaskAttributes{},
+	}
+
+	err := WithWeight(0)(task)
+	require.Error(t, err)
+}

@@ -151,8 +151,11 @@ type TaskStatus string
 
 // TaskAttributes defines model for TaskAttributes.
 type TaskAttributes struct {
-	Cronjob     *TaskCronjob     `json:"cronjob,omitempty"`
-	Labels      *[]string        `json:"labels,omitempty"`
+	Cronjob *TaskCronjob `json:"cronjob,omitempty"`
+	Labels  *[]string    `json:"labels,omitempty"`
+
+	// Priority Strict priority of the task. Higher number runs first. Zero means normal weighted scheduling.
+	Priority    *int32           `json:"priority,omitempty"`
 	RetryPolicy *TaskRetryPolicy `json:"retryPolicy,omitempty"`
 
 	// SerialID Optional serial order within the same serial key (lower runs first)
@@ -163,6 +166,9 @@ type TaskAttributes struct {
 
 	// Timeout Timeout of the task, a valid go time duration value e.g. 1h, 1d, 1w, 1m
 	Timeout *string `json:"timeout,omitempty"`
+
+	// Weight Relative weight of the task within weighted scheduling (normal tasks only).
+	Weight *int32 `json:"weight,omitempty"`
 }
 
 // TaskCronjob defines model for TaskCronjob.

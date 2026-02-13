@@ -5,6 +5,7 @@ import (
 
 	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
+	"github.com/pkg/errors"
 )
 
 func WithRetryPolicy(interval string, maxAttempts int32) TaskOverride {
@@ -60,6 +61,26 @@ func WithSerialKey(serialKey string) TaskOverride {
 func WithSerialID(serialID int32) TaskOverride {
 	return func(task *apigen.Task) error {
 		task.Attributes.SerialID = &serialID
+		return nil
+	}
+}
+
+func WithPriority(priority int32) TaskOverride {
+	return func(task *apigen.Task) error {
+		if priority < 0 {
+			return errors.New("priority must be non-negative")
+		}
+		task.Attributes.Priority = &priority
+		return nil
+	}
+}
+
+func WithWeight(weight int32) TaskOverride {
+	return func(task *apigen.Task) error {
+		if weight < 1 {
+			return errors.New("weight must be greater than or equal to 1")
+		}
+		task.Attributes.Weight = &weight
 		return nil
 	}
 }

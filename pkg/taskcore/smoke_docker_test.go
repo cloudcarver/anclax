@@ -40,8 +40,9 @@ func TestAsyncTaskLeaseSmoke(t *testing.T) {
 		require.NoError(t, err)
 
 		_, err = m.UpsertWorker(ctx, querier.UpsertWorkerParams{
-			ID:     workerID,
-			Labels: workerLabelsJSON,
+			ID:                   workerID,
+			Labels:               workerLabelsJSON,
+			AppliedConfigVersion: 0,
 		})
 		require.NoError(t, err)
 
@@ -446,6 +447,118 @@ func TestAsyncTaskSerialBehaviorSmoke(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.Equal(t, nextID, claimed.ID)
+	})
+}
+
+func TestAsyncTaskPriorityAndWeightClaimSmoke(t *testing.T) {
+	withSmokePostgres(t, func(ctx context.Context, m model.ModelInterface) {
+		workerID := uuid.New()
+		workerIDParam := uuid.NullUUID{UUID: workerID, Valid: true}
+		lockExpiry := time.Now().Add(-1 * time.Minute)
+
+		emptyLabels, err := json.Marshal([]string{})
+		require.NoError(t, err)
+		_, err = m.UpsertWorker(ctx, querier.UpsertWorkerParams{
+			ID:                   workerID,
+			Labels:               emptyLabels,
+			AppliedConfigVersion: 0,
+		})
+		require.NoError(t, err)
+
+		store := taskcore.NewTaskStore(m)
+
+		pStrictLow := int32(1)
+		pStrictHigh := int32(9)
+		wLow := int32(1)
+		wHigh := int32(7)
+		labelsW1 := []string{"w1"}
+		labelsW2 := []string{"w2"}
+
+		strictLowID, err := store.PushTask(ctx, &apigen.Task{
+			Attributes: apigen.TaskAttributes{Priority: &pStrictLow},
+			Spec:       apigen.TaskSpec{Type: "smoke-priority", Payload: json.RawMessage(`{"n":1}`)},
+			Status:     apigen.Pending,
+		})
+		require.NoError(t, err)
+
+		strictHighID, err := store.PushTask(ctx, &apigen.Task{
+			Attributes: apigen.TaskAttributes{Priority: &pStrictHigh},
+			Spec:       apigen.TaskSpec{Type: "smoke-priority", Payload: json.RawMessage(`{"n":2}`)},
+			Status:     apigen.Pending,
+		})
+		require.NoError(t, err)
+
+		normalDefaultID, err := store.PushTask(ctx, &apigen.Task{
+			Attributes: apigen.TaskAttributes{},
+			Spec:       apigen.TaskSpec{Type: "smoke-priority", Payload: json.RawMessage(`{"n":3}`)},
+			Status:     apigen.Pending,
+		})
+		require.NoError(t, err)
+
+		normalW1ID, err := store.PushTask(ctx, &apigen.Task{
+			Attributes: apigen.TaskAttributes{Labels: &labelsW1, Weight: &wLow},
+			Spec:       apigen.TaskSpec{Type: "smoke-priority", Payload: json.RawMessage(`{"n":4}`)},
+			Status:     apigen.Pending,
+		})
+		require.NoError(t, err)
+
+		normalW2ID, err := store.PushTask(ctx, &apigen.Task{
+			Attributes: apigen.TaskAttributes{Labels: &labelsW2, Weight: &wHigh},
+			Spec:       apigen.TaskSpec{Type: "smoke-priority", Payload: json.RawMessage(`{"n":5}`)},
+			Status:     apigen.Pending,
+		})
+		require.NoError(t, err)
+
+		claimed, err := m.ClaimStrictTask(ctx, querier.ClaimStrictTaskParams{
+			WorkerID:   workerIDParam,
+			LockExpiry: &lockExpiry,
+			HasLabels:  false,
+			Labels:     nil,
+		})
+		require.NoError(t, err)
+		require.Equal(t, strictHighID, claimed.ID)
+
+		claimed, err = m.ClaimStrictTask(ctx, querier.ClaimStrictTaskParams{
+			WorkerID:   workerIDParam,
+			LockExpiry: &lockExpiry,
+			HasLabels:  false,
+			Labels:     nil,
+		})
+		require.NoError(t, err)
+		require.Equal(t, strictLowID, claimed.ID)
+
+		claimed, err = m.ClaimNormalTaskByGroup(ctx, querier.ClaimNormalTaskByGroupParams{
+			WorkerID:       workerIDParam,
+			LockExpiry:     &lockExpiry,
+			HasLabels:      false,
+			Labels:         nil,
+			GroupName:      "w2",
+			WeightedLabels: []string{"w1", "w2"},
+		})
+		require.NoError(t, err)
+		require.Equal(t, normalW2ID, claimed.ID)
+
+		claimed, err = m.ClaimNormalTaskByGroup(ctx, querier.ClaimNormalTaskByGroupParams{
+			WorkerID:       workerIDParam,
+			LockExpiry:     &lockExpiry,
+			HasLabels:      false,
+			Labels:         nil,
+			GroupName:      "w1",
+			WeightedLabels: []string{"w1", "w2"},
+		})
+		require.NoError(t, err)
+		require.Equal(t, normalW1ID, claimed.ID)
+
+		claimed, err = m.ClaimNormalTaskByGroup(ctx, querier.ClaimNormalTaskByGroupParams{
+			WorkerID:       workerIDParam,
+			LockExpiry:     &lockExpiry,
+			HasLabels:      false,
+			Labels:         nil,
+			GroupName:      "__default__",
+			WeightedLabels: []string{"w1", "w2"},
+		})
+		require.NoError(t, err)
+		require.Equal(t, normalDefaultID, claimed.ID)
 	})
 }
 

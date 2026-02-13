@@ -49,11 +49,15 @@ func TestUpdateCronJob(t *testing.T) {
 			Cronjob: &apigen.TaskCronjob{
 				CronExpression: cronExpression,
 			},
+			Priority: utils.Ptr(int32(0)),
+			Weight:   utils.Ptr(int32(1)),
 		},
 		Spec:      taskSpec,
 		StartedAt: &expectedNextTime,
 		SerialKey: nil,
 		SerialID:  nil,
+		Priority:  0,
+		Weight:    1,
 	}))
 
 	taskStore := &TaskStore{
@@ -103,11 +107,15 @@ func TestUpdateCronJobPreservesSerialAttributes(t *testing.T) {
 			},
 			SerialKey: &serialKey,
 			SerialID:  &serialID,
+			Priority:  utils.Ptr(int32(0)),
+			Weight:    utils.Ptr(int32(1)),
 		},
 		Spec:      taskSpec,
 		StartedAt: &expectedNextTime,
 		SerialKey: &serialKey,
 		SerialID:  &serialID,
+		Priority:  0,
+		Weight:    1,
 	}))
 
 	taskStore := &TaskStore{
@@ -172,6 +180,8 @@ func TestPushTaskSerialAttributes(t *testing.T) {
 		Attributes: apigen.TaskAttributes{
 			SerialKey: &serialKey,
 			SerialID:  &serialID,
+			Priority:  utils.Ptr(int32(0)),
+			Weight:    utils.Ptr(int32(1)),
 		},
 		Spec:      spec,
 		Status:    string(apigen.Pending),
@@ -179,6 +189,8 @@ func TestPushTaskSerialAttributes(t *testing.T) {
 		UniqueTag: nil,
 		SerialKey: &serialKey,
 		SerialID:  &serialID,
+		Priority:  0,
+		Weight:    1,
 	})).Return(&querier.AnclaxTask{ID: 42}, nil)
 
 	store := &TaskStore{model: mockModel}
@@ -323,4 +335,98 @@ func TestGetLastTaskErrorEventNotFound(t *testing.T) {
 	store := &TaskStore{model: mockModel}
 	_, err := store.GetLastTaskErrorEvent(ctx, taskID)
 	require.ErrorIs(t, err, ErrTaskEventNotFound)
+}
+
+func TestUpdatePendingTaskPriorityByLabels(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	labels := []string{"billing"}
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockModel.EXPECT().UpdatePendingTaskPriorityByLabels(ctx, querier.UpdatePendingTaskPriorityByLabelsParams{
+		Priority:  7,
+		HasLabels: true,
+		Labels:    labels,
+	}).Return(int64(3), nil)
+
+	store := &TaskStore{model: mockModel}
+	rows, err := store.UpdatePendingTaskPriorityByLabels(ctx, labels, 7)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), rows)
+}
+
+func TestUpdatePendingTaskPriorityByLabelsRejectsNegative(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	store := &TaskStore{model: model.NewMockModelInterface(ctrl)}
+	_, err := store.UpdatePendingTaskPriorityByLabels(context.Background(), []string{"billing"}, -1)
+	require.Error(t, err)
+}
+
+func TestUpdatePendingTaskWeightByLabels(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	labels := []string{"billing"}
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockModel.EXPECT().UpdatePendingTaskWeightByLabels(ctx, querier.UpdatePendingTaskWeightByLabelsParams{
+		Weight:    5,
+		HasLabels: true,
+		Labels:    labels,
+	}).Return(int64(2), nil)
+
+	store := &TaskStore{model: mockModel}
+	rows, err := store.UpdatePendingTaskWeightByLabels(ctx, labels, 5)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), rows)
+}
+
+func TestUpdatePendingTaskWeightByLabelsRejectsNonPositive(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	store := &TaskStore{model: model.NewMockModelInterface(ctrl)}
+	_, err := store.UpdatePendingTaskWeightByLabels(context.Background(), nil, 0)
+	require.Error(t, err)
+}
+
+func TestUpdatePendingTaskPriorityByEmptyLabelsTargetsDefaultGroup(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockModel.EXPECT().UpdatePendingTaskPriorityByLabels(ctx, querier.UpdatePendingTaskPriorityByLabelsParams{
+		Priority:  2,
+		HasLabels: false,
+		Labels:    nil,
+	}).Return(int64(1), nil)
+
+	store := &TaskStore{model: mockModel}
+	rows, err := store.UpdatePendingTaskPriorityByLabels(ctx, nil, 2)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), rows)
+}
+
+func TestUpdatePendingTaskWeightByEmptyLabelsTargetsDefaultGroup(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockModel.EXPECT().UpdatePendingTaskWeightByLabels(ctx, querier.UpdatePendingTaskWeightByLabelsParams{
+		Weight:    3,
+		HasLabels: false,
+		Labels:    nil,
+	}).Return(int64(4), nil)
+
+	store := &TaskStore{model: mockModel}
+	rows, err := store.UpdatePendingTaskWeightByLabels(ctx, nil, 3)
+	require.NoError(t, err)
+	require.Equal(t, int64(4), rows)
 }

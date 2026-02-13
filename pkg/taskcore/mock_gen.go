@@ -145,6 +145,36 @@ func (mr *MockTaskStoreInterfaceMockRecorder) UpdateCronJob(ctx, taskID, cronExp
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateCronJob", reflect.TypeOf((*MockTaskStoreInterface)(nil).UpdateCronJob), ctx, taskID, cronExpression, spec)
 }
 
+// UpdatePendingTaskPriorityByLabels mocks base method.
+func (m *MockTaskStoreInterface) UpdatePendingTaskPriorityByLabels(ctx context.Context, labels []string, priority int32) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdatePendingTaskPriorityByLabels", ctx, labels, priority)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdatePendingTaskPriorityByLabels indicates an expected call of UpdatePendingTaskPriorityByLabels.
+func (mr *MockTaskStoreInterfaceMockRecorder) UpdatePendingTaskPriorityByLabels(ctx, labels, priority any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdatePendingTaskPriorityByLabels", reflect.TypeOf((*MockTaskStoreInterface)(nil).UpdatePendingTaskPriorityByLabels), ctx, labels, priority)
+}
+
+// UpdatePendingTaskWeightByLabels mocks base method.
+func (m *MockTaskStoreInterface) UpdatePendingTaskWeightByLabels(ctx context.Context, labels []string, weight int32) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdatePendingTaskWeightByLabels", ctx, labels, weight)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdatePendingTaskWeightByLabels indicates an expected call of UpdatePendingTaskWeightByLabels.
+func (mr *MockTaskStoreInterfaceMockRecorder) UpdatePendingTaskWeightByLabels(ctx, labels, weight any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdatePendingTaskWeightByLabels", reflect.TypeOf((*MockTaskStoreInterface)(nil).UpdatePendingTaskWeightByLabels), ctx, labels, weight)
+}
+
 // WaitForTask mocks base method.
 func (m *MockTaskStoreInterface) WaitForTask(ctx context.Context, taskID int32, opts ...WaitForTaskOption) error {
 	m.ctrl.T.Helper()
