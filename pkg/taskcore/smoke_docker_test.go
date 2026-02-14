@@ -30,8 +30,10 @@ const (
 	smokePort          = "5499"
 )
 
+// Verifies core lease lifecycle: claim, relock protections, refresh, and completion unlock semantics.
 func TestAsyncTaskLeaseSmoke(t *testing.T) {
 	withSmokePostgres(t, func(ctx context.Context, m model.ModelInterface) {
+		// Set up an alive worker with labels so claim queries can enforce label matching.
 		workerID := uuid.New()
 		workerIDParam := uuid.NullUUID{UUID: workerID, Valid: true}
 
@@ -51,6 +53,7 @@ func TestAsyncTaskLeaseSmoke(t *testing.T) {
 
 		store := taskcore.NewTaskStore(m)
 
+		// Enqueue one task that should be claimable by this worker and one that should be filtered out.
 		labelsMatch := []string{"billing"}
 		labelsOther := []string{"ops"}
 
@@ -68,6 +71,7 @@ func TestAsyncTaskLeaseSmoke(t *testing.T) {
 		})
 		require.NoError(t, err)
 
+		// Verify generic claim picks the label-matching task and records lock ownership.
 		lockExpiry := time.Now().Add(-1 * time.Minute)
 		claimed, err := m.ClaimTask(ctx, querier.ClaimTaskParams{
 			WorkerID:   workerIDParam,
@@ -80,6 +84,7 @@ func TestAsyncTaskLeaseSmoke(t *testing.T) {
 		require.NotNil(t, claimed.LockedAt)
 		require.True(t, claimed.WorkerID.Valid)
 
+		// Verify the same task cannot be re-claimed while already locked by this worker.
 		_, err = m.ClaimTaskByID(ctx, querier.ClaimTaskByIDParams{
 			ID:         claimed.ID,
 			WorkerID:   workerIDParam,
@@ -89,6 +94,7 @@ func TestAsyncTaskLeaseSmoke(t *testing.T) {
 		})
 		require.ErrorIs(t, err, pgx.ErrNoRows)
 
+		// Verify an explicit claim-by-id still rejects tasks outside the worker's labels.
 		_, err = m.ClaimTaskByID(ctx, querier.ClaimTaskByIDParams{
 			ID:         taskOtherID,
 			WorkerID:   workerIDParam,
@@ -98,12 +104,14 @@ func TestAsyncTaskLeaseSmoke(t *testing.T) {
 		})
 		require.ErrorIs(t, err, pgx.ErrNoRows)
 
+		// Verify lease extension works for the current lock owner.
 		_, err = m.RefreshTaskLock(ctx, querier.RefreshTaskLockParams{
 			ID:       taskMatchID,
 			WorkerID: workerIDParam,
 		})
 		require.NoError(t, err)
 
+		// Complete through worker-scoped update and verify lock ownership is cleared on terminal state.
 		_, err = m.UpdateTaskStatusByWorker(ctx, querier.UpdateTaskStatusByWorkerParams{
 			ID:       taskMatchID,
 			Status:   string(apigen.Completed),
@@ -119,10 +127,12 @@ func TestAsyncTaskLeaseSmoke(t *testing.T) {
 	})
 }
 
+// Verifies the worker loop claims a task, refreshes the lock while running, and completes successfully.
 func TestAsyncTaskWorkerLoopSmoke(t *testing.T) {
 	withSmokePostgres(t, func(ctx context.Context, m model.ModelInterface) {
 		store := taskcore.NewTaskStore(m)
 		labels := []string{"worker"}
+		// Enqueue a task that only a worker with the configured label should process.
 		taskID, err := store.PushTask(ctx, &apigen.Task{
 			Attributes: apigen.TaskAttributes{Labels: &labels},
 			Spec:       apigen.TaskSpec{Type: "smoke-worker", Payload: json.RawMessage(`{}`)},
@@ -135,6 +145,7 @@ func TestAsyncTaskWorkerLoopSmoke(t *testing.T) {
 		lockTTL := 200 * time.Millisecond
 		heartbeat := 20 * time.Millisecond
 
+		// Use short intervals so the smoke test can quickly observe lock acquisition and refresh.
 		cfg := &config.Config{
 			Worker: config.Worker{
 				PollInterval:        &pollInterval,
@@ -152,16 +163,19 @@ func TestAsyncTaskWorkerLoopSmoke(t *testing.T) {
 		go workerInstance.Start()
 		t.Cleanup(gctx.Cancel)
 
+		// Confirm the task started, then verify the lock exists and is refreshed while handler is blocked.
 		waitForSignal(t, handler.started(), 2*time.Second, "worker did not start task")
 		lockedAt := waitForTaskLock(t, ctx, m, taskID, 2*time.Second)
 		waitForLockRefresh(t, ctx, m, taskID, lockedAt, 2*time.Second)
 
+		// Unblock handler and verify the worker drives task to completed with lock/owner cleanup.
 		handler.release()
 		waitForSignal(t, handler.done(), 2*time.Second, "worker did not finish task")
 		waitForTaskCompletion(t, ctx, m, taskID, 2*time.Second)
 	})
 }
 
+// Verifies serial-key ordering gates claimability across started_at, serial_id ordering, and failure progression.
 func TestAsyncTaskSerialBehaviorSmoke(t *testing.T) {
 	withSmokePostgres(t, func(ctx context.Context, m model.ModelInterface) {
 		store := taskcore.NewTaskStore(m)
@@ -169,6 +183,7 @@ func TestAsyncTaskSerialBehaviorSmoke(t *testing.T) {
 		workerIDParam := uuid.NullUUID{UUID: workerID, Valid: true}
 		lockExpiry := time.Now().Add(-1 * time.Minute)
 
+		// Scenario 1: a future started_at head blocks the entire serial lane, even with other pending tasks.
 		serialKey := "serial-smoke"
 		serialID := int32(1)
 		future := time.Now().Add(10 * time.Minute)
@@ -189,6 +204,7 @@ func TestAsyncTaskSerialBehaviorSmoke(t *testing.T) {
 		require.NoError(t, err)
 		require.NotEqual(t, blockedID, laterID)
 
+		// Nothing should be claimable yet because the head of this serial key is not started.
 		_, err = m.ClaimTask(ctx, querier.ClaimTaskParams{
 			WorkerID:   workerIDParam,
 			LockExpiry: &lockExpiry,
@@ -197,6 +213,7 @@ func TestAsyncTaskSerialBehaviorSmoke(t *testing.T) {
 		})
 		require.ErrorIs(t, err, pgx.ErrNoRows)
 
+		// Adding another same-serial-id task still stays blocked by the not-yet-startable head.
 		earlyID, err := store.PushTask(ctx, &apigen.Task{
 			Attributes: apigen.TaskAttributes{SerialKey: &serialKey, SerialID: &serialID},
 			Spec:       apigen.TaskSpec{Type: "smoke-serial", Payload: json.RawMessage(`{"id":0}`)},
@@ -213,6 +230,7 @@ func TestAsyncTaskSerialBehaviorSmoke(t *testing.T) {
 		})
 		require.ErrorIs(t, err, pgx.ErrNoRows)
 
+		// Once head started_at is in the past, claims should proceed in serial order.
 		past := time.Now().Add(-1 * time.Minute)
 		require.NoError(t, m.UpdateTaskStartedAt(ctx, querier.UpdateTaskStartedAtParams{
 			ID:        blockedID,
@@ -228,6 +246,7 @@ func TestAsyncTaskSerialBehaviorSmoke(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, blockedID, claimed.ID)
 
+		// Completing current head should unblock the next deterministic candidate in the same serial key.
 		_, err = m.UpdateTaskStatusByWorker(ctx, querier.UpdateTaskStatusByWorkerParams{
 			ID:       claimed.ID,
 			Status:   string(apigen.Completed),
@@ -244,6 +263,7 @@ func TestAsyncTaskSerialBehaviorSmoke(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, earlyID, claimed.ID)
 
+		// After serial-id tasks are done, the remaining no-serial-id task becomes claimable.
 		_, err = m.UpdateTaskStatusByWorker(ctx, querier.UpdateTaskStatusByWorkerParams{
 			ID:       claimed.ID,
 			Status:   string(apigen.Completed),
@@ -267,6 +287,7 @@ func TestAsyncTaskSerialBehaviorSmoke(t *testing.T) {
 		})
 		require.NoError(t, err)
 
+		// Scenario 2: with multiple explicit serial IDs, claim order should be ascending serial_id.
 		serialKeyIDs := "serial-ids"
 		serialIDOne := int32(1)
 		serialIDTwo := int32(2)
@@ -341,6 +362,7 @@ func TestAsyncTaskSerialBehaviorSmoke(t *testing.T) {
 		})
 		require.NoError(t, err)
 
+		// Scenario 3: without serial IDs, queue still respects head started_at gating for the key.
 		serialKeyNoID := "serial-noid"
 		futureHead := time.Now().Add(5 * time.Minute)
 
@@ -367,6 +389,7 @@ func TestAsyncTaskSerialBehaviorSmoke(t *testing.T) {
 		})
 		require.ErrorIs(t, err, pgx.ErrNoRows)
 
+		// Moving the head into the past should allow head-first claim, then the follower task.
 		pastHead := time.Now().Add(-1 * time.Minute)
 		require.NoError(t, m.UpdateTaskStartedAt(ctx, querier.UpdateTaskStartedAtParams{
 			ID:        futureHeadID,
@@ -405,6 +428,7 @@ func TestAsyncTaskSerialBehaviorSmoke(t *testing.T) {
 		})
 		require.NoError(t, err)
 
+		// Scenario 4: a failed head should still release serial progression to the next task.
 		serialKeyFail := "serial-fail"
 		failIDOne := int32(1)
 		failIDTwo := int32(2)
@@ -450,8 +474,10 @@ func TestAsyncTaskSerialBehaviorSmoke(t *testing.T) {
 	})
 }
 
+// Verifies strict priority claim order and normal-task group claiming for weighted/default groups.
 func TestAsyncTaskPriorityAndWeightClaimSmoke(t *testing.T) {
 	withSmokePostgres(t, func(ctx context.Context, m model.ModelInterface) {
+		// Set up worker identity for claim ownership; labels are irrelevant for this unfiltered claim path.
 		workerID := uuid.New()
 		workerIDParam := uuid.NullUUID{UUID: workerID, Valid: true}
 		lockExpiry := time.Now().Add(-1 * time.Minute)
@@ -467,6 +493,7 @@ func TestAsyncTaskPriorityAndWeightClaimSmoke(t *testing.T) {
 
 		store := taskcore.NewTaskStore(m)
 
+		// Seed strict-priority tasks and normal tasks mapped to weighted groups plus default fallback group.
 		pStrictLow := int32(1)
 		pStrictHigh := int32(9)
 		wLow := int32(1)
@@ -509,6 +536,7 @@ func TestAsyncTaskPriorityAndWeightClaimSmoke(t *testing.T) {
 		})
 		require.NoError(t, err)
 
+		// Strict lane should always claim higher priority before lower priority.
 		claimed, err := m.ClaimStrictTask(ctx, querier.ClaimStrictTaskParams{
 			WorkerID:   workerIDParam,
 			LockExpiry: &lockExpiry,
@@ -527,6 +555,7 @@ func TestAsyncTaskPriorityAndWeightClaimSmoke(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, strictLowID, claimed.ID)
 
+		// Normal lane should return the task mapped to the requested weighted group.
 		claimed, err = m.ClaimNormalTaskByGroup(ctx, querier.ClaimNormalTaskByGroupParams{
 			WorkerID:       workerIDParam,
 			LockExpiry:     &lockExpiry,
@@ -538,6 +567,7 @@ func TestAsyncTaskPriorityAndWeightClaimSmoke(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, normalW2ID, claimed.ID)
 
+		// Verify other weighted group lookup is isolated to that group's tasks.
 		claimed, err = m.ClaimNormalTaskByGroup(ctx, querier.ClaimNormalTaskByGroupParams{
 			WorkerID:       workerIDParam,
 			LockExpiry:     &lockExpiry,
@@ -549,6 +579,7 @@ func TestAsyncTaskPriorityAndWeightClaimSmoke(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, normalW1ID, claimed.ID)
 
+		// Verify unlabeled/unknown-label normal tasks are claimable through the default group.
 		claimed, err = m.ClaimNormalTaskByGroup(ctx, querier.ClaimNormalTaskByGroupParams{
 			WorkerID:       workerIDParam,
 			LockExpiry:     &lockExpiry,

@@ -49,13 +49,13 @@ func FuzzBuildLabelWeights(f *testing.F) {
 }
 
 func FuzzParseRuntimeConfigDurations(f *testing.F) {
-	f.Add("1s", "2s", "10s", true, true, true)
-	f.Add("", "", "", false, false, false)
-	f.Add("x", "2s", "10s", true, true, true)
-	f.Add("0s", "2s", "10s", true, true, true)
+	f.Add("1s", "2s", true, true)
+	f.Add("", "", false, false)
+	f.Add("x", "2s", true, true)
+	f.Add("0s", "2s", true, true)
 
-	f.Fuzz(func(t *testing.T, notify, listen, heartbeat string, withNotify, withListen, withHeartbeat bool) {
-		if len(notify) > 64 || len(listen) > 64 || len(heartbeat) > 64 {
+	f.Fuzz(func(t *testing.T, notify, listen string, withNotify, withListen bool) {
+		if len(notify) > 64 || len(listen) > 64 {
 			return
 		}
 		params := &taskgen.UpdateWorkerRuntimeConfigParameters{}
@@ -65,16 +65,13 @@ func FuzzParseRuntimeConfigDurations(f *testing.F) {
 		if withListen {
 			params.ListenTimeout = &listen
 		}
-		if withHeartbeat {
-			params.HeartbeatTTL = &heartbeat
-		}
 
-		notifyDur, listenDur, heartbeatDur, err := parseRuntimeConfigDurations(params)
+		notifyDur, listenDur, err := parseRuntimeConfigDurations(params)
 		if err != nil {
 			return
 		}
-		if notifyDur <= 0 || listenDur <= 0 || heartbeatDur <= 0 {
-			t.Fatalf("durations must be positive: %v %v %v", notifyDur, listenDur, heartbeatDur)
+		if notifyDur <= 0 || listenDur <= 0 {
+			t.Fatalf("durations must be positive: %v %v", notifyDur, listenDur)
 		}
 	})
 }

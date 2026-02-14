@@ -130,6 +130,36 @@ func FuzzApplyRuntimeConfigLocked(f *testing.F) {
 	})
 }
 
+func FuzzStrictCapForPercentage(f *testing.F) {
+	f.Add(0, int32(0))
+	f.Add(10, int32(1))
+	f.Add(10, int32(100))
+	f.Add(10, int32(250))
+	f.Add(-5, int32(50))
+
+	f.Fuzz(func(t *testing.T, concurrency int, percentage int32) {
+		if concurrency < -1024 || concurrency > 1024 {
+			return
+		}
+		cap := strictCapForPercentage(concurrency, percentage)
+
+		if cap < 0 {
+			t.Fatalf("strict cap must not be negative: %d", cap)
+		}
+		if concurrency > 0 && cap > concurrency {
+			t.Fatalf("strict cap cannot exceed concurrency: cap=%d concurrency=%d", cap, concurrency)
+		}
+		if concurrency <= 0 || percentage <= 0 {
+			if cap != 0 {
+				t.Fatalf("non-positive concurrency/percentage must yield zero cap: got=%d", cap)
+			}
+		}
+		if concurrency > 0 && percentage >= 100 && cap != concurrency {
+			t.Fatalf("percentage >= 100 should saturate concurrency: cap=%d concurrency=%d", cap, concurrency)
+		}
+	})
+}
+
 func parseWeightsMap(raw string, maxPairs int) map[string]int32 {
 	ret := map[string]int32{}
 	if raw == "" {

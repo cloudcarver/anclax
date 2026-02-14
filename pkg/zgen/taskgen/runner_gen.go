@@ -148,11 +148,11 @@ type DeleteOpaqueKeyParameters struct {
 
 
 type UpdateWorkerRuntimeConfigParameters struct { 
+    // Label names for weighted groups
+	Labels []string `json:"labels" yaml:"labels"`
+
     // Weights for labels by index
 	Weights []int32 `json:"weights" yaml:"weights"`
-
-    // Alive-worker heartbeat window duration (e.g. 15s)
-	HeartbeatTTL *string `json:"heartbeatTTL" yaml:"heartbeatTTL"`
 
     // Fallback retry interval when ack listening is unavailable
 	NotifyInterval *string `json:"notifyInterval" yaml:"notifyInterval"`
@@ -168,9 +168,6 @@ type UpdateWorkerRuntimeConfigParameters struct {
 
     // Default weight for unlabeled task group
 	DefaultWeight *int32 `json:"defaultWeight" yaml:"defaultWeight"`
-
-    // Label names for weighted groups
-	Labels []string `json:"labels" yaml:"labels"`
 }
 
 func (r *DeleteOpaqueKeyParameters) Parse(spec json.RawMessage) error {

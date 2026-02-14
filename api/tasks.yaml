@@ -42,9 +42,6 @@ tasks:
             type: integer
             format: int32
           description: Weights for labels by index
-        heartbeatTTL:
-          type: string
-          description: Alive-worker heartbeat window duration (e.g. 15s)
         notifyInterval:
           type: string
           description: Fallback retry interval when ack listening is unavailable

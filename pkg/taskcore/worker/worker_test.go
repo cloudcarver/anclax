@@ -842,3 +842,261 @@ func TestRuntimeListenDSNFromConfig(t *testing.T) {
 	require.True(t, strings.Contains(assembled, "postgres://postgres:postgres@localhost:5432/postgres"))
 	require.True(t, strings.Contains(assembled, "sslmode=disable"))
 }
+
+func TestClaimTaskReleasesStrictInFlightOnStrictClaimError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	lockTTL := 5 * time.Second
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockTxm := model.NewMockModelInterfaceWithTransaction(ctrl)
+	mockTx := core.NewMockTx(ctrl)
+	mockHandler := NewMockTaskHandler(ctrl)
+
+	worker, err := NewWorker(globalctx.New(), &config.Config{
+		Worker: config.Worker{LockTTL: &lockTTL},
+	}, mockModel, mockHandler)
+	require.NoError(t, err)
+	w := worker.(*Worker)
+	w.strictCap = 1
+	w.strictInFlight = 0
+
+	mockModel.EXPECT().RunTransactionWithTx(context.Background(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, f func(core.Tx, model.ModelInterface) error) error {
+			return f(mockTx, mockTxm)
+		},
+	).Times(1)
+	mockTxm.EXPECT().ClaimStrictTask(context.Background(), gomock.AssignableToTypeOf(querier.ClaimStrictTaskParams{})).
+		Return(nil, errors.New("claim strict failed")).Times(1)
+
+	task, err := w.claimTask(context.Background())
+	require.Nil(t, task)
+	require.ErrorContains(t, err, "claim strict failed")
+	require.Equal(t, 0, w.strictInFlight)
+}
+
+func TestClaimTaskReturnsNormalClaimError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	lockTTL := 5 * time.Second
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockTxm := model.NewMockModelInterfaceWithTransaction(ctrl)
+	mockTx := core.NewMockTx(ctrl)
+	mockHandler := NewMockTaskHandler(ctrl)
+
+	worker, err := NewWorker(globalctx.New(), &config.Config{
+		Worker: config.Worker{LockTTL: &lockTTL},
+	}, mockModel, mockHandler)
+	require.NoError(t, err)
+	w := worker.(*Worker)
+	w.strictCap = 0
+
+	mockModel.EXPECT().RunTransactionWithTx(context.Background(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, f func(core.Tx, model.ModelInterface) error) error {
+			return f(mockTx, mockTxm)
+		},
+	).Times(1)
+	mockTxm.EXPECT().ClaimNormalTaskByGroup(context.Background(), gomock.AssignableToTypeOf(querier.ClaimNormalTaskByGroupParams{})).
+		Return(nil, errors.New("claim normal failed")).Times(1)
+
+	task, err := w.claimTask(context.Background())
+	require.Nil(t, task)
+	require.ErrorContains(t, err, "claim normal failed")
+}
+
+func TestRefreshRuntimeConfigPropagatesGetLatestError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockModel.EXPECT().GetLatestWorkerRuntimeConfig(context.Background()).
+		Return(nil, errors.New("read latest failed"))
+
+	w := &Worker{
+		model:    mockModel,
+		workerID: uuid.New(),
+	}
+	err := w.refreshRuntimeConfig(context.Background(), "")
+	require.ErrorContains(t, err, "read latest failed")
+}
+
+func TestRefreshRuntimeConfigRejectsInvalidPayload(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockModel.EXPECT().GetLatestWorkerRuntimeConfig(context.Background()).
+		Return(&querier.AnclaxWorkerRuntimeConfig{
+			Version: 2,
+			Payload: []byte("{"),
+		}, nil)
+
+	w := &Worker{
+		model:       mockModel,
+		workerID:    uuid.New(),
+		concurrency: 10,
+	}
+	w.applyRuntimeConfigLocked(1, runtimeConfigPayload{
+		LabelWeights: map[string]int32{defaultWeightGroup: 1},
+	})
+
+	err := w.refreshRuntimeConfig(context.Background(), "")
+	require.ErrorContains(t, err, "unmarshal worker runtime config payload")
+}
+
+func TestRefreshRuntimeConfigPropagatesUpdateAppliedVersionError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	workerID := uuid.New()
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockModel.EXPECT().GetLatestWorkerRuntimeConfig(ctx).
+		Return(&querier.AnclaxWorkerRuntimeConfig{
+			Version: 2,
+			Payload: []byte(`{"labelWeights":{"default":1}}`),
+		}, nil)
+	mockModel.EXPECT().UpdateWorkerAppliedConfigVersion(ctx, querier.UpdateWorkerAppliedConfigVersionParams{
+		ID:                   workerID,
+		AppliedConfigVersion: 2,
+	}).Return(errors.New("update applied version failed"))
+
+	w := &Worker{
+		model:       mockModel,
+		workerID:    workerID,
+		concurrency: 10,
+	}
+	w.applyRuntimeConfigLocked(1, runtimeConfigPayload{
+		LabelWeights: map[string]int32{defaultWeightGroup: 1},
+	})
+
+	err := w.refreshRuntimeConfig(ctx, "")
+	require.ErrorContains(t, err, "update worker applied config version")
+}
+
+func TestRefreshRuntimeConfigNoRowsWithoutRequestIDSkipsAck(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockModel.EXPECT().GetLatestWorkerRuntimeConfig(context.Background()).Return(nil, pgx.ErrNoRows)
+
+	w := &Worker{
+		model:    mockModel,
+		workerID: uuid.New(),
+	}
+	err := w.refreshRuntimeConfig(context.Background(), "")
+	require.NoError(t, err)
+}
+
+func TestRefreshRuntimeConfigStaleWithoutRequestIDSkipsAck(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockModel.EXPECT().GetLatestWorkerRuntimeConfig(context.Background()).
+		Return(&querier.AnclaxWorkerRuntimeConfig{Version: 2}, nil)
+
+	w := &Worker{
+		model:    mockModel,
+		workerID: uuid.New(),
+	}
+	w.applyRuntimeConfigLocked(3, runtimeConfigPayload{
+		LabelWeights: map[string]int32{defaultWeightGroup: 1},
+	})
+
+	err := w.refreshRuntimeConfig(context.Background(), "")
+	require.NoError(t, err)
+}
+
+func TestRefreshRuntimeConfigNoRowsAckErrorPropagates(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	requestID := "req-ack-fail"
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockModel.EXPECT().GetLatestWorkerRuntimeConfig(ctx).Return(nil, pgx.ErrNoRows)
+	mockModel.EXPECT().NotifyWorkerRuntimeConfigAck(ctx, gomock.Any()).
+		Return(errors.New("ack failed"))
+
+	w := &Worker{
+		model:    mockModel,
+		workerID: uuid.New(),
+	}
+	w.applyRuntimeConfigLocked(4, runtimeConfigPayload{
+		LabelWeights: map[string]int32{defaultWeightGroup: 1},
+	})
+
+	err := w.refreshRuntimeConfig(ctx, requestID)
+	require.ErrorContains(t, err, "notify runtime config ack")
+}
+
+func TestMarkOfflineCallsModel(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	workerID := uuid.New()
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockModel.EXPECT().MarkWorkerOffline(context.Background(), workerID).Return(nil)
+
+	w := &Worker{
+		model:    mockModel,
+		workerID: workerID,
+	}
+	require.NoError(t, w.markOffline(context.Background()))
+}
+
+func TestClaimTaskByIDNoRowsReturnsNil(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	lockTTL := 5 * time.Second
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockTxm := model.NewMockModelInterfaceWithTransaction(ctrl)
+	mockTx := core.NewMockTx(ctrl)
+	mockHandler := NewMockTaskHandler(ctrl)
+
+	worker, err := NewWorker(globalctx.New(), &config.Config{
+		Worker: config.Worker{LockTTL: &lockTTL},
+	}, mockModel, mockHandler)
+	require.NoError(t, err)
+	w := worker.(*Worker)
+
+	mockModel.EXPECT().RunTransactionWithTx(context.Background(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, f func(core.Tx, model.ModelInterface) error) error {
+			return f(mockTx, mockTxm)
+		},
+	).Times(1)
+	mockTxm.EXPECT().ClaimTaskByID(context.Background(), gomock.AssignableToTypeOf(querier.ClaimTaskByIDParams{})).
+		Return(nil, pgx.ErrNoRows).Times(1)
+
+	task, err := w.claimTaskByID(context.Background(), 123)
+	require.NoError(t, err)
+	require.Nil(t, task)
+}
+
+func TestRunTaskPropagatesInvalidTimeoutError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	taskHandler := &stubTaskHandler{}
+	handler := &stubLifeCycleHandler{}
+	w := &Worker{
+		model:               mockModel,
+		taskHandler:         taskHandler,
+		lifeCycleHandler:    handler,
+		lockRefreshInterval: 0,
+	}
+
+	invalid := "nope"
+	err := w.runTask(context.Background(), apigen.Task{
+		ID: 1,
+		Attributes: apigen.TaskAttributes{
+			Timeout: &invalid,
+		},
+	})
+	require.ErrorContains(t, err, "failed to parse timeout")
+}

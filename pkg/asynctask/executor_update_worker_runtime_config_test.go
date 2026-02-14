@@ -76,7 +76,7 @@ func TestExecuteUpdateWorkerRuntimeConfigConvergesAfterNotifyAndAckWait(t *testi
 
 	mockModel.EXPECT().GetLatestWorkerRuntimeConfig(ctx).Return(&querier.AnclaxWorkerRuntimeConfig{Version: 7}, nil)
 	mockModel.EXPECT().ListLaggingAliveWorkers(ctx, querier.ListLaggingAliveWorkersParams{
-		HeartbeatCutoff: fixedNow.Add(-10 * time.Second),
+		HeartbeatCutoff: fixedNow.Add(-9 * time.Second),
 		Version:         7,
 	}).Return([]uuid.UUID{uuid.New()}, nil)
 	mockModel.EXPECT().NotifyWorkerRuntimeConfig(ctx, gomock.Any()).DoAndReturn(
@@ -91,7 +91,7 @@ func TestExecuteUpdateWorkerRuntimeConfigConvergesAfterNotifyAndAckWait(t *testi
 	)
 	mockModel.EXPECT().GetLatestWorkerRuntimeConfig(ctx).Return(&querier.AnclaxWorkerRuntimeConfig{Version: 7}, nil)
 	mockModel.EXPECT().ListLaggingAliveWorkers(ctx, querier.ListLaggingAliveWorkersParams{
-		HeartbeatCutoff: fixedNow.Add(-10 * time.Second),
+		HeartbeatCutoff: fixedNow.Add(-9 * time.Second),
 		Version:         7,
 	}).Return([]uuid.UUID{}, nil)
 
@@ -197,20 +197,20 @@ func TestExecuteUpdateWorkerRuntimeConfigGeneratesRequestIDWhenMissing(t *testin
 	require.NoError(t, err)
 }
 
-func TestExecuteUpdateWorkerRuntimeConfigUsesCustomHeartbeatTTL(t *testing.T) {
+func TestExecuteUpdateWorkerRuntimeConfigUsesExecutorHeartbeatTTL(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	ctx := context.Background()
 	fixedNow := time.Date(2026, 2, 13, 12, 0, 0, 0, time.UTC)
-	heartbeatTTL := "30s"
 	notifyInterval := "1ms"
 
 	mockModel := model.NewMockModelInterface(ctrl)
 	e := &Executor{
-		model:      mockModel,
-		now:        func() time.Time { return fixedNow },
-		waitForAck: nil,
+		model:                     mockModel,
+		now:                       func() time.Time { return fixedNow },
+		waitForAck:                nil,
+		runtimeConfigHeartbeatTTL: 30 * time.Second,
 	}
 
 	mockModel.EXPECT().CreateWorkerRuntimeConfig(ctx, gomock.Any()).Return(&querier.AnclaxWorkerRuntimeConfig{Version: 25}, nil)
@@ -227,7 +227,6 @@ func TestExecuteUpdateWorkerRuntimeConfigUsesCustomHeartbeatTTL(t *testing.T) {
 	}).Return([]uuid.UUID{}, nil)
 
 	err := e.ExecuteUpdateWorkerRuntimeConfig(ctx, &taskgen.UpdateWorkerRuntimeConfigParameters{
-		HeartbeatTTL:   &heartbeatTTL,
 		NotifyInterval: &notifyInterval,
 	})
 	require.NoError(t, err)
@@ -259,6 +258,80 @@ func TestExecuteUpdateWorkerRuntimeConfigReturnsContextErrorWithoutAckWaiter(t *
 		NotifyInterval: &notifyInterval,
 	})
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestOnUpdateWorkerRuntimeConfigFailedNoop(t *testing.T) {
+	e := &Executor{}
+	err := e.OnUpdateWorkerRuntimeConfigFailed(context.Background(), 1, &taskgen.UpdateWorkerRuntimeConfigParameters{}, nil)
+	require.NoError(t, err)
+}
+
+func TestExecuteUpdateWorkerRuntimeConfigPropagatesCreateError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockModel.EXPECT().CreateWorkerRuntimeConfig(ctx, gomock.Any()).
+		Return(nil, errors.New("create failed"))
+
+	exec := &Executor{model: mockModel, now: time.Now}
+	err := exec.ExecuteUpdateWorkerRuntimeConfig(ctx, &taskgen.UpdateWorkerRuntimeConfigParameters{})
+	require.ErrorContains(t, err, "create worker runtime config")
+}
+
+func TestExecuteUpdateWorkerRuntimeConfigPropagatesGetLatestError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockModel.EXPECT().CreateWorkerRuntimeConfig(ctx, gomock.Any()).
+		Return(&querier.AnclaxWorkerRuntimeConfig{Version: 9}, nil)
+	mockModel.EXPECT().GetLatestWorkerRuntimeConfig(ctx).
+		Return(nil, errors.New("latest failed"))
+
+	exec := &Executor{model: mockModel, now: time.Now}
+	err := exec.ExecuteUpdateWorkerRuntimeConfig(ctx, &taskgen.UpdateWorkerRuntimeConfigParameters{})
+	require.ErrorContains(t, err, "get latest runtime config")
+}
+
+func TestExecuteUpdateWorkerRuntimeConfigPropagatesListLaggingError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockModel.EXPECT().CreateWorkerRuntimeConfig(ctx, gomock.Any()).
+		Return(&querier.AnclaxWorkerRuntimeConfig{Version: 10}, nil)
+	mockModel.EXPECT().GetLatestWorkerRuntimeConfig(ctx).
+		Return(&querier.AnclaxWorkerRuntimeConfig{Version: 10}, nil)
+	mockModel.EXPECT().ListLaggingAliveWorkers(ctx, gomock.Any()).
+		Return(nil, errors.New("list failed"))
+
+	exec := &Executor{model: mockModel, now: time.Now}
+	err := exec.ExecuteUpdateWorkerRuntimeConfig(ctx, &taskgen.UpdateWorkerRuntimeConfigParameters{})
+	require.ErrorContains(t, err, "list lagging alive workers")
+}
+
+func TestExecuteUpdateWorkerRuntimeConfigPropagatesNotifyError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockModel.EXPECT().CreateWorkerRuntimeConfig(ctx, gomock.Any()).
+		Return(&querier.AnclaxWorkerRuntimeConfig{Version: 11}, nil)
+	mockModel.EXPECT().GetLatestWorkerRuntimeConfig(ctx).
+		Return(&querier.AnclaxWorkerRuntimeConfig{Version: 11}, nil)
+	mockModel.EXPECT().ListLaggingAliveWorkers(ctx, gomock.Any()).
+		Return([]uuid.UUID{uuid.New()}, nil)
+	mockModel.EXPECT().NotifyWorkerRuntimeConfig(ctx, gomock.Any()).
+		Return(errors.New("notify failed"))
+
+	exec := &Executor{model: mockModel, now: time.Now}
+	err := exec.ExecuteUpdateWorkerRuntimeConfig(ctx, &taskgen.UpdateWorkerRuntimeConfigParameters{})
+	require.ErrorContains(t, err, "notify worker runtime config")
 }
 
 func TestNormalizeMaxStrictPercentage(t *testing.T) {
@@ -302,26 +375,24 @@ func TestBuildLabelWeightsValidation(t *testing.T) {
 }
 
 func TestParseRuntimeConfigDurationsValidation(t *testing.T) {
-	_, _, _, err := parseRuntimeConfigDurations(&taskgen.UpdateWorkerRuntimeConfigParameters{
+	_, _, err := parseRuntimeConfigDurations(&taskgen.UpdateWorkerRuntimeConfigParameters{
 		NotifyInterval: ptr("x"),
 	})
 	require.Error(t, err)
 
 	zero := "0s"
-	_, _, _, err = parseRuntimeConfigDurations(&taskgen.UpdateWorkerRuntimeConfigParameters{
+	_, _, err = parseRuntimeConfigDurations(&taskgen.UpdateWorkerRuntimeConfigParameters{
 		ListenTimeout: &zero,
 	})
 	require.Error(t, err)
 
-	ni, lt, hb, err := parseRuntimeConfigDurations(&taskgen.UpdateWorkerRuntimeConfigParameters{
+	ni, lt, err := parseRuntimeConfigDurations(&taskgen.UpdateWorkerRuntimeConfigParameters{
 		NotifyInterval: ptr("3s"),
 		ListenTimeout:  ptr("4s"),
-		HeartbeatTTL:   ptr("5s"),
 	})
 	require.NoError(t, err)
 	require.Equal(t, 3*time.Second, ni)
 	require.Equal(t, 4*time.Second, lt)
-	require.Equal(t, 5*time.Second, hb)
 }
 
 func TestRuntimeListenDSNFromConfig(t *testing.T) {
@@ -348,6 +419,61 @@ func TestRuntimeListenDSNFromConfig(t *testing.T) {
 
 func TestRunUpdateWorkerRuntimeConfigTaskPriorityMaxInt32Sanity(t *testing.T) {
 	require.Equal(t, int32(math.MaxInt32), ConfigUpdateTaskPriority)
+}
+
+func TestBuildLabelWeightsDuplicateLabelUsesLastValue(t *testing.T) {
+	ret, err := buildLabelWeights(&taskgen.UpdateWorkerRuntimeConfigParameters{
+		Labels:  []string{"w1", "w2", "w1"},
+		Weights: []int32{1, 2, 9},
+	})
+	require.NoError(t, err)
+	require.Equal(t, int32(9), ret["w1"])
+	require.Equal(t, int32(2), ret["w2"])
+	require.Equal(t, int32(1), ret["default"])
+}
+
+func TestParseRuntimeConfigDurationsDefaults(t *testing.T) {
+	notifyInterval, listenTimeout, err := parseRuntimeConfigDurations(&taskgen.UpdateWorkerRuntimeConfigParameters{})
+	require.NoError(t, err)
+	require.Equal(t, time.Second, notifyInterval)
+	require.Equal(t, 2*time.Second, listenTimeout)
+}
+
+func TestRuntimeConfigHeartbeatTTLFromConfig(t *testing.T) {
+	require.Equal(t, 9*time.Second, runtimeConfigHeartbeatTTLFromConfig(nil))
+
+	hb := 5 * time.Second
+	require.Equal(t, 15*time.Second, runtimeConfigHeartbeatTTLFromConfig(&config.Config{
+		Worker: config.Worker{HeartbeatInterval: &hb},
+	}))
+
+	invalid := time.Duration(0)
+	require.Equal(t, 9*time.Second, runtimeConfigHeartbeatTTLFromConfig(&config.Config{
+		Worker: config.Worker{HeartbeatInterval: &invalid},
+	}))
+}
+
+func TestNormalizeMaxStrictPercentageLowerBound(t *testing.T) {
+	valid := int32(0)
+	out, err := normalizeMaxStrictPercentage(&valid)
+	require.NoError(t, err)
+	require.NotNil(t, out)
+	require.Equal(t, int32(0), *out)
+
+	invalid := int32(-1)
+	_, err = normalizeMaxStrictPercentage(&invalid)
+	require.Error(t, err)
+}
+
+func TestIsRuntimeConfigAckForRequestEdgeCases(t *testing.T) {
+	require.True(t, isRuntimeConfigAckForRequest(`{"params":{"request_id":"r1"}}`, "r1"))
+	require.False(t, isRuntimeConfigAckForRequest(`{"op":"up_config","params":{"request_id":"r1"}}`, "r1"))
+	require.False(t, isRuntimeConfigAckForRequest(`{"op":"ack","params":{"request_id":"r2"}}`, "r1"))
+	require.False(t, isRuntimeConfigAckForRequest(`{"op":"ack","params":{"request_id":"r1"}}`, ""))
+}
+
+func TestNewRuntimeConfigAckWaiterWithoutDSNReturnsNil(t *testing.T) {
+	require.Nil(t, newRuntimeConfigAckWaiter(""))
 }
 
 func ptr(s string) *string {

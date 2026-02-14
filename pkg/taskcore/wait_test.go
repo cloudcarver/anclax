@@ -8,6 +8,7 @@ import (
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -83,4 +84,28 @@ func TestWaitForTaskContextCanceled(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorContains(t, err, "wait for task")
 	require.ErrorContains(t, err, "context canceled")
+}
+
+func TestBuildTaskFailedErrorFallsBackToUnknown(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	taskID := int32(10)
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockModel.EXPECT().GetLastTaskErrorEvent(context.Background(), taskID).Return(nil, pgx.ErrNoRows)
+
+	store := &TaskStore{model: mockModel}
+	task := &apigen.Task{
+		ID:       taskID,
+		Spec:     apigen.TaskSpec{Type: "demo"},
+		Status:   apigen.Failed,
+		Attempts: 2,
+	}
+	err := store.buildTaskFailedError(context.Background(), task)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "last_error=unknown")
+}
+
+func TestFormatMaxAttemptsUnlimited(t *testing.T) {
+	require.Equal(t, "unlimited", formatMaxAttempts(&apigen.TaskRetryPolicy{MaxAttempts: -1}))
 }

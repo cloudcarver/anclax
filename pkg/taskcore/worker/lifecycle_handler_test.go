@@ -6,12 +6,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/taskcore"
 	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -549,4 +551,77 @@ func TestHandleFailedExceedsMaxAttempts(t *testing.T) {
 
 	err = handler.HandleFailed(context.Background(), nil, task, err)
 	require.NoError(t, err)
+}
+
+func TestHandleAttributesNoCronjobIsNoop(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	handler := &TaskLifeCycleHandler{
+		model:       model.NewMockModelInterface(ctrl),
+		taskHandler: NewMockTaskHandler(ctrl),
+		workerID:    uuid.New(),
+	}
+	err := handler.HandleAttributes(context.Background(), nil, apigen.Task{
+		ID:         1,
+		Attributes: apigen.TaskAttributes{},
+	})
+	require.NoError(t, err)
+}
+
+func TestHandleAttributesCronjobInvalidExpression(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockTxm := model.NewMockModelInterfaceWithTransaction(ctrl)
+	mockModel.EXPECT().SpawnWithTx(gomock.Any()).Return(mockTxm)
+
+	handler := &TaskLifeCycleHandler{
+		model:       mockModel,
+		taskHandler: NewMockTaskHandler(ctrl),
+		workerID:    uuid.New(),
+	}
+	err := handler.HandleAttributes(context.Background(), nil, apigen.Task{
+		ID: 1,
+		Attributes: apigen.TaskAttributes{
+			Cronjob: &apigen.TaskCronjob{CronExpression: "bad cron"},
+		},
+	})
+	require.ErrorContains(t, err, "failed to parse cron expression")
+}
+
+func TestHandleAttributesCronjobLockLost(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockTxm := model.NewMockModelInterfaceWithTransaction(ctrl)
+	mockTx := core.NewMockTx(ctrl)
+	workerID := uuid.New()
+	workerIDParam := uuid.NullUUID{UUID: workerID, Valid: true}
+
+	mockModel.EXPECT().SpawnWithTx(mockTx).Return(mockTxm)
+	mockTxm.EXPECT().UpdateTaskStartedAtByWorker(context.Background(), gomock.AssignableToTypeOf(querier.UpdateTaskStartedAtByWorkerParams{})).
+		DoAndReturn(func(ctx context.Context, params querier.UpdateTaskStartedAtByWorkerParams) (int32, error) {
+			require.Equal(t, int32(7), params.ID)
+			require.Equal(t, workerIDParam, params.WorkerID)
+			return 0, pgx.ErrNoRows
+		})
+
+	handler := &TaskLifeCycleHandler{
+		model:       mockModel,
+		taskHandler: NewMockTaskHandler(ctrl),
+		now: func() time.Time {
+			return time.Date(2026, 2, 14, 0, 0, 0, 0, time.UTC)
+		},
+		workerID: workerID,
+	}
+	err := handler.HandleAttributes(context.Background(), mockTx, apigen.Task{
+		ID: 7,
+		Attributes: apigen.TaskAttributes{
+			Cronjob: &apigen.TaskCronjob{CronExpression: "0 * * * * *"},
+		},
+	})
+	require.ErrorIs(t, err, taskcore.ErrTaskLockLost)
 }
