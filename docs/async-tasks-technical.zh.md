@@ -2,7 +2,9 @@
 
 [English](async-tasks-technical.md) | 中文
 
-> 🚀 **异步任务新手？** 从[教程指南](async-tasks-tutorial.zh.md)开始，了解分步示例和实用模式。
+> 🚀 **异步任务新手？** 从[教程指南](async-tasks-tutorial.zh.md)开始，了解分步用法。
+>
+> ⚖️ **需要调度机制细节？** 查看[调度与运行时配置指南](async-task-scheduling-runtime-config.zh.md)，了解 strict/normal 通道语义、`WithPriority`/`WithWeight` 与运行时传播流程。
 
 本文档提供了 Anclax 异步任务系统的全面概述，涵盖用户体验流程和底层技术机制。
 
@@ -12,6 +14,7 @@
 - [用户体验流程](#用户体验流程)
 - [底层架构](#底层架构)
 - [任务生命周期](#任务生命周期)
+- [调度：Priority、Weight 与运行时配置](#调度priorityweight-与运行时配置)
 - [高级功能](#高级功能)
 - [性能和可靠性](#性能和可靠性)
 
@@ -341,6 +344,47 @@ pending → running → completed
    - 作业可以暂停/恢复
    - Cron 表达式可以更新
    - 作业可以删除
+
+## 调度：Priority、Weight 与运行时配置
+
+### 通道语义
+
+- **严格通道（strict lane）**：`priority > 0`
+  - 在 strict 槽可用时优先领取
+  - 排序：`priority DESC`，然后 `created_at ASC`，然后 `id ASC`
+- **普通通道（normal lane）**：`priority == 0`
+  - 通过标签组加权轮转选择
+  - 组间公平由运行时 `labelWeights` 控制
+
+严格通道容量受以下公式约束：
+
+```text
+strict_cap = ceil(concurrency * maxStrictPercentage / 100)
+```
+
+### 任务级控制
+
+- `taskcore.WithPriority(priority int32)`
+  - 校验 `priority >= 0`
+- `taskcore.WithWeight(weight int32)`
+  - 校验 `weight >= 1`
+  - 在普通通道已选组内影响领取顺序（`weight DESC`）
+
+### 运行时 worker 配置更新
+
+内置任务 `updateWorkerRuntimeConfig` 会写入版本化配置，并通过 Postgres 通知传播更新。
+
+流程摘要：
+1. 在 `anclax.worker_runtime_configs` 中持久化新版本。
+2. 向 `anclax_worker_runtime_config` 发送 `up_config` 通知（`request_id`、`version`）。
+3. worker 刷新最新配置、原子应用，并单调更新 `workers.applied_config_version`。
+4. worker 通过 `anclax_worker_runtime_config_ack` 发送 ACK 通知。
+5. 收敛以 DB 的落后 worker 状态为准；ACK 通知仅用于加速。
+
+可运行示例与运维说明：
+- [调度与运行时配置指南](async-task-scheduling-runtime-config.zh.md)
+- [异步任务 Worker 租约设计](async-task-worker-lease.md)
+- [异步任务生产就绪测试策略](async-task-testing-production-readiness.md)
 
 ## 高级功能
 

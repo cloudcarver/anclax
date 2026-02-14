@@ -291,7 +291,9 @@ func InitAnclaxApplication(cfg *config.Config) (*anclax_app.Application, error) 
 
 - **事务管理**：[docs/transaction.zh.md](docs/transaction.zh.md)（[English](docs/transaction.md)）
 - **中间件（x-functions & x-check-rules）**：[docs/middleware.zh.md](docs/middleware.zh.md)（[English](docs/middleware.md)）
-- **异步任务**：教程 [docs/async-tasks-tutorial.zh.md](docs/async-tasks-tutorial.zh.md) · 技术参考 [docs/async-tasks-technical.zh.md](docs/async-tasks-technical.zh.md)（[English](docs/async-tasks-tutorial.md), [English](docs/async-tasks-technical.md)）
+- **异步任务**：教程 [docs/async-tasks-tutorial.zh.md](docs/async-tasks-tutorial.zh.md) · 技术参考 [docs/async-tasks-technical.zh.md](docs/async-tasks-technical.zh.md) · 调度/运行时配置指南 [docs/async-task-scheduling-runtime-config.zh.md](docs/async-task-scheduling-runtime-config.zh.md)（[English](docs/async-tasks-tutorial.md), [English](docs/async-tasks-technical.md), [English](docs/async-task-scheduling-runtime-config.md)）
+- **异步任务 Worker 租约设计**：[docs/async-task-worker-lease.md](docs/async-task-worker-lease.md)
+- **异步任务生产就绪测试策略**：[docs/async-task-testing-production-readiness.md](docs/async-task-testing-production-readiness.md)
 
 ## 示例 🧪
 

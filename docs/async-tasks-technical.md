@@ -2,7 +2,9 @@
 
 English | [中文](async-tasks-technical.zh.md)
 
-> 🚀 **New to async tasks?** Start with the [Tutorial Guide](async-tasks-tutorial.md) for step-by-step examples and practical usage patterns.
+> 🚀 **New to async tasks?** Start with the [Tutorial Guide](async-tasks-tutorial.md) for step-by-step usage.
+>
+> ⚖️ **Need scheduling internals?** See [Scheduling & Runtime Config Guide](async-task-scheduling-runtime-config.md) for strict/normal lane semantics, `WithPriority`/`WithWeight`, and runtime propagation flow.
 
 This document provides a comprehensive overview of Anclax's async task system, covering both the user experience flow and the underlying technical mechanisms.
 
@@ -12,6 +14,7 @@ This document provides a comprehensive overview of Anclax's async task system, c
 - [User Experience Flow](#user-experience-flow)
 - [Underlying Architecture](#underlying-architecture)
 - [Task Lifecycle](#task-lifecycle)
+- [Scheduling: Priority, Weight, and Runtime Config](#scheduling-priority-weight-and-runtime-config)
 - [Advanced Features](#advanced-features)
 - [Performance and Reliability](#performance-and-reliability)
 
@@ -341,6 +344,47 @@ Scheduled tasks follow a different lifecycle:
    - Jobs can be paused/resumed
    - Cron expressions can be updated
    - Jobs can be deleted
+
+## Scheduling: Priority, Weight, and Runtime Config
+
+### Lane semantics
+
+- **Strict lane**: tasks with `priority > 0`
+  - claimed first when strict slots are available
+  - ordered by `priority DESC`, then `created_at ASC`, then `id ASC`
+- **Normal lane**: tasks with `priority == 0`
+  - selected through weighted label-group rotation
+  - group-level fairness is controlled by runtime `labelWeights`
+
+Strict lane capacity is bounded by:
+
+```text
+strict_cap = ceil(concurrency * maxStrictPercentage / 100)
+```
+
+### Task-level controls
+
+- `taskcore.WithPriority(priority int32)`
+  - validates `priority >= 0`
+- `taskcore.WithWeight(weight int32)`
+  - validates `weight >= 1`
+  - affects normal-lane ordering within a selected group (`weight DESC`)
+
+### Runtime worker config update
+
+The built-in task `updateWorkerRuntimeConfig` writes versioned config rows and propagates updates through Postgres notifications.
+
+Flow summary:
+1. Persist new version in `anclax.worker_runtime_configs`.
+2. Emit `up_config` notify payload (`request_id`, `version`) on `anclax_worker_runtime_config`.
+3. Workers refresh latest config, apply atomically, and update `workers.applied_config_version` monotonically.
+4. Workers send ACK notifications on `anclax_worker_runtime_config_ack`.
+5. Convergence is determined from DB lagging-worker state; ACK notify is only a fast path.
+
+For runnable examples and operational guidance, see:
+- [Scheduling & Runtime Config Guide](async-task-scheduling-runtime-config.md)
+- [Async Task Worker Lease Design](async-task-worker-lease.md)
+- [Async Task Testing for Production Readiness](async-task-testing-production-readiness.md)
 
 ## Advanced Features
 

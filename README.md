@@ -304,7 +304,9 @@ Need more dependencies inside `Init`? Add them as parameters (e.g., `model.Model
 
 - **Transaction Management**: [docs/transaction.md](docs/transaction.md) ([中文](docs/transaction.zh.md))
 - **Middleware (x-functions & x-check-rules)**: [docs/middleware.md](docs/middleware.md) ([中文](docs/middleware.zh.md))
-- **Async Tasks**: Tutorial [docs/async-tasks-tutorial.md](docs/async-tasks-tutorial.md) · Tech reference [docs/async-tasks-technical.md](docs/async-tasks-technical.md) ([中文](docs/async-tasks-tutorial.zh.md), [中文](docs/async-tasks-technical.zh.md))
+- **Async Tasks**: Tutorial [docs/async-tasks-tutorial.md](docs/async-tasks-tutorial.md) · Tech reference [docs/async-tasks-technical.md](docs/async-tasks-technical.md) · Scheduling/runtime-config guide [docs/async-task-scheduling-runtime-config.md](docs/async-task-scheduling-runtime-config.md) ([中文](docs/async-tasks-tutorial.zh.md), [中文](docs/async-tasks-technical.zh.md), [中文](docs/async-task-scheduling-runtime-config.zh.md))
+- **Async Task Worker Lease**: [docs/async-task-worker-lease.md](docs/async-task-worker-lease.md)
+- **Async Task Production-Readiness Testing**: [docs/async-task-testing-production-readiness.md](docs/async-task-testing-production-readiness.md)
 
 ## Examples 🧪
 

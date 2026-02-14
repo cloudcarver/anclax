@@ -2,7 +2,9 @@
 
 English | [中文](async-tasks-tutorial.zh.md)
 
-> 📚 **Looking for technical details?** Check out the [Technical Reference](async-tasks-technical.md) for comprehensive coverage of the underlying architecture, lifecycle, and advanced features.
+> 📚 **Looking for technical details?** Check out the [Technical Reference](async-tasks-technical.md) for architecture, lifecycle, and internals.
+>
+> ⚖️ **Need scheduling controls?** See [Scheduling & Runtime Config Guide](async-task-scheduling-runtime-config.md) for `WithPriority`, `WithWeight`, strict-cap behavior, and live worker config updates.
 
 Anclax lets you run background tasks that don't block your web requests. For example, you can send emails, process images, or generate reports without making users wait.
 
@@ -12,6 +14,7 @@ Anclax lets you run background tasks that don't block your web requests. For exa
 - [How to Create a Task](#how-to-create-a-task)
 - [How to Write Task Code](#how-to-write-task-code)
 - [How to Start Tasks](#how-to-start-tasks)
+- [Priority, Weight, and Runtime Config](#priority-weight-and-runtime-config)
 - [Scheduled Tasks (Cronjobs)](#scheduled-tasks-cronjobs)
 - [Error Handling and Hooks](#error-handling-and-hooks)
 - [Complete Examples](#complete-examples)
@@ -183,12 +186,57 @@ You can override task properties at runtime:
 
 ```go
 // Override retry policy
-taskID, err := h.taskRunner.RunTaskName(ctx, params, 
-    taskcore.WithRetryPolicy("1h", true),
+taskID, err := h.taskRunner.RunTaskName(ctx, params,
+    taskcore.WithRetryPolicy("1h", 5),
     taskcore.WithTimeout("30m"),
     taskcore.WithUniqueTag("user-123-daily-task"),
 )
 ```
+
+### Priority, Weight, and Runtime Config
+
+Anclax supports two scheduling lanes:
+
+- **Strict lane**: tasks with `priority > 0`.
+- **Normal lane**: tasks with `priority == 0`, scheduled with weighted fairness by label group.
+
+#### Task-level scheduling overrides
+
+```go
+_, err := h.taskRunner.RunTaskName(ctx, params,
+    taskcore.WithPriority(10), // strict lane (urgent)
+    taskcore.WithWeight(3),    // higher order inside selected normal group
+)
+```
+
+Validation rules:
+- `WithPriority(priority)` requires `priority >= 0`.
+- `WithWeight(weight)` requires `weight >= 1`.
+
+#### Updating worker scheduling config at runtime
+
+Use the built-in `updateWorkerRuntimeConfig` task via helper:
+
+```go
+maxStrict := int32(20)
+defaultWeight := int32(1)
+labels := []string{"w1", "w2"}
+weights := []int32{5, 1}
+
+_, err := asynctask.RunUpdateWorkerRuntimeConfigTask(ctx, h.taskRunner,
+    &taskgen.UpdateWorkerRuntimeConfigParameters{
+        MaxStrictPercentage: &maxStrict,
+        DefaultWeight:       &defaultWeight,
+        Labels:              labels,
+        Weights:             weights,
+    },
+)
+```
+
+This helper always enqueues the config-update task with reserved max strict priority.
+
+For full semantics (strict cap formula, label-group mapping, LISTEN/NOTIFY propagation, ACK convergence, and supersede behavior), see:
+- [Scheduling & Runtime Config Guide](async-task-scheduling-runtime-config.md)
 
 ### Transactional Tasks
 
