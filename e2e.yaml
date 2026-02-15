@@ -1,0 +1,279 @@
+version: dst/hybrid/v1alpha1
+package: taskcoree2e
+
+interfaces:
+  Worker:
+    methods:
+      - SetLabels(ctx context.Context, labels []string) error
+      - Claim(ctx context.Context) error
+      - ClaimWithLockTTL(ctx context.Context, lockTTLSeconds int32) error
+      - ClaimStrict(ctx context.Context) error
+      - ClaimGroup(ctx context.Context, group string, weightedLabels []string) error
+      - CompleteLast(ctx context.Context) error
+      - FailLast(ctx context.Context) error
+      - AbandonLast(ctx context.Context) error
+      - ExpectLast(ctx context.Context, task string) error
+      - ExpectLastIn(ctx context.Context, tasks []string) error
+      - ExpectNoClaim(ctx context.Context) error
+
+  TaskStore:
+    methods:
+      - Enqueue(ctx context.Context, task string, priority int32, weight int32, labels []string) error
+      - EnqueueSerial(ctx context.Context, task string, serialKey string, serialID int32, startInSeconds int32) error
+      - SetTaskStartOffset(ctx context.Context, task string, offsetSeconds int32) error
+      - Sleep(ctx context.Context, seconds int32) error
+      - ExpectStatus(ctx context.Context, task string, status string) error
+      - ExpectNoPending(ctx context.Context) error
+
+instances:
+  worker1: Worker
+  worker2: Worker
+  taskStore: TaskStore
+
+scenarios:
+  - name: strict_priority_and_weighted_groups
+    description: strict tasks claim by priority; normal grouped claim uses weight order and default fallback.
+    steps:
+      - id: s1
+        parallel:
+          taskStore:
+            - Enqueue(ctx, "S_LOW", 1, 1, []string{})
+            - Enqueue(ctx, "S_HIGH", 9, 1, []string{})
+            - Enqueue(ctx, "N_W1", 0, 2, []string{"w1"})
+            - Enqueue(ctx, "N_W2_LOW", 0, 1, []string{"w2"})
+            - Enqueue(ctx, "N_W2_HIGH", 0, 7, []string{"w2"})
+            - Enqueue(ctx, "N_DEF", 0, 1, []string{})
+
+      - id: s2
+        parallel:
+          worker1:
+            - ClaimStrict(ctx)
+            - ExpectLast(ctx, "S_HIGH")
+            - CompleteLast(ctx)
+
+      - id: s3
+        parallel:
+          worker2:
+            - ClaimStrict(ctx)
+            - ExpectLast(ctx, "S_LOW")
+            - CompleteLast(ctx)
+
+      - id: s4
+        parallel:
+          worker1:
+            - ClaimGroup(ctx, "w2", []string{"w1", "w2"})
+            - ExpectLast(ctx, "N_W2_HIGH")
+            - CompleteLast(ctx)
+
+      - id: s5
+        parallel:
+          worker2:
+            - ClaimGroup(ctx, "w2", []string{"w1", "w2"})
+            - ExpectLast(ctx, "N_W2_LOW")
+            - CompleteLast(ctx)
+
+      - id: s6
+        parallel:
+          worker1:
+            - ClaimGroup(ctx, "w1", []string{"w1", "w2"})
+            - ExpectLast(ctx, "N_W1")
+            - CompleteLast(ctx)
+
+      - id: s7
+        parallel:
+          worker2:
+            - ClaimGroup(ctx, "__default__", []string{"w1", "w2"})
+            - ExpectLast(ctx, "N_DEF")
+            - CompleteLast(ctx)
+
+      - id: s8
+        parallel:
+          taskStore:
+            - ExpectNoPending(ctx)
+
+  - name: serial_gating_and_failure_progression
+    description: future head blocks serial key; failure still releases progression.
+    steps:
+      - id: s1
+        parallel:
+          taskStore:
+            - EnqueueSerial(ctx, "K1", "SERIAL_K", 1, 300)
+            - EnqueueSerial(ctx, "K2", "SERIAL_K", 2, 0)
+            - EnqueueSerial(ctx, "K3", "SERIAL_K", 3, 0)
+
+      - id: s2
+        parallel:
+          worker1:
+            - Claim(ctx)
+            - ExpectNoClaim(ctx)
+          worker2:
+            - Claim(ctx)
+            - ExpectNoClaim(ctx)
+
+      - id: s3
+        parallel:
+          taskStore:
+            - SetTaskStartOffset(ctx, "K1", -60)
+
+      - id: s4
+        parallel:
+          worker1:
+            - Claim(ctx)
+            - ExpectLast(ctx, "K1")
+            - CompleteLast(ctx)
+
+      - id: s5
+        parallel:
+          worker2:
+            - Claim(ctx)
+            - ExpectLast(ctx, "K2")
+            - FailLast(ctx)
+
+      - id: s6
+        parallel:
+          worker1:
+            - Claim(ctx)
+            - ExpectLast(ctx, "K3")
+            - CompleteLast(ctx)
+
+      - id: s7
+        parallel:
+          taskStore:
+            - ExpectStatus(ctx, "K2", "failed")
+            - ExpectNoPending(ctx)
+
+  - name: default_group_unknown_label_fallback
+    description: unknown labels should be default-group eligible when weighted labels are known.
+    steps:
+      - id: s1
+        parallel:
+          taskStore:
+            - Enqueue(ctx, "D_UNKNOWN", 0, 5, []string{"unknown-label"})
+            - Enqueue(ctx, "D_UNLABELED", 0, 1, []string{})
+
+      - id: s2
+        parallel:
+          worker1:
+            - ClaimGroup(ctx, "__default__", []string{"w1", "w2"})
+            - ExpectLast(ctx, "D_UNKNOWN")
+            - CompleteLast(ctx)
+
+      - id: s3
+        parallel:
+          worker2:
+            - ClaimGroup(ctx, "__default__", []string{"w1", "w2"})
+            - ExpectLast(ctx, "D_UNLABELED")
+            - CompleteLast(ctx)
+
+      - id: s4
+        parallel:
+          taskStore:
+            - ExpectNoPending(ctx)
+
+  - name: lease_takeover_after_ttl_and_abandon
+    description: active lock blocks claim; after owner abandons and ttl window passes, another worker can reclaim.
+    steps:
+      - id: s1
+        parallel:
+          taskStore:
+            - Enqueue(ctx, "L1", 0, 1, []string{})
+
+      - id: s2
+        parallel:
+          worker1:
+            - ClaimWithLockTTL(ctx, 60)
+            - ExpectLast(ctx, "L1")
+
+      - id: s3
+        parallel:
+          worker2:
+            - ClaimWithLockTTL(ctx, 60)
+            - ExpectNoClaim(ctx)
+
+      - id: s4
+        parallel:
+          worker1:
+            - AbandonLast(ctx)
+          taskStore:
+            - Sleep(ctx, 2)
+
+      - id: s5
+        parallel:
+          worker2:
+            - ClaimWithLockTTL(ctx, 1)
+            - ExpectLast(ctx, "L1")
+            - CompleteLast(ctx)
+
+      - id: s6
+        parallel:
+          taskStore:
+            - ExpectNoPending(ctx)
+
+  - name: worker_label_filtering
+    description: labeled workers should only claim matching/unlabeled tasks.
+    steps:
+      - id: s1
+        parallel:
+          taskStore:
+            - Enqueue(ctx, "LB_BILLING", 0, 1, []string{"billing"})
+            - Enqueue(ctx, "LB_OPS", 0, 1, []string{"ops"})
+            - Enqueue(ctx, "LB_NONE", 0, 1, []string{})
+
+      - id: s2
+        parallel:
+          worker1:
+            - SetLabels(ctx, []string{"billing"})
+          worker2:
+            - SetLabels(ctx, []string{"ops"})
+
+      - id: s3
+        parallel:
+          worker1:
+            - Claim(ctx)
+            - ExpectLast(ctx, "LB_BILLING")
+            - CompleteLast(ctx)
+
+      - id: s4
+        parallel:
+          worker2:
+            - Claim(ctx)
+            - ExpectLast(ctx, "LB_OPS")
+            - CompleteLast(ctx)
+
+      - id: s5
+        parallel:
+          worker1:
+            - Claim(ctx)
+            - ExpectLast(ctx, "LB_NONE")
+            - CompleteLast(ctx)
+
+      - id: s6
+        parallel:
+          taskStore:
+            - ExpectNoPending(ctx)
+
+  - name: strict_query_does_not_pick_normal
+    description: strict-claim path must ignore priority==0 tasks.
+    steps:
+      - id: s1
+        parallel:
+          taskStore:
+            - Enqueue(ctx, "N_ONLY", 0, 1, []string{})
+
+      - id: s2
+        parallel:
+          worker1:
+            - ClaimStrict(ctx)
+            - ExpectNoClaim(ctx)
+
+      - id: s3
+        parallel:
+          worker1:
+            - Claim(ctx)
+            - ExpectLast(ctx, "N_ONLY")
+            - CompleteLast(ctx)
+
+      - id: s4
+        parallel:
+          taskStore:
+            - ExpectNoPending(ctx)

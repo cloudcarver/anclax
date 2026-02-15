@@ -8,6 +8,7 @@ clean:
   - pkg/zgen/apigen/*_gen.go
   - pkg/zgen/querier/*
   - pkg/zgen/taskgen/*
+  - pkg/taskcore/e2e/gen/*
 
 oapi-codegen:
   path: api/v1.yaml
@@ -29,6 +30,12 @@ task-handler:
   path: api/tasks.yaml
   package: taskgen
   out: pkg/zgen/taskgen/runner_gen.go
+
+# DST generation is built into `anclax gen` (no separate external tool entry needed).
+dst:
+  - path: e2e.yaml
+    out: pkg/taskcore/e2e/gen/taskstore_gen.go
+    package: taskcoree2e
 
 sqlc:
   path: dev/sqlc.yaml

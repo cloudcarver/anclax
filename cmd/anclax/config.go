@@ -37,6 +37,12 @@ type TaskHandlerConfig struct {
 	Path    string `yaml:"path"`
 }
 
+type DSTConfig struct {
+	Path    string `yaml:"path"`
+	Out     string `yaml:"out"`
+	Package string `yaml:"package,omitempty"`
+}
+
 type Config struct {
 	Externals   map[string]string  `yaml:"externals,omitempty"`
 	OapiCodegen *OapiCodegenConfig `yaml:"oapi-codegen,omitempty"`
@@ -45,6 +51,7 @@ type Config struct {
 	Xware       *XwareConfig       `yaml:"xware,omitempty"`
 	Sqlc        *SqlcConfig        `yaml:"sqlc,omitempty"`
 	TaskHandler *TaskHandlerConfig `yaml:"task-handler,omitempty"`
+	DST         []DSTConfig        `yaml:"dst,omitempty"`
 	CleanItems  []string           `yaml:"clean,omitempty"`
 	AnclaxDef   string             `yaml:"anclaxdef,omitempty"`
 }

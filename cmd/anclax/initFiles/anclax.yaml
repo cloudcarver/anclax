@@ -22,6 +22,13 @@ task-handler:
   package: taskgen
   out: pkg/zgen/taskgen/taskgen_gen.go
 
+# Optional: distributed-system test spec code generation.
+# Note: DST generation is built into `anclax gen`, so no externals entry is required.
+# dst:
+#   - path: e2e.yaml
+#     out: pkg/e2e/gen/e2e_gen.go
+#     package: e2egen
+
 sqlc:
   path: sql/sqlc.yaml
 
