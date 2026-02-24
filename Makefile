@@ -28,8 +28,10 @@ ut:
 	@go tool cover -html coverage.out -o coverage.html
 	@go tool cover -func coverage.out | fgrep total | awk '{print "Coverage:", $$3}'
 
-smoke:
-	go test -tags=smoke ./pkg/taskcore
+smoke-worker:
+	GOCACHE=/tmp/go-cache go run ./cmd/anclax gen
+	GOCACHE=/tmp/go-cache go test -tags=smoke ./pkg/taskcore/e2e -run TestDSTTaskStoreScenariosSmoke -count=1 -v
+	GOCACHE=/tmp/go-cache go test -tags=smoke ./pkg/taskcore/e2e -run TestDSTTaskStoreScenariosStressSmoke -count=1 -v
 
 gen:
 	go run cmd/dev/main.go copy-templates --src examples/simple --dst cmd/anclax/initFiles --exclude .anclax,go.sum

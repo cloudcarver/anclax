@@ -148,6 +148,9 @@ type DeleteOpaqueKeyParameters struct {
 
 
 type UpdateWorkerRuntimeConfigParameters struct { 
+    // Default weight for unlabeled task group
+	DefaultWeight *int32 `json:"defaultWeight" yaml:"defaultWeight"`
+
     // Label names for weighted groups
 	Labels []string `json:"labels" yaml:"labels"`
 
@@ -165,9 +168,6 @@ type UpdateWorkerRuntimeConfigParameters struct {
 
     // Maximum percentage of strict-priority slots (0-100)
 	MaxStrictPercentage *int32 `json:"maxStrictPercentage" yaml:"maxStrictPercentage"`
-
-    // Default weight for unlabeled task group
-	DefaultWeight *int32 `json:"defaultWeight" yaml:"defaultWeight"`
 }
 
 func (r *DeleteOpaqueKeyParameters) Parse(spec json.RawMessage) error {

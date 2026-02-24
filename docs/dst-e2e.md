@@ -5,7 +5,7 @@ DST (Distributed System Test) lets you describe end-to-end scenarios in YAML and
 
 This doc shows how to define a DST spec, generate code, and wire it into E2E tests.
 
-## 1) Write a DST spec (`e2e.yaml`)
+## 1) Write a DST spec (`pkg/taskcore/e2e/e2e.yaml`)
 Use the hybrid spec version `dst/hybrid/v1alpha1`.
 
 Key parts:
@@ -13,7 +13,7 @@ Key parts:
 - `instances`: named actor instances used in scenarios.
 - `scenarios`: ordered steps; each step contains a `parallel` map keyed by actor name.
 
-Example (trimmed from `e2e.yaml`):
+Example (trimmed from `pkg/taskcore/e2e/e2e.yaml`):
 
 ```yaml
 version: dst/hybrid/v1alpha1
@@ -80,7 +80,7 @@ Add a `dst` section to `anclax.yaml`:
 # anclax.yaml
 # DST generation is built into `anclax gen`.
 dst:
-  - path: e2e.yaml
+  - path: pkg/taskcore/e2e/e2e.yaml
     out: pkg/taskcore/e2e/gen/taskstore_gen.go
     package: taskcoree2e
 ```
@@ -94,8 +94,8 @@ anclax gen
 ### Option B: direct DST CLI
 
 ```bash
-go run ./cmd/dst validate -f e2e.yaml
-go run ./cmd/dst gen -f e2e.yaml -o pkg/taskcore/e2e/gen/taskstore_gen.go -pkg taskcoree2e
+go run ./cmd/dst validate -f pkg/taskcore/e2e/e2e.yaml
+go run ./cmd/dst gen -f pkg/taskcore/e2e/e2e.yaml -o pkg/taskcore/e2e/gen/taskstore_gen.go -pkg taskcoree2e
 ```
 
 ## 3) Implement actors and run scenarios
@@ -104,7 +104,7 @@ The generated file provides:
 - `Actors` struct (named fields match `instances` keys)
 - per-scenario runner + `RunAll`
 
-Example usage (see `pkg/taskcore/dst_e2e_smoke_test.go`):
+Example usage (see `pkg/taskcore/e2e/dst_e2e_smoke_test.go`):
 
 ```go
 err := taskcoree2e.RunAll(ctx, func(ctx context.Context) (taskcoree2e.Actors, error) {
@@ -122,7 +122,7 @@ Your actor types should implement the generated interfaces (methods listed in th
 The taskcore E2E tests use the `smoke` build tag:
 
 ```bash
-go test -tags smoke ./pkg/taskcore -count=1 -v
+go test -tags smoke ./pkg/taskcore/e2e -count=1 -v
 ```
 
 ## Tips

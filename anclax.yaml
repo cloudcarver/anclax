@@ -33,7 +33,7 @@ task-handler:
 
 # DST generation is built into `anclax gen` (no separate external tool entry needed).
 dst:
-  - path: e2e.yaml
+  - path: pkg/taskcore/e2e/e2e.yaml
     out: pkg/taskcore/e2e/gen/taskstore_gen.go
     package: taskcoree2e
 

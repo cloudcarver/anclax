@@ -1100,3 +1100,217 @@ func TestRunTaskPropagatesInvalidTimeoutError(t *testing.T) {
 	})
 	require.ErrorContains(t, err, "failed to parse timeout")
 }
+
+func TestStartReturnsWhenRegisterWorkerFails(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockHandler := NewMockTaskHandler(ctrl)
+	gctx := globalctx.New()
+
+	worker, err := NewWorker(gctx, &config.Config{}, mockModel, mockHandler)
+	require.NoError(t, err)
+	w := worker.(*Worker)
+
+	mockModel.EXPECT().
+		UpsertWorker(gomock.Any(), gomock.AssignableToTypeOf(querier.UpsertWorkerParams{})).
+		Return(nil, errors.New("register failed")).
+		Times(1)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		w.Start()
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("worker Start did not return after register failure")
+	}
+}
+
+func TestStartMarksWorkerOfflineOnCancel(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	poll := time.Hour
+	heartbeat := time.Hour
+	cfg := &config.Config{
+		Worker: config.Worker{
+			PollInterval:      &poll,
+			HeartbeatInterval: &heartbeat,
+		},
+	}
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockHandler := NewMockTaskHandler(ctrl)
+	gctx := globalctx.New()
+
+	worker, err := NewWorker(gctx, cfg, mockModel, mockHandler)
+	require.NoError(t, err)
+	w := worker.(*Worker)
+
+	registered := make(chan struct{})
+	mockModel.EXPECT().
+		UpsertWorker(gomock.Any(), gomock.AssignableToTypeOf(querier.UpsertWorkerParams{})).
+		DoAndReturn(func(context.Context, querier.UpsertWorkerParams) (*querier.AnclaxWorker, error) {
+			close(registered)
+			return &querier.AnclaxWorker{}, nil
+		}).
+		Times(1)
+	mockModel.EXPECT().
+		MarkWorkerOffline(gomock.Any(), w.workerID).
+		Return(nil).
+		Times(1)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		w.Start()
+	}()
+
+	select {
+	case <-registered:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("worker did not register")
+	}
+	gctx.Cancel()
+
+	select {
+	case <-done:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("worker Start did not stop after cancellation")
+	}
+}
+
+func TestTryAcquireSlotAndRelease(t *testing.T) {
+	w := &Worker{semaphore: make(chan struct{}, 1)}
+	require.True(t, w.tryAcquireSlot())
+	require.False(t, w.tryAcquireSlot())
+	w.releaseSlot()
+	require.True(t, w.tryAcquireSlot())
+}
+
+func TestReleaseSlotPanicsWithoutAcquire(t *testing.T) {
+	w := &Worker{semaphore: make(chan struct{}, 1)}
+	require.Panics(t, func() {
+		w.releaseSlot()
+	})
+}
+
+func TestAcquireSlotReturnsContextCanceledWhenFull(t *testing.T) {
+	w := &Worker{semaphore: make(chan struct{}, 1)}
+	w.semaphore <- struct{}{}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := w.acquireSlot(ctx)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestPullAndRunReturnsWhenNoSlotAvailable(t *testing.T) {
+	w := &Worker{semaphore: make(chan struct{}, 1)}
+	w.semaphore <- struct{}{}
+	err := w.pullAndRun(context.Background())
+	require.NoError(t, err)
+}
+
+func TestRunTaskReturnsContextCanceledWhenNoSlotAvailable(t *testing.T) {
+	w := &Worker{
+		semaphore: make(chan struct{}, 1),
+	}
+	w.semaphore <- struct{}{}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := w.RunTask(ctx, 123)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestRunTaskStrictTaskAddsAndReleasesStrictInFlight(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockTxm := model.NewMockModelInterfaceWithTransaction(ctrl)
+	mockTx := core.NewMockTx(ctrl)
+
+	priority := int32(9)
+	calls := 0
+	mockModel.EXPECT().RunTransactionWithTx(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, f func(core.Tx, model.ModelInterface) error) error {
+			calls++
+			if calls == 1 {
+				return f(mockTx, mockTxm)
+			}
+			return f(nil, nil)
+		},
+	).Times(3)
+	mockTxm.EXPECT().
+		ClaimTaskByID(context.Background(), gomock.AssignableToTypeOf(querier.ClaimTaskByIDParams{})).
+		Return(&querier.AnclaxTask{
+			ID: 55,
+			Attributes: apigen.TaskAttributes{
+				Priority: &priority,
+			},
+			Spec:   apigen.TaskSpec{Type: "t", Payload: []byte(`{}`)},
+			Status: string(apigen.Pending),
+		}, nil).
+		Times(1)
+
+	taskHandler := &stubTaskHandler{}
+	handler := &stubLifeCycleHandler{}
+	w := &Worker{
+		model:               mockModel,
+		taskHandler:         taskHandler,
+		lifeCycleHandler:    handler,
+		workerID:            uuid.New(),
+		lockTTL:             time.Second,
+		lockRefreshInterval: 0,
+		now:                 time.Now,
+	}
+
+	err := w.RunTask(context.Background(), 55)
+	require.NoError(t, err)
+	require.True(t, taskHandler.called)
+	require.Equal(t, 0, w.strictInFlight)
+}
+
+func TestRegisterTaskHandlerDelegates(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	root := NewMockTaskHandler(ctrl)
+	child := NewMockTaskHandler(ctrl)
+	root.EXPECT().RegisterTaskHandler(child).Times(1)
+
+	w := &Worker{taskHandler: root}
+	w.RegisterTaskHandler(child)
+}
+
+func TestRuntimeConfigLoopReturnsWhenPollingDisabled(t *testing.T) {
+	w := &Worker{
+		globalCtx:        globalctx.New(),
+		runtimeListenDSN: "",
+		runtimeConfigPoll: 0,
+	}
+	w.runtimeConfigLoop()
+}
+
+func TestHeartbeatLoopReturnsWhenContextCanceled(t *testing.T) {
+	gctx := globalctx.New()
+	gctx.Cancel()
+	w := &Worker{
+		globalCtx:          gctx,
+		heartbeatInterval: 10 * time.Millisecond,
+	}
+	w.heartbeatLoop()
+}
+
+func TestListenRuntimeConfigUpdatesReturnsConnectError(t *testing.T) {
+	w := &Worker{
+		runtimeListenDSN: "://bad-dsn",
+	}
+	err := w.listenRuntimeConfigUpdates(context.Background())
+	require.Error(t, err)
+	require.ErrorContains(t, err, "connect runtime config listener")
+}
