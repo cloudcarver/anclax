@@ -19,6 +19,7 @@ interfaces:
   TaskStore:
     methods:
       - Enqueue(ctx context.Context, task string) error
+      - GetStatus(ctx context.Context, task string) (string, error)
 instances:
   worker1: Worker
   worker2: Worker
@@ -36,6 +37,9 @@ scenarios:
             - Claim(ctx)
           worker2:
             - Claim(ctx)
+      - id: s3
+        script: |
+          _ = ctx
 `)
 
 	spec, err := ParseHybridSpec(raw)
@@ -48,6 +52,7 @@ scenarios:
 	require.Contains(t, code, "type TaskStore interface")
 	require.Contains(t, code, "func RunScenario")
 	require.Contains(t, code, "func RunAll")
+	require.Contains(t, code, "RunAllWithReport")
 }
 
 func TestValidateHybridSpecRejectUnknownMethod(t *testing.T) {
@@ -82,6 +87,12 @@ func TestParseMethodSignature(t *testing.T) {
 	require.Len(t, m.Params, 1)
 	require.Equal(t, "ctx", m.Params[0].Name)
 	require.Equal(t, "context.Context", m.Params[0].Type)
+	require.Equal(t, "error", m.Returns)
+
+	withReturn, err := ParseMethodSignature("GetStatus(ctx context.Context) (string, error)")
+	require.NoError(t, err)
+	require.Equal(t, "GetStatus", withReturn.Name)
+	require.Equal(t, "(string, error)", withReturn.Returns)
 }
 
 func TestParseCallExpression(t *testing.T) {

@@ -6,18 +6,37 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
+type Smoke interface {
+	LeaseLifecycle(ctx context.Context) error
+	WorkerLoop(ctx context.Context) error
+	SerialBehavior(ctx context.Context) error
+	PriorityAndWeight(ctx context.Context) error
+	RetryPolicy(ctx context.Context) error
+	Cronjob(ctx context.Context) error
+	RuntimeConfigPoll(ctx context.Context) error
+	RuntimeConfigListenAck(ctx context.Context) error
+	WorkerOffline(ctx context.Context) error
+	FailureEvent(ctx context.Context) error
+	HighContention(ctx context.Context) error
+	WorkerExitRecovery(ctx context.Context) error
+	LockLoss(ctx context.Context) error
+}
 
 type TaskStore interface {
 	Enqueue(ctx context.Context, task string, priority int32, weight int32, labels []string) error
 	EnqueueSerial(ctx context.Context, task string, serialKey string, serialID int32, startInSeconds int32) error
 	SetTaskStartOffset(ctx context.Context, task string, offsetSeconds int32) error
 	Sleep(ctx context.Context, seconds int32) error
-	ExpectStatus(ctx context.Context, task string, status string) error
-	ExpectNoPending(ctx context.Context) error
 }
 
+type Validator interface {
+	Query(ctx context.Context, sql string, args []any) ([][]any, error)
+}
 
 type Worker interface {
 	SetLabels(ctx context.Context, labels []string) error
@@ -33,11 +52,12 @@ type Worker interface {
 	ExpectNoClaim(ctx context.Context) error
 }
 
-
 type Actors struct {
+	Smoke     Smoke
 	TaskStore TaskStore
-	Worker1 Worker
-	Worker2 Worker
+	Validator Validator
+	Worker1   Worker
+	Worker2   Worker
 }
 
 type InitActorsFunc func(ctx context.Context) (Actors, error)
@@ -57,8 +77,14 @@ func Init(ctx context.Context, initActors InitActorsFunc) (Actors, error) {
 }
 
 func ValidateActors(actors Actors) error {
+	if actors.Smoke == nil {
+		return fmt.Errorf("actors.Smoke (instance smoke) is nil")
+	}
 	if actors.TaskStore == nil {
 		return fmt.Errorf("actors.TaskStore (instance taskStore) is nil")
+	}
+	if actors.Validator == nil {
+		return fmt.Errorf("actors.Validator (instance validator) is nil")
 	}
 	if actors.Worker1 == nil {
 		return fmt.Errorf("actors.Worker1 (instance worker1) is nil")
@@ -69,11 +95,106 @@ func ValidateActors(actors Actors) error {
 	return nil
 }
 
+type varStore struct {
+	mu     sync.RWMutex
+	values map[string]any
+}
+
+func newVarStore() *varStore {
+	return &varStore{values: map[string]any{}}
+}
+
+func (v *varStore) Set(name string, value any) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.values[name] = value
+}
+
+func (v *varStore) Get(name string) (any, bool) {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	val, ok := v.values[name]
+	return val, ok
+}
+
+var _ = require.NoError
+
+type scriptFail struct {
+	err error
+}
+
+type scriptT struct {
+	err    error
+	failed bool
+}
+
+func (t *scriptT) Helper() {}
+
+func (t *scriptT) Errorf(format string, args ...interface{}) {
+	t.err = fmt.Errorf(format, args...)
+	t.failed = true
+}
+
+func (t *scriptT) FailNow() {
+	t.failed = true
+	panic(scriptFail{err: t.err})
+}
+
+type RunOptions struct {
+	Repeat          int
+	ContinueOnError bool
+}
+
+type RunResult struct {
+	Iteration int
+	Duration  time.Duration
+	Err       error
+}
+
+type RunReport struct {
+	TotalRuns  int
+	FailedRuns int
+	Runs       []RunResult
+}
+
 func RunAll(ctx context.Context, initActors InitActorsFunc) error {
 	actors, err := Init(ctx, initActors)
 	if err != nil {
 		return err
 	}
+	return runAllWithActors(ctx, actors)
+}
+
+func RunAllWithReport(ctx context.Context, initActors InitActorsFunc, opts RunOptions) (RunReport, error) {
+	if opts.Repeat <= 0 {
+		opts.Repeat = 1
+	}
+	report := RunReport{TotalRuns: opts.Repeat}
+	for i := 0; i < opts.Repeat; i++ {
+		startedAt := time.Now()
+		actors, err := Init(ctx, initActors)
+		if err == nil {
+			err = runAllWithActors(ctx, actors)
+		}
+		report.Runs = append(report.Runs, RunResult{
+			Iteration: i + 1,
+			Duration:  time.Since(startedAt),
+			Err:       err,
+		})
+		if err != nil {
+			report.FailedRuns++
+			if !opts.ContinueOnError {
+				return report, err
+			}
+		}
+	}
+	if report.FailedRuns > 0 {
+		return report, fmt.Errorf("dst: %d/%d run(s) failed", report.FailedRuns, report.TotalRuns)
+	}
+	return report, nil
+}
+
+func runAllWithActors(ctx context.Context, actors Actors) error {
 	if err := RunScenarioStrictPriorityAndWeightedGroups(ctx, actors); err != nil {
 		return fmt.Errorf("scenario strict_priority_and_weighted_groups: %w", err)
 	}
@@ -92,45 +213,83 @@ func RunAll(ctx context.Context, initActors InitActorsFunc) error {
 	if err := RunScenarioStrictQueryDoesNotPickNormal(ctx, actors); err != nil {
 		return fmt.Errorf("scenario strict_query_does_not_pick_normal: %w", err)
 	}
+	if err := RunScenarioSmokeLeaseLifecycle(ctx, actors); err != nil {
+		return fmt.Errorf("scenario smoke_lease_lifecycle: %w", err)
+	}
+	if err := RunScenarioSmokeWorkerLoop(ctx, actors); err != nil {
+		return fmt.Errorf("scenario smoke_worker_loop: %w", err)
+	}
+	if err := RunScenarioSmokeSerialBehavior(ctx, actors); err != nil {
+		return fmt.Errorf("scenario smoke_serial_behavior: %w", err)
+	}
+	if err := RunScenarioSmokePriorityWeight(ctx, actors); err != nil {
+		return fmt.Errorf("scenario smoke_priority_weight: %w", err)
+	}
+	if err := RunScenarioSmokeRetryPolicy(ctx, actors); err != nil {
+		return fmt.Errorf("scenario smoke_retry_policy: %w", err)
+	}
+	if err := RunScenarioSmokeCronjob(ctx, actors); err != nil {
+		return fmt.Errorf("scenario smoke_cronjob: %w", err)
+	}
+	if err := RunScenarioSmokeRuntimeConfigPoll(ctx, actors); err != nil {
+		return fmt.Errorf("scenario smoke_runtime_config_poll: %w", err)
+	}
+	if err := RunScenarioSmokeRuntimeConfigListenAck(ctx, actors); err != nil {
+		return fmt.Errorf("scenario smoke_runtime_config_listen_ack: %w", err)
+	}
+	if err := RunScenarioSmokeWorkerOffline(ctx, actors); err != nil {
+		return fmt.Errorf("scenario smoke_worker_offline: %w", err)
+	}
+	if err := RunScenarioSmokeFailureEvent(ctx, actors); err != nil {
+		return fmt.Errorf("scenario smoke_failure_event: %w", err)
+	}
+	if err := RunScenarioSmokeHighContention(ctx, actors); err != nil {
+		return fmt.Errorf("scenario smoke_high_contention: %w", err)
+	}
+	if err := RunScenarioSmokeWorkerExitRecovery(ctx, actors); err != nil {
+		return fmt.Errorf("scenario smoke_worker_exit_recovery: %w", err)
+	}
+	if err := RunScenarioSmokeLockLoss(ctx, actors); err != nil {
+		return fmt.Errorf("scenario smoke_lock_loss: %w", err)
+	}
 	return nil
 }
 
-
 func RunScenarioStrictPriorityAndWeightedGroups(ctx context.Context, actors Actors) error {
-	if err := runStepStrictPriorityAndWeightedGroupsS1(ctx, actors); err != nil {
+	vars := newVarStore()
+	if err := runStepStrictPriorityAndWeightedGroupsS1(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s1: %w", err)
 	}
-	if err := runStepStrictPriorityAndWeightedGroupsS2(ctx, actors); err != nil {
+	if err := runStepStrictPriorityAndWeightedGroupsS2(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s2: %w", err)
 	}
-	if err := runStepStrictPriorityAndWeightedGroupsS3(ctx, actors); err != nil {
+	if err := runStepStrictPriorityAndWeightedGroupsS3(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s3: %w", err)
 	}
-	if err := runStepStrictPriorityAndWeightedGroupsS4(ctx, actors); err != nil {
+	if err := runStepStrictPriorityAndWeightedGroupsS4(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s4: %w", err)
 	}
-	if err := runStepStrictPriorityAndWeightedGroupsS5(ctx, actors); err != nil {
+	if err := runStepStrictPriorityAndWeightedGroupsS5(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s5: %w", err)
 	}
-	if err := runStepStrictPriorityAndWeightedGroupsS6(ctx, actors); err != nil {
+	if err := runStepStrictPriorityAndWeightedGroupsS6(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s6: %w", err)
 	}
-	if err := runStepStrictPriorityAndWeightedGroupsS7(ctx, actors); err != nil {
+	if err := runStepStrictPriorityAndWeightedGroupsS7(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s7: %w", err)
 	}
-	if err := runStepStrictPriorityAndWeightedGroupsS8(ctx, actors); err != nil {
+	if err := runStepStrictPriorityAndWeightedGroupsS8(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s8: %w", err)
 	}
 	return nil
 }
 
-
-func runStepStrictPriorityAndWeightedGroupsS1(parent context.Context, actors Actors) error {
+func runStepStrictPriorityAndWeightedGroupsS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -175,13 +334,12 @@ func runStepStrictPriorityAndWeightedGroupsS1(parent context.Context, actors Act
 	return nil
 }
 
-
-func runStepStrictPriorityAndWeightedGroupsS2(parent context.Context, actors Actors) error {
+func runStepStrictPriorityAndWeightedGroupsS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -211,13 +369,12 @@ func runStepStrictPriorityAndWeightedGroupsS2(parent context.Context, actors Act
 	return nil
 }
 
-
-func runStepStrictPriorityAndWeightedGroupsS3(parent context.Context, actors Actors) error {
+func runStepStrictPriorityAndWeightedGroupsS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -247,13 +404,12 @@ func runStepStrictPriorityAndWeightedGroupsS3(parent context.Context, actors Act
 	return nil
 }
 
-
-func runStepStrictPriorityAndWeightedGroupsS4(parent context.Context, actors Actors) error {
+func runStepStrictPriorityAndWeightedGroupsS4(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -283,13 +439,12 @@ func runStepStrictPriorityAndWeightedGroupsS4(parent context.Context, actors Act
 	return nil
 }
 
-
-func runStepStrictPriorityAndWeightedGroupsS5(parent context.Context, actors Actors) error {
+func runStepStrictPriorityAndWeightedGroupsS5(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -319,13 +474,12 @@ func runStepStrictPriorityAndWeightedGroupsS5(parent context.Context, actors Act
 	return nil
 }
 
-
-func runStepStrictPriorityAndWeightedGroupsS6(parent context.Context, actors Actors) error {
+func runStepStrictPriorityAndWeightedGroupsS6(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -355,13 +509,12 @@ func runStepStrictPriorityAndWeightedGroupsS6(parent context.Context, actors Act
 	return nil
 }
 
-
-func runStepStrictPriorityAndWeightedGroupsS7(parent context.Context, actors Actors) error {
+func runStepStrictPriorityAndWeightedGroupsS7(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -391,66 +544,80 @@ func runStepStrictPriorityAndWeightedGroupsS7(parent context.Context, actors Act
 	return nil
 }
 
-
-func runStepStrictPriorityAndWeightedGroupsS8(parent context.Context, actors Actors) error {
+func runStepStrictPriorityAndWeightedGroupsS8(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var wg sync.WaitGroup
-	errCh := make(chan error, 1)
-	
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if err := actors.TaskStore.ExpectNoPending(ctx); err != nil {
-			errCh <- fmt.Errorf("actor taskStore call %s: %w", "ExpectNoPending(ctx)", err)
-			cancel()
+	var err error
+	t := &scriptT{}
+	set := func(name string, value any) {
+		vars.Set(name, value)
+	}
+	get := func(name string) any {
+		val, _ := vars.Get(name)
+		return val
+	}
+	_ = t
+	_ = set
+	_ = get
+	defer func() {
+		if r := recover(); r != nil {
+			if fail, ok := r.(scriptFail); ok {
+				if fail.err != nil {
+					err = fail.err
+					return
+				}
+				err = fmt.Errorf("script failed")
+				return
+			}
+			err = fmt.Errorf("script panic: %v", r)
 			return
 		}
-	}()
-	wg.Wait()
-	close(errCh)
-	for err := range errCh {
-		if err != nil {
-			return err
+		if t.failed && err == nil {
+			if t.err != nil {
+				err = t.err
+			} else {
+				err = fmt.Errorf("script failed")
+			}
 		}
-	}
-	return nil
+	}()
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+	require.NoError(t, err)
+	require.Equal(t, [][]any{{int64(0)}}, rows)
+	return err
 }
 
-
-
 func RunScenarioSerialGatingAndFailureProgression(ctx context.Context, actors Actors) error {
-	if err := runStepSerialGatingAndFailureProgressionS1(ctx, actors); err != nil {
+	vars := newVarStore()
+	if err := runStepSerialGatingAndFailureProgressionS1(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s1: %w", err)
 	}
-	if err := runStepSerialGatingAndFailureProgressionS2(ctx, actors); err != nil {
+	if err := runStepSerialGatingAndFailureProgressionS2(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s2: %w", err)
 	}
-	if err := runStepSerialGatingAndFailureProgressionS3(ctx, actors); err != nil {
+	if err := runStepSerialGatingAndFailureProgressionS3(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s3: %w", err)
 	}
-	if err := runStepSerialGatingAndFailureProgressionS4(ctx, actors); err != nil {
+	if err := runStepSerialGatingAndFailureProgressionS4(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s4: %w", err)
 	}
-	if err := runStepSerialGatingAndFailureProgressionS5(ctx, actors); err != nil {
+	if err := runStepSerialGatingAndFailureProgressionS5(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s5: %w", err)
 	}
-	if err := runStepSerialGatingAndFailureProgressionS6(ctx, actors); err != nil {
+	if err := runStepSerialGatingAndFailureProgressionS6(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s6: %w", err)
 	}
-	if err := runStepSerialGatingAndFailureProgressionS7(ctx, actors); err != nil {
+	if err := runStepSerialGatingAndFailureProgressionS7(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s7: %w", err)
 	}
 	return nil
 }
 
-
-func runStepSerialGatingAndFailureProgressionS1(parent context.Context, actors Actors) error {
+func runStepSerialGatingAndFailureProgressionS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -480,13 +647,12 @@ func runStepSerialGatingAndFailureProgressionS1(parent context.Context, actors A
 	return nil
 }
 
-
-func runStepSerialGatingAndFailureProgressionS2(parent context.Context, actors Actors) error {
+func runStepSerialGatingAndFailureProgressionS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -501,7 +667,7 @@ func runStepSerialGatingAndFailureProgressionS2(parent context.Context, actors A
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -526,13 +692,12 @@ func runStepSerialGatingAndFailureProgressionS2(parent context.Context, actors A
 	return nil
 }
 
-
-func runStepSerialGatingAndFailureProgressionS3(parent context.Context, actors Actors) error {
+func runStepSerialGatingAndFailureProgressionS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -552,13 +717,12 @@ func runStepSerialGatingAndFailureProgressionS3(parent context.Context, actors A
 	return nil
 }
 
-
-func runStepSerialGatingAndFailureProgressionS4(parent context.Context, actors Actors) error {
+func runStepSerialGatingAndFailureProgressionS4(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -588,13 +752,12 @@ func runStepSerialGatingAndFailureProgressionS4(parent context.Context, actors A
 	return nil
 }
 
-
-func runStepSerialGatingAndFailureProgressionS5(parent context.Context, actors Actors) error {
+func runStepSerialGatingAndFailureProgressionS5(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -624,13 +787,12 @@ func runStepSerialGatingAndFailureProgressionS5(parent context.Context, actors A
 	return nil
 }
 
-
-func runStepSerialGatingAndFailureProgressionS6(parent context.Context, actors Actors) error {
+func runStepSerialGatingAndFailureProgressionS6(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -660,62 +822,74 @@ func runStepSerialGatingAndFailureProgressionS6(parent context.Context, actors A
 	return nil
 }
 
-
-func runStepSerialGatingAndFailureProgressionS7(parent context.Context, actors Actors) error {
+func runStepSerialGatingAndFailureProgressionS7(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var wg sync.WaitGroup
-	errCh := make(chan error, 1)
-	
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if err := actors.TaskStore.ExpectStatus(ctx, "K2", "failed"); err != nil {
-			errCh <- fmt.Errorf("actor taskStore call %s: %w", "ExpectStatus(ctx, \"K2\", \"failed\")", err)
-			cancel()
+	var err error
+	t := &scriptT{}
+	set := func(name string, value any) {
+		vars.Set(name, value)
+	}
+	get := func(name string) any {
+		val, _ := vars.Get(name)
+		return val
+	}
+	_ = t
+	_ = set
+	_ = get
+	defer func() {
+		if r := recover(); r != nil {
+			if fail, ok := r.(scriptFail); ok {
+				if fail.err != nil {
+					err = fail.err
+					return
+				}
+				err = fmt.Errorf("script failed")
+				return
+			}
+			err = fmt.Errorf("script panic: %v", r)
 			return
 		}
-		if err := actors.TaskStore.ExpectNoPending(ctx); err != nil {
-			errCh <- fmt.Errorf("actor taskStore call %s: %w", "ExpectNoPending(ctx)", err)
-			cancel()
-			return
+		if t.failed && err == nil {
+			if t.err != nil {
+				err = t.err
+			} else {
+				err = fmt.Errorf("script failed")
+			}
 		}
 	}()
-	wg.Wait()
-	close(errCh)
-	for err := range errCh {
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+	rows, err := actors.Validator.Query(ctx, "select status from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"K2"})
+	require.NoError(t, err)
+	require.Equal(t, [][]any{{"failed"}}, rows)
+	rows, err = actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+	require.NoError(t, err)
+	require.Equal(t, [][]any{{int64(0)}}, rows)
+	return err
 }
 
-
-
 func RunScenarioDefaultGroupUnknownLabelFallback(ctx context.Context, actors Actors) error {
-	if err := runStepDefaultGroupUnknownLabelFallbackS1(ctx, actors); err != nil {
+	vars := newVarStore()
+	if err := runStepDefaultGroupUnknownLabelFallbackS1(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s1: %w", err)
 	}
-	if err := runStepDefaultGroupUnknownLabelFallbackS2(ctx, actors); err != nil {
+	if err := runStepDefaultGroupUnknownLabelFallbackS2(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s2: %w", err)
 	}
-	if err := runStepDefaultGroupUnknownLabelFallbackS3(ctx, actors); err != nil {
+	if err := runStepDefaultGroupUnknownLabelFallbackS3(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s3: %w", err)
 	}
-	if err := runStepDefaultGroupUnknownLabelFallbackS4(ctx, actors); err != nil {
+	if err := runStepDefaultGroupUnknownLabelFallbackS4(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s4: %w", err)
 	}
 	return nil
 }
 
-
-func runStepDefaultGroupUnknownLabelFallbackS1(parent context.Context, actors Actors) error {
+func runStepDefaultGroupUnknownLabelFallbackS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -740,13 +914,12 @@ func runStepDefaultGroupUnknownLabelFallbackS1(parent context.Context, actors Ac
 	return nil
 }
 
-
-func runStepDefaultGroupUnknownLabelFallbackS2(parent context.Context, actors Actors) error {
+func runStepDefaultGroupUnknownLabelFallbackS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -776,13 +949,12 @@ func runStepDefaultGroupUnknownLabelFallbackS2(parent context.Context, actors Ac
 	return nil
 }
 
-
-func runStepDefaultGroupUnknownLabelFallbackS3(parent context.Context, actors Actors) error {
+func runStepDefaultGroupUnknownLabelFallbackS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -812,63 +984,77 @@ func runStepDefaultGroupUnknownLabelFallbackS3(parent context.Context, actors Ac
 	return nil
 }
 
-
-func runStepDefaultGroupUnknownLabelFallbackS4(parent context.Context, actors Actors) error {
+func runStepDefaultGroupUnknownLabelFallbackS4(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var wg sync.WaitGroup
-	errCh := make(chan error, 1)
-	
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if err := actors.TaskStore.ExpectNoPending(ctx); err != nil {
-			errCh <- fmt.Errorf("actor taskStore call %s: %w", "ExpectNoPending(ctx)", err)
-			cancel()
+	var err error
+	t := &scriptT{}
+	set := func(name string, value any) {
+		vars.Set(name, value)
+	}
+	get := func(name string) any {
+		val, _ := vars.Get(name)
+		return val
+	}
+	_ = t
+	_ = set
+	_ = get
+	defer func() {
+		if r := recover(); r != nil {
+			if fail, ok := r.(scriptFail); ok {
+				if fail.err != nil {
+					err = fail.err
+					return
+				}
+				err = fmt.Errorf("script failed")
+				return
+			}
+			err = fmt.Errorf("script panic: %v", r)
 			return
 		}
-	}()
-	wg.Wait()
-	close(errCh)
-	for err := range errCh {
-		if err != nil {
-			return err
+		if t.failed && err == nil {
+			if t.err != nil {
+				err = t.err
+			} else {
+				err = fmt.Errorf("script failed")
+			}
 		}
-	}
-	return nil
+	}()
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+	require.NoError(t, err)
+	require.Equal(t, [][]any{{int64(0)}}, rows)
+	return err
 }
 
-
-
 func RunScenarioLeaseTakeoverAfterTtlAndAbandon(ctx context.Context, actors Actors) error {
-	if err := runStepLeaseTakeoverAfterTtlAndAbandonS1(ctx, actors); err != nil {
+	vars := newVarStore()
+	if err := runStepLeaseTakeoverAfterTtlAndAbandonS1(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s1: %w", err)
 	}
-	if err := runStepLeaseTakeoverAfterTtlAndAbandonS2(ctx, actors); err != nil {
+	if err := runStepLeaseTakeoverAfterTtlAndAbandonS2(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s2: %w", err)
 	}
-	if err := runStepLeaseTakeoverAfterTtlAndAbandonS3(ctx, actors); err != nil {
+	if err := runStepLeaseTakeoverAfterTtlAndAbandonS3(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s3: %w", err)
 	}
-	if err := runStepLeaseTakeoverAfterTtlAndAbandonS4(ctx, actors); err != nil {
+	if err := runStepLeaseTakeoverAfterTtlAndAbandonS4(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s4: %w", err)
 	}
-	if err := runStepLeaseTakeoverAfterTtlAndAbandonS5(ctx, actors); err != nil {
+	if err := runStepLeaseTakeoverAfterTtlAndAbandonS5(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s5: %w", err)
 	}
-	if err := runStepLeaseTakeoverAfterTtlAndAbandonS6(ctx, actors); err != nil {
+	if err := runStepLeaseTakeoverAfterTtlAndAbandonS6(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s6: %w", err)
 	}
 	return nil
 }
 
-
-func runStepLeaseTakeoverAfterTtlAndAbandonS1(parent context.Context, actors Actors) error {
+func runStepLeaseTakeoverAfterTtlAndAbandonS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -888,13 +1074,12 @@ func runStepLeaseTakeoverAfterTtlAndAbandonS1(parent context.Context, actors Act
 	return nil
 }
 
-
-func runStepLeaseTakeoverAfterTtlAndAbandonS2(parent context.Context, actors Actors) error {
+func runStepLeaseTakeoverAfterTtlAndAbandonS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -919,13 +1104,12 @@ func runStepLeaseTakeoverAfterTtlAndAbandonS2(parent context.Context, actors Act
 	return nil
 }
 
-
-func runStepLeaseTakeoverAfterTtlAndAbandonS3(parent context.Context, actors Actors) error {
+func runStepLeaseTakeoverAfterTtlAndAbandonS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -950,13 +1134,12 @@ func runStepLeaseTakeoverAfterTtlAndAbandonS3(parent context.Context, actors Act
 	return nil
 }
 
-
-func runStepLeaseTakeoverAfterTtlAndAbandonS4(parent context.Context, actors Actors) error {
+func runStepLeaseTakeoverAfterTtlAndAbandonS4(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -966,7 +1149,7 @@ func runStepLeaseTakeoverAfterTtlAndAbandonS4(parent context.Context, actors Act
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -986,13 +1169,12 @@ func runStepLeaseTakeoverAfterTtlAndAbandonS4(parent context.Context, actors Act
 	return nil
 }
 
-
-func runStepLeaseTakeoverAfterTtlAndAbandonS5(parent context.Context, actors Actors) error {
+func runStepLeaseTakeoverAfterTtlAndAbandonS5(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1022,63 +1204,77 @@ func runStepLeaseTakeoverAfterTtlAndAbandonS5(parent context.Context, actors Act
 	return nil
 }
 
-
-func runStepLeaseTakeoverAfterTtlAndAbandonS6(parent context.Context, actors Actors) error {
+func runStepLeaseTakeoverAfterTtlAndAbandonS6(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var wg sync.WaitGroup
-	errCh := make(chan error, 1)
-	
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if err := actors.TaskStore.ExpectNoPending(ctx); err != nil {
-			errCh <- fmt.Errorf("actor taskStore call %s: %w", "ExpectNoPending(ctx)", err)
-			cancel()
+	var err error
+	t := &scriptT{}
+	set := func(name string, value any) {
+		vars.Set(name, value)
+	}
+	get := func(name string) any {
+		val, _ := vars.Get(name)
+		return val
+	}
+	_ = t
+	_ = set
+	_ = get
+	defer func() {
+		if r := recover(); r != nil {
+			if fail, ok := r.(scriptFail); ok {
+				if fail.err != nil {
+					err = fail.err
+					return
+				}
+				err = fmt.Errorf("script failed")
+				return
+			}
+			err = fmt.Errorf("script panic: %v", r)
 			return
 		}
-	}()
-	wg.Wait()
-	close(errCh)
-	for err := range errCh {
-		if err != nil {
-			return err
+		if t.failed && err == nil {
+			if t.err != nil {
+				err = t.err
+			} else {
+				err = fmt.Errorf("script failed")
+			}
 		}
-	}
-	return nil
+	}()
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+	require.NoError(t, err)
+	require.Equal(t, [][]any{{int64(0)}}, rows)
+	return err
 }
 
-
-
 func RunScenarioWorkerLabelFiltering(ctx context.Context, actors Actors) error {
-	if err := runStepWorkerLabelFilteringS1(ctx, actors); err != nil {
+	vars := newVarStore()
+	if err := runStepWorkerLabelFilteringS1(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s1: %w", err)
 	}
-	if err := runStepWorkerLabelFilteringS2(ctx, actors); err != nil {
+	if err := runStepWorkerLabelFilteringS2(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s2: %w", err)
 	}
-	if err := runStepWorkerLabelFilteringS3(ctx, actors); err != nil {
+	if err := runStepWorkerLabelFilteringS3(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s3: %w", err)
 	}
-	if err := runStepWorkerLabelFilteringS4(ctx, actors); err != nil {
+	if err := runStepWorkerLabelFilteringS4(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s4: %w", err)
 	}
-	if err := runStepWorkerLabelFilteringS5(ctx, actors); err != nil {
+	if err := runStepWorkerLabelFilteringS5(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s5: %w", err)
 	}
-	if err := runStepWorkerLabelFilteringS6(ctx, actors); err != nil {
+	if err := runStepWorkerLabelFilteringS6(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s6: %w", err)
 	}
 	return nil
 }
 
-
-func runStepWorkerLabelFilteringS1(parent context.Context, actors Actors) error {
+func runStepWorkerLabelFilteringS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1108,13 +1304,12 @@ func runStepWorkerLabelFilteringS1(parent context.Context, actors Actors) error 
 	return nil
 }
 
-
-func runStepWorkerLabelFilteringS2(parent context.Context, actors Actors) error {
+func runStepWorkerLabelFilteringS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1124,7 +1319,7 @@ func runStepWorkerLabelFilteringS2(parent context.Context, actors Actors) error 
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1144,13 +1339,12 @@ func runStepWorkerLabelFilteringS2(parent context.Context, actors Actors) error 
 	return nil
 }
 
-
-func runStepWorkerLabelFilteringS3(parent context.Context, actors Actors) error {
+func runStepWorkerLabelFilteringS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1180,13 +1374,12 @@ func runStepWorkerLabelFilteringS3(parent context.Context, actors Actors) error 
 	return nil
 }
 
-
-func runStepWorkerLabelFilteringS4(parent context.Context, actors Actors) error {
+func runStepWorkerLabelFilteringS4(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1216,13 +1409,12 @@ func runStepWorkerLabelFilteringS4(parent context.Context, actors Actors) error 
 	return nil
 }
 
-
-func runStepWorkerLabelFilteringS5(parent context.Context, actors Actors) error {
+func runStepWorkerLabelFilteringS5(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1252,57 +1444,71 @@ func runStepWorkerLabelFilteringS5(parent context.Context, actors Actors) error 
 	return nil
 }
 
-
-func runStepWorkerLabelFilteringS6(parent context.Context, actors Actors) error {
+func runStepWorkerLabelFilteringS6(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var wg sync.WaitGroup
-	errCh := make(chan error, 1)
-	
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if err := actors.TaskStore.ExpectNoPending(ctx); err != nil {
-			errCh <- fmt.Errorf("actor taskStore call %s: %w", "ExpectNoPending(ctx)", err)
-			cancel()
+	var err error
+	t := &scriptT{}
+	set := func(name string, value any) {
+		vars.Set(name, value)
+	}
+	get := func(name string) any {
+		val, _ := vars.Get(name)
+		return val
+	}
+	_ = t
+	_ = set
+	_ = get
+	defer func() {
+		if r := recover(); r != nil {
+			if fail, ok := r.(scriptFail); ok {
+				if fail.err != nil {
+					err = fail.err
+					return
+				}
+				err = fmt.Errorf("script failed")
+				return
+			}
+			err = fmt.Errorf("script panic: %v", r)
 			return
 		}
-	}()
-	wg.Wait()
-	close(errCh)
-	for err := range errCh {
-		if err != nil {
-			return err
+		if t.failed && err == nil {
+			if t.err != nil {
+				err = t.err
+			} else {
+				err = fmt.Errorf("script failed")
+			}
 		}
-	}
-	return nil
+	}()
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+	require.NoError(t, err)
+	require.Equal(t, [][]any{{int64(0)}}, rows)
+	return err
 }
 
-
-
 func RunScenarioStrictQueryDoesNotPickNormal(ctx context.Context, actors Actors) error {
-	if err := runStepStrictQueryDoesNotPickNormalS1(ctx, actors); err != nil {
+	vars := newVarStore()
+	if err := runStepStrictQueryDoesNotPickNormalS1(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s1: %w", err)
 	}
-	if err := runStepStrictQueryDoesNotPickNormalS2(ctx, actors); err != nil {
+	if err := runStepStrictQueryDoesNotPickNormalS2(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s2: %w", err)
 	}
-	if err := runStepStrictQueryDoesNotPickNormalS3(ctx, actors); err != nil {
+	if err := runStepStrictQueryDoesNotPickNormalS3(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s3: %w", err)
 	}
-	if err := runStepStrictQueryDoesNotPickNormalS4(ctx, actors); err != nil {
+	if err := runStepStrictQueryDoesNotPickNormalS4(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s4: %w", err)
 	}
 	return nil
 }
 
-
-func runStepStrictQueryDoesNotPickNormalS1(parent context.Context, actors Actors) error {
+func runStepStrictQueryDoesNotPickNormalS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1322,13 +1528,12 @@ func runStepStrictQueryDoesNotPickNormalS1(parent context.Context, actors Actors
 	return nil
 }
 
-
-func runStepStrictQueryDoesNotPickNormalS2(parent context.Context, actors Actors) error {
+func runStepStrictQueryDoesNotPickNormalS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1353,13 +1558,12 @@ func runStepStrictQueryDoesNotPickNormalS2(parent context.Context, actors Actors
 	return nil
 }
 
-
-func runStepStrictQueryDoesNotPickNormalS3(parent context.Context, actors Actors) error {
+func runStepStrictQueryDoesNotPickNormalS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1389,18 +1593,67 @@ func runStepStrictQueryDoesNotPickNormalS3(parent context.Context, actors Actors
 	return nil
 }
 
+func runStepStrictQueryDoesNotPickNormalS4(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var err error
+	t := &scriptT{}
+	set := func(name string, value any) {
+		vars.Set(name, value)
+	}
+	get := func(name string) any {
+		val, _ := vars.Get(name)
+		return val
+	}
+	_ = t
+	_ = set
+	_ = get
+	defer func() {
+		if r := recover(); r != nil {
+			if fail, ok := r.(scriptFail); ok {
+				if fail.err != nil {
+					err = fail.err
+					return
+				}
+				err = fmt.Errorf("script failed")
+				return
+			}
+			err = fmt.Errorf("script panic: %v", r)
+			return
+		}
+		if t.failed && err == nil {
+			if t.err != nil {
+				err = t.err
+			} else {
+				err = fmt.Errorf("script failed")
+			}
+		}
+	}()
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+	require.NoError(t, err)
+	require.Equal(t, [][]any{{int64(0)}}, rows)
+	return err
+}
 
-func runStepStrictQueryDoesNotPickNormalS4(parent context.Context, actors Actors) error {
+func RunScenarioSmokeLeaseLifecycle(ctx context.Context, actors Actors) error {
+	vars := newVarStore()
+	if err := runStepSmokeLeaseLifecycleS1(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s1: %w", err)
+	}
+	return nil
+}
+
+func runStepSmokeLeaseLifecycleS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := actors.TaskStore.ExpectNoPending(ctx); err != nil {
-			errCh <- fmt.Errorf("actor taskStore call %s: %w", "ExpectNoPending(ctx)", err)
+		if err := actors.Smoke.LeaseLifecycle(ctx); err != nil {
+			errCh <- fmt.Errorf("actor smoke call %s: %w", "LeaseLifecycle(ctx)", err)
 			cancel()
 			return
 		}
@@ -1415,5 +1668,398 @@ func runStepStrictQueryDoesNotPickNormalS4(parent context.Context, actors Actors
 	return nil
 }
 
+func RunScenarioSmokeWorkerLoop(ctx context.Context, actors Actors) error {
+	vars := newVarStore()
+	if err := runStepSmokeWorkerLoopS1(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s1: %w", err)
+	}
+	return nil
+}
 
+func runStepSmokeWorkerLoopS1(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
 
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Smoke.WorkerLoop(ctx); err != nil {
+			errCh <- fmt.Errorf("actor smoke call %s: %w", "WorkerLoop(ctx)", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func RunScenarioSmokeSerialBehavior(ctx context.Context, actors Actors) error {
+	vars := newVarStore()
+	if err := runStepSmokeSerialBehaviorS1(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s1: %w", err)
+	}
+	return nil
+}
+
+func runStepSmokeSerialBehaviorS1(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Smoke.SerialBehavior(ctx); err != nil {
+			errCh <- fmt.Errorf("actor smoke call %s: %w", "SerialBehavior(ctx)", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func RunScenarioSmokePriorityWeight(ctx context.Context, actors Actors) error {
+	vars := newVarStore()
+	if err := runStepSmokePriorityWeightS1(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s1: %w", err)
+	}
+	return nil
+}
+
+func runStepSmokePriorityWeightS1(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Smoke.PriorityAndWeight(ctx); err != nil {
+			errCh <- fmt.Errorf("actor smoke call %s: %w", "PriorityAndWeight(ctx)", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func RunScenarioSmokeRetryPolicy(ctx context.Context, actors Actors) error {
+	vars := newVarStore()
+	if err := runStepSmokeRetryPolicyS1(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s1: %w", err)
+	}
+	return nil
+}
+
+func runStepSmokeRetryPolicyS1(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Smoke.RetryPolicy(ctx); err != nil {
+			errCh <- fmt.Errorf("actor smoke call %s: %w", "RetryPolicy(ctx)", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func RunScenarioSmokeCronjob(ctx context.Context, actors Actors) error {
+	vars := newVarStore()
+	if err := runStepSmokeCronjobS1(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s1: %w", err)
+	}
+	return nil
+}
+
+func runStepSmokeCronjobS1(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Smoke.Cronjob(ctx); err != nil {
+			errCh <- fmt.Errorf("actor smoke call %s: %w", "Cronjob(ctx)", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func RunScenarioSmokeRuntimeConfigPoll(ctx context.Context, actors Actors) error {
+	vars := newVarStore()
+	if err := runStepSmokeRuntimeConfigPollS1(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s1: %w", err)
+	}
+	return nil
+}
+
+func runStepSmokeRuntimeConfigPollS1(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Smoke.RuntimeConfigPoll(ctx); err != nil {
+			errCh <- fmt.Errorf("actor smoke call %s: %w", "RuntimeConfigPoll(ctx)", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func RunScenarioSmokeRuntimeConfigListenAck(ctx context.Context, actors Actors) error {
+	vars := newVarStore()
+	if err := runStepSmokeRuntimeConfigListenAckS1(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s1: %w", err)
+	}
+	return nil
+}
+
+func runStepSmokeRuntimeConfigListenAckS1(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Smoke.RuntimeConfigListenAck(ctx); err != nil {
+			errCh <- fmt.Errorf("actor smoke call %s: %w", "RuntimeConfigListenAck(ctx)", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func RunScenarioSmokeWorkerOffline(ctx context.Context, actors Actors) error {
+	vars := newVarStore()
+	if err := runStepSmokeWorkerOfflineS1(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s1: %w", err)
+	}
+	return nil
+}
+
+func runStepSmokeWorkerOfflineS1(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Smoke.WorkerOffline(ctx); err != nil {
+			errCh <- fmt.Errorf("actor smoke call %s: %w", "WorkerOffline(ctx)", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func RunScenarioSmokeFailureEvent(ctx context.Context, actors Actors) error {
+	vars := newVarStore()
+	if err := runStepSmokeFailureEventS1(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s1: %w", err)
+	}
+	return nil
+}
+
+func runStepSmokeFailureEventS1(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Smoke.FailureEvent(ctx); err != nil {
+			errCh <- fmt.Errorf("actor smoke call %s: %w", "FailureEvent(ctx)", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func RunScenarioSmokeHighContention(ctx context.Context, actors Actors) error {
+	vars := newVarStore()
+	if err := runStepSmokeHighContentionS1(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s1: %w", err)
+	}
+	return nil
+}
+
+func runStepSmokeHighContentionS1(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Smoke.HighContention(ctx); err != nil {
+			errCh <- fmt.Errorf("actor smoke call %s: %w", "HighContention(ctx)", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func RunScenarioSmokeWorkerExitRecovery(ctx context.Context, actors Actors) error {
+	vars := newVarStore()
+	if err := runStepSmokeWorkerExitRecoveryS1(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s1: %w", err)
+	}
+	return nil
+}
+
+func runStepSmokeWorkerExitRecoveryS1(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Smoke.WorkerExitRecovery(ctx); err != nil {
+			errCh <- fmt.Errorf("actor smoke call %s: %w", "WorkerExitRecovery(ctx)", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func RunScenarioSmokeLockLoss(ctx context.Context, actors Actors) error {
+	vars := newVarStore()
+	if err := runStepSmokeLockLossS1(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s1: %w", err)
+	}
+	return nil
+}
+
+func runStepSmokeLockLossS1(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Smoke.LockLoss(ctx); err != nil {
+			errCh <- fmt.Errorf("actor smoke call %s: %w", "LockLoss(ctx)", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}

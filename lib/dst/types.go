@@ -21,6 +21,7 @@ type HybridScenario struct {
 type HybridStep struct {
 	ID       string              `yaml:"id"`
 	Parallel map[string][]string `yaml:"parallel"`
+	Script   string              `yaml:"script,omitempty"`
 }
 
 type ParsedMethod struct {

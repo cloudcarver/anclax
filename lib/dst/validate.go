@@ -1,6 +1,10 @@
 package dst
 
-import "github.com/pkg/errors"
+import (
+	"strings"
+
+	"github.com/pkg/errors"
+)
 
 func ValidateHybridSpec(spec *HybridSpec) error {
 	if spec == nil {
@@ -76,9 +80,19 @@ func ValidateHybridSpec(spec *HybridSpec) error {
 				return errors.Errorf("scenario %q has duplicate step id %q", scenario.Name, step.ID)
 			}
 			stepIDs[step.ID] = struct{}{}
-			if len(step.Parallel) == 0 {
-				return errors.Errorf("scenario %q step %q requires parallel entries", scenario.Name, step.ID)
+
+			hasParallel := len(step.Parallel) > 0
+			hasScript := strings.TrimSpace(step.Script) != ""
+			if hasScript && hasParallel {
+				return errors.Errorf("scenario %q step %q cannot define both script and parallel", scenario.Name, step.ID)
 			}
+			if !hasScript && !hasParallel {
+				return errors.Errorf("scenario %q step %q requires parallel entries or script", scenario.Name, step.ID)
+			}
+			if hasScript {
+				continue
+			}
+
 			for actorInstance, calls := range step.Parallel {
 				if _, ok := spec.Instances[actorInstance]; !ok {
 					return errors.Errorf("scenario %q step %q references unknown actor instance %q", scenario.Name, step.ID, actorInstance)

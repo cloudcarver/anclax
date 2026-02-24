@@ -13,8 +13,24 @@ func ParseMethodSignature(raw string) (ParsedMethod, error) {
 	}
 
 	open := strings.Index(sig, "(")
-	close := strings.LastIndex(sig, ")")
-	if open <= 0 || close < open {
+	if open <= 0 {
+		return ParsedMethod{}, errors.Errorf("invalid method signature %q", raw)
+	}
+	close := -1
+	depth := 0
+	for i := open; i < len(sig); i++ {
+		switch sig[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				close = i
+				i = len(sig)
+			}
+		}
+	}
+	if close < open {
 		return ParsedMethod{}, errors.Errorf("invalid method signature %q", raw)
 	}
 
@@ -27,9 +43,6 @@ func ParseMethodSignature(raw string) (ParsedMethod, error) {
 	returnsPart := strings.TrimSpace(sig[close+1:])
 	if returnsPart == "" {
 		returnsPart = "error"
-	}
-	if returnsPart != "error" {
-		return ParsedMethod{}, errors.Errorf("only error return is supported for now, got %q in %q", returnsPart, raw)
 	}
 
 	params, err := parseMethodParams(paramsPart)

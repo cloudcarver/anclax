@@ -22,13 +22,33 @@ interfaces:
       - EnqueueSerial(ctx context.Context, task string, serialKey string, serialID int32, startInSeconds int32) error
       - SetTaskStartOffset(ctx context.Context, task string, offsetSeconds int32) error
       - Sleep(ctx context.Context, seconds int32) error
-      - ExpectStatus(ctx context.Context, task string, status string) error
-      - ExpectNoPending(ctx context.Context) error
+
+  Validator:
+    methods:
+      - Query(ctx context.Context, sql string, args []any) ([][]any, error)
+
+  Smoke:
+    methods:
+      - LeaseLifecycle(ctx context.Context) error
+      - WorkerLoop(ctx context.Context) error
+      - SerialBehavior(ctx context.Context) error
+      - PriorityAndWeight(ctx context.Context) error
+      - RetryPolicy(ctx context.Context) error
+      - Cronjob(ctx context.Context) error
+      - RuntimeConfigPoll(ctx context.Context) error
+      - RuntimeConfigListenAck(ctx context.Context) error
+      - WorkerOffline(ctx context.Context) error
+      - FailureEvent(ctx context.Context) error
+      - HighContention(ctx context.Context) error
+      - WorkerExitRecovery(ctx context.Context) error
+      - LockLoss(ctx context.Context) error
 
 instances:
   worker1: Worker
   worker2: Worker
   taskStore: TaskStore
+  validator: Validator
+  smoke: Smoke
 
 scenarios:
   - name: strict_priority_and_weighted_groups
@@ -87,9 +107,10 @@ scenarios:
             - CompleteLast(ctx)
 
       - id: s8
-        parallel:
-          taskStore:
-            - ExpectNoPending(ctx)
+        script: |
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          require.NoError(t, err)
+          require.Equal(t, [][]any{{int64(0)}}, rows)
 
   - name: serial_gating_and_failure_progression
     description: future head blocks serial key; failure still releases progression.
@@ -137,10 +158,13 @@ scenarios:
             - CompleteLast(ctx)
 
       - id: s7
-        parallel:
-          taskStore:
-            - ExpectStatus(ctx, "K2", "failed")
-            - ExpectNoPending(ctx)
+        script: |
+          rows, err := actors.Validator.Query(ctx, "select status from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"K2"})
+          require.NoError(t, err)
+          require.Equal(t, [][]any{{"failed"}}, rows)
+          rows, err = actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          require.NoError(t, err)
+          require.Equal(t, [][]any{{int64(0)}}, rows)
 
   - name: default_group_unknown_label_fallback
     description: unknown labels should be default-group eligible when weighted labels are known.
@@ -166,9 +190,10 @@ scenarios:
             - CompleteLast(ctx)
 
       - id: s4
-        parallel:
-          taskStore:
-            - ExpectNoPending(ctx)
+        script: |
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          require.NoError(t, err)
+          require.Equal(t, [][]any{{int64(0)}}, rows)
 
   - name: lease_takeover_after_ttl_and_abandon
     description: active lock blocks claim; after owner abandons and ttl window passes, another worker can reclaim.
@@ -205,9 +230,10 @@ scenarios:
             - CompleteLast(ctx)
 
       - id: s6
-        parallel:
-          taskStore:
-            - ExpectNoPending(ctx)
+        script: |
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          require.NoError(t, err)
+          require.Equal(t, [][]any{{int64(0)}}, rows)
 
   - name: worker_label_filtering
     description: labeled workers should only claim matching/unlabeled tasks.
@@ -248,9 +274,10 @@ scenarios:
             - CompleteLast(ctx)
 
       - id: s6
-        parallel:
-          taskStore:
-            - ExpectNoPending(ctx)
+        script: |
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          require.NoError(t, err)
+          require.Equal(t, [][]any{{int64(0)}}, rows)
 
   - name: strict_query_does_not_pick_normal
     description: strict-claim path must ignore priority==0 tasks.
@@ -274,6 +301,111 @@ scenarios:
             - CompleteLast(ctx)
 
       - id: s4
+        script: |
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          require.NoError(t, err)
+          require.Equal(t, [][]any{{int64(0)}}, rows)
+
+  - name: smoke_lease_lifecycle
+    description: end-to-end lease lifecycle over real postgres.
+    steps:
+      - id: s1
         parallel:
-          taskStore:
-            - ExpectNoPending(ctx)
+          smoke:
+            - LeaseLifecycle(ctx)
+
+  - name: smoke_worker_loop
+    description: worker loop lock refresh + completion.
+    steps:
+      - id: s1
+        parallel:
+          smoke:
+            - WorkerLoop(ctx)
+
+  - name: smoke_serial_behavior
+    description: serial gating + ordering behaviors.
+    steps:
+      - id: s1
+        parallel:
+          smoke:
+            - SerialBehavior(ctx)
+
+  - name: smoke_priority_weight
+    description: strict priority + weighted group claims.
+    steps:
+      - id: s1
+        parallel:
+          smoke:
+            - PriorityAndWeight(ctx)
+
+  - name: smoke_retry_policy
+    description: retry scheduling re-queues pending tasks.
+    steps:
+      - id: s1
+        parallel:
+          smoke:
+            - RetryPolicy(ctx)
+
+  - name: smoke_cronjob
+    description: cronjob reschedules and unlocks task.
+    steps:
+      - id: s1
+        parallel:
+          smoke:
+            - Cronjob(ctx)
+
+  - name: smoke_runtime_config_poll
+    description: runtime config polling applies latest version.
+    steps:
+      - id: s1
+        parallel:
+          smoke:
+            - RuntimeConfigPoll(ctx)
+
+  - name: smoke_runtime_config_listen_ack
+    description: runtime config LISTEN path sends ack.
+    steps:
+      - id: s1
+        parallel:
+          smoke:
+            - RuntimeConfigListenAck(ctx)
+
+  - name: smoke_worker_offline
+    description: offline workers removed from lagging list.
+    steps:
+      - id: s1
+        parallel:
+          smoke:
+            - WorkerOffline(ctx)
+
+  - name: smoke_failure_event
+    description: task failure emits error event.
+    steps:
+      - id: s1
+        parallel:
+          smoke:
+            - FailureEvent(ctx)
+
+  - name: smoke_high_contention
+    description: multi-worker contention drains tasks once.
+    steps:
+      - id: s1
+        parallel:
+          smoke:
+            - HighContention(ctx)
+
+  - name: smoke_worker_exit_recovery
+    description: worker exit leads to task reclaim.
+    steps:
+      - id: s1
+        parallel:
+          smoke:
+            - WorkerExitRecovery(ctx)
+
+  - name: smoke_lock_loss
+    description: lock loss allows takeover.
+    steps:
+      - id: s1
+        parallel:
+          smoke:
+            - LockLoss(ctx)

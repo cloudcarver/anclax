@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/taskcore"
 	taskcoree2e "github.com/cloudcarver/anclax/pkg/taskcore/e2e/gen"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
@@ -31,9 +32,31 @@ func TestDSTTaskStoreScenariosSmoke(t *testing.T) {
 				TaskStore: env.taskStore,
 				Worker1:   env.worker1,
 				Worker2:   env.worker2,
+				Validator: env.validator,
+				Smoke:     env.smoke,
 			}, nil
 		})
 		require.NoError(t, err)
+	})
+}
+
+func TestDSTTaskStoreScenariosStressSmoke(t *testing.T) {
+	withSmokePostgres(t, func(ctx context.Context, m model.ModelInterface) {
+		report, err := taskcoree2e.RunAllWithReport(ctx, func(ctx context.Context) (taskcoree2e.Actors, error) {
+			env, err := newDSTEnv(ctx, m)
+			if err != nil {
+				return taskcoree2e.Actors{}, err
+			}
+			return taskcoree2e.Actors{
+				TaskStore: env.taskStore,
+				Worker1:   env.worker1,
+				Worker2:   env.worker2,
+				Validator: env.validator,
+				Smoke:     env.smoke,
+			}, nil
+		}, taskcoree2e.RunOptions{Repeat: 3, ContinueOnError: true})
+		require.NoError(t, err)
+		require.Equal(t, 0, report.FailedRuns)
 	})
 }
 
@@ -42,24 +65,24 @@ type dstEnv struct {
 	taskStore *taskStoreActor
 	worker1   *workerActor
 	worker2   *workerActor
+	validator *validatorActor
+	smoke     *smokeActor
 }
 
 func newDSTEnv(ctx context.Context, m model.ModelInterface) (*dstEnv, error) {
 	store := taskcore.NewTaskStore(m)
-	tasks := newTaskRegistry()
 	claims := newClaimTracker()
 
 	taskStore := &taskStoreActor{
 		model: m,
 		store: store,
-		tasks: tasks,
 	}
 
-	worker1, err := newWorkerActor(ctx, m, "worker1", nil, tasks, claims)
+	worker1, err := newWorkerActor(ctx, m, "worker1", nil, claims)
 	if err != nil {
 		return nil, err
 	}
-	worker2, err := newWorkerActor(ctx, m, "worker2", nil, tasks, claims)
+	worker2, err := newWorkerActor(ctx, m, "worker2", nil, claims)
 	if err != nil {
 		return nil, err
 	}
@@ -69,41 +92,9 @@ func newDSTEnv(ctx context.Context, m model.ModelInterface) (*dstEnv, error) {
 		taskStore: taskStore,
 		worker1:   worker1,
 		worker2:   worker2,
+		validator: newValidatorActor(m),
+		smoke:     newSmokeActor(m),
 	}, nil
-}
-
-type taskRegistry struct {
-	mu       sync.RWMutex
-	nameToID map[string]int32
-	idToName map[int32]string
-}
-
-func newTaskRegistry() *taskRegistry {
-	return &taskRegistry{
-		nameToID: map[string]int32{},
-		idToName: map[int32]string{},
-	}
-}
-
-func (r *taskRegistry) put(name string, id int32) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.nameToID[name] = id
-	r.idToName[id] = name
-}
-
-func (r *taskRegistry) id(name string) (int32, bool) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	id, ok := r.nameToID[name]
-	return id, ok
-}
-
-func (r *taskRegistry) name(id int32) (string, bool) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	name, ok := r.idToName[id]
-	return name, ok
 }
 
 type claimTracker struct {
@@ -142,7 +133,34 @@ func (c *claimTracker) release(taskID int32, worker string) error {
 type taskStoreActor struct {
 	model model.ModelInterface
 	store taskcore.TaskStoreInterface
-	tasks *taskRegistry
+}
+
+type validatorActor struct {
+	model model.ModelInterface
+}
+
+func newValidatorActor(model model.ModelInterface) *validatorActor {
+	return &validatorActor{model: model}
+}
+
+func (v *validatorActor) Query(ctx context.Context, sql string, args []any) ([][]any, error) {
+	var rows [][]any
+	err := v.model.RunTransactionWithTx(ctx, func(tx core.Tx, _ model.ModelInterface) error {
+		r, err := tx.Query(ctx, sql, args...)
+		if err != nil {
+			return err
+		}
+		defer r.Close()
+		for r.Next() {
+			vals, err := r.Values()
+			if err != nil {
+				return err
+			}
+			rows = append(rows, vals)
+		}
+		return r.Err()
+	})
+	return rows, err
 }
 
 func (a *taskStoreActor) Enqueue(ctx context.Context, task string, priority int32, weight int32, labels []string) error {
@@ -170,7 +188,7 @@ func (a *taskStoreActor) Enqueue(ctx context.Context, task string, priority int3
 		attrs.Labels = &labelsCopy
 	}
 
-	id, err := a.store.PushTask(ctx, &apigen.Task{
+	_, err = a.store.PushTask(ctx, &apigen.Task{
 		Attributes: attrs,
 		Spec: apigen.TaskSpec{
 			Type:    "dst-taskstore",
@@ -181,7 +199,6 @@ func (a *taskStoreActor) Enqueue(ctx context.Context, task string, priority int3
 	if err != nil {
 		return err
 	}
-	a.tasks.put(task, id)
 	return nil
 }
 
@@ -199,7 +216,7 @@ func (a *taskStoreActor) EnqueueSerial(ctx context.Context, task string, serialK
 	}
 
 	startAt := time.Now().Add(time.Duration(startInSeconds) * time.Second)
-	id, err := a.store.PushTask(ctx, &apigen.Task{
+	_, err = a.store.PushTask(ctx, &apigen.Task{
 		Attributes: apigen.TaskAttributes{
 			SerialKey: &serialKey,
 			SerialID:  int32Ptr(serialID),
@@ -214,20 +231,30 @@ func (a *taskStoreActor) EnqueueSerial(ctx context.Context, task string, serialK
 	if err != nil {
 		return err
 	}
-	a.tasks.put(task, id)
 	return nil
 }
 
 func (a *taskStoreActor) SetTaskStartOffset(ctx context.Context, task string, offsetSeconds int32) error {
-	id, ok := a.tasks.id(task)
-	if !ok {
-		return fmt.Errorf("unknown task %q", task)
+	id, err := a.taskIDByName(ctx, task)
+	if err != nil {
+		return err
 	}
 	startedAt := time.Now().Add(time.Duration(offsetSeconds) * time.Second)
 	return a.model.UpdateTaskStartedAt(ctx, querier.UpdateTaskStartedAtParams{
 		ID:        id,
 		StartedAt: &startedAt,
 	})
+}
+
+func (a *taskStoreActor) taskIDByName(ctx context.Context, task string) (int32, error) {
+	var id int32
+	err := a.model.RunTransactionWithTx(ctx, func(tx core.Tx, _ model.ModelInterface) error {
+		return tx.QueryRow(ctx, "select id from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", task).Scan(&id)
+	})
+	if err != nil {
+		return 0, err
+	}
+	return id, nil
 }
 
 func (a *taskStoreActor) Sleep(ctx context.Context, seconds int32) error {
@@ -244,47 +271,12 @@ func (a *taskStoreActor) Sleep(ctx context.Context, seconds int32) error {
 	}
 }
 
-func (a *taskStoreActor) ExpectStatus(ctx context.Context, task string, status string) error {
-	id, ok := a.tasks.id(task)
-	if !ok {
-		return fmt.Errorf("unknown task %q", task)
-	}
-	qt, err := a.model.GetTaskByID(ctx, id)
-	if err != nil {
-		return err
-	}
-	if qt.Status != status {
-		return fmt.Errorf("unexpected task status for %s: got=%s want=%s", task, qt.Status, status)
-	}
-	return nil
-}
-
-func (a *taskStoreActor) ExpectNoPending(ctx context.Context) error {
-	pending, err := a.model.ListAllPendingTasks(ctx)
-	if err != nil {
-		return err
-	}
-	if len(pending) == 0 {
-		return nil
-	}
-	names := make([]string, 0, len(pending))
-	for _, t := range pending {
-		if name, ok := a.tasks.name(t.ID); ok {
-			names = append(names, name)
-		} else {
-			names = append(names, fmt.Sprintf("id=%d", t.ID))
-		}
-	}
-	return fmt.Errorf("expected no pending tasks, still pending: %v", names)
-}
-
 type workerActor struct {
 	name      string
 	model     model.ModelInterface
 	workerID  uuid.NullUUID
 	labels    []string
 	hasLabels bool
-	tasks     *taskRegistry
 	claims    *claimTracker
 
 	mu            sync.Mutex
@@ -292,7 +284,7 @@ type workerActor struct {
 	lastClaimName string
 }
 
-func newWorkerActor(ctx context.Context, m model.ModelInterface, name string, labels []string, tasks *taskRegistry, claims *claimTracker) (*workerActor, error) {
+func newWorkerActor(ctx context.Context, m model.ModelInterface, name string, labels []string, claims *claimTracker) (*workerActor, error) {
 	id := uuid.New()
 	labelJSON, err := json.Marshal(labels)
 	if err != nil {
@@ -313,7 +305,6 @@ func newWorkerActor(ctx context.Context, m model.ModelInterface, name string, la
 		workerID:  uuid.NullUUID{UUID: id, Valid: true},
 		labels:    append([]string(nil), labels...),
 		hasLabels: len(labels) > 0,
-		tasks:     tasks,
 		claims:    claims,
 	}, nil
 }
@@ -348,7 +339,11 @@ func (w *workerActor) ClaimWithLockTTL(ctx context.Context, lockTTLSeconds int32
 		}
 		return err
 	}
-	return w.setClaimedTask(qt.ID)
+	name, err := taskNameFromPayload(qt.Spec.Payload)
+	if err != nil {
+		return err
+	}
+	return w.setClaimedTask(qt.ID, name)
 }
 
 func (w *workerActor) ClaimStrict(ctx context.Context) error {
@@ -366,7 +361,11 @@ func (w *workerActor) ClaimStrict(ctx context.Context) error {
 		}
 		return err
 	}
-	return w.setClaimedTask(qt.ID)
+	name, err := taskNameFromPayload(qt.Spec.Payload)
+	if err != nil {
+		return err
+	}
+	return w.setClaimedTask(qt.ID, name)
 }
 
 func (w *workerActor) ClaimGroup(ctx context.Context, group string, weightedLabels []string) error {
@@ -386,7 +385,11 @@ func (w *workerActor) ClaimGroup(ctx context.Context, group string, weightedLabe
 		}
 		return err
 	}
-	return w.setClaimedTask(qt.ID)
+	name, err := taskNameFromPayload(qt.Spec.Payload)
+	if err != nil {
+		return err
+	}
+	return w.setClaimedTask(qt.ID, name)
 }
 
 func (w *workerActor) CompleteLast(ctx context.Context) error {
@@ -473,14 +476,13 @@ func (w *workerActor) ExpectNoClaim(ctx context.Context) error {
 	return nil
 }
 
-func (w *workerActor) setClaimedTask(taskID int32) error {
+func (w *workerActor) setClaimedTask(taskID int32, name string) error {
 	if err := w.claims.acquire(taskID, w.name); err != nil {
 		return err
 	}
-	name, ok := w.tasks.name(taskID)
-	if !ok {
+	if name == "" {
 		_ = w.claims.release(taskID, w.name)
-		return fmt.Errorf("%s claimed unknown task id %d", w.name, taskID)
+		return fmt.Errorf("%s claimed task %d without name", w.name, taskID)
 	}
 	w.mu.Lock()
 	w.lastClaimID = taskID
@@ -506,3 +508,19 @@ func (w *workerActor) lastClaim() (int32, string, bool) {
 }
 
 func int32Ptr(v int32) *int32 { return &v }
+
+func taskNameFromPayload(raw json.RawMessage) (string, error) {
+	if len(raw) == 0 {
+		return "", fmt.Errorf("task payload is empty")
+	}
+	var payload struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return "", err
+	}
+	if payload.Name == "" {
+		return "", fmt.Errorf("task payload missing name")
+	}
+	return payload.Name, nil
+}
