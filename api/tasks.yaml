@@ -52,3 +52,25 @@ tasks:
       interval: 2s
       maxAttempts: -1
     timeout: 20s
+
+  - name: stressProbe
+    description: No-op stress probe task for worker E2E benchmarking
+    parameters:
+      type: object
+      required: [jobID, sleepMs, group]
+      properties:
+        jobID:
+          type: integer
+          format: int64
+          description: Logical task id for stress-run metrics correlation
+        sleepMs:
+          type: integer
+          format: int32
+          description: Simulated task execution time in milliseconds
+        group:
+          type: string
+          description: Logical group name for test-side metrics and labels
+    retryPolicy:
+      interval: 1s
+      maxAttempts: 1
+    timeout: 30s

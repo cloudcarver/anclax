@@ -9,6 +9,8 @@ clean:
   - pkg/zgen/querier/*
   - pkg/zgen/taskgen/*
   - pkg/taskcore/e2e/gen/*
+  - pkg/taskcore/e2ev2/gen/*
+  - pkg/taskcore/dtmtest/gen/*
 
 oapi-codegen:
   path: api/v1.yaml
@@ -36,6 +38,12 @@ dst:
   - path: pkg/taskcore/e2e/e2e.yaml
     out: pkg/taskcore/e2e/gen/taskstore_gen.go
     package: taskcoree2e
+  - path: pkg/taskcore/e2ev2/e2e.yaml
+    out: pkg/taskcore/e2ev2/gen/taskstore_gen.go
+    package: taskcoree2ev2
+  - path: pkg/taskcore/dtmtest/e2e.yaml
+    out: pkg/taskcore/dtmtest/gen/taskstore_gen.go
+    package: taskcoredtmtest
 
 sqlc:
   path: dev/sqlc.yaml

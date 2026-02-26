@@ -33,6 +33,20 @@ smoke-worker:
 	GOCACHE=/tmp/go-cache go test -tags=smoke ./pkg/taskcore/e2e -run TestDSTTaskStoreScenariosSmoke -count=1 -v
 	GOCACHE=/tmp/go-cache go test -tags=smoke ./pkg/taskcore/e2e -run TestDSTTaskStoreScenariosStressSmoke -count=1 -v
 
+smoke-worker-v2:
+	GOCACHE=/tmp/go-cache go run ./cmd/anclax gen
+	GOCACHE=/tmp/go-cache go test -tags=smoke ./pkg/taskcore/e2ev2 -run TestDSTTaskStoreScenariosSmoke -count=1 -v
+	GOCACHE=/tmp/go-cache go test -tags=smoke ./pkg/taskcore/e2ev2 -run TestDSTTaskStoreScenariosStressSmoke -count=1 -v
+
+smoke-worker-bench:
+	GOCACHE=/tmp/go-cache go run ./cmd/anclax gen
+	GOCACHE=/tmp/go-cache go test -tags=smoke ./pkg/taskcore/e2e -run TestWorkerStressE2E_SingleWorkerConcurrencyRegression -count=1 -v
+	GOCACHE=/tmp/go-cache go test -tags=smoke ./pkg/taskcore/e2e -run TestWorkerStressE2E_MultiWorkerLabelsWeightsBenchmark -count=1 -v
+
+dtmtest:
+	GOCACHE=/tmp/go-cache go run ./cmd/anclax gen
+	GOCACHE=/tmp/go-cache go test ./pkg/taskcore/dtmtest -count=1 -v
+
 gen:
 	go run cmd/dev/main.go copy-templates --src examples/simple --dst cmd/anclax/initFiles --exclude .anclax,go.sum
 	sed -i -E 's@(github.com/cloudcarver/anclax )v[^ ]+@\1$(ANCLAX_VERSION)@' cmd/anclax/initFiles/go.mod.embed

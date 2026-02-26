@@ -70,6 +70,7 @@ Heartbeat is for monitoring only; task claims use `locked_at` TTL only.
 - `worker.lockRefreshInterval`
 - `worker.labels`
 - `worker.workerId` (optional)
+- `worker.useLegacyWorker` (optional, default `false`; set `true` to force legacy worker)
 
 ## Test plan (mock-based)
 

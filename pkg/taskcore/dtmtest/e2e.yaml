@@ -1,0 +1,230 @@
+version: dst/hybrid/v1alpha1
+package: taskcoredtmtest
+
+interfaces:
+  RuntimeHarness:
+    methods:
+      - Start(ctx context.Context, concurrency int32, maxStrictPercentage int32) error
+      - Stop(ctx context.Context) error
+      - SetExecuteBlocking(ctx context.Context, blocking bool) error
+      - ReleaseExecutions(ctx context.Context, n int32) error
+      - QueueStrictTask(ctx context.Context, task string, priority int32) error
+      - QueueStrictNoTask(ctx context.Context) error
+      - QueueNormalTask(ctx context.Context, task string, priority int32) error
+      - QueueNormalNoTask(ctx context.Context) error
+      - Poll(ctx context.Context) error
+      - NotifyRuntimeConfig(ctx context.Context, requestID string) error
+      - SetRefreshConfig(ctx context.Context, requestID string, version int32, maxStrictPercentage int32, defaultWeight int32, w1Weight int32, w2Weight int32) error
+      - EmitEvent(ctx context.Context, eventType string, cycleID int32, task string, priority int32) error
+      - SetPortError(ctx context.Context, call string, task string, enabled bool) error
+      - ClearPortErrors(ctx context.Context) error
+      - ClearRuntimeErrors(ctx context.Context) error
+      - WaitRuntimeErrorCount(ctx context.Context, expected int32, timeoutMs int32) error
+      - AssertRuntimeErrorContains(ctx context.Context, substr string) error
+      - WaitCallCount(ctx context.Context, call string, expected int32, timeoutMs int32) error
+      - WaitSnapshot(ctx context.Context, inFlight int32, strictInFlight int32, activeCycles int32, timeoutMs int32) error
+      - AssertOrder(ctx context.Context, stream string, tasks []string) error
+      - AssertContains(ctx context.Context, stream string, tasks []string) error
+      - AssertAck(ctx context.Context, requestID string, version int32) error
+      - AssertStrictCap(ctx context.Context, expected int32) error
+      - AssertWeightedLabels(ctx context.Context, labels []string) error
+      - AssertClaimGroupsPrefix(ctx context.Context, groups []string) error
+      - AssertInvariants(ctx context.Context) error
+      - AssertStopped(ctx context.Context, expected bool) error
+      - StepStop(ctx context.Context) error
+
+instances:
+  runtime: RuntimeHarness
+
+scenarios:
+  - name: deterministic_concurrency_gate
+    description: blocked execute path must respect concurrency and never over-claim.
+    steps:
+      - id: s1
+        parallel:
+          runtime:
+            - Start(ctx, 2, 100)
+            - SetExecuteBlocking(ctx, true)
+            - QueueStrictTask(ctx, "T1", 9)
+            - QueueStrictTask(ctx, "T2", 8)
+            - QueueStrictTask(ctx, "T3", 7)
+
+      - id: s2
+        parallel:
+          runtime:
+            - Poll(ctx)
+            - Poll(ctx)
+            - Poll(ctx)
+
+      - id: s3
+        parallel:
+          runtime:
+            - WaitCallCount(ctx, "claim_strict", 2, 3000)
+            - WaitCallCount(ctx, "execute", 2, 3000)
+            - WaitSnapshot(ctx, 2, 2, 2, 3000)
+            - AssertContains(ctx, "execute", []string{"T1", "T2"})
+            - AssertInvariants(ctx)
+
+      - id: s4
+        parallel:
+          runtime:
+            - ReleaseExecutions(ctx, 2)
+            - WaitCallCount(ctx, "finalize", 2, 3000)
+            - WaitSnapshot(ctx, 0, 0, 0, 3000)
+            - SetExecuteBlocking(ctx, false)
+            - Poll(ctx)
+            - WaitCallCount(ctx, "claim_strict", 3, 3000)
+            - WaitCallCount(ctx, "finalize", 3, 3000)
+            - WaitSnapshot(ctx, 0, 0, 0, 3000)
+            - AssertContains(ctx, "finalize", []string{"T1", "T2", "T3"})
+            - AssertInvariants(ctx)
+            - Stop(ctx)
+
+  - name: deterministic_runtime_config_ack_and_cap
+    description: runtime config notify should refresh, ack and update strict cap/labels deterministically.
+    steps:
+      - id: s1
+        parallel:
+          runtime:
+            - Start(ctx, 4, 100)
+            - SetRefreshConfig(ctx, "req-1", 5, 25, 1, 2, 0)
+            - NotifyRuntimeConfig(ctx, "req-1")
+
+      - id: s2
+        parallel:
+          runtime:
+            - WaitCallCount(ctx, "refresh_config", 1, 3000)
+            - WaitCallCount(ctx, "ack_config", 1, 3000)
+            - AssertAck(ctx, "req-1", 5)
+            - AssertStrictCap(ctx, 1)
+            - AssertWeightedLabels(ctx, []string{"w1"})
+            - AssertInvariants(ctx)
+            - Stop(ctx)
+
+  - name: deterministic_strict_fallback_to_normal
+    description: strict miss must fallback to normal claim within the same deterministic chain.
+    steps:
+      - id: s1
+        parallel:
+          runtime:
+            - Start(ctx, 1, 100)
+            - QueueStrictNoTask(ctx)
+            - QueueNormalTask(ctx, "N1", 0)
+
+      - id: s2
+        parallel:
+          runtime:
+            - Poll(ctx)
+
+      - id: s3
+        parallel:
+          runtime:
+            - WaitCallCount(ctx, "claim_strict", 1, 3000)
+            - WaitCallCount(ctx, "claim_normal", 1, 3000)
+            - WaitCallCount(ctx, "execute", 1, 3000)
+            - WaitCallCount(ctx, "finalize", 1, 3000)
+            - WaitSnapshot(ctx, 0, 0, 0, 3000)
+            - AssertOrder(ctx, "execute", []string{"N1"})
+            - AssertOrder(ctx, "finalize", []string{"N1"})
+            - AssertInvariants(ctx)
+            - Stop(ctx)
+
+  - name: deterministic_stop_blocks_new_work
+    description: once stopped, later poll events must not claim or execute tasks.
+    steps:
+      - id: s1
+        parallel:
+          runtime:
+            - Start(ctx, 1, 100)
+            - QueueStrictTask(ctx, "S1", 9)
+            - StepStop(ctx)
+
+      - id: s2
+        parallel:
+          runtime:
+            - Poll(ctx)
+            - WaitCallCount(ctx, "mark_offline", 1, 3000)
+            - WaitCallCount(ctx, "claim_strict", 0, 3000)
+            - WaitCallCount(ctx, "execute", 0, 3000)
+            - WaitCallCount(ctx, "finalize", 0, 3000)
+            - WaitSnapshot(ctx, 0, 0, 0, 3000)
+            - AssertStopped(ctx, true)
+            - AssertInvariants(ctx)
+            - Stop(ctx)
+
+  - name: stale_result_events_ignored
+    description: stale events for unknown cycles must be ignored without mutating state.
+    steps:
+      - id: s1
+        parallel:
+          runtime:
+            - Start(ctx, 2, 100)
+            - EmitEvent(ctx, "execute_result", 999, "", 0)
+            - EmitEvent(ctx, "finalize_result", 999, "", 0)
+            - EmitEvent(ctx, "claim_strict_result", 999, "STALE", 1)
+
+      - id: s2
+        parallel:
+          runtime:
+            - WaitSnapshot(ctx, 0, 0, 0, 3000)
+            - WaitCallCount(ctx, "claim_strict", 0, 3000)
+            - WaitCallCount(ctx, "execute", 0, 3000)
+            - WaitCallCount(ctx, "finalize", 0, 3000)
+            - AssertInvariants(ctx)
+            - Stop(ctx)
+
+  - name: out_of_phase_and_duplicate_events_ignored
+    description: out-of-phase finalize and duplicate terminal events must not corrupt lifecycle.
+    steps:
+      - id: s1
+        parallel:
+          runtime:
+            - Start(ctx, 1, 100)
+            - SetExecuteBlocking(ctx, true)
+            - QueueStrictTask(ctx, "P1", 9)
+            - Poll(ctx)
+            - WaitCallCount(ctx, "execute", 1, 3000)
+            - WaitSnapshot(ctx, 1, 1, 1, 3000)
+
+      - id: s2
+        parallel:
+          runtime:
+            - EmitEvent(ctx, "finalize_result", 1, "", 0)
+            - WaitCallCount(ctx, "finalize", 0, 3000)
+            - WaitSnapshot(ctx, 1, 1, 1, 3000)
+
+      - id: s3
+        parallel:
+          runtime:
+            - ReleaseExecutions(ctx, 1)
+            - WaitCallCount(ctx, "finalize", 1, 3000)
+            - WaitSnapshot(ctx, 0, 0, 0, 3000)
+            - EmitEvent(ctx, "finalize_result", 1, "", 0)
+            - EmitEvent(ctx, "execute_result", 1, "", 0)
+            - WaitCallCount(ctx, "finalize", 1, 3000)
+            - WaitSnapshot(ctx, 0, 0, 0, 3000)
+            - AssertInvariants(ctx)
+            - Stop(ctx)
+
+  - name: runtime_config_race_newer_wins
+    description: newer config should win even if an older refresh arrives later.
+    steps:
+      - id: s1
+        parallel:
+          runtime:
+            - Start(ctx, 4, 100)
+            - SetRefreshConfig(ctx, "req-new", 10, 25, 1, 2, 0)
+            - SetRefreshConfig(ctx, "req-old", 9, 100, 1, 0, 3)
+            - NotifyRuntimeConfig(ctx, "req-new")
+            - NotifyRuntimeConfig(ctx, "req-old")
+
+      - id: s2
+        parallel:
+          runtime:
+            - WaitCallCount(ctx, "refresh_config", 2, 3000)
+            - WaitCallCount(ctx, "ack_config", 2, 3000)
+            - AssertAck(ctx, "req-new", 10)
+            - AssertStrictCap(ctx, 1)
+            - AssertWeightedLabels(ctx, []string{"w1"})
+            - AssertInvariants(ctx)
+            - Stop(ctx)

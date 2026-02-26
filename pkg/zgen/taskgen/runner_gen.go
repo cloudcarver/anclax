@@ -23,6 +23,8 @@ const (
 	DeleteOpaqueKey = "deleteOpaqueKey" 
 
 	UpdateWorkerRuntimeConfig = "updateWorkerRuntimeConfig" 
+
+	StressProbe = "stressProbe" 
 )
 
 
@@ -37,6 +39,11 @@ type TaskRunner interface {
 	RunUpdateWorkerRuntimeConfig(ctx context.Context, params *UpdateWorkerRuntimeConfigParameters, overrides ...taskcore.TaskOverride) (int32, error)
     // Update worker runtime config and wait for alive workers to apply it
 	RunUpdateWorkerRuntimeConfigWithTx(ctx context.Context, tx core.Tx, params *UpdateWorkerRuntimeConfigParameters, overrides ...taskcore.TaskOverride) (int32, error)
+
+    // No-op stress probe task for worker E2E benchmarking
+	RunStressProbe(ctx context.Context, params *StressProbeParameters, overrides ...taskcore.TaskOverride) (int32, error)
+    // No-op stress probe task for worker E2E benchmarking
+	RunStressProbeWithTx(ctx context.Context, tx core.Tx, params *StressProbeParameters, overrides ...taskcore.TaskOverride) (int32, error)
 }
 
 type Client struct {
@@ -138,6 +145,49 @@ func (c *Client) runUpdateWorkerRuntimeConfig(ctx context.Context, taskstore tas
 	}
 	return taskID, nil
 }
+func (c *Client) RunStressProbe(ctx context.Context, params *StressProbeParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runStressProbe(ctx, c.taskStore, params, overrides...)
+}
+
+func (c *Client) RunStressProbeWithTx(ctx context.Context, tx core.Tx, params *StressProbeParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runStressProbe(ctx, c.taskStore.WithTx(tx), params, overrides...)
+}
+
+func (c *Client) runStressProbe(ctx context.Context, taskstore taskcore.TaskStoreInterface, params *StressProbeParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	payload, err := params.Marshal()
+	if err != nil {
+		return 0, err
+	}
+
+	spec := apigen.TaskSpec{
+		Type:    StressProbe,
+		Payload: payload,
+	}
+	attributes := apigen.TaskAttributes{}
+	attributes.Timeout = utils.Ptr("30s")
+	attributes.RetryPolicy = &apigen.TaskRetryPolicy{
+		Interval:    "1s",
+		MaxAttempts: 1,
+	}
+	
+	
+	task := &apigen.Task{
+		Attributes: attributes,
+		Spec:       spec,
+		Status:     apigen.Pending,
+	}
+	
+	for _, override := range overrides {
+		if err := override(task); err != nil {
+			return 0, errors.Wrap(err, "failed to apply task override")
+		}
+	}
+	taskID, err := taskstore.PushTask(ctx, task)
+	if err != nil {
+		return 0, err
+	}
+	return taskID, nil
+}
 
 
 type DeleteOpaqueKeyParameters struct { 
@@ -170,6 +220,17 @@ type UpdateWorkerRuntimeConfigParameters struct {
 	MaxStrictPercentage *int32 `json:"maxStrictPercentage" yaml:"maxStrictPercentage"`
 }
 
+type StressProbeParameters struct { 
+    // Logical task id for stress-run metrics correlation
+	JobID int64 `json:"jobID" yaml:"jobID"`
+
+    // Simulated task execution time in milliseconds
+	SleepMs int32 `json:"sleepMs" yaml:"sleepMs"`
+
+    // Logical group name for test-side metrics and labels
+	Group string `json:"group" yaml:"group"`
+}
+
 func (r *DeleteOpaqueKeyParameters) Parse(spec json.RawMessage) error {
 	return json.Unmarshal(spec, r)
 }
@@ -184,6 +245,13 @@ func (r *UpdateWorkerRuntimeConfigParameters) Parse(spec json.RawMessage) error 
 func (r *UpdateWorkerRuntimeConfigParameters) Marshal() (json.RawMessage, error) {
 	return json.Marshal(r)
 }
+func (r *StressProbeParameters) Parse(spec json.RawMessage) error {
+	return json.Unmarshal(spec, r)
+}
+
+func (r *StressProbeParameters) Marshal() (json.RawMessage, error) {
+	return json.Marshal(r)
+}
 
 type ExecutorInterface interface { 
      // Delete an opaque key
@@ -194,6 +262,10 @@ type ExecutorInterface interface {
 
      // Update worker runtime config and wait for alive workers to apply it
 	ExecuteUpdateWorkerRuntimeConfig(ctx context.Context, params *UpdateWorkerRuntimeConfigParameters) error
+ 
+
+     // No-op stress probe task for worker E2E benchmarking
+	ExecuteStressProbe(ctx context.Context, params *StressProbeParameters) error
  
 }
 
@@ -238,6 +310,13 @@ func (f *TaskHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) erro
 			return fmt.Errorf("failed to parse updateWorkerRuntimeConfig parameters: %w", err)
 		}
 		return f.executor.ExecuteUpdateWorkerRuntimeConfig(ctx, &params)
+		
+	case StressProbe:
+		var params StressProbeParameters
+		if err := params.Parse(spec.GetPayload()); err != nil {
+			return fmt.Errorf("failed to parse stressProbe parameters: %w", err)
+		}
+		return f.executor.ExecuteStressProbe(ctx, &params)
 		
 	default:
 		return errors.Wrapf(worker.ErrUnknownTaskType, "unknown task type: %s", spec.GetType())

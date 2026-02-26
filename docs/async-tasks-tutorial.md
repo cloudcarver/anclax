@@ -742,3 +742,5 @@ cfg := &config.Config{
 ```
 
 Workers poll the database every second for pending tasks and process them with configurable concurrency based on available goroutines. The default concurrency is 10.
+
+By default Anclax starts with worker v2. If you need compatibility with existing behavior, set `Worker.UseLegacyWorker = true`.

@@ -65,6 +65,9 @@ type Worker struct {
 
 	// (Optional) Fallback poll interval for runtime scheduling config refresh when notifications are missed/unavailable. Disabled by default.
 	RuntimeConfigPollInterval *time.Duration `yaml:"runtimeConfigPollInterval"`
+
+	// (Optional) Whether to use the legacy worker implementation. Default is false (worker v2).
+	UseLegacyWorker bool `yaml:"useLegacyWorker"`
 }
 
 type Debug struct {

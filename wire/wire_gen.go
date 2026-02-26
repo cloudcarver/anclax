@@ -21,7 +21,6 @@ import (
 	"github.com/cloudcarver/anclax/pkg/server"
 	"github.com/cloudcarver/anclax/pkg/service"
 	"github.com/cloudcarver/anclax/pkg/taskcore"
-	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
 )
@@ -55,7 +54,7 @@ func InitializeApplication(cfg *config.Config, libCfg *config.LibConfig) (*app.A
 	metricsServer := metrics.NewMetricsServer(cfg, globalContext)
 	executorInterface := asynctask.NewExecutor(cfg, modelInterface)
 	taskHandler := taskgen.NewTaskHandler(executorInterface)
-	workerInterface, err := worker.NewWorker(globalContext, cfg, modelInterface, taskHandler)
+	workerInterface, err := NewConfiguredWorker(globalContext, cfg, modelInterface, taskHandler)
 	if err != nil {
 		return nil, err
 	}
