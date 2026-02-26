@@ -10,21 +10,45 @@ Anclax 是面向小到中型应用（单个 PostgreSQL）。以模式定义 API 
 
 ### 推荐用法
 
-配合编码助手使用 Anclax skill：
+1. 安装 Anclax CLI：
 
-```bash
-npx skills add cloudcarver/anclax
-```
+  ```bash
+  go install github.com/cloudcarver/anclax/cmd/anclax@latest
+  ```
+
+2. 初始化项目（安装工具链并生成代码）：
+
+  ```bash
+  anclax init myapp github.com/me/myapp
+  cd myapp
+  ```
+
+3. 已有项目或更新 `anclax.yaml` 后，同步工具并重新生成：
+
+  ```bash
+  anclax install
+  anclax gen
+  ```
+
+  外部工具会安装在 `.anclax/bin`，便于复现构建环境。
+
+4. 可选：为编码助手添加 Anclax skill：
+
+  ```bash
+  npx skills add cloudcarver/anclax
+  ```
 
 ### 亮点（Highlights）✨
 
 - **YAML 优先 + 代码生成**：用 YAML 定义 HTTP 与任务的模式，自动生成强类型接口；缺失实现会在编译期暴露，而不是线上。
-- **靠谱的异步任务**：内置至少一次投递、自动重试与 cron 调度。
+- **靠谱的异步任务**：内置至少一次投递、自动重试、cron 调度，并支持优先级/权重队列与运行时调优。
+- **任务串行执行**：使用 `taskcore.WithSerialKey`/`WithSerialID` 让同一 key 的任务严格串行。
 - **事务安全的流程**：`WithTx` 模式确保钩子必定执行、状态一致。
 - **类型化数据库层**：基于 `sqlc`，快速且安全。
 - **高性能 HTTP**：基于 Fiber，易用又高效。
 - **内建认证与鉴权**：基于 Macaroons 的 AuthN/AuthZ。
 - **可插拔架构**：一等公民的插件系统，模块清晰、扩展容易。
+- **E2E 场景即代码**：DST YAML 描述分布式流程并生成强类型 runner。
 - **顺手的依赖注入**：基于 Wire，显式、可测试。
 
 ### 为什么是 Anclax？它解决了什么问题 🤔
@@ -38,6 +62,7 @@ npx skills add cloudcarver/anclax
 
 - **编译期信心**：从模式到接口再到实现，不再“忘记写”。
 - **开发效率**：`anclax init` + `anclax gen` 减少样板与手工接线。
+- **可复现工具链**：外部工具版本固定在 `anclax.yaml`，并安装到 `.anclax/bin`。
 - **可扩展性**：事件驱动与清晰的插件边界。
 - **可预期性**：核心服务单例化、依赖注入清晰、生命周期明确。
 
@@ -90,9 +115,13 @@ paths:
 
 ```yaml
 tasks:
-  incrementCounter:
+  - name: IncrementCounter
     description: Increment the counter value
-    cron: "*/1 * * * *"
+    cronjob:
+      cronExpression: "*/1 * * * * *"
+    retryPolicy:
+      interval: 5s
+      maxAttempts: 3
 ```
 
 3）生成并实现 🛠️
@@ -136,7 +165,7 @@ paths:
             - x.OperationPermit(c, operationID)
 ```
 
-### 安全方案（JWT 示例）
+### 安全方案（Macaroon Bearer Token 示例）
 ```yaml
 components:
   securitySchemes:
@@ -146,9 +175,9 @@ components:
       bearerFormat: macaroon
 ```
 
-### 异步任务：至少一次投递、重试与定时
+### 异步任务：至少一次投递、重试、定时与优先级/权重
 - **之前的痛点**：手动构建 `apigen.Task` payload 与 attributes，重复且易错。
-- **之前的痛点**：重试/cron/unique-tag 逻辑在服务间复制并逐渐漂移。
+- **之前的痛点**：重试/cronjob/unique-tag 逻辑在服务间复制并逐渐漂移。
 - **之前的痛点**：在数据库事务内入队需要自定义胶水代码。
 - **之前的痛点**：任务参数与 handler 签名容易不同步。
 
@@ -171,7 +200,9 @@ tasks:
     retryPolicy:
       interval: 5m
       maxAttempts: 3
-    cron: "0 * * * *"
+    timeout: 30s
+    cronjob:
+      cronExpression: "0 * * * * *"
 ```
 
 Before（手动构建任务记录）：
@@ -202,6 +233,17 @@ err := model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface
   }, taskcore.WithUniqueTag("welcome:"+strconv.Itoa(int(user.ID))))
   return err
 })
+```
+
+需要顺序或调度控制？在入队时加上 `taskcore.WithSerialKey`、`taskcore.WithPriority`、`taskcore.WithWeight` 等覆写：
+
+```go
+params := &taskgen.SendWelcomeEmailParameters{UserId: user.ID, TemplateId: "welcome"}
+_, err := taskrunner.RunSendWelcomeEmail(ctx, params,
+  taskcore.WithSerialKey("user:"+strconv.Itoa(int(user.ID))),
+  taskcore.WithPriority(10),
+  taskcore.WithWeight(3),
+)
 ```
 
 ### 事务：用 WithTx 组合一切
@@ -247,7 +289,7 @@ if err != nil {
 }
 ```
 
-任务具有至少一次交付保证，并会按重试策略自动重试。你也可以在 `api/tasks.yaml` 中通过 cron 表达式进行定时调度。
+任务具有至少一次交付保证，并会按重试策略自动重试。你也可以在 `api/tasks.yaml` 里通过 `cronjob.cronExpression` 配置定时调度。
 
 ## 高级：自定义初始化 🧩
 
@@ -292,6 +334,7 @@ func InitAnclaxApplication(cfg *config.Config) (*anclax_app.Application, error) 
 - **事务管理**：[docs/transaction.zh.md](docs/transaction.zh.md)（[English](docs/transaction.md)）
 - **中间件（x-functions & x-check-rules）**：[docs/middleware.zh.md](docs/middleware.zh.md)（[English](docs/middleware.md)）
 - **异步任务**：教程 [docs/async-tasks-tutorial.zh.md](docs/async-tasks-tutorial.zh.md) · 技术参考 [docs/async-tasks-technical.zh.md](docs/async-tasks-technical.zh.md) · 调度/运行时配置指南 [docs/async-task-scheduling-runtime-config.zh.md](docs/async-task-scheduling-runtime-config.zh.md)（[English](docs/async-tasks-tutorial.md), [English](docs/async-tasks-technical.md), [English](docs/async-task-scheduling-runtime-config.md)）
+- **DST 端到端测试**：[docs/dst-e2e.md](docs/dst-e2e.md)
 - **异步任务 Worker 租约设计**：[docs/async-task-worker-lease.md](docs/async-task-worker-lease.md)
 - **异步任务生产就绪测试策略**：[docs/async-task-testing-production-readiness.md](docs/async-task-testing-production-readiness.md)
 
