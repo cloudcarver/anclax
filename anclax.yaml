@@ -62,9 +62,9 @@ mockgen:
     - source: pkg/auth/auth.go
       destination: pkg/auth/mock_gen.go
       package: auth
-    - source: pkg/taskcore/interfaces.go
-      destination: pkg/taskcore/mock_gen.go
-      package: taskcore
+    - source: pkg/taskcore/store/interfaces.go
+      destination: pkg/taskcore/store/mock_gen.go
+      package: store
     - source: pkg/taskcore/worker/interfaces.go
       destination: pkg/taskcore/worker/mock_gen.go
       package: worker

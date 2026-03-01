@@ -17,7 +17,8 @@ import (
 	"github.com/cloudcarver/anclax/pkg/metrics"
 	"github.com/cloudcarver/anclax/pkg/server"
 	"github.com/cloudcarver/anclax/pkg/service"
-	"github.com/cloudcarver/anclax/pkg/taskcore"
+	taskctrl "github.com/cloudcarver/anclax/pkg/taskcore/ctrl"
+	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
 	"github.com/google/wire"
@@ -37,6 +38,7 @@ func InitializeApplication(cfg *config.Config, libCfg *config.LibConfig) (*app.A
 		macaroons.NewMacaroonManager,
 		store.NewStore,
 		taskcore.NewTaskStore,
+		taskctrl.NewWorkerControlPlane,
 		macaroons.NewCaveatParser,
 		globalctx.New,
 		metrics.NewMetricsServer,

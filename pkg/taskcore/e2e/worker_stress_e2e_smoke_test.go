@@ -15,7 +15,7 @@ import (
 	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/globalctx"
-	"github.com/cloudcarver/anclax/pkg/taskcore"
+	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	legacyworker "github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	workerv2 "github.com/cloudcarver/anclax/pkg/taskcore/workerv2"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"

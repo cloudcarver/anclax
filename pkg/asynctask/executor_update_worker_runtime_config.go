@@ -11,7 +11,7 @@ import (
 	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/metrics"
-	"github.com/cloudcarver/anclax/pkg/taskcore"
+	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"

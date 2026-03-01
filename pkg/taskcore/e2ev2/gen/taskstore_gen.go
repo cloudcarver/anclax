@@ -12,6 +12,11 @@ import (
 )
 
 
+type ControlPlane interface {
+	PauseTask(ctx context.Context, task string, notifyInterval string, listenTimeout string) error
+}
+
+
 type Runtime interface {
 	StartWorker(ctx context.Context, name string, mode string, taskType string, labels []string, pollMs int32, lockRefreshMs int32, lockTTLms int32, heartbeatMs int32, concurrency int32, runtimePollMs int32, useDSN bool, workerID string) error
 	StopWorker(ctx context.Context, name string) error
@@ -58,6 +63,7 @@ type Validator interface {
 
 
 type Actors struct {
+	ControlPlane ControlPlane
 	Runtime Runtime
 	TaskStore TaskStore
 	Validator Validator
@@ -80,6 +86,9 @@ func Init(ctx context.Context, initActors InitActorsFunc) (Actors, error) {
 }
 
 func ValidateActors(actors Actors) error {
+	if actors.ControlPlane == nil {
+		return fmt.Errorf("actors.ControlPlane (instance controlPlane) is nil")
+	}
 	if actors.Runtime == nil {
 		return fmt.Errorf("actors.Runtime (instance runtime) is nil")
 	}
@@ -232,6 +241,12 @@ func runAllWithActors(ctx context.Context, actors Actors) error {
 	}
 	if err := RunScenarioSmokeRuntimeConfigListenAck(ctx, actors); err != nil {
 		return fmt.Errorf("scenario smoke_runtime_config_listen_ack: %w", err)
+	}
+	if err := RunScenarioSmokePauseTaskCancel(ctx, actors); err != nil {
+		return fmt.Errorf("scenario smoke_pause_task_cancel: %w", err)
+	}
+	if err := RunScenarioSmokePauseTaskBeforeStart(ctx, actors); err != nil {
+		return fmt.Errorf("scenario smoke_pause_task_before_start: %w", err)
 	}
 	if err := RunScenarioSmokeWorkerOffline(ctx, actors); err != nil {
 		return fmt.Errorf("scenario smoke_worker_offline: %w", err)
@@ -2870,6 +2885,389 @@ func runStepSmokeRuntimeConfigListenAckS2(parent context.Context, actors Actors,
 		}
 	}
 	return nil
+}
+
+
+
+func RunScenarioSmokePauseTaskCancel(ctx context.Context, actors Actors) error {
+	vars := newVarStore()
+	if err := runStepSmokePauseTaskCancelS1(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s1: %w", err)
+	}
+	if err := runStepSmokePauseTaskCancelS2(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s2: %w", err)
+	}
+	if err := runStepSmokePauseTaskCancelS3(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s3: %w", err)
+	}
+	if err := runStepSmokePauseTaskCancelS4(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s4: %w", err)
+	}
+	if err := runStepSmokePauseTaskCancelS5(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s5: %w", err)
+	}
+	if err := runStepSmokePauseTaskCancelS6(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s6: %w", err)
+	}
+	return nil
+}
+
+
+func runStepSmokePauseTaskCancelS1(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 2)
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Runtime.StartWorker(ctx, "SPC_W1", "blocking", "pause-e2e", []string{"pause-label"}, 20, 20, 200, 20, 1, 0, true, ""); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"SPC_W1\", \"blocking\", \"pause-e2e\", []string{\"pause-label\"}, 20, 20, 200, 20, 1, 0, true, \"\")", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.StartWorker(ctx, "SPC_W2", "noop", "pause-e2e", []string{"control"}, 20, 20, 200, 20, 1, 0, true, ""); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"SPC_W2\", \"noop\", \"pause-e2e\", []string{\"control\"}, 20, 20, 200, 20, 1, 0, true, \"\")", err)
+			cancel()
+			return
+		}
+	}()
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.TaskStore.EnqueueRaw(ctx, "SPC_TASK", "pause-e2e", "{}", 0, 1, []string{"pause-label"}, "", 0, "", 0); err != nil {
+			errCh <- fmt.Errorf("actor taskStore call %s: %w", "EnqueueRaw(ctx, \"SPC_TASK\", \"pause-e2e\", \"{}\", 0, 1, []string{\"pause-label\"}, \"\", 0, \"\", 0)", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func runStepSmokePauseTaskCancelS2(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Runtime.WaitSignal(ctx, "SPC_W1", "started", 5000); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitSignal(ctx, \"SPC_W1\", \"started\", 5000)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.WaitTaskLock(ctx, "SPC_TASK", 5000); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitTaskLock(ctx, \"SPC_TASK\", 5000)", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func runStepSmokePauseTaskCancelS3(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.ControlPlane.PauseTask(ctx, "SPC_TASK", "", ""); err != nil {
+			errCh <- fmt.Errorf("actor controlPlane call %s: %w", "PauseTask(ctx, \"SPC_TASK\", \"\", \"\")", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func runStepSmokePauseTaskCancelS4(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Runtime.WaitSignal(ctx, "SPC_W1", "done", 5000); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitSignal(ctx, \"SPC_W1\", \"done\", 5000)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.WaitTaskUnlock(ctx, "SPC_TASK", 5000); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitTaskUnlock(ctx, \"SPC_TASK\", 5000)", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func runStepSmokePauseTaskCancelS5(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var err error
+	t := &scriptT{}
+	set := func(name string, value any) {
+		vars.Set(name, value)
+	}
+	get := func(name string) any {
+		val, _ := vars.Get(name)
+		return val
+	}
+	_ = t
+	_ = set
+	_ = get
+	defer func() {
+		if r := recover(); r != nil {
+			if fail, ok := r.(scriptFail); ok {
+				if fail.err != nil {
+					err = fail.err
+					return
+				}
+				err = fmt.Errorf("script failed")
+				return
+			}
+			err = fmt.Errorf("script panic: %v", r)
+			return
+		}
+		if t.failed && err == nil {
+			if t.err != nil {
+				err = t.err
+			} else {
+				err = fmt.Errorf("script failed")
+			}
+		}
+	}()
+	rows, err := actors.Validator.Query(ctx, "select status from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"SPC_TASK"})
+	require.NoError(t, err)
+	require.Equal(t, [][]any{{"paused"}}, rows)
+	return err
+}
+
+
+func runStepSmokePauseTaskCancelS6(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Runtime.StopWorker(ctx, "SPC_W1"); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StopWorker(ctx, \"SPC_W1\")", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.StopWorker(ctx, "SPC_W2"); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StopWorker(ctx, \"SPC_W2\")", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+
+func RunScenarioSmokePauseTaskBeforeStart(ctx context.Context, actors Actors) error {
+	vars := newVarStore()
+	if err := runStepSmokePauseTaskBeforeStartS1(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s1: %w", err)
+	}
+	if err := runStepSmokePauseTaskBeforeStartS2(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s2: %w", err)
+	}
+	if err := runStepSmokePauseTaskBeforeStartS3(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s3: %w", err)
+	}
+	if err := runStepSmokePauseTaskBeforeStartS4(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s4: %w", err)
+	}
+	return nil
+}
+
+
+func runStepSmokePauseTaskBeforeStartS1(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 2)
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Runtime.StartWorker(ctx, "SPB_W1", "signal", "pause-e2e", []string{"pause-label"}, 20, 20, 200, 20, 1, 0, true, ""); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"SPB_W1\", \"signal\", \"pause-e2e\", []string{\"pause-label\"}, 20, 20, 200, 20, 1, 0, true, \"\")", err)
+			cancel()
+			return
+		}
+	}()
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.TaskStore.EnqueueRaw(ctx, "SPB_TASK", "pause-e2e", "{}", 0, 1, []string{"pause-label"}, "", 0, "", 2); err != nil {
+			errCh <- fmt.Errorf("actor taskStore call %s: %w", "EnqueueRaw(ctx, \"SPB_TASK\", \"pause-e2e\", \"{}\", 0, 1, []string{\"pause-label\"}, \"\", 0, \"\", 2)", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func runStepSmokePauseTaskBeforeStartS2(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.ControlPlane.PauseTask(ctx, "SPB_TASK", "", ""); err != nil {
+			errCh <- fmt.Errorf("actor controlPlane call %s: %w", "PauseTask(ctx, \"SPB_TASK\", \"\", \"\")", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func runStepSmokePauseTaskBeforeStartS3(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Runtime.SleepMs(ctx, 2500); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "SleepMs(ctx, 2500)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.StopWorker(ctx, "SPB_W1"); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StopWorker(ctx, \"SPB_W1\")", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func runStepSmokePauseTaskBeforeStartS4(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var err error
+	t := &scriptT{}
+	set := func(name string, value any) {
+		vars.Set(name, value)
+	}
+	get := func(name string) any {
+		val, _ := vars.Get(name)
+		return val
+	}
+	_ = t
+	_ = set
+	_ = get
+	defer func() {
+		if r := recover(); r != nil {
+			if fail, ok := r.(scriptFail); ok {
+				if fail.err != nil {
+					err = fail.err
+					return
+				}
+				err = fmt.Errorf("script failed")
+				return
+			}
+			err = fmt.Errorf("script panic: %v", r)
+			return
+		}
+		if t.failed && err == nil {
+			if t.err != nil {
+				err = t.err
+			} else {
+				err = fmt.Errorf("script failed")
+			}
+		}
+	}()
+	rows, err := actors.Validator.Query(ctx, "select status, attempts from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"SPB_TASK"})
+	require.NoError(t, err)
+	require.Equal(t, [][]any{{"paused", int32(0)}}, rows)
+	return err
 }
 
 

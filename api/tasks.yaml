@@ -53,6 +53,30 @@ tasks:
       maxAttempts: -1
     timeout: 20s
 
+  - name: pauseTask
+    description: Pause a task and cancel any in-flight execution
+    parameters:
+      type: object
+      required: [taskID]
+      properties:
+        taskID:
+          type: integer
+          format: int32
+          description: The task ID to pause and cancel
+        requestID:
+          type: string
+          description: Correlation ID for notify and ack messages
+        notifyInterval:
+          type: string
+          description: Fallback retry interval when ack listening is unavailable
+        listenTimeout:
+          type: string
+          description: Ack listen timeout window for one iteration
+    retryPolicy:
+      interval: 2s
+      maxAttempts: -1
+    timeout: 20s
+
   - name: stressProbe
     description: No-op stress probe task for worker E2E benchmarking
     parameters:

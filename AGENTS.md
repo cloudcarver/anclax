@@ -12,4 +12,6 @@ The code of anclax CLI is in `cmd/anclax`
 
 ## IMPORTANT
 
+ALWAYS plan before writing code.
+
 Run `make gen` after modifying `examples` to generate sample code to `cmd/anclax/initFiles`, and maybe documentation.

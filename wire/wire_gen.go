@@ -16,11 +16,12 @@ import (
 	"github.com/cloudcarver/anclax/pkg/globalctx"
 	"github.com/cloudcarver/anclax/pkg/hooks"
 	"github.com/cloudcarver/anclax/pkg/macaroons"
-	"github.com/cloudcarver/anclax/pkg/macaroons/store"
+	store2 "github.com/cloudcarver/anclax/pkg/macaroons/store"
 	"github.com/cloudcarver/anclax/pkg/metrics"
 	"github.com/cloudcarver/anclax/pkg/server"
 	"github.com/cloudcarver/anclax/pkg/service"
-	"github.com/cloudcarver/anclax/pkg/taskcore"
+	"github.com/cloudcarver/anclax/pkg/taskcore/ctrl"
+	"github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
 )
@@ -34,9 +35,9 @@ func InitializeApplication(cfg *config.Config, libCfg *config.LibConfig) (*app.A
 	if err != nil {
 		return nil, err
 	}
-	taskStoreInterface := taskcore.NewTaskStore(modelInterface)
+	taskStoreInterface := store.NewTaskStore(modelInterface)
 	taskRunner := taskgen.NewTaskRunner(taskStoreInterface)
-	keyStore := store.NewStore(modelInterface, taskRunner)
+	keyStore := store2.NewStore(modelInterface, taskRunner)
 	caveatParserInterface := macaroons.NewCaveatParser()
 	macaroonManagerInterface := macaroons.NewMacaroonManager(keyStore, caveatParserInterface)
 	anclaxHookInterface := hooks.NewBaseHook()
@@ -59,7 +60,8 @@ func InitializeApplication(cfg *config.Config, libCfg *config.LibConfig) (*app.A
 		return nil, err
 	}
 	debugServer := app.NewDebugServer(cfg, globalContext)
-	application, err := app.NewApplication(globalContext, cfg, serverServer, metricsServer, workerInterface, debugServer, authInterface, taskStoreInterface, serviceInterface, anclaxHookInterface, caveatParserInterface, closerManager)
+	workerControlPlane := ctrl.NewWorkerControlPlane(modelInterface, taskRunner, taskStoreInterface)
+	application, err := app.NewApplication(globalContext, cfg, serverServer, metricsServer, workerInterface, debugServer, authInterface, taskStoreInterface, workerControlPlane, serviceInterface, anclaxHookInterface, caveatParserInterface, closerManager)
 	if err != nil {
 		return nil, err
 	}

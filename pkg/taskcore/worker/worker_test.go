@@ -12,7 +12,7 @@ import (
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/globalctx"
 	"github.com/cloudcarver/anclax/pkg/metrics"
-	"github.com/cloudcarver/anclax/pkg/taskcore"
+	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
@@ -1289,8 +1289,8 @@ func TestRegisterTaskHandlerDelegates(t *testing.T) {
 
 func TestRuntimeConfigLoopReturnsWhenPollingDisabled(t *testing.T) {
 	w := &Worker{
-		globalCtx:        globalctx.New(),
-		runtimeListenDSN: "",
+		globalCtx:         globalctx.New(),
+		runtimeListenDSN:  "",
 		runtimeConfigPoll: 0,
 	}
 	w.runtimeConfigLoop()
@@ -1300,7 +1300,7 @@ func TestHeartbeatLoopReturnsWhenContextCanceled(t *testing.T) {
 	gctx := globalctx.New()
 	gctx.Cancel()
 	w := &Worker{
-		globalCtx:          gctx,
+		globalCtx:         gctx,
 		heartbeatInterval: 10 * time.Millisecond,
 	}
 	w.heartbeatLoop()

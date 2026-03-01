@@ -1,4 +1,4 @@
-package taskcore
+package store
 
 import (
 	"context"
@@ -18,6 +18,9 @@ var (
 
 	// The task lock is lost to another worker
 	ErrTaskLockLost = errors.New("task lock lost")
+
+	// The task execution was paused by control plane
+	ErrTaskPaused = errors.New("task paused")
 )
 
 type TaskOverride = func(task *apigen.Task) error

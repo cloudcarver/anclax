@@ -16,7 +16,7 @@ import (
 
 	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
-	"github.com/cloudcarver/anclax/pkg/taskcore"
+	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/pkg/errors"

@@ -4,7 +4,7 @@ import (
 	"context"
 	"math"
 
-	"github.com/cloudcarver/anclax/pkg/taskcore"
+	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
 )
 

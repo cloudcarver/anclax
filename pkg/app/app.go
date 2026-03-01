@@ -12,7 +12,8 @@ import (
 	"github.com/cloudcarver/anclax/pkg/metrics"
 	"github.com/cloudcarver/anclax/pkg/server"
 	"github.com/cloudcarver/anclax/pkg/service"
-	"github.com/cloudcarver/anclax/pkg/taskcore"
+	taskctrl "github.com/cloudcarver/anclax/pkg/taskcore/ctrl"
+	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -24,18 +25,19 @@ type PluginMeta struct {
 }
 
 type Application struct {
-	server        *server.Server
-	prometheus    *metrics.MetricsServer
-	worker        worker.WorkerInterface
-	disableWorker bool
-	debugServer   *DebugServer
-	auth          auth.AuthInterface
-	taskStore     taskcore.TaskStoreInterface
-	service       service.ServiceInterface
-	hooks         hooks.AnclaxHookInterface
-	caveatParser  macaroons.CaveatParserInterface
-	globalctx     *globalctx.GlobalContext
-	cm            *closer.CloserManager
+	server             *server.Server
+	prometheus         *metrics.MetricsServer
+	worker             worker.WorkerInterface
+	disableWorker      bool
+	debugServer        *DebugServer
+	auth               auth.AuthInterface
+	taskStore          taskcore.TaskStoreInterface
+	workerControlPlane *taskctrl.WorkerControlPlane
+	service            service.ServiceInterface
+	hooks              hooks.AnclaxHookInterface
+	caveatParser       macaroons.CaveatParserInterface
+	globalctx          *globalctx.GlobalContext
+	cm                 *closer.CloserManager
 }
 
 func NewApplication(
@@ -47,6 +49,7 @@ func NewApplication(
 	debugServer *DebugServer,
 	auth auth.AuthInterface,
 	taskStore taskcore.TaskStoreInterface,
+	workerControlPlane *taskctrl.WorkerControlPlane,
 	service service.ServiceInterface,
 	hooks hooks.AnclaxHookInterface,
 	caveatParser macaroons.CaveatParserInterface,
@@ -60,18 +63,19 @@ func NewApplication(
 	}
 
 	app := &Application{
-		server:        server,
-		prometheus:    prometheus,
-		worker:        worker,
-		disableWorker: cfg.Worker.Disable,
-		debugServer:   debugServer,
-		auth:          auth,
-		taskStore:     taskStore,
-		service:       service,
-		hooks:         hooks,
-		caveatParser:  caveatParser,
-		globalctx:     globalctx,
-		cm:            cm,
+		server:             server,
+		prometheus:         prometheus,
+		worker:             worker,
+		disableWorker:      cfg.Worker.Disable,
+		debugServer:        debugServer,
+		auth:               auth,
+		taskStore:          taskStore,
+		workerControlPlane: workerControlPlane,
+		service:            service,
+		hooks:              hooks,
+		caveatParser:       caveatParser,
+		globalctx:          globalctx,
+		cm:                 cm,
 	}
 
 	return app, nil
@@ -117,6 +121,10 @@ func (a *Application) GetAuth() auth.AuthInterface {
 
 func (a *Application) GetTaskStore() taskcore.TaskStoreInterface {
 	return a.taskStore
+}
+
+func (a *Application) GetWorkerControlPlane() *taskctrl.WorkerControlPlane {
+	return a.workerControlPlane
 }
 
 func (a *Application) GetService() service.ServiceInterface {

@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/cloudcarver/anclax/core"
-	"github.com/cloudcarver/anclax/pkg/taskcore"
 	taskcoree2e "github.com/cloudcarver/anclax/pkg/taskcore/e2e/gen"
+	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"

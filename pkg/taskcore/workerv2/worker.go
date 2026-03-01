@@ -20,12 +20,23 @@ import (
 
 var log = logger.NewLogAgent("workerv2")
 
-const runtimeConfigChannel = "anclax_worker_runtime_config"
+const (
+	runtimeConfigChannel = "anclax_worker_runtime_config"
+	taskCancelChannel    = "anclax_worker_task_cancel"
+)
 
 type runtimeConfigNotification struct {
 	Op     string `json:"op"`
 	Params struct {
 		RequestID string `json:"request_id"`
+	} `json:"params"`
+}
+
+type taskCancelNotification struct {
+	Op     string `json:"op"`
+	Params struct {
+		RequestID string `json:"request_id"`
+		TaskID    int32  `json:"task_id"`
 	} `json:"params"`
 }
 
@@ -85,6 +96,10 @@ func NewWorker(globalCtx *globalctx.GlobalContext, cfg *config.Config, m model.M
 		workerID = parsed
 	}
 
+	if runtimeConfigPoll < 0 {
+		runtimeConfigPoll = 0
+	}
+
 	maxStrictPercentage := int32(100)
 	if cfg.Worker.MaxStrictPercentage != nil {
 		maxStrictPercentage = int32(*cfg.Worker.MaxStrictPercentage)
@@ -128,7 +143,26 @@ func NewWorker(globalCtx *globalctx.GlobalContext, cfg *config.Config, m model.M
 func (w *Worker) Start() {
 	ctx := w.globalCtx.Context()
 	if w.runtimeListenDSN != "" {
-		go w.runtimeConfigListenLoop(ctx)
+		readyConfig := make(chan struct{})
+		readyCancel := make(chan struct{})
+		errCh := make(chan error, 2)
+		go w.runtimeConfigListenLoop(ctx, readyConfig, errCh)
+		go w.taskCancelListenLoop(ctx, readyCancel, errCh)
+		if err := waitForListenReady(ctx, errCh, readyConfig, readyCancel); err != nil {
+			log.Error("worker listen setup failed", zap.Error(err))
+			w.globalCtx.Cancel()
+			return
+		}
+		go func() {
+			select {
+			case err := <-errCh:
+				if err != nil && ctx.Err() == nil {
+					log.Error("worker listen loop exited", zap.Error(err))
+					w.globalCtx.Cancel()
+				}
+			case <-ctx.Done():
+			}
+		}()
 	}
 	w.runtime.Start(ctx)
 }
@@ -181,23 +215,13 @@ func (w *Worker) releaseSlot() {
 	}
 }
 
-func (w *Worker) runtimeConfigListenLoop(ctx context.Context) {
-	for {
-		if ctx.Err() != nil {
-			return
-		}
-		if err := w.listenRuntimeConfigUpdates(ctx); err != nil && ctx.Err() == nil {
-			log.Error("runtime config listen loop exited, retrying", zap.Error(err))
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(time.Second):
-			}
-		}
+func (w *Worker) runtimeConfigListenLoop(ctx context.Context, ready chan<- struct{}, errCh chan<- error) {
+	if err := w.listenRuntimeConfigUpdates(ctx, ready); err != nil && ctx.Err() == nil {
+		errCh <- err
 	}
 }
 
-func (w *Worker) listenRuntimeConfigUpdates(ctx context.Context) error {
+func (w *Worker) listenRuntimeConfigUpdates(ctx context.Context, ready chan<- struct{}) error {
 	conn, err := pgx.Connect(ctx, w.runtimeListenDSN)
 	if err != nil {
 		return fmt.Errorf("connect runtime config listener: %w", err)
@@ -207,6 +231,7 @@ func (w *Worker) listenRuntimeConfigUpdates(ctx context.Context) error {
 	if _, err := conn.Exec(ctx, fmt.Sprintf("LISTEN %s", runtimeConfigChannel)); err != nil {
 		return fmt.Errorf("listen runtime config channel: %w", err)
 	}
+	signalListenReady(ready)
 
 	for {
 		waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -242,6 +267,88 @@ func parseRuntimeConfigNotificationPayload(payload string) (requestID string, sh
 		return "", false, nil
 	}
 	return notification.Params.RequestID, true, nil
+}
+
+func (w *Worker) taskCancelListenLoop(ctx context.Context, ready chan<- struct{}, errCh chan<- error) {
+	if err := w.listenTaskCancelUpdates(ctx, ready); err != nil && ctx.Err() == nil {
+		errCh <- err
+	}
+}
+
+func (w *Worker) listenTaskCancelUpdates(ctx context.Context, ready chan<- struct{}) error {
+	conn, err := pgx.Connect(ctx, w.runtimeListenDSN)
+	if err != nil {
+		return fmt.Errorf("connect task cancel listener: %w", err)
+	}
+	defer conn.Close(context.Background())
+
+	if _, err := conn.Exec(ctx, fmt.Sprintf("LISTEN %s", taskCancelChannel)); err != nil {
+		return fmt.Errorf("listen task cancel channel: %w", err)
+	}
+	signalListenReady(ready)
+
+	for {
+		waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		notification, err := conn.WaitForNotification(waitCtx)
+		cancel()
+		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				continue
+			}
+			if errors.Is(err, context.Canceled) && ctx.Err() != nil {
+				return nil
+			}
+			return fmt.Errorf("wait for task cancel notification: %w", err)
+		}
+		requestID, taskID, shouldProcess, err := parseTaskCancelNotificationPayload(notification.Payload)
+		if err != nil {
+			log.Error("failed to parse task cancel notification", zap.Error(err), zap.String("payload", notification.Payload))
+			continue
+		}
+		if !shouldProcess {
+			continue
+		}
+		w.port.CancelTask(taskID)
+		if err := w.port.AckTaskCancelApplied(ctx, requestID); err != nil {
+			log.Error("failed to ack task cancel", zap.Error(err))
+		}
+	}
+}
+
+func parseTaskCancelNotificationPayload(payload string) (string, int32, bool, error) {
+	var notification taskCancelNotification
+	if err := json.Unmarshal([]byte(payload), &notification); err != nil {
+		return "", 0, false, fmt.Errorf("unmarshal task cancel notification: %w", err)
+	}
+	if notification.Op != "" && notification.Op != "cancel_task" {
+		return "", 0, false, nil
+	}
+	return notification.Params.RequestID, notification.Params.TaskID, true, nil
+}
+
+func waitForListenReady(ctx context.Context, errCh <-chan error, readyChans ...<-chan struct{}) error {
+	for _, ready := range readyChans {
+		select {
+		case <-ready:
+		case err := <-errCh:
+			if err != nil {
+				return err
+			}
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
+}
+
+func signalListenReady(ready chan<- struct{}) {
+	if ready == nil {
+		return
+	}
+	defer func() {
+		_ = recover()
+	}()
+	close(ready)
 }
 
 func runtimeListenDSNFromConfig(cfg *config.Config) string {

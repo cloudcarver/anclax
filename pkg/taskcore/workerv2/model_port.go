@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/cloudcarver/anclax/core"
-	"github.com/cloudcarver/anclax/pkg/taskcore"
+	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/taskcore/types"
 	legacyworker "github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
@@ -26,6 +27,14 @@ type runtimeConfigAckNotification struct {
 		RequestID      string `json:"request_id"`
 		WorkerID       string `json:"worker_id"`
 		AppliedVersion int64  `json:"applied_version"`
+	} `json:"params"`
+}
+
+type taskCancelAckNotification struct {
+	Op     string `json:"op"`
+	Params struct {
+		RequestID string `json:"request_id"`
+		WorkerID  string `json:"worker_id"`
 	} `json:"params"`
 }
 
@@ -48,6 +57,9 @@ type ModelPort struct {
 	lifeCycleHandler    legacyworker.TaskLifeCycleHandlerInterface
 	taskHandler         TaskHandler
 	now                 func() time.Time
+
+	cancelMu    sync.Mutex
+	cancelTasks map[int32]context.CancelCauseFunc
 }
 
 func NewModelPort(
@@ -74,6 +86,7 @@ func NewModelPort(
 		lifeCycleHandler:    legacyworker.NewTaskLifeCycleHandler(m, taskHandler, workerID),
 		taskHandler:         taskHandler,
 		now:                 time.Now,
+		cancelTasks:         make(map[int32]context.CancelCauseFunc),
 	}, nil
 }
 
@@ -184,7 +197,14 @@ func (p *ModelPort) ClaimByID(ctx context.Context, taskID int32, req ClaimReques
 }
 
 func (p *ModelPort) ExecuteTask(ctx context.Context, task Task) error {
-	execCtx, cancel, err := p.withTaskTimeout(ctx, task)
+	baseCtx, baseCancel := context.WithCancelCause(ctx)
+	p.registerTaskCancel(task.ID, baseCancel)
+	defer func() {
+		p.unregisterTaskCancel(task.ID)
+		baseCancel(nil)
+	}()
+
+	execCtx, cancel, err := p.withTaskTimeout(baseCtx, task)
 	if err != nil {
 		return err
 	}
@@ -197,6 +217,9 @@ func (p *ModelPort) ExecuteTask(ctx context.Context, task Task) error {
 	if err := p.model.RunTransactionWithTx(execCtx, func(tx core.Tx, txm model.ModelInterface) error {
 		return p.lifeCycleHandler.HandleAttributes(execCtx, tx, apiTask)
 	}); err != nil {
+		if errors.Is(context.Cause(execCtx), taskcore.ErrTaskPaused) {
+			return taskcore.ErrTaskPaused
+		}
 		if errors.Is(err, taskcore.ErrTaskLockLost) {
 			return errSkipFinalize
 		}
@@ -204,13 +227,45 @@ func (p *ModelPort) ExecuteTask(ctx context.Context, task Task) error {
 	}
 
 	if p.taskHandler == nil {
+		if errors.Is(context.Cause(execCtx), taskcore.ErrTaskPaused) {
+			return taskcore.ErrTaskPaused
+		}
 		return nil
 	}
-	return p.taskHandler.HandleTask(execCtx, &task.Spec)
+
+	err = p.taskHandler.HandleTask(execCtx, &task.Spec)
+	if errors.Is(context.Cause(execCtx), taskcore.ErrTaskPaused) {
+		return taskcore.ErrTaskPaused
+	}
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (p *ModelPort) FinalizeTask(ctx context.Context, task Task, execErr error) error {
 	if errors.Is(execErr, errSkipFinalize) {
+		return nil
+	}
+	if errors.Is(execErr, taskcore.ErrTaskPaused) {
+		if err := p.model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
+			if _, err := txm.UpdateTaskStatusByWorker(ctx, querier.UpdateTaskStatusByWorkerParams{
+				ID:       task.ID,
+				Status:   string(apigen.Paused),
+				WorkerID: p.workerIDParam,
+			}); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return taskcore.ErrTaskLockLost
+				}
+				return err
+			}
+			return nil
+		}); err != nil {
+			if errors.Is(err, taskcore.ErrTaskLockLost) {
+				return nil
+			}
+			return fmt.Errorf("finalize paused task: %w", err)
+		}
 		return nil
 	}
 
@@ -291,6 +346,45 @@ func (p *ModelPort) AckRuntimeConfigApplied(ctx context.Context, workerID string
 		return fmt.Errorf("notify runtime config ack: %w", err)
 	}
 	return nil
+}
+
+func (p *ModelPort) AckTaskCancelApplied(ctx context.Context, requestID string) error {
+	if requestID == "" {
+		return nil
+	}
+
+	payload := taskCancelAckNotification{Op: "ack"}
+	payload.Params.RequestID = requestID
+	payload.Params.WorkerID = p.workerID.String()
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal task cancel ack notification: %w", err)
+	}
+	if err := p.model.NotifyWorkerTaskCancelAck(ctx, string(raw)); err != nil {
+		return fmt.Errorf("notify task cancel ack: %w", err)
+	}
+	return nil
+}
+
+func (p *ModelPort) CancelTask(taskID int32) {
+	p.cancelMu.Lock()
+	cancel := p.cancelTasks[taskID]
+	p.cancelMu.Unlock()
+	if cancel != nil {
+		cancel(taskcore.ErrTaskPaused)
+	}
+}
+
+func (p *ModelPort) registerTaskCancel(taskID int32, cancel context.CancelCauseFunc) {
+	p.cancelMu.Lock()
+	p.cancelTasks[taskID] = cancel
+	p.cancelMu.Unlock()
+}
+
+func (p *ModelPort) unregisterTaskCancel(taskID int32) {
+	p.cancelMu.Lock()
+	delete(p.cancelTasks, taskID)
+	p.cancelMu.Unlock()
 }
 
 func (p *ModelPort) withTaskTimeout(ctx context.Context, task Task) (context.Context, context.CancelFunc, error) {

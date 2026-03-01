@@ -44,10 +44,15 @@ interfaces:
     methods:
       - Query(ctx context.Context, sql string, args []any) ([][]any, error)
 
+  ControlPlane:
+    methods:
+      - PauseTask(ctx context.Context, task string, notifyInterval string, listenTimeout string) error
+
 instances:
   taskStore: TaskStore
   runtime: Runtime
   validator: Validator
+  controlPlane: ControlPlane
 
 scenarios:
   - name: strict_priority_and_weighted_groups
@@ -524,6 +529,73 @@ scenarios:
             - WaitRuntimeConfigAck(ctx, "SRCA_CFG", "req-ack-1", 8000)
             - WaitWorkerLagging(ctx, "SRCA_W1", "SRCA_CFG", false, 7000)
             - StopWorker(ctx, "SRCA_W1")
+
+  - name: smoke_pause_task_cancel
+    description: pausing a running task cancels execution and marks it paused.
+    steps:
+      - id: s1
+        parallel:
+          taskStore:
+            - EnqueueRaw(ctx, "SPC_TASK", "pause-e2e", "{}", 0, 1, []string{"pause-label"}, "", 0, "", 0)
+          runtime:
+            - StartWorker(ctx, "SPC_W1", "blocking", "pause-e2e", []string{"pause-label"}, 20, 20, 200, 20, 1, 0, true, "")
+            - StartWorker(ctx, "SPC_W2", "noop", "pause-e2e", []string{"control"}, 20, 20, 200, 20, 1, 0, true, "")
+
+      - id: s2
+        parallel:
+          runtime:
+            - WaitSignal(ctx, "SPC_W1", "started", 5000)
+            - WaitTaskLock(ctx, "SPC_TASK", 5000)
+
+      - id: s3
+        parallel:
+          controlPlane:
+            - PauseTask(ctx, "SPC_TASK", "", "")
+
+      - id: s4
+        parallel:
+          runtime:
+            - WaitSignal(ctx, "SPC_W1", "done", 5000)
+            - WaitTaskUnlock(ctx, "SPC_TASK", 5000)
+
+      - id: s5
+        script: |
+          rows, err := actors.Validator.Query(ctx, "select status from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"SPC_TASK"})
+          require.NoError(t, err)
+          require.Equal(t, [][]any{{"paused"}}, rows)
+
+      - id: s6
+        parallel:
+          runtime:
+            - StopWorker(ctx, "SPC_W1")
+            - StopWorker(ctx, "SPC_W2")
+
+  - name: smoke_pause_task_before_start
+    description: pausing a delayed task prevents execution and keeps it paused.
+    steps:
+      - id: s1
+        parallel:
+          taskStore:
+            - EnqueueRaw(ctx, "SPB_TASK", "pause-e2e", "{}", 0, 1, []string{"pause-label"}, "", 0, "", 2)
+          runtime:
+            - StartWorker(ctx, "SPB_W1", "signal", "pause-e2e", []string{"pause-label"}, 20, 20, 200, 20, 1, 0, true, "")
+
+      - id: s2
+        parallel:
+          controlPlane:
+            - PauseTask(ctx, "SPB_TASK", "", "")
+
+      - id: s3
+        parallel:
+          runtime:
+            - SleepMs(ctx, 2500)
+            - StopWorker(ctx, "SPB_W1")
+
+      - id: s4
+        script: |
+          rows, err := actors.Validator.Query(ctx, "select status, attempts from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"SPB_TASK"})
+          require.NoError(t, err)
+          require.Equal(t, [][]any{{"paused", int32(0)}}, rows)
 
   - name: smoke_worker_offline
     description: offline workers removed from lagging list.

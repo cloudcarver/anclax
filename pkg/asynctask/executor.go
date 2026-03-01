@@ -19,6 +19,7 @@ type Executor struct {
 	now                       func() time.Time
 	waitForAck                func(ctx context.Context, requestID string, listenTimeout time.Duration) error
 	runtimeConfigHeartbeatTTL time.Duration
+	runtimeListenDSN          string
 }
 
 func NewExecutor(cfg *config.Config, model model.ModelInterface) taskgen.ExecutorInterface {
@@ -27,6 +28,7 @@ func NewExecutor(cfg *config.Config, model model.ModelInterface) taskgen.Executo
 		now:                       time.Now,
 		waitForAck:                newRuntimeConfigAckWaiter(runtimeListenDSNFromConfig(cfg)),
 		runtimeConfigHeartbeatTTL: runtimeConfigHeartbeatTTLFromConfig(cfg),
+		runtimeListenDSN:          runtimeListenDSNFromConfig(cfg),
 	}
 }
 

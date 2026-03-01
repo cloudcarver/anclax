@@ -142,6 +142,24 @@ func (q *Queries) NotifyWorkerRuntimeConfigAck(ctx context.Context, payload stri
 	return err
 }
 
+const notifyWorkerTaskCancel = `-- name: NotifyWorkerTaskCancel :exec
+SELECT pg_notify('anclax_worker_task_cancel', $1::text)
+`
+
+func (q *Queries) NotifyWorkerTaskCancel(ctx context.Context, payload string) error {
+	_, err := q.db.Exec(ctx, notifyWorkerTaskCancel, payload)
+	return err
+}
+
+const notifyWorkerTaskCancelAck = `-- name: NotifyWorkerTaskCancelAck :exec
+SELECT pg_notify('anclax_worker_task_cancel_ack', $1::text)
+`
+
+func (q *Queries) NotifyWorkerTaskCancelAck(ctx context.Context, payload string) error {
+	_, err := q.db.Exec(ctx, notifyWorkerTaskCancelAck, payload)
+	return err
+}
+
 const updateWorkerAppliedConfigVersion = `-- name: UpdateWorkerAppliedConfigVersion :exec
 UPDATE anclax.workers
 SET

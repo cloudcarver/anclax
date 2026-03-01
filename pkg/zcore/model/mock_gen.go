@@ -634,6 +634,34 @@ func (mr *MockModelInterfaceMockRecorder) NotifyWorkerRuntimeConfigAck(ctx, payl
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NotifyWorkerRuntimeConfigAck", reflect.TypeOf((*MockModelInterface)(nil).NotifyWorkerRuntimeConfigAck), ctx, payload)
 }
 
+// NotifyWorkerTaskCancel mocks base method.
+func (m *MockModelInterface) NotifyWorkerTaskCancel(ctx context.Context, payload string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "NotifyWorkerTaskCancel", ctx, payload)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// NotifyWorkerTaskCancel indicates an expected call of NotifyWorkerTaskCancel.
+func (mr *MockModelInterfaceMockRecorder) NotifyWorkerTaskCancel(ctx, payload any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NotifyWorkerTaskCancel", reflect.TypeOf((*MockModelInterface)(nil).NotifyWorkerTaskCancel), ctx, payload)
+}
+
+// NotifyWorkerTaskCancelAck mocks base method.
+func (m *MockModelInterface) NotifyWorkerTaskCancelAck(ctx context.Context, payload string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "NotifyWorkerTaskCancelAck", ctx, payload)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// NotifyWorkerTaskCancelAck indicates an expected call of NotifyWorkerTaskCancelAck.
+func (mr *MockModelInterfaceMockRecorder) NotifyWorkerTaskCancelAck(ctx, payload any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NotifyWorkerTaskCancelAck", reflect.TypeOf((*MockModelInterface)(nil).NotifyWorkerTaskCancelAck), ctx, payload)
+}
+
 // RefreshTaskLock mocks base method.
 func (m *MockModelInterface) RefreshTaskLock(ctx context.Context, arg querier.RefreshTaskLockParams) (int32, error) {
 	m.ctrl.T.Helper()

@@ -17,13 +17,17 @@ import (
 
 	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/app/closer"
+	"github.com/cloudcarver/anclax/pkg/asynctask"
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/globalctx"
+	"github.com/cloudcarver/anclax/pkg/taskcore/ctrl"
+	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	"github.com/cloudcarver/anclax/pkg/taskcore/workerv2"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
+	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -273,11 +277,12 @@ func (h *blockingWorkerHandler) HandleTask(ctx context.Context, spec worker.Task
 	signalOnce(h.startedCh)
 	select {
 	case <-h.releaseCh:
+		signalOnce(h.doneCh)
+		return nil
 	case <-ctx.Done():
+		signalOnce(h.doneCh)
 		return ctx.Err()
 	}
-	signalOnce(h.doneCh)
-	return nil
 }
 
 func (h *blockingWorkerHandler) RegisterTaskHandler(handler worker.TaskHandler) {}
@@ -396,6 +401,48 @@ type runtimeActor struct {
 	contention    *runtimeContentionTracker
 }
 
+type controlPlaneActor struct {
+	controlPlane *ctrl.WorkerControlPlane
+	model        model.ModelInterface
+}
+
+func newControlPlaneActor(model model.ModelInterface, store taskcore.TaskStoreInterface) *controlPlaneActor {
+	runner := taskgen.NewTaskRunner(store)
+	controlPlane := ctrl.NewWorkerControlPlane(model, runner, store)
+	return &controlPlaneActor{controlPlane: controlPlane, model: model}
+}
+
+func (a *controlPlaneActor) PauseTask(ctx context.Context, task string, notifyInterval string, listenTimeout string) error {
+	if task == "" {
+		return fmt.Errorf("task name is required")
+	}
+	taskID, err := a.taskIDByName(ctx, task)
+	if err != nil {
+		return err
+	}
+	params := &taskgen.PauseTaskParameters{TaskID: taskID}
+	if notifyInterval != "" {
+		params.NotifyInterval = &notifyInterval
+	}
+	if listenTimeout != "" {
+		params.ListenTimeout = &listenTimeout
+	}
+	requestID := fmt.Sprintf("dst-pause-%s", task)
+	params.RequestID = &requestID
+	return a.controlPlane.PauseTask(ctx, params)
+}
+
+func (a *controlPlaneActor) taskIDByName(ctx context.Context, task string) (int32, error) {
+	var id int32
+	err := a.model.RunTransactionWithTx(ctx, func(tx core.Tx, _ model.ModelInterface) error {
+		return tx.QueryRow(ctx, "select id from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", task).Scan(&id)
+	})
+	if err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
 func newRuntimeActor(m model.ModelInterface) *runtimeActor {
 	return &runtimeActor{
 		model:         m,
@@ -471,13 +518,15 @@ func (a *runtimeActor) StartWorker(
 		cfg.Worker.RuntimeConfigPollInterval = &v
 	}
 
-	handler, err := a.newHandler(name, mode, taskType)
+	baseHandler, err := a.newHandler(name, mode, taskType)
 	if err != nil {
 		return err
 	}
+	compositeHandler := taskgen.NewTaskHandler(asynctask.NewExecutor(cfg, a.model))
+	compositeHandler.RegisterTaskHandler(baseHandler)
 
 	gctx := globalctx.New()
-	workerInstance, err := workerv2.NewWorker(gctx, cfg, a.model, handler)
+	workerInstance, err := workerv2.NewWorker(gctx, cfg, a.model, compositeHandler)
 	if err != nil {
 		return err
 	}
@@ -489,7 +538,7 @@ func (a *runtimeActor) StartWorker(
 	a.workers[name] = &runtimeWorker{
 		workerID: workerID,
 		gctx:     gctx,
-		handler:  handler,
+		handler:  baseHandler,
 	}
 	a.mu.Unlock()
 

@@ -14,7 +14,7 @@ import (
 	reflect "reflect"
 
 	core "github.com/cloudcarver/anclax/core"
-	taskcore "github.com/cloudcarver/anclax/pkg/taskcore"
+	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	gomock "go.uber.org/mock/gomock"
 )
 

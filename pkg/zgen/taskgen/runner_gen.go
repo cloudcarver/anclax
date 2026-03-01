@@ -9,7 +9,7 @@ import (
 
 	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
-	"github.com/cloudcarver/anclax/pkg/taskcore"
+	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/pkg/errors"
@@ -23,6 +23,8 @@ const (
 	DeleteOpaqueKey = "deleteOpaqueKey" 
 
 	UpdateWorkerRuntimeConfig = "updateWorkerRuntimeConfig" 
+
+	PauseTask = "pauseTask" 
 
 	StressProbe = "stressProbe" 
 )
@@ -39,6 +41,11 @@ type TaskRunner interface {
 	RunUpdateWorkerRuntimeConfig(ctx context.Context, params *UpdateWorkerRuntimeConfigParameters, overrides ...taskcore.TaskOverride) (int32, error)
     // Update worker runtime config and wait for alive workers to apply it
 	RunUpdateWorkerRuntimeConfigWithTx(ctx context.Context, tx core.Tx, params *UpdateWorkerRuntimeConfigParameters, overrides ...taskcore.TaskOverride) (int32, error)
+
+    // Pause a task and cancel any in-flight execution
+	RunPauseTask(ctx context.Context, params *PauseTaskParameters, overrides ...taskcore.TaskOverride) (int32, error)
+    // Pause a task and cancel any in-flight execution
+	RunPauseTaskWithTx(ctx context.Context, tx core.Tx, params *PauseTaskParameters, overrides ...taskcore.TaskOverride) (int32, error)
 
     // No-op stress probe task for worker E2E benchmarking
 	RunStressProbe(ctx context.Context, params *StressProbeParameters, overrides ...taskcore.TaskOverride) (int32, error)
@@ -145,6 +152,49 @@ func (c *Client) runUpdateWorkerRuntimeConfig(ctx context.Context, taskstore tas
 	}
 	return taskID, nil
 }
+func (c *Client) RunPauseTask(ctx context.Context, params *PauseTaskParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runPauseTask(ctx, c.taskStore, params, overrides...)
+}
+
+func (c *Client) RunPauseTaskWithTx(ctx context.Context, tx core.Tx, params *PauseTaskParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runPauseTask(ctx, c.taskStore.WithTx(tx), params, overrides...)
+}
+
+func (c *Client) runPauseTask(ctx context.Context, taskstore taskcore.TaskStoreInterface, params *PauseTaskParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	payload, err := params.Marshal()
+	if err != nil {
+		return 0, err
+	}
+
+	spec := apigen.TaskSpec{
+		Type:    PauseTask,
+		Payload: payload,
+	}
+	attributes := apigen.TaskAttributes{}
+	attributes.Timeout = utils.Ptr("20s")
+	attributes.RetryPolicy = &apigen.TaskRetryPolicy{
+		Interval:    "2s",
+		MaxAttempts: -1,
+	}
+	
+	
+	task := &apigen.Task{
+		Attributes: attributes,
+		Spec:       spec,
+		Status:     apigen.Pending,
+	}
+	
+	for _, override := range overrides {
+		if err := override(task); err != nil {
+			return 0, errors.Wrap(err, "failed to apply task override")
+		}
+	}
+	taskID, err := taskstore.PushTask(ctx, task)
+	if err != nil {
+		return 0, err
+	}
+	return taskID, nil
+}
 func (c *Client) RunStressProbe(ctx context.Context, params *StressProbeParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 	return c.runStressProbe(ctx, c.taskStore, params, overrides...)
 }
@@ -198,6 +248,9 @@ type DeleteOpaqueKeyParameters struct {
 
 
 type UpdateWorkerRuntimeConfigParameters struct { 
+    // Maximum percentage of strict-priority slots (0-100)
+	MaxStrictPercentage *int32 `json:"maxStrictPercentage" yaml:"maxStrictPercentage"`
+
     // Default weight for unlabeled task group
 	DefaultWeight *int32 `json:"defaultWeight" yaml:"defaultWeight"`
 
@@ -215,9 +268,20 @@ type UpdateWorkerRuntimeConfigParameters struct {
 
     // Correlation ID for notify and ack messages
 	RequestID *string `json:"requestID" yaml:"requestID"`
+}
 
-    // Maximum percentage of strict-priority slots (0-100)
-	MaxStrictPercentage *int32 `json:"maxStrictPercentage" yaml:"maxStrictPercentage"`
+type PauseTaskParameters struct { 
+    // The task ID to pause and cancel
+	TaskID int32 `json:"taskID" yaml:"taskID"`
+
+    // Correlation ID for notify and ack messages
+	RequestID *string `json:"requestID" yaml:"requestID"`
+
+    // Fallback retry interval when ack listening is unavailable
+	NotifyInterval *string `json:"notifyInterval" yaml:"notifyInterval"`
+
+    // Ack listen timeout window for one iteration
+	ListenTimeout *string `json:"listenTimeout" yaml:"listenTimeout"`
 }
 
 type StressProbeParameters struct { 
@@ -245,6 +309,13 @@ func (r *UpdateWorkerRuntimeConfigParameters) Parse(spec json.RawMessage) error 
 func (r *UpdateWorkerRuntimeConfigParameters) Marshal() (json.RawMessage, error) {
 	return json.Marshal(r)
 }
+func (r *PauseTaskParameters) Parse(spec json.RawMessage) error {
+	return json.Unmarshal(spec, r)
+}
+
+func (r *PauseTaskParameters) Marshal() (json.RawMessage, error) {
+	return json.Marshal(r)
+}
 func (r *StressProbeParameters) Parse(spec json.RawMessage) error {
 	return json.Unmarshal(spec, r)
 }
@@ -262,6 +333,10 @@ type ExecutorInterface interface {
 
      // Update worker runtime config and wait for alive workers to apply it
 	ExecuteUpdateWorkerRuntimeConfig(ctx context.Context, params *UpdateWorkerRuntimeConfigParameters) error
+ 
+
+     // Pause a task and cancel any in-flight execution
+	ExecutePauseTask(ctx context.Context, params *PauseTaskParameters) error
  
 
      // No-op stress probe task for worker E2E benchmarking
@@ -310,6 +385,13 @@ func (f *TaskHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) erro
 			return fmt.Errorf("failed to parse updateWorkerRuntimeConfig parameters: %w", err)
 		}
 		return f.executor.ExecuteUpdateWorkerRuntimeConfig(ctx, &params)
+		
+	case PauseTask:
+		var params PauseTaskParameters
+		if err := params.Parse(spec.GetPayload()); err != nil {
+			return fmt.Errorf("failed to parse pauseTask parameters: %w", err)
+		}
+		return f.executor.ExecutePauseTask(ctx, &params)
 		
 	case StressProbe:
 		var params StressProbeParameters
