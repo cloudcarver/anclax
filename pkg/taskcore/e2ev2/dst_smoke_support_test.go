@@ -420,7 +420,7 @@ func (a *controlPlaneActor) PauseTask(ctx context.Context, task string, notifyIn
 	if err != nil {
 		return err
 	}
-	params := &taskgen.PauseTaskParameters{TaskID: taskID}
+	params := &taskgen.InterruptTaskParameters{TaskID: taskID}
 	if notifyInterval != "" {
 		params.NotifyInterval = &notifyInterval
 	}
@@ -430,6 +430,26 @@ func (a *controlPlaneActor) PauseTask(ctx context.Context, task string, notifyIn
 	requestID := fmt.Sprintf("dst-pause-%s", task)
 	params.RequestID = &requestID
 	return a.controlPlane.PauseTask(ctx, params)
+}
+
+func (a *controlPlaneActor) CancelTask(ctx context.Context, task string, notifyInterval string, listenTimeout string) error {
+	if task == "" {
+		return fmt.Errorf("task name is required")
+	}
+	taskID, err := a.taskIDByName(ctx, task)
+	if err != nil {
+		return err
+	}
+	params := &taskgen.InterruptTaskParameters{TaskID: taskID}
+	if notifyInterval != "" {
+		params.NotifyInterval = &notifyInterval
+	}
+	if listenTimeout != "" {
+		params.ListenTimeout = &listenTimeout
+	}
+	requestID := fmt.Sprintf("dst-cancel-%s", task)
+	params.RequestID = &requestID
+	return a.controlPlane.CancelTask(ctx, params)
 }
 
 func (a *controlPlaneActor) taskIDByName(ctx context.Context, task string) (int32, error) {

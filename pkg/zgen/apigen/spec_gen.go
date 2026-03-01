@@ -40,6 +40,7 @@ const (
 
 // Defines values for TaskStatus.
 const (
+	Cancelled TaskStatus = "cancelled"
 	Completed TaskStatus = "completed"
 	Failed    TaskStatus = "failed"
 	Paused    TaskStatus = "paused"

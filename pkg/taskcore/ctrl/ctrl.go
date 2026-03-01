@@ -34,8 +34,8 @@ func (c *WorkerControlPlane) UpdateWorkerRuntimeConfig(ctx context.Context, para
 	return nil
 }
 
-// PauseTask pauses a task and broadcasts a cancel request to workers, waiting for acknowledgements.
-func (c *WorkerControlPlane) PauseTask(ctx context.Context, params *taskgen.PauseTaskParameters, overrides ...taskcore.TaskOverride) error {
+// PauseTask pauses a task and broadcasts an interrupt request to workers, waiting for acknowledgements.
+func (c *WorkerControlPlane) PauseTask(ctx context.Context, params *taskgen.InterruptTaskParameters, overrides ...taskcore.TaskOverride) error {
 	if params == nil {
 		return errors.New("pause task params cannot be nil")
 	}
@@ -48,7 +48,7 @@ func (c *WorkerControlPlane) PauseTask(ctx context.Context, params *taskgen.Paus
 		if err := c.store.WithTx(tx).PauseTask(ctx, params.TaskID); err != nil {
 			return errors.Wrap(err, "pause task")
 		}
-		id, err := c.runner.RunPauseTaskWithTx(ctx, tx, params, overrides...)
+		id, err := c.runner.RunInterruptTaskWithTx(ctx, tx, params, overrides...)
 		if err != nil {
 			return errors.Wrap(err, "enqueue pause task cancel")
 		}
@@ -60,6 +60,35 @@ func (c *WorkerControlPlane) PauseTask(ctx context.Context, params *taskgen.Paus
 	}
 	if err := c.store.WaitForTask(ctx, cancelTaskID); err != nil {
 		return errors.Wrap(err, "wait for pause task cancel")
+	}
+	return nil
+}
+
+// CancelTask cancels a task and broadcasts an interrupt request to workers, waiting for acknowledgements.
+func (c *WorkerControlPlane) CancelTask(ctx context.Context, params *taskgen.InterruptTaskParameters, overrides ...taskcore.TaskOverride) error {
+	if params == nil {
+		return errors.New("cancel task params cannot be nil")
+	}
+	if params.TaskID <= 0 {
+		return errors.New("cancel task requires a positive taskID")
+	}
+	var interruptTaskID int32
+	err := c.model.RunTransactionWithTx(ctx, func(tx core.Tx, _ model.ModelInterface) error {
+		if err := c.store.WithTx(tx).CancelTask(ctx, params.TaskID); err != nil {
+			return errors.Wrap(err, "cancel task")
+		}
+		id, err := c.runner.RunInterruptTaskWithTx(ctx, tx, params, overrides...)
+		if err != nil {
+			return errors.Wrap(err, "enqueue interrupt task")
+		}
+		interruptTaskID = id
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if err := c.store.WaitForTask(ctx, interruptTaskID); err != nil {
+		return errors.Wrap(err, "wait for interrupt task")
 	}
 	return nil
 }

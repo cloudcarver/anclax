@@ -21,6 +21,12 @@ var (
 
 	// The task execution was paused by control plane
 	ErrTaskPaused = errors.New("task paused")
+
+	// The task execution was cancelled by control plane
+	ErrTaskCancelled = errors.New("task cancelled")
+
+	// The task execution was interrupted by control plane
+	ErrTaskInterrupted = errors.New("task interrupted")
 )
 
 type TaskOverride = func(task *apigen.Task) error
@@ -31,6 +37,8 @@ type TaskStoreInterface interface {
 	UpdateCronJob(ctx context.Context, taskID int32, cronExpression string, spec json.RawMessage) error
 
 	PauseTask(ctx context.Context, taskID int32) error
+
+	CancelTask(ctx context.Context, taskID int32) error
 
 	ResumeTask(ctx context.Context, taskID int32) error
 

@@ -148,6 +148,18 @@ func (s *TaskStore) PauseTask(ctx context.Context, taskID int32) error {
 	return nil
 }
 
+// CancelTask marks a task as cancelled so workers stop executing it.
+// It updates the task status to Cancelled in storage.
+func (s *TaskStore) CancelTask(ctx context.Context, taskID int32) error {
+	if err := s.model.UpdateTaskStatus(ctx, querier.UpdateTaskStatusParams{
+		ID:     taskID,
+		Status: string(apigen.Cancelled),
+	}); err != nil {
+		return errors.Wrapf(err, "failed to cancel task")
+	}
+	return nil
+}
+
 // ResumeTask marks a paused task as pending to make it eligible for execution again.
 // It updates the task status to Pending in storage.
 func (s *TaskStore) ResumeTask(ctx context.Context, taskID int32) error {

@@ -43,6 +43,20 @@ func (m *MockTaskStoreInterface) EXPECT() *MockTaskStoreInterfaceMockRecorder {
 	return m.recorder
 }
 
+// CancelTask mocks base method.
+func (m *MockTaskStoreInterface) CancelTask(ctx context.Context, taskID int32) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CancelTask", ctx, taskID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CancelTask indicates an expected call of CancelTask.
+func (mr *MockTaskStoreInterfaceMockRecorder) CancelTask(ctx, taskID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CancelTask", reflect.TypeOf((*MockTaskStoreInterface)(nil).CancelTask), ctx, taskID)
+}
+
 // GetLastTaskErrorEvent mocks base method.
 func (m *MockTaskStoreInterface) GetLastTaskErrorEvent(ctx context.Context, taskID int32) (*apigen.Event, error) {
 	m.ctrl.T.Helper()

@@ -11,6 +11,7 @@ import (
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/globalctx"
 	"github.com/cloudcarver/anclax/pkg/logger"
+	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/google/uuid"
@@ -22,7 +23,7 @@ var log = logger.NewLogAgent("workerv2")
 
 const (
 	runtimeConfigChannel = "anclax_worker_runtime_config"
-	taskCancelChannel    = "anclax_worker_task_cancel"
+	taskInterruptChannel = "anclax_worker_task_interrupt"
 )
 
 type runtimeConfigNotification struct {
@@ -32,7 +33,7 @@ type runtimeConfigNotification struct {
 	} `json:"params"`
 }
 
-type taskCancelNotification struct {
+type taskInterruptNotification struct {
 	Op     string `json:"op"`
 	Params struct {
 		RequestID string `json:"request_id"`
@@ -147,7 +148,7 @@ func (w *Worker) Start() {
 		readyCancel := make(chan struct{})
 		errCh := make(chan error, 2)
 		go w.runtimeConfigListenLoop(ctx, readyConfig, errCh)
-		go w.taskCancelListenLoop(ctx, readyCancel, errCh)
+		go w.taskInterruptListenLoop(ctx, readyCancel, errCh)
 		if err := waitForListenReady(ctx, errCh, readyConfig, readyCancel); err != nil {
 			log.Error("worker listen setup failed", zap.Error(err))
 			w.globalCtx.Cancel()
@@ -269,21 +270,21 @@ func parseRuntimeConfigNotificationPayload(payload string) (requestID string, sh
 	return notification.Params.RequestID, true, nil
 }
 
-func (w *Worker) taskCancelListenLoop(ctx context.Context, ready chan<- struct{}, errCh chan<- error) {
-	if err := w.listenTaskCancelUpdates(ctx, ready); err != nil && ctx.Err() == nil {
+func (w *Worker) taskInterruptListenLoop(ctx context.Context, ready chan<- struct{}, errCh chan<- error) {
+	if err := w.listenTaskInterruptUpdates(ctx, ready); err != nil && ctx.Err() == nil {
 		errCh <- err
 	}
 }
 
-func (w *Worker) listenTaskCancelUpdates(ctx context.Context, ready chan<- struct{}) error {
+func (w *Worker) listenTaskInterruptUpdates(ctx context.Context, ready chan<- struct{}) error {
 	conn, err := pgx.Connect(ctx, w.runtimeListenDSN)
 	if err != nil {
-		return fmt.Errorf("connect task cancel listener: %w", err)
+		return fmt.Errorf("connect task interrupt listener: %w", err)
 	}
 	defer conn.Close(context.Background())
 
-	if _, err := conn.Exec(ctx, fmt.Sprintf("LISTEN %s", taskCancelChannel)); err != nil {
-		return fmt.Errorf("listen task cancel channel: %w", err)
+	if _, err := conn.Exec(ctx, fmt.Sprintf("LISTEN %s", taskInterruptChannel)); err != nil {
+		return fmt.Errorf("listen task interrupt channel: %w", err)
 	}
 	signalListenReady(ready)
 
@@ -298,29 +299,29 @@ func (w *Worker) listenTaskCancelUpdates(ctx context.Context, ready chan<- struc
 			if errors.Is(err, context.Canceled) && ctx.Err() != nil {
 				return nil
 			}
-			return fmt.Errorf("wait for task cancel notification: %w", err)
+			return fmt.Errorf("wait for task interrupt notification: %w", err)
 		}
-		requestID, taskID, shouldProcess, err := parseTaskCancelNotificationPayload(notification.Payload)
+		requestID, taskID, shouldProcess, err := parseTaskInterruptNotificationPayload(notification.Payload)
 		if err != nil {
-			log.Error("failed to parse task cancel notification", zap.Error(err), zap.String("payload", notification.Payload))
+			log.Error("failed to parse task interrupt notification", zap.Error(err), zap.String("payload", notification.Payload))
 			continue
 		}
 		if !shouldProcess {
 			continue
 		}
-		w.port.CancelTask(taskID)
-		if err := w.port.AckTaskCancelApplied(ctx, requestID); err != nil {
-			log.Error("failed to ack task cancel", zap.Error(err))
+		w.port.InterruptTask(taskID, taskcore.ErrTaskInterrupted)
+		if err := w.port.AckTaskInterruptApplied(ctx, requestID); err != nil {
+			log.Error("failed to ack task interrupt", zap.Error(err))
 		}
 	}
 }
 
-func parseTaskCancelNotificationPayload(payload string) (string, int32, bool, error) {
-	var notification taskCancelNotification
+func parseTaskInterruptNotificationPayload(payload string) (string, int32, bool, error) {
+	var notification taskInterruptNotification
 	if err := json.Unmarshal([]byte(payload), &notification); err != nil {
-		return "", 0, false, fmt.Errorf("unmarshal task cancel notification: %w", err)
+		return "", 0, false, fmt.Errorf("unmarshal task interrupt notification: %w", err)
 	}
-	if notification.Op != "" && notification.Op != "cancel_task" {
+	if notification.Op != "" && notification.Op != "interrupt_task" {
 		return "", 0, false, nil
 	}
 	return notification.Params.RequestID, notification.Params.TaskID, true, nil

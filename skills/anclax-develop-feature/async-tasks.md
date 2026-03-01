@@ -103,6 +103,28 @@ err := model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface
 })
 ```
 
+## Pause tasks (workerv2)
+
+Use the worker control plane to pause a task and stop any in-flight execution (workerv2 only). The pause flow:
+- Marks the task as `paused` in storage.
+- Enqueues an `interruptTask` async task that broadcasts an interrupt signal to all online workers.
+- Waits for LISTEN/NOTIFY acks from each online worker before returning.
+
+Important:
+- This relies on workers listening on Postgres `LISTEN` channels. Workers are marked online only after LISTEN setup succeeds, and they exit if the LISTEN loop dies.
+- Ensure workers are configured with a DB DSN so LISTEN is available.
+
+Example:
+```go
+params := &taskgen.InterruptTaskParameters{TaskID: taskID}
+if err := controlPlane.PauseTask(ctx, params); err != nil {
+    return err
+}
+```
+
+The pause operation is transactional: `PauseTask` uses a DB transaction to pause the task and enqueue the interrupt task together.
+To cancel a task instead, call `CancelTask`, which marks the task `cancelled` and enqueues the interrupt task.
+
 ## Runtime overrides
 
 Use `taskcore.TaskOverride` helpers:

@@ -231,7 +231,7 @@ components:
           $ref: "#/components/schemas/TaskSpec"
         status:
           type: string
-          enum: ["pending", "completed", "failed", "paused"]
+          enum: ["pending", "completed", "failed", "paused", "cancelled"]
         uniqueTag:
           type: string
           description: Unique tag of the task

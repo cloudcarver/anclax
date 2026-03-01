@@ -142,21 +142,21 @@ func (q *Queries) NotifyWorkerRuntimeConfigAck(ctx context.Context, payload stri
 	return err
 }
 
-const notifyWorkerTaskCancel = `-- name: NotifyWorkerTaskCancel :exec
-SELECT pg_notify('anclax_worker_task_cancel', $1::text)
+const notifyWorkerTaskInterrupt = `-- name: NotifyWorkerTaskInterrupt :exec
+SELECT pg_notify('anclax_worker_task_interrupt', $1::text)
 `
 
-func (q *Queries) NotifyWorkerTaskCancel(ctx context.Context, payload string) error {
-	_, err := q.db.Exec(ctx, notifyWorkerTaskCancel, payload)
+func (q *Queries) NotifyWorkerTaskInterrupt(ctx context.Context, payload string) error {
+	_, err := q.db.Exec(ctx, notifyWorkerTaskInterrupt, payload)
 	return err
 }
 
-const notifyWorkerTaskCancelAck = `-- name: NotifyWorkerTaskCancelAck :exec
-SELECT pg_notify('anclax_worker_task_cancel_ack', $1::text)
+const notifyWorkerTaskInterruptAck = `-- name: NotifyWorkerTaskInterruptAck :exec
+SELECT pg_notify('anclax_worker_task_interrupt_ack', $1::text)
 `
 
-func (q *Queries) NotifyWorkerTaskCancelAck(ctx context.Context, payload string) error {
-	_, err := q.db.Exec(ctx, notifyWorkerTaskCancelAck, payload)
+func (q *Queries) NotifyWorkerTaskInterruptAck(ctx context.Context, payload string) error {
+	_, err := q.db.Exec(ctx, notifyWorkerTaskInterruptAck, payload)
 	return err
 }
 

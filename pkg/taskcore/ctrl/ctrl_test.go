@@ -41,7 +41,7 @@ func TestPauseTaskUsesTransactionAndWaitsForCancel(t *testing.T) {
 	defer ctrl.Finish()
 
 	ctx := context.Background()
-	params := &taskgen.PauseTaskParameters{TaskID: 42}
+	params := &taskgen.InterruptTaskParameters{TaskID: 42}
 
 	mockModel := model.NewMockModelInterface(ctrl)
 	mockStore := store.NewMockTaskStoreInterface(ctrl)
@@ -57,10 +57,39 @@ func TestPauseTaskUsesTransactionAndWaitsForCancel(t *testing.T) {
 	)
 	mockStore.EXPECT().WithTx(fake).Return(mockStoreTx)
 	mockStoreTx.EXPECT().PauseTask(ctx, params.TaskID).Return(nil)
-	mockRunner.EXPECT().RunPauseTaskWithTx(ctx, fake, params).Return(cancelTaskID, nil)
+	mockRunner.EXPECT().RunInterruptTaskWithTx(ctx, fake, params).Return(cancelTaskID, nil)
 	mockStore.EXPECT().WaitForTask(ctx, cancelTaskID).Return(nil)
 
 	cp := NewWorkerControlPlane(mockModel, mockRunner, mockStore)
 	err := cp.PauseTask(ctx, params)
+	require.NoError(t, err)
+}
+
+func TestCancelTaskUsesTransactionAndWaitsForInterrupt(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	params := &taskgen.InterruptTaskParameters{TaskID: 77}
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockStore := store.NewMockTaskStoreInterface(ctrl)
+	mockStoreTx := store.NewMockTaskStoreInterface(ctrl)
+	mockRunner := taskgen.NewMockTaskRunner(ctrl)
+	fake := &fakeTx{}
+	interruptTaskID := int32(101)
+
+	mockModel.EXPECT().RunTransactionWithTx(ctx, gomock.Any()).DoAndReturn(
+		func(ctx context.Context, fn func(core.Tx, model.ModelInterface) error) error {
+			return fn(fake, mockModel)
+		},
+	)
+	mockStore.EXPECT().WithTx(fake).Return(mockStoreTx)
+	mockStoreTx.EXPECT().CancelTask(ctx, params.TaskID).Return(nil)
+	mockRunner.EXPECT().RunInterruptTaskWithTx(ctx, fake, params).Return(interruptTaskID, nil)
+	mockStore.EXPECT().WaitForTask(ctx, interruptTaskID).Return(nil)
+
+	cp := NewWorkerControlPlane(mockModel, mockRunner, mockStore)
+	err := cp.CancelTask(ctx, params)
 	require.NoError(t, err)
 }

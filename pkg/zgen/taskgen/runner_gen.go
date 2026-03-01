@@ -24,7 +24,7 @@ const (
 
 	UpdateWorkerRuntimeConfig = "updateWorkerRuntimeConfig" 
 
-	PauseTask = "pauseTask" 
+	InterruptTask = "interruptTask" 
 
 	StressProbe = "stressProbe" 
 )
@@ -42,10 +42,10 @@ type TaskRunner interface {
     // Update worker runtime config and wait for alive workers to apply it
 	RunUpdateWorkerRuntimeConfigWithTx(ctx context.Context, tx core.Tx, params *UpdateWorkerRuntimeConfigParameters, overrides ...taskcore.TaskOverride) (int32, error)
 
-    // Pause a task and cancel any in-flight execution
-	RunPauseTask(ctx context.Context, params *PauseTaskParameters, overrides ...taskcore.TaskOverride) (int32, error)
-    // Pause a task and cancel any in-flight execution
-	RunPauseTaskWithTx(ctx context.Context, tx core.Tx, params *PauseTaskParameters, overrides ...taskcore.TaskOverride) (int32, error)
+    // Interrupt a task and stop any in-flight execution
+	RunInterruptTask(ctx context.Context, params *InterruptTaskParameters, overrides ...taskcore.TaskOverride) (int32, error)
+    // Interrupt a task and stop any in-flight execution
+	RunInterruptTaskWithTx(ctx context.Context, tx core.Tx, params *InterruptTaskParameters, overrides ...taskcore.TaskOverride) (int32, error)
 
     // No-op stress probe task for worker E2E benchmarking
 	RunStressProbe(ctx context.Context, params *StressProbeParameters, overrides ...taskcore.TaskOverride) (int32, error)
@@ -152,22 +152,22 @@ func (c *Client) runUpdateWorkerRuntimeConfig(ctx context.Context, taskstore tas
 	}
 	return taskID, nil
 }
-func (c *Client) RunPauseTask(ctx context.Context, params *PauseTaskParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	return c.runPauseTask(ctx, c.taskStore, params, overrides...)
+func (c *Client) RunInterruptTask(ctx context.Context, params *InterruptTaskParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runInterruptTask(ctx, c.taskStore, params, overrides...)
 }
 
-func (c *Client) RunPauseTaskWithTx(ctx context.Context, tx core.Tx, params *PauseTaskParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	return c.runPauseTask(ctx, c.taskStore.WithTx(tx), params, overrides...)
+func (c *Client) RunInterruptTaskWithTx(ctx context.Context, tx core.Tx, params *InterruptTaskParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runInterruptTask(ctx, c.taskStore.WithTx(tx), params, overrides...)
 }
 
-func (c *Client) runPauseTask(ctx context.Context, taskstore taskcore.TaskStoreInterface, params *PauseTaskParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+func (c *Client) runInterruptTask(ctx context.Context, taskstore taskcore.TaskStoreInterface, params *InterruptTaskParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 	payload, err := params.Marshal()
 	if err != nil {
 		return 0, err
 	}
 
 	spec := apigen.TaskSpec{
-		Type:    PauseTask,
+		Type:    InterruptTask,
 		Payload: payload,
 	}
 	attributes := apigen.TaskAttributes{}
@@ -248,6 +248,9 @@ type DeleteOpaqueKeyParameters struct {
 
 
 type UpdateWorkerRuntimeConfigParameters struct { 
+    // Correlation ID for notify and ack messages
+	RequestID *string `json:"requestID" yaml:"requestID"`
+
     // Maximum percentage of strict-priority slots (0-100)
 	MaxStrictPercentage *int32 `json:"maxStrictPercentage" yaml:"maxStrictPercentage"`
 
@@ -265,13 +268,13 @@ type UpdateWorkerRuntimeConfigParameters struct {
 
     // Ack listen timeout window for one iteration
 	ListenTimeout *string `json:"listenTimeout" yaml:"listenTimeout"`
-
-    // Correlation ID for notify and ack messages
-	RequestID *string `json:"requestID" yaml:"requestID"`
 }
 
-type PauseTaskParameters struct { 
-    // The task ID to pause and cancel
+type InterruptTaskParameters struct { 
+    // Ack listen timeout window for one iteration
+	ListenTimeout *string `json:"listenTimeout" yaml:"listenTimeout"`
+
+    // The task ID to interrupt
 	TaskID int32 `json:"taskID" yaml:"taskID"`
 
     // Correlation ID for notify and ack messages
@@ -279,20 +282,17 @@ type PauseTaskParameters struct {
 
     // Fallback retry interval when ack listening is unavailable
 	NotifyInterval *string `json:"notifyInterval" yaml:"notifyInterval"`
-
-    // Ack listen timeout window for one iteration
-	ListenTimeout *string `json:"listenTimeout" yaml:"listenTimeout"`
 }
 
 type StressProbeParameters struct { 
+    // Logical group name for test-side metrics and labels
+	Group string `json:"group" yaml:"group"`
+
     // Logical task id for stress-run metrics correlation
 	JobID int64 `json:"jobID" yaml:"jobID"`
 
     // Simulated task execution time in milliseconds
 	SleepMs int32 `json:"sleepMs" yaml:"sleepMs"`
-
-    // Logical group name for test-side metrics and labels
-	Group string `json:"group" yaml:"group"`
 }
 
 func (r *DeleteOpaqueKeyParameters) Parse(spec json.RawMessage) error {
@@ -309,11 +309,11 @@ func (r *UpdateWorkerRuntimeConfigParameters) Parse(spec json.RawMessage) error 
 func (r *UpdateWorkerRuntimeConfigParameters) Marshal() (json.RawMessage, error) {
 	return json.Marshal(r)
 }
-func (r *PauseTaskParameters) Parse(spec json.RawMessage) error {
+func (r *InterruptTaskParameters) Parse(spec json.RawMessage) error {
 	return json.Unmarshal(spec, r)
 }
 
-func (r *PauseTaskParameters) Marshal() (json.RawMessage, error) {
+func (r *InterruptTaskParameters) Marshal() (json.RawMessage, error) {
 	return json.Marshal(r)
 }
 func (r *StressProbeParameters) Parse(spec json.RawMessage) error {
@@ -335,8 +335,8 @@ type ExecutorInterface interface {
 	ExecuteUpdateWorkerRuntimeConfig(ctx context.Context, params *UpdateWorkerRuntimeConfigParameters) error
  
 
-     // Pause a task and cancel any in-flight execution
-	ExecutePauseTask(ctx context.Context, params *PauseTaskParameters) error
+     // Interrupt a task and stop any in-flight execution
+	ExecuteInterruptTask(ctx context.Context, params *InterruptTaskParameters) error
  
 
      // No-op stress probe task for worker E2E benchmarking
@@ -386,12 +386,12 @@ func (f *TaskHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) erro
 		}
 		return f.executor.ExecuteUpdateWorkerRuntimeConfig(ctx, &params)
 		
-	case PauseTask:
-		var params PauseTaskParameters
+	case InterruptTask:
+		var params InterruptTaskParameters
 		if err := params.Parse(spec.GetPayload()); err != nil {
-			return fmt.Errorf("failed to parse pauseTask parameters: %w", err)
+			return fmt.Errorf("failed to parse interruptTask parameters: %w", err)
 		}
-		return f.executor.ExecutePauseTask(ctx, &params)
+		return f.executor.ExecuteInterruptTask(ctx, &params)
 		
 	case StressProbe:
 		var params StressProbeParameters

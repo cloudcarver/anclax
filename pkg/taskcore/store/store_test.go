@@ -227,6 +227,29 @@ func TestPauseCronJob(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestCancelTask(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	var (
+		ctx    = context.Background()
+		taskID = int32(1)
+	)
+
+	mockModel := model.NewMockModelInterface(ctrl)
+
+	mockModel.EXPECT().UpdateTaskStatus(ctx, querier.UpdateTaskStatusParams{
+		ID:     taskID,
+		Status: string(apigen.Cancelled),
+	}).Return(nil)
+
+	taskStore := &TaskStore{
+		model: mockModel,
+	}
+	err := taskStore.CancelTask(ctx, taskID)
+	require.NoError(t, err)
+}
+
 func TestResumeCronJob(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

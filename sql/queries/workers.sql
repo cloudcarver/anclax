@@ -64,8 +64,8 @@ SELECT pg_notify('anclax_worker_runtime_config', sqlc.arg(payload)::text);
 -- name: NotifyWorkerRuntimeConfigAck :exec
 SELECT pg_notify('anclax_worker_runtime_config_ack', sqlc.arg(payload)::text);
 
--- name: NotifyWorkerTaskCancel :exec
-SELECT pg_notify('anclax_worker_task_cancel', sqlc.arg(payload)::text);
+-- name: NotifyWorkerTaskInterrupt :exec
+SELECT pg_notify('anclax_worker_task_interrupt', sqlc.arg(payload)::text);
 
--- name: NotifyWorkerTaskCancelAck :exec
-SELECT pg_notify('anclax_worker_task_cancel_ack', sqlc.arg(payload)::text);
+-- name: NotifyWorkerTaskInterruptAck :exec
+SELECT pg_notify('anclax_worker_task_interrupt_ack', sqlc.arg(payload)::text);

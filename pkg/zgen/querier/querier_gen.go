@@ -52,8 +52,8 @@ type Querier interface {
 	MarkWorkerOffline(ctx context.Context, id uuid.UUID) error
 	NotifyWorkerRuntimeConfig(ctx context.Context, payload string) error
 	NotifyWorkerRuntimeConfigAck(ctx context.Context, payload string) error
-	NotifyWorkerTaskCancel(ctx context.Context, payload string) error
-	NotifyWorkerTaskCancelAck(ctx context.Context, payload string) error
+	NotifyWorkerTaskInterrupt(ctx context.Context, payload string) error
+	NotifyWorkerTaskInterruptAck(ctx context.Context, payload string) error
 	RefreshTaskLock(ctx context.Context, arg RefreshTaskLockParams) (int32, error)
 	ReleaseTaskLockByWorker(ctx context.Context, arg ReleaseTaskLockByWorkerParams) (int32, error)
 	RestoreUserByName(ctx context.Context, name string) error

@@ -14,11 +14,11 @@ import (
 	"github.com/pkg/errors"
 )
 
-const taskCancelAckChannel = "anclax_worker_task_cancel_ack"
+const taskInterruptAckChannel = "anclax_worker_task_interrupt_ack"
 
-const taskCancelOp = "cancel_task"
+const taskInterruptOp = "interrupt_task"
 
-type taskCancelNotification struct {
+type taskInterruptNotification struct {
 	Op     string `json:"op"`
 	Params struct {
 		RequestID string `json:"request_id"`
@@ -26,7 +26,7 @@ type taskCancelNotification struct {
 	} `json:"params"`
 }
 
-type taskCancelAckNotification struct {
+type taskInterruptAckNotification struct {
 	Op     string `json:"op"`
 	Params struct {
 		RequestID string `json:"request_id"`
@@ -34,9 +34,9 @@ type taskCancelAckNotification struct {
 	} `json:"params"`
 }
 
-func (e *Executor) ExecutePauseTask(ctx context.Context, params *taskgen.PauseTaskParameters) error {
+func (e *Executor) ExecuteInterruptTask(ctx context.Context, params *taskgen.InterruptTaskParameters) error {
 	if params == nil {
-		return errors.Wrap(taskcore.ErrFatalTask, "pause task params cannot be nil")
+		return errors.Wrap(taskcore.ErrFatalTask, "interrupt task params cannot be nil")
 	}
 	if params.TaskID <= 0 {
 		return errors.Wrap(taskcore.ErrFatalTask, "taskID must be positive")
@@ -48,14 +48,13 @@ func (e *Executor) ExecutePauseTask(ctx context.Context, params *taskgen.PauseTa
 	} else {
 		requestID = uuid.NewString()
 	}
-
-	notifyInterval, listenTimeout, err := parseTaskCancelDurations(params)
+	notifyInterval, listenTimeout, err := parseTaskInterruptDurations(params)
 	if err != nil {
 		return errors.Wrap(taskcore.ErrFatalTask, err.Error())
 	}
 
-	notifyRaw, err := json.Marshal(taskCancelNotification{
-		Op: taskCancelOp,
+	notifyRaw, err := json.Marshal(taskInterruptNotification{
+		Op: taskInterruptOp,
 		Params: struct {
 			RequestID string `json:"request_id"`
 			TaskID    int32  `json:"task_id"`
@@ -65,11 +64,11 @@ func (e *Executor) ExecutePauseTask(ctx context.Context, params *taskgen.PauseTa
 		},
 	})
 	if err != nil {
-		return errors.Wrap(err, "marshal task cancel notification payload")
+		return errors.Wrap(err, "marshal task interrupt notification payload")
 	}
 
 	if e.runtimeListenDSN == "" {
-		return errors.New("task cancel requires pg dsn for LISTEN ack")
+		return errors.New("task interrupt requires pg dsn for LISTEN ack")
 	}
 
 	heartbeatTTL := e.runtimeConfigHeartbeatTTL
@@ -90,12 +89,12 @@ func (e *Executor) ExecutePauseTask(ctx context.Context, params *taskgen.PauseTa
 			return nil
 		}
 
-		if err := e.model.NotifyWorkerTaskCancel(ctx, string(notifyRaw)); err != nil {
-			return errors.Wrap(err, "notify worker task cancel")
+		if err := e.model.NotifyWorkerTaskInterrupt(ctx, string(notifyRaw)); err != nil {
+			return errors.Wrap(err, "notify worker task interrupt")
 		}
 
-		if err := waitForTaskCancelAcks(ctx, e.runtimeListenDSN, requestID, acked, listenTimeout); err != nil {
-			return errors.Wrap(err, "wait for task cancel ack")
+		if err := waitForTaskInterruptAcks(ctx, e.runtimeListenDSN, requestID, acked, listenTimeout); err != nil {
+			return errors.Wrap(err, "wait for task interrupt ack")
 		}
 		if allWorkersAcked(online, acked) {
 			return nil
@@ -118,14 +117,14 @@ func allWorkersAcked(workers []uuid.UUID, acked map[uuid.UUID]struct{}) bool {
 	return true
 }
 
-func waitForTaskCancelAcks(ctx context.Context, dsn string, requestID string, acked map[uuid.UUID]struct{}, listenTimeout time.Duration) error {
+func waitForTaskInterruptAcks(ctx context.Context, dsn string, requestID string, acked map[uuid.UUID]struct{}, listenTimeout time.Duration) error {
 	conn, err := pgx.Connect(ctx, dsn)
 	if err != nil {
 		return err
 	}
 	defer conn.Close(context.Background())
 
-	if _, err := conn.Exec(ctx, fmt.Sprintf("LISTEN %s", taskCancelAckChannel)); err != nil {
+	if _, err := conn.Exec(ctx, fmt.Sprintf("LISTEN %s", taskInterruptAckChannel)); err != nil {
 		return err
 	}
 
@@ -142,18 +141,18 @@ func waitForTaskCancelAcks(ctx context.Context, dsn string, requestID string, ac
 			}
 			return err
 		}
-		workerID, ok := taskCancelAckWorker(notification.Payload, requestID)
+		workerID, ok := taskInterruptAckWorker(notification.Payload, requestID)
 		if ok {
 			acked[workerID] = struct{}{}
 		}
 	}
 }
 
-func taskCancelAckWorker(payload string, requestID string) (uuid.UUID, bool) {
+func taskInterruptAckWorker(payload string, requestID string) (uuid.UUID, bool) {
 	if requestID == "" {
 		return uuid.Nil, false
 	}
-	var ack taskCancelAckNotification
+	var ack taskInterruptAckNotification
 	if err := json.Unmarshal([]byte(payload), &ack); err != nil {
 		return uuid.Nil, false
 	}
@@ -170,7 +169,7 @@ func taskCancelAckWorker(payload string, requestID string) (uuid.UUID, bool) {
 	return workerID, true
 }
 
-func parseTaskCancelDurations(params *taskgen.PauseTaskParameters) (notifyInterval time.Duration, listenTimeout time.Duration, retErr error) {
+func parseTaskInterruptDurations(params *taskgen.InterruptTaskParameters) (notifyInterval time.Duration, listenTimeout time.Duration, retErr error) {
 	notifyInterval = time.Second
 	listenTimeout = 2 * time.Second
 

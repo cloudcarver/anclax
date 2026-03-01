@@ -82,44 +82,44 @@ func (mr *MockTaskRunnerMockRecorder) RunDeleteOpaqueKeyWithTx(ctx, tx, params a
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunDeleteOpaqueKeyWithTx", reflect.TypeOf((*MockTaskRunner)(nil).RunDeleteOpaqueKeyWithTx), varargs...)
 }
 
-// RunPauseTask mocks base method.
-func (m *MockTaskRunner) RunPauseTask(ctx context.Context, params *PauseTaskParameters, overrides ...store.TaskOverride) (int32, error) {
+// RunInterruptTask mocks base method.
+func (m *MockTaskRunner) RunInterruptTask(ctx context.Context, params *InterruptTaskParameters, overrides ...store.TaskOverride) (int32, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, params}
 	for _, a := range overrides {
 		varargs = append(varargs, a)
 	}
-	ret := m.ctrl.Call(m, "RunPauseTask", varargs...)
+	ret := m.ctrl.Call(m, "RunInterruptTask", varargs...)
 	ret0, _ := ret[0].(int32)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// RunPauseTask indicates an expected call of RunPauseTask.
-func (mr *MockTaskRunnerMockRecorder) RunPauseTask(ctx, params any, overrides ...any) *gomock.Call {
+// RunInterruptTask indicates an expected call of RunInterruptTask.
+func (mr *MockTaskRunnerMockRecorder) RunInterruptTask(ctx, params any, overrides ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]any{ctx, params}, overrides...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunPauseTask", reflect.TypeOf((*MockTaskRunner)(nil).RunPauseTask), varargs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunInterruptTask", reflect.TypeOf((*MockTaskRunner)(nil).RunInterruptTask), varargs...)
 }
 
-// RunPauseTaskWithTx mocks base method.
-func (m *MockTaskRunner) RunPauseTaskWithTx(ctx context.Context, tx core.Tx, params *PauseTaskParameters, overrides ...store.TaskOverride) (int32, error) {
+// RunInterruptTaskWithTx mocks base method.
+func (m *MockTaskRunner) RunInterruptTaskWithTx(ctx context.Context, tx core.Tx, params *InterruptTaskParameters, overrides ...store.TaskOverride) (int32, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, tx, params}
 	for _, a := range overrides {
 		varargs = append(varargs, a)
 	}
-	ret := m.ctrl.Call(m, "RunPauseTaskWithTx", varargs...)
+	ret := m.ctrl.Call(m, "RunInterruptTaskWithTx", varargs...)
 	ret0, _ := ret[0].(int32)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// RunPauseTaskWithTx indicates an expected call of RunPauseTaskWithTx.
-func (mr *MockTaskRunnerMockRecorder) RunPauseTaskWithTx(ctx, tx, params any, overrides ...any) *gomock.Call {
+// RunInterruptTaskWithTx indicates an expected call of RunInterruptTaskWithTx.
+func (mr *MockTaskRunnerMockRecorder) RunInterruptTaskWithTx(ctx, tx, params any, overrides ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]any{ctx, tx, params}, overrides...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunPauseTaskWithTx", reflect.TypeOf((*MockTaskRunner)(nil).RunPauseTaskWithTx), varargs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunInterruptTaskWithTx", reflect.TypeOf((*MockTaskRunner)(nil).RunInterruptTaskWithTx), varargs...)
 }
 
 // RunStressProbe mocks base method.
@@ -240,18 +240,18 @@ func (mr *MockExecutorInterfaceMockRecorder) ExecuteDeleteOpaqueKey(ctx, params 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteDeleteOpaqueKey", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteDeleteOpaqueKey), ctx, params)
 }
 
-// ExecutePauseTask mocks base method.
-func (m *MockExecutorInterface) ExecutePauseTask(ctx context.Context, params *PauseTaskParameters) error {
+// ExecuteInterruptTask mocks base method.
+func (m *MockExecutorInterface) ExecuteInterruptTask(ctx context.Context, params *InterruptTaskParameters) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ExecutePauseTask", ctx, params)
+	ret := m.ctrl.Call(m, "ExecuteInterruptTask", ctx, params)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// ExecutePauseTask indicates an expected call of ExecutePauseTask.
-func (mr *MockExecutorInterfaceMockRecorder) ExecutePauseTask(ctx, params any) *gomock.Call {
+// ExecuteInterruptTask indicates an expected call of ExecuteInterruptTask.
+func (mr *MockExecutorInterfaceMockRecorder) ExecuteInterruptTask(ctx, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecutePauseTask", reflect.TypeOf((*MockExecutorInterface)(nil).ExecutePauseTask), ctx, params)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteInterruptTask", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteInterruptTask), ctx, params)
 }
 
 // ExecuteStressProbe mocks base method.

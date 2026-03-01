@@ -30,7 +30,7 @@ type runtimeConfigAckNotification struct {
 	} `json:"params"`
 }
 
-type taskCancelAckNotification struct {
+type taskInterruptAckNotification struct {
 	Op     string `json:"op"`
 	Params struct {
 		RequestID string `json:"request_id"`
@@ -58,8 +58,8 @@ type ModelPort struct {
 	taskHandler         TaskHandler
 	now                 func() time.Time
 
-	cancelMu    sync.Mutex
-	cancelTasks map[int32]context.CancelCauseFunc
+	interruptMu    sync.Mutex
+	interruptTasks map[int32]context.CancelCauseFunc
 }
 
 func NewModelPort(
@@ -86,7 +86,7 @@ func NewModelPort(
 		lifeCycleHandler:    legacyworker.NewTaskLifeCycleHandler(m, taskHandler, workerID),
 		taskHandler:         taskHandler,
 		now:                 time.Now,
-		cancelTasks:         make(map[int32]context.CancelCauseFunc),
+		interruptTasks:      make(map[int32]context.CancelCauseFunc),
 	}, nil
 }
 
@@ -198,9 +198,9 @@ func (p *ModelPort) ClaimByID(ctx context.Context, taskID int32, req ClaimReques
 
 func (p *ModelPort) ExecuteTask(ctx context.Context, task Task) error {
 	baseCtx, baseCancel := context.WithCancelCause(ctx)
-	p.registerTaskCancel(task.ID, baseCancel)
+	p.registerTaskInterrupt(task.ID, baseCancel)
 	defer func() {
-		p.unregisterTaskCancel(task.ID)
+		p.unregisterTaskInterrupt(task.ID)
 		baseCancel(nil)
 	}()
 
@@ -217,8 +217,8 @@ func (p *ModelPort) ExecuteTask(ctx context.Context, task Task) error {
 	if err := p.model.RunTransactionWithTx(execCtx, func(tx core.Tx, txm model.ModelInterface) error {
 		return p.lifeCycleHandler.HandleAttributes(execCtx, tx, apiTask)
 	}); err != nil {
-		if errors.Is(context.Cause(execCtx), taskcore.ErrTaskPaused) {
-			return taskcore.ErrTaskPaused
+		if interruptErr := p.taskInterruptCause(execCtx); interruptErr != nil {
+			return interruptErr
 		}
 		if errors.Is(err, taskcore.ErrTaskLockLost) {
 			return errSkipFinalize
@@ -227,17 +227,17 @@ func (p *ModelPort) ExecuteTask(ctx context.Context, task Task) error {
 	}
 
 	if p.taskHandler == nil {
-		if errors.Is(context.Cause(execCtx), taskcore.ErrTaskPaused) {
-			return taskcore.ErrTaskPaused
+		if err := p.taskInterruptCause(execCtx); err != nil {
+			return err
 		}
 		return nil
 	}
 
 	err = p.taskHandler.HandleTask(execCtx, &task.Spec)
-	if errors.Is(context.Cause(execCtx), taskcore.ErrTaskPaused) {
-		return taskcore.ErrTaskPaused
-	}
 	if err != nil {
+		return err
+	}
+	if err := p.taskInterruptCause(execCtx); err != nil {
 		return err
 	}
 	return nil
@@ -247,24 +247,12 @@ func (p *ModelPort) FinalizeTask(ctx context.Context, task Task, execErr error) 
 	if errors.Is(execErr, errSkipFinalize) {
 		return nil
 	}
-	if errors.Is(execErr, taskcore.ErrTaskPaused) {
-		if err := p.model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
-			if _, err := txm.UpdateTaskStatusByWorker(ctx, querier.UpdateTaskStatusByWorkerParams{
-				ID:       task.ID,
-				Status:   string(apigen.Paused),
-				WorkerID: p.workerIDParam,
-			}); err != nil {
-				if errors.Is(err, pgx.ErrNoRows) {
-					return taskcore.ErrTaskLockLost
-				}
-				return err
-			}
-			return nil
-		}); err != nil {
+	if errors.Is(execErr, taskcore.ErrTaskInterrupted) {
+		if err := p.releaseTaskLock(ctx, task.ID); err != nil {
 			if errors.Is(err, taskcore.ErrTaskLockLost) {
 				return nil
 			}
-			return fmt.Errorf("finalize paused task: %w", err)
+			return fmt.Errorf("finalize interrupted task: %w", err)
 		}
 		return nil
 	}
@@ -348,43 +336,43 @@ func (p *ModelPort) AckRuntimeConfigApplied(ctx context.Context, workerID string
 	return nil
 }
 
-func (p *ModelPort) AckTaskCancelApplied(ctx context.Context, requestID string) error {
+func (p *ModelPort) AckTaskInterruptApplied(ctx context.Context, requestID string) error {
 	if requestID == "" {
 		return nil
 	}
 
-	payload := taskCancelAckNotification{Op: "ack"}
+	payload := taskInterruptAckNotification{Op: "ack"}
 	payload.Params.RequestID = requestID
 	payload.Params.WorkerID = p.workerID.String()
 	raw, err := json.Marshal(payload)
 	if err != nil {
-		return fmt.Errorf("marshal task cancel ack notification: %w", err)
+		return fmt.Errorf("marshal task interrupt ack notification: %w", err)
 	}
-	if err := p.model.NotifyWorkerTaskCancelAck(ctx, string(raw)); err != nil {
-		return fmt.Errorf("notify task cancel ack: %w", err)
+	if err := p.model.NotifyWorkerTaskInterruptAck(ctx, string(raw)); err != nil {
+		return fmt.Errorf("notify task interrupt ack: %w", err)
 	}
 	return nil
 }
 
-func (p *ModelPort) CancelTask(taskID int32) {
-	p.cancelMu.Lock()
-	cancel := p.cancelTasks[taskID]
-	p.cancelMu.Unlock()
-	if cancel != nil {
-		cancel(taskcore.ErrTaskPaused)
+func (p *ModelPort) InterruptTask(taskID int32, cause error) {
+	p.interruptMu.Lock()
+	interrupt := p.interruptTasks[taskID]
+	p.interruptMu.Unlock()
+	if interrupt != nil {
+		interrupt(cause)
 	}
 }
 
-func (p *ModelPort) registerTaskCancel(taskID int32, cancel context.CancelCauseFunc) {
-	p.cancelMu.Lock()
-	p.cancelTasks[taskID] = cancel
-	p.cancelMu.Unlock()
+func (p *ModelPort) registerTaskInterrupt(taskID int32, interrupt context.CancelCauseFunc) {
+	p.interruptMu.Lock()
+	p.interruptTasks[taskID] = interrupt
+	p.interruptMu.Unlock()
 }
 
-func (p *ModelPort) unregisterTaskCancel(taskID int32) {
-	p.cancelMu.Lock()
-	delete(p.cancelTasks, taskID)
-	p.cancelMu.Unlock()
+func (p *ModelPort) unregisterTaskInterrupt(taskID int32) {
+	p.interruptMu.Lock()
+	delete(p.interruptTasks, taskID)
+	p.interruptMu.Unlock()
 }
 
 func (p *ModelPort) withTaskTimeout(ctx context.Context, task Task) (context.Context, context.CancelFunc, error) {
@@ -460,4 +448,43 @@ func taskToAPI(task Task) apigen.Task {
 		Attributes: task.Attributes,
 		Spec:       task.Spec,
 	}
+}
+
+func (p *ModelPort) updateTaskStatusByWorker(ctx context.Context, taskID int32, status apigen.TaskStatus) error {
+	return p.model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
+		if _, err := txm.UpdateTaskStatusByWorker(ctx, querier.UpdateTaskStatusByWorkerParams{
+			ID:       taskID,
+			Status:   string(status),
+			WorkerID: p.workerIDParam,
+		}); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return taskcore.ErrTaskLockLost
+			}
+			return err
+		}
+		return nil
+	})
+}
+
+func (p *ModelPort) releaseTaskLock(ctx context.Context, taskID int32) error {
+	return p.model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
+		if _, err := txm.ReleaseTaskLockByWorker(ctx, querier.ReleaseTaskLockByWorkerParams{
+			ID:       taskID,
+			WorkerID: p.workerIDParam,
+		}); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return taskcore.ErrTaskLockLost
+			}
+			return err
+		}
+		return nil
+	})
+}
+
+func (p *ModelPort) taskInterruptCause(ctx context.Context) error {
+	cause := context.Cause(ctx)
+	if errors.Is(cause, taskcore.ErrTaskInterrupted) {
+		return taskcore.ErrTaskInterrupted
+	}
+	return nil
 }

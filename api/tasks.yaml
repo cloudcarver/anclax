@@ -53,8 +53,8 @@ tasks:
       maxAttempts: -1
     timeout: 20s
 
-  - name: pauseTask
-    description: Pause a task and cancel any in-flight execution
+  - name: interruptTask
+    description: Interrupt a task and stop any in-flight execution
     parameters:
       type: object
       required: [taskID]
@@ -62,7 +62,7 @@ tasks:
         taskID:
           type: integer
           format: int32
-          description: The task ID to pause and cancel
+          description: The task ID to interrupt
         requestID:
           type: string
           description: Correlation ID for notify and ack messages
