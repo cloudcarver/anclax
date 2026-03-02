@@ -11,29 +11,30 @@ import (
 
 var ErrUnknownTaskType = errors.New("unknown task type")
 
-type TaskSpec interface {
-	GetType() string
-	GetPayload() json.RawMessage
+type TaskSpec struct {
+	Spec apigen.TaskSpec
+}
+
+func (t TaskSpec) GetType() string {
+	return t.Spec.Type
+}
+
+func (t TaskSpec) GetPayload() json.RawMessage {
+	return t.Spec.Payload
+}
+
+func NewTaskSpec(spec apigen.TaskSpec) TaskSpec {
+	return TaskSpec{Spec: spec}
 }
 
 type TaskHandler interface {
 	HandleTask(ctx context.Context, spec TaskSpec) error
-
-	RegisterTaskHandler(handler TaskHandler)
-
 	OnTaskFailed(ctx context.Context, tx core.Tx, failedTaskSpec TaskSpec, taskID int32) error
-}
-
-type TaskLifeCycleHandlerInterface interface {
-	HandleAttributes(ctx context.Context, tx core.Tx, task apigen.Task) error
-	HandleFailed(ctx context.Context, tx core.Tx, task apigen.Task, err error) error
-	HandleCompleted(ctx context.Context, tx core.Tx, task apigen.Task) error
+	RegisterTaskHandler(handler TaskHandler)
 }
 
 type WorkerInterface interface {
-	RunTask(ctx context.Context, taskID int32) error
-
 	Start()
-
+	RunTask(ctx context.Context, taskID int32) error
 	RegisterTaskHandler(handler TaskHandler)
 }

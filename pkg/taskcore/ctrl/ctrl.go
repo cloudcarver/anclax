@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/cloudcarver/anclax/core"
-	"github.com/cloudcarver/anclax/pkg/asynctask"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
@@ -23,8 +22,11 @@ func NewWorkerControlPlane(model model.ModelInterface, runner taskgen.TaskRunner
 }
 
 // UpdateWorkerRuntimeConfig enqueues a runtime config update task and waits for all workers to ack it.
-func (c *WorkerControlPlane) UpdateWorkerRuntimeConfig(ctx context.Context, params *taskgen.UpdateWorkerRuntimeConfigParameters, overrides ...taskcore.TaskOverride) error {
-	taskID, err := asynctask.RunUpdateWorkerRuntimeConfigTask(ctx, c.runner, params, overrides...)
+func (c *WorkerControlPlane) UpdateWorkerRuntimeConfig(ctx context.Context, req *UpdateWorkerRuntimeConfigRequest) error {
+	if req == nil {
+		return errors.New("update worker runtime config request cannot be nil")
+	}
+	taskID, err := RunUpdateWorkerRuntimeConfigTask(ctx, c.runner, req)
 	if err != nil {
 		return errors.Wrap(err, "run update worker runtime config task")
 	}
@@ -35,20 +37,18 @@ func (c *WorkerControlPlane) UpdateWorkerRuntimeConfig(ctx context.Context, para
 }
 
 // PauseTask pauses a task and broadcasts an interrupt request to workers, waiting for acknowledgements.
-func (c *WorkerControlPlane) PauseTask(ctx context.Context, params *taskgen.InterruptTaskParameters, overrides ...taskcore.TaskOverride) error {
-	if params == nil {
-		return errors.New("pause task params cannot be nil")
-	}
-	if params.TaskID <= 0 {
+func (c *WorkerControlPlane) PauseTask(ctx context.Context, taskID int32) error {
+	if taskID <= 0 {
 		return errors.New("pause task requires a positive taskID")
 	}
+	params := &taskgen.InterruptTaskParameters{TaskID: taskID}
 
 	var cancelTaskID int32
 	err := c.model.RunTransactionWithTx(ctx, func(tx core.Tx, _ model.ModelInterface) error {
-		if err := c.store.WithTx(tx).PauseTask(ctx, params.TaskID); err != nil {
+		if err := c.store.WithTx(tx).PauseTask(ctx, taskID); err != nil {
 			return errors.Wrap(err, "pause task")
 		}
-		id, err := c.runner.RunInterruptTaskWithTx(ctx, tx, params, overrides...)
+		id, err := c.runner.RunInterruptTaskWithTx(ctx, tx, params)
 		if err != nil {
 			return errors.Wrap(err, "enqueue pause task cancel")
 		}
@@ -65,19 +65,17 @@ func (c *WorkerControlPlane) PauseTask(ctx context.Context, params *taskgen.Inte
 }
 
 // CancelTask cancels a task and broadcasts an interrupt request to workers, waiting for acknowledgements.
-func (c *WorkerControlPlane) CancelTask(ctx context.Context, params *taskgen.InterruptTaskParameters, overrides ...taskcore.TaskOverride) error {
-	if params == nil {
-		return errors.New("cancel task params cannot be nil")
-	}
-	if params.TaskID <= 0 {
+func (c *WorkerControlPlane) CancelTask(ctx context.Context, taskID int32) error {
+	if taskID <= 0 {
 		return errors.New("cancel task requires a positive taskID")
 	}
+	params := &taskgen.InterruptTaskParameters{TaskID: taskID}
 	var interruptTaskID int32
 	err := c.model.RunTransactionWithTx(ctx, func(tx core.Tx, _ model.ModelInterface) error {
-		if err := c.store.WithTx(tx).CancelTask(ctx, params.TaskID); err != nil {
+		if err := c.store.WithTx(tx).CancelTask(ctx, taskID); err != nil {
 			return errors.Wrap(err, "cancel task")
 		}
-		id, err := c.runner.RunInterruptTaskWithTx(ctx, tx, params, overrides...)
+		id, err := c.runner.RunInterruptTaskWithTx(ctx, tx, params)
 		if err != nil {
 			return errors.Wrap(err, "enqueue interrupt task")
 		}
@@ -91,4 +89,51 @@ func (c *WorkerControlPlane) CancelTask(ctx context.Context, params *taskgen.Int
 		return errors.Wrap(err, "wait for interrupt task")
 	}
 	return nil
+}
+
+// ResumeTask resumes a paused task by marking it pending so it can execute again.
+func (c *WorkerControlPlane) ResumeTask(ctx context.Context, taskID int32) error {
+	if taskID <= 0 {
+		return errors.New("resume task requires a positive taskID")
+	}
+	if err := c.store.ResumeTask(ctx, taskID); err != nil {
+		return errors.Wrap(err, "resume task")
+	}
+	return nil
+}
+
+// PauseTaskByUniqueTag pauses a task by unique tag and broadcasts an interrupt request to workers.
+func (c *WorkerControlPlane) PauseTaskByUniqueTag(ctx context.Context, uniqueTag string) error {
+	if uniqueTag == "" {
+		return errors.New("pause task requires unique tag")
+	}
+	task, err := c.store.GetTaskByUniqueTag(ctx, uniqueTag)
+	if err != nil {
+		return errors.Wrap(err, "get task by unique tag")
+	}
+	return c.PauseTask(ctx, task.ID)
+}
+
+// CancelTaskByUniqueTag cancels a task by unique tag and broadcasts an interrupt request to workers.
+func (c *WorkerControlPlane) CancelTaskByUniqueTag(ctx context.Context, uniqueTag string) error {
+	if uniqueTag == "" {
+		return errors.New("cancel task requires unique tag")
+	}
+	task, err := c.store.GetTaskByUniqueTag(ctx, uniqueTag)
+	if err != nil {
+		return errors.Wrap(err, "get task by unique tag")
+	}
+	return c.CancelTask(ctx, task.ID)
+}
+
+// ResumeTaskByUniqueTag resumes a task by unique tag, allowing it to execute again.
+func (c *WorkerControlPlane) ResumeTaskByUniqueTag(ctx context.Context, uniqueTag string) error {
+	if uniqueTag == "" {
+		return errors.New("resume task requires unique tag")
+	}
+	task, err := c.store.GetTaskByUniqueTag(ctx, uniqueTag)
+	if err != nil {
+		return errors.Wrap(err, "get task by unique tag")
+	}
+	return c.ResumeTask(ctx, task.ID)
 }

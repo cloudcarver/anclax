@@ -215,7 +215,7 @@ Validation rules:
 
 #### Updating worker scheduling config at runtime
 
-Use the built-in `updateWorkerRuntimeConfig` task via helper:
+Use the worker control plane to enqueue and wait for config updates:
 
 ```go
 maxStrict := int32(20)
@@ -223,8 +223,9 @@ defaultWeight := int32(1)
 labels := []string{"w1", "w2"}
 weights := []int32{5, 1}
 
-_, err := asynctask.RunUpdateWorkerRuntimeConfigTask(ctx, h.taskRunner,
-    &taskgen.UpdateWorkerRuntimeConfigParameters{
+controlPlane := ctrl.NewWorkerControlPlane(h.model, h.taskRunner, h.taskStore)
+err := controlPlane.UpdateWorkerRuntimeConfig(ctx,
+    &ctrl.UpdateWorkerRuntimeConfigRequest{
         MaxStrictPercentage: &maxStrict,
         DefaultWeight:       &defaultWeight,
         Labels:              labels,
@@ -233,7 +234,7 @@ _, err := asynctask.RunUpdateWorkerRuntimeConfigTask(ctx, h.taskRunner,
 )
 ```
 
-This helper always enqueues the config-update task with reserved max strict priority.
+The control plane always enqueues the config-update task with reserved max strict priority and hides LISTEN/NOTIFY details.
 
 For full semantics (strict cap formula, label-group mapping, LISTEN/NOTIFY propagation, ACK convergence, and supersede behavior), see:
 - [Scheduling & Runtime Config Guide](async-task-scheduling-runtime-config.md)
@@ -743,4 +744,4 @@ cfg := &config.Config{
 
 Workers poll the database every second for pending tasks and process them with configurable concurrency based on available goroutines. The default concurrency is 10.
 
-By default Anclax starts with worker v2. If you need compatibility with existing behavior, set `Worker.UseLegacyWorker = true`.
+By default Anclax starts the worker runtime automatically with the unified worker implementation.

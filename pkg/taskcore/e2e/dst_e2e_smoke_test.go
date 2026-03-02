@@ -27,9 +27,10 @@ func TestDSTTaskStoreScenariosSmoke(t *testing.T) {
 
 		err = taskcoree2e.RunAll(ctx, func(ctx context.Context) (taskcoree2e.Actors, error) {
 			return taskcoree2e.Actors{
-				TaskStore: env.taskStore,
-				Runtime:   env.runtime,
-				Validator: env.validator,
+				TaskStore:    env.taskStore,
+				Runtime:      env.runtime,
+				Validator:    env.validator,
+				ControlPlane: env.controlPlane,
 			}, nil
 		})
 		require.NoError(t, err)
@@ -45,9 +46,10 @@ func TestDSTTaskStoreScenariosStressSmoke(t *testing.T) {
 				return taskcoree2e.Actors{}, err
 			}
 			return taskcoree2e.Actors{
-				TaskStore: env.taskStore,
-				Runtime:   env.runtime,
-				Validator: env.validator,
+				TaskStore:    env.taskStore,
+				Runtime:      env.runtime,
+				Validator:    env.validator,
+				ControlPlane: env.controlPlane,
 			}, nil
 		}, taskcoree2e.RunOptions{Repeat: 3, ContinueOnError: true})
 		require.NoError(t, err)
@@ -56,10 +58,11 @@ func TestDSTTaskStoreScenariosStressSmoke(t *testing.T) {
 }
 
 type dstEnv struct {
-	store     taskcore.TaskStoreInterface
-	taskStore *taskStoreActor
-	runtime   *runtimeActor
-	validator *validatorActor
+	store        taskcore.TaskStoreInterface
+	taskStore    *taskStoreActor
+	runtime      *runtimeActor
+	validator    *validatorActor
+	controlPlane *controlPlaneActor
 }
 
 func newDSTEnv(m model.ModelInterface) (*dstEnv, error) {
@@ -71,10 +74,11 @@ func newDSTEnv(m model.ModelInterface) (*dstEnv, error) {
 	}
 
 	return &dstEnv{
-		store:     store,
-		taskStore: taskStore,
-		runtime:   newRuntimeActor(m),
-		validator: newValidatorActor(m),
+		store:        store,
+		taskStore:    taskStore,
+		runtime:      newRuntimeActor(m),
+		validator:    newValidatorActor(m),
+		controlPlane: newControlPlaneActor(m, store),
 	}, nil
 }
 

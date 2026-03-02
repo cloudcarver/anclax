@@ -11,6 +11,7 @@ import (
 	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/metrics"
+	"github.com/cloudcarver/anclax/pkg/taskcore/pgnotify"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
@@ -19,30 +20,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/pkg/errors"
 )
-
-type runtimeConfigPayload struct {
-	MaxStrictPercentage *int32           `json:"maxStrictPercentage,omitempty"`
-	LabelWeights        map[string]int32 `json:"labelWeights,omitempty"`
-}
-
-type runtimeConfigNotification struct {
-	Op     string `json:"op"`
-	Params struct {
-		Version   int64  `json:"version"`
-		RequestID string `json:"request_id"`
-	} `json:"params"`
-}
-
-type runtimeConfigAckNotification struct {
-	Op     string `json:"op"`
-	Params struct {
-		RequestID      string `json:"request_id"`
-		WorkerID       string `json:"worker_id"`
-		AppliedVersion int64  `json:"applied_version"`
-	} `json:"params"`
-}
-
-const runtimeConfigAckChannel = "anclax_worker_runtime_config_ack"
 
 func (e *Executor) ExecuteUpdateWorkerRuntimeConfig(ctx context.Context, params *taskgen.UpdateWorkerRuntimeConfigParameters) error {
 	startAt := e.now()
@@ -68,7 +45,7 @@ func (e *Executor) ExecuteUpdateWorkerRuntimeConfig(ctx context.Context, params 
 		return errors.Wrap(taskcore.ErrFatalTask, err.Error())
 	}
 
-	payloadRaw, err := json.Marshal(runtimeConfigPayload{
+	payloadRaw, err := json.Marshal(pgnotify.RuntimeConfigPayload{
 		MaxStrictPercentage: maxStrictPercentage,
 		LabelWeights:        labelWeights,
 	})
@@ -82,12 +59,9 @@ func (e *Executor) ExecuteUpdateWorkerRuntimeConfig(ctx context.Context, params 
 	}
 
 	targetVersion := created.Version
-	notifyRaw, err := json.Marshal(runtimeConfigNotification{
-		Op: "up_config",
-		Params: struct {
-			Version   int64  `json:"version"`
-			RequestID string `json:"request_id"`
-		}{
+	notifyRaw, err := json.Marshal(pgnotify.RuntimeConfigNotification{
+		Op: pgnotify.OpUpdateRuntimeConfig,
+		Params: pgnotify.RuntimeConfigParams{
 			Version:   targetVersion,
 			RequestID: requestID,
 		},
@@ -214,11 +188,11 @@ func isRuntimeConfigAckForRequest(payload string, requestID string) bool {
 	if requestID == "" {
 		return false
 	}
-	var ack runtimeConfigAckNotification
+	var ack pgnotify.RuntimeConfigAckNotification
 	if err := json.Unmarshal([]byte(payload), &ack); err != nil {
 		return false
 	}
-	if ack.Op != "" && ack.Op != "ack" {
+	if !pgnotify.MatchesOp(ack.Op, pgnotify.OpAck) {
 		return false
 	}
 	return ack.Params.RequestID == requestID
@@ -255,7 +229,7 @@ func newRuntimeConfigAckWaiter(dsn string) func(ctx context.Context, requestID s
 		}
 		defer conn.Close(context.Background())
 
-		if _, err := conn.Exec(ctx, fmt.Sprintf("LISTEN %s", runtimeConfigAckChannel)); err != nil {
+		if _, err := conn.Exec(ctx, fmt.Sprintf("LISTEN %s", pgnotify.ChannelRuntimeConfigAck)); err != nil {
 			return err
 		}
 

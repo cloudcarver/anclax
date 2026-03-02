@@ -1,4 +1,4 @@
-package workerv2
+package worker
 
 import (
 	"context"
@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/cloudcarver/anclax/core"
+	"github.com/cloudcarver/anclax/pkg/taskcore/pgnotify"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/taskcore/types"
-	legacyworker "github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
@@ -20,28 +20,6 @@ import (
 )
 
 var errSkipFinalize = errors.New("skip finalize")
-
-type runtimeConfigAckNotification struct {
-	Op     string `json:"op"`
-	Params struct {
-		RequestID      string `json:"request_id"`
-		WorkerID       string `json:"worker_id"`
-		AppliedVersion int64  `json:"applied_version"`
-	} `json:"params"`
-}
-
-type taskInterruptAckNotification struct {
-	Op     string `json:"op"`
-	Params struct {
-		RequestID string `json:"request_id"`
-		WorkerID  string `json:"worker_id"`
-	} `json:"params"`
-}
-
-type runtimeConfigPayload struct {
-	MaxStrictPercentage *int32           `json:"maxStrictPercentage,omitempty"`
-	LabelWeights        map[string]int32 `json:"labelWeights,omitempty"`
-}
 
 type ModelPort struct {
 	model model.ModelInterface
@@ -54,7 +32,7 @@ type ModelPort struct {
 
 	lockTTL             time.Duration
 	lockRefreshInterval time.Duration
-	lifeCycleHandler    legacyworker.TaskLifeCycleHandlerInterface
+	lifeCycleHandler    TaskLifeCycleHandlerInterface
 	taskHandler         TaskHandler
 	now                 func() time.Time
 
@@ -83,7 +61,7 @@ func NewModelPort(
 		labelsJSON:          labelsJSON,
 		lockTTL:             lockTTL,
 		lockRefreshInterval: lockRefreshInterval,
-		lifeCycleHandler:    legacyworker.NewTaskLifeCycleHandler(m, taskHandler, workerID),
+		lifeCycleHandler:    NewTaskLifeCycleHandler(m, taskHandler, workerID),
 		taskHandler:         taskHandler,
 		now:                 time.Now,
 		interruptTasks:      make(map[int32]context.CancelCauseFunc),
@@ -233,7 +211,7 @@ func (p *ModelPort) ExecuteTask(ctx context.Context, task Task) error {
 		return nil
 	}
 
-	err = p.taskHandler.HandleTask(execCtx, &task.Spec)
+	err = p.taskHandler.HandleTask(execCtx, NewTaskSpec(task.Spec))
 	if err != nil {
 		return err
 	}
@@ -322,7 +300,7 @@ func (p *ModelPort) AckRuntimeConfigApplied(ctx context.Context, workerID string
 		return nil
 	}
 
-	payload := runtimeConfigAckNotification{Op: "ack"}
+	payload := pgnotify.RuntimeConfigAckNotification{Op: pgnotify.OpAck}
 	payload.Params.RequestID = requestID
 	payload.Params.WorkerID = p.workerID.String()
 	payload.Params.AppliedVersion = appliedVersion
@@ -341,7 +319,7 @@ func (p *ModelPort) AckTaskInterruptApplied(ctx context.Context, requestID strin
 		return nil
 	}
 
-	payload := taskInterruptAckNotification{Op: "ack"}
+	payload := pgnotify.TaskInterruptAckNotification{Op: pgnotify.OpAck}
 	payload.Params.RequestID = requestID
 	payload.Params.WorkerID = p.workerID.String()
 	raw, err := json.Marshal(payload)
@@ -415,10 +393,10 @@ func (p *ModelPort) startLockRefresh(ctx context.Context, taskID int32) context.
 	return cancel
 }
 
-func decodeRuntimeConfigPayload(raw json.RawMessage) (runtimeConfigPayload, error) {
-	var payload runtimeConfigPayload
+func decodeRuntimeConfigPayload(raw json.RawMessage) (pgnotify.RuntimeConfigPayload, error) {
+	var payload pgnotify.RuntimeConfigPayload
 	if err := json.Unmarshal(raw, &payload); err != nil {
-		return runtimeConfigPayload{}, fmt.Errorf("unmarshal worker runtime config payload: %w", err)
+		return pgnotify.RuntimeConfigPayload{}, fmt.Errorf("unmarshal worker runtime config payload: %w", err)
 	}
 	return payload, nil
 }

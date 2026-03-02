@@ -1,6 +1,6 @@
-# workerv2
+# worker
 
-`workerv2` is an alternate worker package designed for deterministic distributed-system testing.
+`worker` is the task worker package designed for deterministic distributed-system testing.
 
 ## Architecture
 
@@ -11,7 +11,7 @@
   - Drives periodic events (`poll`, `heartbeat`, `runtime config poll`)
   - Executes commands through `Port`
 - `Port`: side-effect boundary (DB/queue/handler/runtime-config APIs).
-- `Worker`: production facade compatible with legacy handler interface:
+- `Worker`: production facade compatible with the task handler interface:
   - `NewWorker(globalCtx, cfg, model, taskHandler)`
   - `Start()`
   - `RunTask(ctx, taskID)`
@@ -38,9 +38,5 @@ Use `Runtime.Step(ctx, event)` when you want to include side-effect adapters (`P
 For production usage, `NewWorker(...)` wires:
 - `Engine` + `Runtime`
 - model-backed `Port` (`ModelPort`)
-- worker lifecycle handler semantics (reuse of existing retry/cron/failure logic)
+- worker lifecycle handler semantics (retry/cron/failure logic)
 - optional runtime-config LISTEN loop when DSN is configured.
-
-## Scope
-
-This package is intentionally standalone and does not modify the legacy `pkg/taskcore/worker` implementation.

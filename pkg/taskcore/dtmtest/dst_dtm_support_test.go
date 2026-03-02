@@ -11,15 +11,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cloudcarver/anclax/pkg/taskcore/workerv2"
+	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 )
 
 type runtimeHarness struct {
 	mu sync.Mutex
 
-	engine     *workerv2.Engine
-	runtime    *workerv2.Runtime
+	engine     *worker.Engine
+	runtime    *worker.Runtime
 	port       *deterministicPort
 	runtimeCtx context.Context
 	cancel     context.CancelFunc
@@ -41,7 +41,7 @@ func (h *runtimeHarness) Start(ctx context.Context, concurrency int32, maxStrict
 	}
 
 	var (
-		prev       *workerv2.Runtime
+		prev       *worker.Runtime
 		prevCancel context.CancelFunc
 	)
 	h.mu.Lock()
@@ -49,17 +49,17 @@ func (h *runtimeHarness) Start(ctx context.Context, concurrency int32, maxStrict
 	prevCancel = h.cancel
 
 	port := newDeterministicPort()
-	engine := workerv2.NewEngine(workerv2.EngineConfig{
+	engine := worker.NewEngine(worker.EngineConfig{
 		WorkerID:            "dtm-worker",
 		Concurrency:         int(concurrency),
 		MaxStrictPercentage: maxStrictPercentage,
 		LabelWeights: map[string]int32{
-			workerv2.DefaultWeightConfigKey: 1,
+			worker.DefaultWeightConfigKey: 1,
 		},
 	})
-	opts := workerv2.DefaultRuntimeOptions()
+	opts := worker.DefaultRuntimeOptions()
 	opts.OnError = h.recordRuntimeError
-	rt := workerv2.NewRuntime(engine, port, opts)
+	rt := worker.NewRuntime(engine, port, opts)
 	runtimeCtx, cancel := context.WithCancel(context.Background())
 
 	h.engine = engine
@@ -169,7 +169,7 @@ func (h *runtimeHarness) Poll(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	rt.Step(rctx, workerv2.Event{Type: workerv2.EventPollTick})
+	rt.Step(rctx, worker.Event{Type: worker.EventPollTick})
 	return nil
 }
 
@@ -199,7 +199,7 @@ func (h *runtimeHarness) SetRefreshConfig(ctx context.Context, requestID string,
 
 	weights := map[string]int32{}
 	if defaultWeight > 0 {
-		weights[workerv2.DefaultWeightConfigKey] = defaultWeight
+		weights[worker.DefaultWeightConfigKey] = defaultWeight
 	}
 	if w1Weight > 0 {
 		weights["w1"] = w1Weight
@@ -207,7 +207,7 @@ func (h *runtimeHarness) SetRefreshConfig(ctx context.Context, requestID string,
 	if w2Weight > 0 {
 		weights["w2"] = w2Weight
 	}
-	cfg := &workerv2.RuntimeConfig{
+	cfg := &worker.RuntimeConfig{
 		Version:             int64(version),
 		MaxStrictPercentage: int32Ptr(maxStrictPercentage),
 		LabelWeights:        weights,
@@ -222,30 +222,30 @@ func (h *runtimeHarness) EmitEvent(ctx context.Context, eventType string, cycleI
 		return err
 	}
 
-	e := workerv2.Event{CycleID: int64(cycleID)}
+	e := worker.Event{CycleID: int64(cycleID)}
 	switch eventType {
 	case "poll_tick":
-		e.Type = workerv2.EventPollTick
+		e.Type = worker.EventPollTick
 	case "heartbeat_tick":
-		e.Type = workerv2.EventHeartbeatTick
+		e.Type = worker.EventHeartbeatTick
 	case "runtime_config_tick":
-		e.Type = workerv2.EventRuntimeConfigTick
+		e.Type = worker.EventRuntimeConfigTick
 	case "stop":
-		e.Type = workerv2.EventStop
+		e.Type = worker.EventStop
 	case "claim_strict_result":
-		e.Type = workerv2.EventClaimStrictResult
+		e.Type = worker.EventClaimStrictResult
 		if task != "" {
 			e.Task = taskFromName(task, priority)
 		}
 	case "claim_normal_result":
-		e.Type = workerv2.EventClaimNormalResult
+		e.Type = worker.EventClaimNormalResult
 		if task != "" {
 			e.Task = taskFromName(task, priority)
 		}
 	case "execute_result":
-		e.Type = workerv2.EventExecuteResult
+		e.Type = worker.EventExecuteResult
 	case "finalize_result":
-		e.Type = workerv2.EventFinalizeResult
+		e.Type = worker.EventFinalizeResult
 	default:
 		return fmt.Errorf("unknown eventType %q", eventType)
 	}
@@ -506,7 +506,7 @@ func (h *runtimeHarness) StepStop(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	rt.Step(rctx, workerv2.Event{Type: workerv2.EventStop})
+	rt.Step(rctx, worker.Event{Type: worker.EventStop})
 	return nil
 }
 
@@ -533,7 +533,7 @@ func (h *runtimeHarness) runtimeErrorsSnapshot() []string {
 	return out
 }
 
-func (h *runtimeHarness) current() (*workerv2.Engine, *workerv2.Runtime, *deterministicPort, context.Context, int, error) {
+func (h *runtimeHarness) current() (*worker.Engine, *worker.Runtime, *deterministicPort, context.Context, int, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.engine == nil || h.runtime == nil || h.port == nil || h.runtimeCtx == nil {
@@ -543,7 +543,7 @@ func (h *runtimeHarness) current() (*workerv2.Engine, *workerv2.Runtime, *determ
 }
 
 type claimResult struct {
-	task   *workerv2.Task
+	task   *worker.Task
 	noTask bool
 }
 
@@ -562,7 +562,7 @@ type deterministicPort struct {
 	finalizeOrderLog []string
 	normalClaimLog   []string
 
-	refreshConfigs map[string]*workerv2.RuntimeConfig
+	refreshConfigs map[string]*worker.RuntimeConfig
 	ackByRequest   map[string]int64
 
 	globalErr map[string]bool
@@ -573,7 +573,7 @@ func newDeterministicPort() *deterministicPort {
 	return &deterministicPort{
 		execRelease:    make(chan struct{}, 4096),
 		calls:          map[string]int{},
-		refreshConfigs: map[string]*workerv2.RuntimeConfig{},
+		refreshConfigs: map[string]*worker.RuntimeConfig{},
 		ackByRequest:   map[string]int64{},
 		globalErr:      map[string]bool{},
 		taskErr:        map[string]map[string]bool{},
@@ -590,7 +590,7 @@ func (p *deterministicPort) MarkWorkerOffline(ctx context.Context, workerID stri
 	return p.injectedErr("mark_offline", "")
 }
 
-func (p *deterministicPort) ClaimStrict(ctx context.Context, req workerv2.ClaimRequest) (*workerv2.Task, error) {
+func (p *deterministicPort) ClaimStrict(ctx context.Context, req worker.ClaimRequest) (*worker.Task, error) {
 	p.inc("claim_strict")
 	if err := p.injectedErr("claim_strict", ""); err != nil {
 		return nil, err
@@ -598,17 +598,17 @@ func (p *deterministicPort) ClaimStrict(ctx context.Context, req workerv2.ClaimR
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if len(p.strictQueue) == 0 {
-		return nil, workerv2.ErrNoTask
+		return nil, worker.ErrNoTask
 	}
 	out := p.strictQueue[0]
 	p.strictQueue = p.strictQueue[1:]
 	if out.noTask {
-		return nil, workerv2.ErrNoTask
+		return nil, worker.ErrNoTask
 	}
 	return cloneTask(out.task), nil
 }
 
-func (p *deterministicPort) ClaimNormalByGroup(ctx context.Context, req workerv2.ClaimNormalRequest) (*workerv2.Task, error) {
+func (p *deterministicPort) ClaimNormalByGroup(ctx context.Context, req worker.ClaimNormalRequest) (*worker.Task, error) {
 	p.inc("claim_normal")
 	if err := p.injectedErr("claim_normal", ""); err != nil {
 		return nil, err
@@ -617,22 +617,22 @@ func (p *deterministicPort) ClaimNormalByGroup(ctx context.Context, req workerv2
 	p.normalClaimLog = append(p.normalClaimLog, req.Group)
 	defer p.mu.Unlock()
 	if len(p.normalQueue) == 0 {
-		return nil, workerv2.ErrNoTask
+		return nil, worker.ErrNoTask
 	}
 	out := p.normalQueue[0]
 	p.normalQueue = p.normalQueue[1:]
 	if out.noTask {
-		return nil, workerv2.ErrNoTask
+		return nil, worker.ErrNoTask
 	}
 	return cloneTask(out.task), nil
 }
 
-func (p *deterministicPort) ClaimByID(ctx context.Context, taskID int32, req workerv2.ClaimRequest) (*workerv2.Task, error) {
+func (p *deterministicPort) ClaimByID(ctx context.Context, taskID int32, req worker.ClaimRequest) (*worker.Task, error) {
 	p.inc("claim_by_id")
-	return nil, workerv2.ErrNoTask
+	return nil, worker.ErrNoTask
 }
 
-func (p *deterministicPort) ExecuteTask(ctx context.Context, task workerv2.Task) error {
+func (p *deterministicPort) ExecuteTask(ctx context.Context, task worker.Task) error {
 	name := taskName(task)
 	p.inc("execute")
 	if err := p.injectedErr("execute", name); err != nil {
@@ -653,7 +653,7 @@ func (p *deterministicPort) ExecuteTask(ctx context.Context, task workerv2.Task)
 	return nil
 }
 
-func (p *deterministicPort) FinalizeTask(ctx context.Context, task workerv2.Task, execErr error) error {
+func (p *deterministicPort) FinalizeTask(ctx context.Context, task worker.Task, execErr error) error {
 	name := taskName(task)
 	p.inc("finalize")
 	p.mu.Lock()
@@ -670,7 +670,7 @@ func (p *deterministicPort) Heartbeat(ctx context.Context, workerID string) erro
 	return p.injectedErr("heartbeat", "")
 }
 
-func (p *deterministicPort) RefreshRuntimeConfig(ctx context.Context, workerID string, requestID string) (*workerv2.RuntimeConfig, error) {
+func (p *deterministicPort) RefreshRuntimeConfig(ctx context.Context, workerID string, requestID string) (*worker.RuntimeConfig, error) {
 	p.inc("refresh_config")
 	if err := p.injectedErr("refresh_config", requestID); err != nil {
 		return nil, err
@@ -695,7 +695,7 @@ func (p *deterministicPort) AckRuntimeConfigApplied(ctx context.Context, workerI
 	return nil
 }
 
-func (p *deterministicPort) queueStrict(task *workerv2.Task) {
+func (p *deterministicPort) queueStrict(task *worker.Task) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.strictQueue = append(p.strictQueue, claimResult{task: cloneTask(task)})
@@ -707,7 +707,7 @@ func (p *deterministicPort) queueStrictNoTask() {
 	p.strictQueue = append(p.strictQueue, claimResult{noTask: true})
 }
 
-func (p *deterministicPort) queueNormal(task *workerv2.Task) {
+func (p *deterministicPort) queueNormal(task *worker.Task) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.normalQueue = append(p.normalQueue, claimResult{task: cloneTask(task)})
@@ -731,7 +731,7 @@ func (p *deterministicPort) releaseExecutions(n int) {
 	}
 }
 
-func (p *deterministicPort) setRefreshConfig(requestID string, cfg *workerv2.RuntimeConfig) {
+func (p *deterministicPort) setRefreshConfig(requestID string, cfg *worker.RuntimeConfig) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.refreshConfigs[requestID] = cloneRuntimeConfig(cfg)
@@ -825,9 +825,9 @@ func (p *deterministicPort) inc(name string) {
 	p.calls[name]++
 }
 
-func taskFromName(name string, priority int32) *workerv2.Task {
+func taskFromName(name string, priority int32) *worker.Task {
 	payload, _ := json.Marshal(map[string]any{"name": name})
-	return &workerv2.Task{
+	return &worker.Task{
 		ID:       int32(time.Now().UnixNano() & 0x7fffffff),
 		Priority: priority,
 		Attributes: apigen.TaskAttributes{
@@ -840,7 +840,7 @@ func taskFromName(name string, priority int32) *workerv2.Task {
 	}
 }
 
-func taskName(task workerv2.Task) string {
+func taskName(task worker.Task) string {
 	var decoded map[string]any
 	if err := json.Unmarshal(task.Spec.Payload, &decoded); err != nil {
 		return fmt.Sprintf("id-%d", task.ID)
@@ -851,7 +851,7 @@ func taskName(task workerv2.Task) string {
 	return fmt.Sprintf("id-%d", task.ID)
 }
 
-func cloneTask(task *workerv2.Task) *workerv2.Task {
+func cloneTask(task *worker.Task) *worker.Task {
 	if task == nil {
 		return nil
 	}
@@ -860,7 +860,7 @@ func cloneTask(task *workerv2.Task) *workerv2.Task {
 	return &cpy
 }
 
-func cloneRuntimeConfig(cfg *workerv2.RuntimeConfig) *workerv2.RuntimeConfig {
+func cloneRuntimeConfig(cfg *worker.RuntimeConfig) *worker.RuntimeConfig {
 	if cfg == nil {
 		return nil
 	}
@@ -887,4 +887,4 @@ func durationOrDefault(ms int32, fallback time.Duration) time.Duration {
 
 func int32Ptr(v int32) *int32 { return &v }
 
-var _ workerv2.Port = (*deterministicPort)(nil)
+var _ worker.Port = (*deterministicPort)(nil)

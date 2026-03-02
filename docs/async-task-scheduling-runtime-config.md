@@ -93,35 +93,35 @@ Generated params (`taskgen.UpdateWorkerRuntimeConfigParameters`):
 - `notifyInterval` (optional): e.g. `"1s"`; must be positive.
 - `listenTimeout` (optional): e.g. `"2s"`; must be positive.
 
-### Recommended enqueue helper
+Note: the control-plane API supplies `requestID`, `notifyInterval`, and `listenTimeout`; callers should not set them directly.
 
-Use the helper that enforces reserved max strict priority for config updates:
+### Use the worker control plane
+
+Use the control plane API to enqueue and wait for runtime config updates:
 
 ```go
-import "github.com/cloudcarver/anclax/pkg/asynctask"
+import "github.com/cloudcarver/anclax/pkg/taskcore/ctrl"
 
 maxStrict := int32(20)
 defaultWeight := int32(1)
 labels := []string{"w1", "w2"}
 weights := []int32{5, 1}
-notifyInterval := "1s"
-listenTimeout := "2s"
 
-_, err := asynctask.RunUpdateWorkerRuntimeConfigTask(ctx, taskRunner,
-    &taskgen.UpdateWorkerRuntimeConfigParameters{
+controlPlane := ctrl.NewWorkerControlPlane(model, taskRunner, taskStore)
+err := controlPlane.UpdateWorkerRuntimeConfig(ctx,
+    &ctrl.UpdateWorkerRuntimeConfigRequest{
         MaxStrictPercentage: &maxStrict,
         DefaultWeight:       &defaultWeight,
         Labels:              labels,
         Weights:             weights,
-        NotifyInterval:      &notifyInterval,
-        ListenTimeout:       &listenTimeout,
     },
 )
 ```
 
-Why helper is preferred:
+Why the control plane is required:
 - It always applies reserved strict priority (`math.MaxInt32`) for config-update tasks.
 - It prevents accidental lower-priority enqueueing of control-plane updates.
+- It hides request IDs and LISTEN/NOTIFY tuning from callers; the control plane handles retries and ACK waits.
 
 ## Propagation Flow (LISTEN/NOTIFY + DB)
 

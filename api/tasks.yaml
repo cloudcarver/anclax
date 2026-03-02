@@ -17,6 +17,7 @@ tasks:
 
   - name: updateWorkerRuntimeConfig
     description: Update worker runtime config and wait for alive workers to apply it
+    priority: "INF"
     parameters:
       type: object
       properties:
@@ -55,6 +56,7 @@ tasks:
 
   - name: interruptTask
     description: Interrupt a task and stop any in-flight execution
+    priority: "INF"
     parameters:
       type: object
       required: [taskID]

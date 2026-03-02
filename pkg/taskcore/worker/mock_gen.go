@@ -11,65 +11,11 @@ package worker
 
 import (
 	context "context"
-	json "encoding/json"
 	reflect "reflect"
 
 	core "github.com/cloudcarver/anclax/core"
-	apigen "github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	gomock "go.uber.org/mock/gomock"
 )
-
-// MockTaskSpec is a mock of TaskSpec interface.
-type MockTaskSpec struct {
-	ctrl     *gomock.Controller
-	recorder *MockTaskSpecMockRecorder
-	isgomock struct{}
-}
-
-// MockTaskSpecMockRecorder is the mock recorder for MockTaskSpec.
-type MockTaskSpecMockRecorder struct {
-	mock *MockTaskSpec
-}
-
-// NewMockTaskSpec creates a new mock instance.
-func NewMockTaskSpec(ctrl *gomock.Controller) *MockTaskSpec {
-	mock := &MockTaskSpec{ctrl: ctrl}
-	mock.recorder = &MockTaskSpecMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockTaskSpec) EXPECT() *MockTaskSpecMockRecorder {
-	return m.recorder
-}
-
-// GetPayload mocks base method.
-func (m *MockTaskSpec) GetPayload() json.RawMessage {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetPayload")
-	ret0, _ := ret[0].(json.RawMessage)
-	return ret0
-}
-
-// GetPayload indicates an expected call of GetPayload.
-func (mr *MockTaskSpecMockRecorder) GetPayload() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPayload", reflect.TypeOf((*MockTaskSpec)(nil).GetPayload))
-}
-
-// GetType mocks base method.
-func (m *MockTaskSpec) GetType() string {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetType")
-	ret0, _ := ret[0].(string)
-	return ret0
-}
-
-// GetType indicates an expected call of GetType.
-func (mr *MockTaskSpecMockRecorder) GetType() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetType", reflect.TypeOf((*MockTaskSpec)(nil).GetType))
-}
 
 // MockTaskHandler is a mock of TaskHandler interface.
 type MockTaskHandler struct {
@@ -133,72 +79,6 @@ func (m *MockTaskHandler) RegisterTaskHandler(handler TaskHandler) {
 func (mr *MockTaskHandlerMockRecorder) RegisterTaskHandler(handler any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterTaskHandler", reflect.TypeOf((*MockTaskHandler)(nil).RegisterTaskHandler), handler)
-}
-
-// MockTaskLifeCycleHandlerInterface is a mock of TaskLifeCycleHandlerInterface interface.
-type MockTaskLifeCycleHandlerInterface struct {
-	ctrl     *gomock.Controller
-	recorder *MockTaskLifeCycleHandlerInterfaceMockRecorder
-	isgomock struct{}
-}
-
-// MockTaskLifeCycleHandlerInterfaceMockRecorder is the mock recorder for MockTaskLifeCycleHandlerInterface.
-type MockTaskLifeCycleHandlerInterfaceMockRecorder struct {
-	mock *MockTaskLifeCycleHandlerInterface
-}
-
-// NewMockTaskLifeCycleHandlerInterface creates a new mock instance.
-func NewMockTaskLifeCycleHandlerInterface(ctrl *gomock.Controller) *MockTaskLifeCycleHandlerInterface {
-	mock := &MockTaskLifeCycleHandlerInterface{ctrl: ctrl}
-	mock.recorder = &MockTaskLifeCycleHandlerInterfaceMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockTaskLifeCycleHandlerInterface) EXPECT() *MockTaskLifeCycleHandlerInterfaceMockRecorder {
-	return m.recorder
-}
-
-// HandleAttributes mocks base method.
-func (m *MockTaskLifeCycleHandlerInterface) HandleAttributes(ctx context.Context, tx core.Tx, task apigen.Task) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HandleAttributes", ctx, tx, task)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// HandleAttributes indicates an expected call of HandleAttributes.
-func (mr *MockTaskLifeCycleHandlerInterfaceMockRecorder) HandleAttributes(ctx, tx, task any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleAttributes", reflect.TypeOf((*MockTaskLifeCycleHandlerInterface)(nil).HandleAttributes), ctx, tx, task)
-}
-
-// HandleCompleted mocks base method.
-func (m *MockTaskLifeCycleHandlerInterface) HandleCompleted(ctx context.Context, tx core.Tx, task apigen.Task) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HandleCompleted", ctx, tx, task)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// HandleCompleted indicates an expected call of HandleCompleted.
-func (mr *MockTaskLifeCycleHandlerInterfaceMockRecorder) HandleCompleted(ctx, tx, task any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleCompleted", reflect.TypeOf((*MockTaskLifeCycleHandlerInterface)(nil).HandleCompleted), ctx, tx, task)
-}
-
-// HandleFailed mocks base method.
-func (m *MockTaskLifeCycleHandlerInterface) HandleFailed(ctx context.Context, tx core.Tx, task apigen.Task, err error) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HandleFailed", ctx, tx, task, err)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// HandleFailed indicates an expected call of HandleFailed.
-func (mr *MockTaskLifeCycleHandlerInterfaceMockRecorder) HandleFailed(ctx, tx, task, err any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleFailed", reflect.TypeOf((*MockTaskLifeCycleHandlerInterface)(nil).HandleFailed), ctx, tx, task, err)
 }
 
 // MockWorkerInterface is a mock of WorkerInterface interface.

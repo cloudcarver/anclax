@@ -35,6 +35,7 @@ type Function struct {
 	Delay         *string      `yaml:"delay,omitempty"`
 	Events        *Events      `yaml:"events,omitempty"`
 	Labels        []string     `yaml:"labels,omitempty"`
+	Priority      *int32       `yaml:"priority,omitempty"`
 }
 
 type CodeTemplateVars struct {

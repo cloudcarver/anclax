@@ -7,31 +7,23 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cloudcarver/anclax/pkg/taskcore/pgnotify"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pkg/errors"
 )
 
-const taskInterruptAckChannel = "anclax_worker_task_interrupt_ack"
-
-const taskInterruptOp = "interrupt_task"
-
-type taskInterruptNotification struct {
-	Op     string `json:"op"`
-	Params struct {
-		RequestID string `json:"request_id"`
-		TaskID    int32  `json:"task_id"`
-	} `json:"params"`
+type pgxConn interface {
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	WaitForNotification(ctx context.Context) (*pgconn.Notification, error)
+	Close(ctx context.Context) error
 }
 
-type taskInterruptAckNotification struct {
-	Op     string `json:"op"`
-	Params struct {
-		RequestID string `json:"request_id"`
-		WorkerID  string `json:"worker_id"`
-	} `json:"params"`
+var connectPgx = func(ctx context.Context, dsn string) (pgxConn, error) {
+	return pgx.Connect(ctx, dsn)
 }
 
 func (e *Executor) ExecuteInterruptTask(ctx context.Context, params *taskgen.InterruptTaskParameters) error {
@@ -53,12 +45,9 @@ func (e *Executor) ExecuteInterruptTask(ctx context.Context, params *taskgen.Int
 		return errors.Wrap(taskcore.ErrFatalTask, err.Error())
 	}
 
-	notifyRaw, err := json.Marshal(taskInterruptNotification{
-		Op: taskInterruptOp,
-		Params: struct {
-			RequestID string `json:"request_id"`
-			TaskID    int32  `json:"task_id"`
-		}{
+	notifyRaw, err := json.Marshal(pgnotify.TaskInterruptNotification{
+		Op: pgnotify.OpInterruptTask,
+		Params: pgnotify.TaskInterruptParams{
 			RequestID: requestID,
 			TaskID:    params.TaskID,
 		},
@@ -77,6 +66,16 @@ func (e *Executor) ExecuteInterruptTask(ctx context.Context, params *taskgen.Int
 	}
 
 	acked := map[uuid.UUID]struct{}{}
+	ackConn, err := connectPgx(ctx, e.runtimeListenDSN)
+	if err != nil {
+		return errors.Wrap(err, "connect task interrupt ack listener")
+	}
+	defer ackConn.Close(context.Background())
+
+	if _, err := ackConn.Exec(ctx, fmt.Sprintf("LISTEN %s", pgnotify.ChannelTaskInterruptAck)); err != nil {
+		return errors.Wrap(err, "listen task interrupt ack channel")
+	}
+
 	for {
 		online, err := e.model.ListOnlineWorkerIDs(ctx, e.now().Add(-heartbeatTTL))
 		if err != nil {
@@ -93,7 +92,7 @@ func (e *Executor) ExecuteInterruptTask(ctx context.Context, params *taskgen.Int
 			return errors.Wrap(err, "notify worker task interrupt")
 		}
 
-		if err := waitForTaskInterruptAcks(ctx, e.runtimeListenDSN, requestID, acked, listenTimeout); err != nil {
+		if err := waitForTaskInterruptAcks(ctx, ackConn, requestID, acked, listenTimeout); err != nil {
 			return errors.Wrap(err, "wait for task interrupt ack")
 		}
 		if allWorkersAcked(online, acked) {
@@ -117,17 +116,7 @@ func allWorkersAcked(workers []uuid.UUID, acked map[uuid.UUID]struct{}) bool {
 	return true
 }
 
-func waitForTaskInterruptAcks(ctx context.Context, dsn string, requestID string, acked map[uuid.UUID]struct{}, listenTimeout time.Duration) error {
-	conn, err := pgx.Connect(ctx, dsn)
-	if err != nil {
-		return err
-	}
-	defer conn.Close(context.Background())
-
-	if _, err := conn.Exec(ctx, fmt.Sprintf("LISTEN %s", taskInterruptAckChannel)); err != nil {
-		return err
-	}
-
+func waitForTaskInterruptAcks(ctx context.Context, conn pgxConn, requestID string, acked map[uuid.UUID]struct{}, listenTimeout time.Duration) error {
 	waitCtx, cancel := context.WithTimeout(ctx, listenTimeout)
 	defer cancel()
 	for {
@@ -152,11 +141,11 @@ func taskInterruptAckWorker(payload string, requestID string) (uuid.UUID, bool) 
 	if requestID == "" {
 		return uuid.Nil, false
 	}
-	var ack taskInterruptAckNotification
+	var ack pgnotify.TaskInterruptAckNotification
 	if err := json.Unmarshal([]byte(payload), &ack); err != nil {
 		return uuid.Nil, false
 	}
-	if ack.Op != "" && ack.Op != "ack" {
+	if !pgnotify.MatchesOp(ack.Op, pgnotify.OpAck) {
 		return uuid.Nil, false
 	}
 	if ack.Params.RequestID != requestID || ack.Params.WorkerID == "" {

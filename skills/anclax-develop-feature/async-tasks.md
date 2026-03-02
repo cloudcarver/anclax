@@ -103,9 +103,9 @@ err := model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface
 })
 ```
 
-## Pause tasks (workerv2)
+## Pause tasks (worker)
 
-Use the worker control plane to pause a task and stop any in-flight execution (workerv2 only). The pause flow:
+Use the worker control plane to pause a task and stop any in-flight execution. The pause flow:
 - Marks the task as `paused` in storage.
 - Enqueues an `interruptTask` async task that broadcasts an interrupt signal to all online workers.
 - Waits for LISTEN/NOTIFY acks from each online worker before returning.
@@ -116,8 +116,7 @@ Important:
 
 Example:
 ```go
-params := &taskgen.InterruptTaskParameters{TaskID: taskID}
-if err := controlPlane.PauseTask(ctx, params); err != nil {
+if err := controlPlane.PauseTask(ctx, taskID); err != nil {
     return err
 }
 ```

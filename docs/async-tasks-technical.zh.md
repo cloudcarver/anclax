@@ -386,6 +386,23 @@ strict_cap = ceil(concurrency * maxStrictPercentage / 100)
 - [异步任务 Worker 租约设计](async-task-worker-lease.md)
 - [异步任务生产就绪测试策略](async-task-testing-production-readiness.md)
 
+### Worker 控制 LISTEN/NOTIFY 请求
+
+Worker 控制面消息（运行时配置更新、任务中断）统一使用 JSON 外层结构：
+
+```json
+{"op": "<operation>", "params": {"...": "..."}}
+```
+
+规范化的 schema（op、params、channel、ACK params）集中在 `pkg/taskcore/pgnotify`，Worker 通过单一监听循环处理所有控制通知。
+
+新增用于即时通知 Worker 的请求时：
+1. **定义 schema**：在 `pkg/taskcore/pgnotify` 中新增 op 常量与 params 结构（需要 ACK 时同步新增）。
+2. **新增 channel + SQL 通知**：在 `sql/queries/workers.sql` 添加 `pg_notify` 查询（必要时运行 `anclax gen`）。
+3. **发送通知**：在控制面执行器中构造 `pgnotify.*Notification` 并调用 `NotifyWorker...`。
+4. **Worker 处理**：在 `pkg/taskcore/worker/worker.go` 的统一监听循环中注册 channel 并路由处理。
+5. **ACK 与测试**：更新 ACK 等待逻辑（如适用），并补充单元/端到端测试。
+
 ## 高级功能
 
 ### 任务覆盖

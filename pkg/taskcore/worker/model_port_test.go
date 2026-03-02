@@ -1,4 +1,4 @@
-package workerv2
+package worker
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cloudcarver/anclax/core"
+	"github.com/cloudcarver/anclax/pkg/taskcore/pgnotify"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 	"github.com/google/uuid"
@@ -80,9 +81,9 @@ func TestModelPortAckRuntimeConfigApplied(t *testing.T) {
 	}).Return(nil)
 	mockModel.EXPECT().NotifyWorkerRuntimeConfigAck(context.Background(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, payload string) error {
-			var ack runtimeConfigAckNotification
+			var ack pgnotify.RuntimeConfigAckNotification
 			require.NoError(t, json.Unmarshal([]byte(payload), &ack))
-			require.Equal(t, "ack", ack.Op)
+			require.Equal(t, pgnotify.OpAck, ack.Op)
 			require.Equal(t, requestID, ack.Params.RequestID)
 			require.Equal(t, workerID.String(), ack.Params.WorkerID)
 			require.Equal(t, appliedVersion, ack.Params.AppliedVersion)

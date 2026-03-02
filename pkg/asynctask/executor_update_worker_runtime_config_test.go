@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"math"
 	"testing"
 	"time"
 
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/metrics"
+	"github.com/cloudcarver/anclax/pkg/taskcore/pgnotify"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
@@ -64,7 +64,7 @@ func TestExecuteUpdateWorkerRuntimeConfigConvergesAfterNotifyAndAckWait(t *testi
 
 	mockModel.EXPECT().CreateWorkerRuntimeConfig(ctx, gomock.Any()).DoAndReturn(
 		func(ctx context.Context, payload json.RawMessage) (*querier.AnclaxWorkerRuntimeConfig, error) {
-			var parsed runtimeConfigPayload
+			var parsed pgnotify.RuntimeConfigPayload
 			require.NoError(t, json.Unmarshal(payload, &parsed))
 			require.NotNil(t, parsed.MaxStrictPercentage)
 			require.Equal(t, int32(60), *parsed.MaxStrictPercentage)
@@ -81,9 +81,9 @@ func TestExecuteUpdateWorkerRuntimeConfigConvergesAfterNotifyAndAckWait(t *testi
 	}).Return([]uuid.UUID{uuid.New()}, nil)
 	mockModel.EXPECT().NotifyWorkerRuntimeConfig(ctx, gomock.Any()).DoAndReturn(
 		func(ctx context.Context, payload string) error {
-			var parsed runtimeConfigNotification
+			var parsed pgnotify.RuntimeConfigNotification
 			require.NoError(t, json.Unmarshal([]byte(payload), &parsed))
-			require.Equal(t, "up_config", parsed.Op)
+			require.Equal(t, pgnotify.OpUpdateRuntimeConfig, parsed.Op)
 			require.Equal(t, int64(7), parsed.Params.Version)
 			require.Equal(t, requestID, parsed.Params.RequestID)
 			return nil
@@ -179,9 +179,9 @@ func TestExecuteUpdateWorkerRuntimeConfigGeneratesRequestIDWhenMissing(t *testin
 	mockModel.EXPECT().ListLaggingAliveWorkers(ctx, gomock.Any()).Return([]uuid.UUID{uuid.New()}, nil)
 	mockModel.EXPECT().NotifyWorkerRuntimeConfig(ctx, gomock.Any()).DoAndReturn(
 		func(ctx context.Context, payload string) error {
-			var parsed runtimeConfigNotification
+			var parsed pgnotify.RuntimeConfigNotification
 			require.NoError(t, json.Unmarshal([]byte(payload), &parsed))
-			require.Equal(t, "up_config", parsed.Op)
+			require.Equal(t, pgnotify.OpUpdateRuntimeConfig, parsed.Op)
 			require.Equal(t, int64(21), parsed.Params.Version)
 			_, err := uuid.Parse(parsed.Params.RequestID)
 			require.NoError(t, err)
@@ -415,10 +415,6 @@ func TestRuntimeListenDSNFromConfig(t *testing.T) {
 	})
 	require.Contains(t, ret, "postgres://postgres:postgres@localhost:5432/postgres")
 	require.Contains(t, ret, "sslmode=disable")
-}
-
-func TestRunUpdateWorkerRuntimeConfigTaskPriorityMaxInt32Sanity(t *testing.T) {
-	require.Equal(t, int32(math.MaxInt32), ConfigUpdateTaskPriority)
 }
 
 func TestBuildLabelWeightsDuplicateLabelUsesLastValue(t *testing.T) {

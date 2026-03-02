@@ -215,7 +215,7 @@ _, err := h.taskRunner.RunTaskName(ctx, params,
 
 #### 在线更新 worker 调度配置
 
-建议通过 helper 调用内置任务 `updateWorkerRuntimeConfig`：
+建议通过控制面 API 入队并等待配置更新：
 
 ```go
 maxStrict := int32(20)
@@ -223,8 +223,9 @@ defaultWeight := int32(1)
 labels := []string{"w1", "w2"}
 weights := []int32{5, 1}
 
-_, err := asynctask.RunUpdateWorkerRuntimeConfigTask(ctx, h.taskRunner,
-    &taskgen.UpdateWorkerRuntimeConfigParameters{
+controlPlane := ctrl.NewWorkerControlPlane(h.model, h.taskRunner, h.taskStore)
+err := controlPlane.UpdateWorkerRuntimeConfig(ctx,
+    &ctrl.UpdateWorkerRuntimeConfigRequest{
         MaxStrictPercentage: &maxStrict,
         DefaultWeight:       &defaultWeight,
         Labels:              labels,
@@ -233,7 +234,7 @@ _, err := asynctask.RunUpdateWorkerRuntimeConfigTask(ctx, h.taskRunner,
 )
 ```
 
-该 helper 会始终使用保留最高严格优先级入队配置更新任务。
+控制面会始终使用保留最高严格优先级入队配置更新任务，并封装 LISTEN/NOTIFY 细节。
 
 完整语义（strict cap、标签组映射、LISTEN/NOTIFY 传播、ACK 收敛、supersede 行为）请见：
 - [调度与运行时配置指南](async-task-scheduling-runtime-config.zh.md)

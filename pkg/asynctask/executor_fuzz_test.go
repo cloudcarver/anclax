@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cloudcarver/anclax/pkg/taskcore/pgnotify"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
 )
 
@@ -94,11 +95,11 @@ func FuzzIsRuntimeConfigAckForRequest(f *testing.F) {
 		if requestID == "" {
 			t.Fatal("empty requestID should not match")
 		}
-		var ack runtimeConfigAckNotification
+		var ack pgnotify.RuntimeConfigAckNotification
 		if err := json.Unmarshal([]byte(payload), &ack); err != nil {
 			t.Fatalf("matched invalid payload: %v", err)
 		}
-		if ack.Op != "" && ack.Op != "ack" {
+		if !pgnotify.MatchesOp(ack.Op, pgnotify.OpAck) {
 			t.Fatalf("matched unexpected op: %q", ack.Op)
 		}
 		if ack.Params.RequestID != requestID {

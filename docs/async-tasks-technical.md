@@ -386,6 +386,23 @@ For runnable examples and operational guidance, see:
 - [Async Task Worker Lease Design](async-task-worker-lease.md)
 - [Async Task Testing for Production Readiness](async-task-testing-production-readiness.md)
 
+### Worker control LISTEN/NOTIFY requests
+
+Worker control-plane messages (runtime config update, task interrupt) share a unified JSON envelope:
+
+```json
+{"op": "<operation>", "params": {"...": "..."}}
+```
+
+The canonical schema (ops, params, channels, ACK params) lives in `pkg/taskcore/pgnotify`. A single worker listen loop consumes all worker control notifications.
+
+When adding a new request to immediately inform workers:
+1. **Define schema**: add an op constant and params struct in `pkg/taskcore/pgnotify` (and ACK params if needed).
+2. **Add channel + SQL notify**: extend `sql/queries/workers.sql` with a `pg_notify` query (and regenerate via `anclax gen` if required).
+3. **Emit notification**: marshal the `pgnotify.*Notification` in the control-plane executor and call the model `NotifyWorker...` method.
+4. **Handle in worker**: register the channel in `pkg/taskcore/worker/worker.go` and route the op in the unified listen loop.
+5. **Wire ACKs/tests**: update ACK waiters (if applicable) and add unit/e2e coverage for the new request.
+
 ## Advanced Features
 
 ### Task Overrides

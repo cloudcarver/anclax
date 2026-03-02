@@ -93,35 +93,35 @@ Anclax 提供 `updateWorkerRuntimeConfig` 任务（定义见 `api/tasks.yaml`）
 - `notifyInterval`（可选）：例如 `"1s"`，必须为正。
 - `listenTimeout`（可选）：例如 `"2s"`，必须为正。
 
-### 推荐入队助手
+说明：控制面会自动提供 `requestID`、`notifyInterval` 和 `listenTimeout`；调用方无需手动设置。
 
-建议使用会自动设置“保留最高优先级”的 helper：
+### 使用 Worker 控制面
+
+建议通过控制面 API 入队并等待配置更新完成：
 
 ```go
-import "github.com/cloudcarver/anclax/pkg/asynctask"
+import "github.com/cloudcarver/anclax/pkg/taskcore/ctrl"
 
 maxStrict := int32(20)
 defaultWeight := int32(1)
 labels := []string{"w1", "w2"}
 weights := []int32{5, 1}
-notifyInterval := "1s"
-listenTimeout := "2s"
 
-_, err := asynctask.RunUpdateWorkerRuntimeConfigTask(ctx, taskRunner,
-    &taskgen.UpdateWorkerRuntimeConfigParameters{
+controlPlane := ctrl.NewWorkerControlPlane(model, taskRunner, taskStore)
+err := controlPlane.UpdateWorkerRuntimeConfig(ctx,
+    &ctrl.UpdateWorkerRuntimeConfigRequest{
         MaxStrictPercentage: &maxStrict,
         DefaultWeight:       &defaultWeight,
         Labels:              labels,
         Weights:             weights,
-        NotifyInterval:      &notifyInterval,
-        ListenTimeout:       &listenTimeout,
     },
 )
 ```
 
 推荐原因：
-- helper 始终将配置更新任务设为保留最高严格优先级（`math.MaxInt32`）。
+- 控制面始终将配置更新任务设为保留最高严格优先级（`math.MaxInt32`）。
 - 避免控制面配置更新被低优先级业务任务长期阻塞。
+- 调用方无需关心 request ID 与 LISTEN/NOTIFY 细节；控制面负责重试与 ACK 等待。
 
 ## 传播流程（LISTEN/NOTIFY + DB）
 

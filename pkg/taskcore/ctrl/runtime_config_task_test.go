@@ -1,7 +1,8 @@
-package asynctask
+package ctrl
 
 import (
 	"context"
+	"math"
 	"testing"
 
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
@@ -16,10 +17,18 @@ func TestRunUpdateWorkerRuntimeConfigTaskAddsMaxPriority(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockRunner := taskgen.NewMockTaskRunner(ctrl)
-	params := &taskgen.UpdateWorkerRuntimeConfigParameters{}
+	maxStrict := int32(80)
+	req := &UpdateWorkerRuntimeConfigRequest{
+		MaxStrictPercentage: &maxStrict,
+		Labels:              []string{"billing"},
+		Weights:             []int32{3},
+	}
 
-	mockRunner.EXPECT().RunUpdateWorkerRuntimeConfig(context.Background(), params, gomock.Any()).DoAndReturn(
+	mockRunner.EXPECT().RunUpdateWorkerRuntimeConfig(context.Background(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, params *taskgen.UpdateWorkerRuntimeConfigParameters, overrides ...func(*apigen.Task) error) (int32, error) {
+			require.Equal(t, req.MaxStrictPercentage, params.MaxStrictPercentage)
+			require.Equal(t, req.Labels, params.Labels)
+			require.Equal(t, req.Weights, params.Weights)
 			require.NotEmpty(t, overrides)
 			task := &apigen.Task{Attributes: apigen.TaskAttributes{}}
 			err := overrides[0](task)
@@ -30,7 +39,7 @@ func TestRunUpdateWorkerRuntimeConfigTaskAddsMaxPriority(t *testing.T) {
 		},
 	)
 
-	taskID, err := RunUpdateWorkerRuntimeConfigTask(context.Background(), mockRunner, params)
+	taskID, err := RunUpdateWorkerRuntimeConfigTask(context.Background(), mockRunner, req)
 	require.NoError(t, err)
 	require.Equal(t, int32(99), taskID)
 }
@@ -40,10 +49,10 @@ func TestRunUpdateWorkerRuntimeConfigTaskKeepsMaxPriorityWhenOverrideProvided(t 
 	defer ctrl.Finish()
 
 	mockRunner := taskgen.NewMockTaskRunner(ctrl)
-	params := &taskgen.UpdateWorkerRuntimeConfigParameters{}
+	req := &UpdateWorkerRuntimeConfigRequest{}
 	lowPriority := taskcore.WithPriority(1)
 
-	mockRunner.EXPECT().RunUpdateWorkerRuntimeConfig(context.Background(), params, gomock.Any(), gomock.Any()).DoAndReturn(
+	mockRunner.EXPECT().RunUpdateWorkerRuntimeConfig(context.Background(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, params *taskgen.UpdateWorkerRuntimeConfigParameters, overrides ...func(*apigen.Task) error) (int32, error) {
 			task := &apigen.Task{Attributes: apigen.TaskAttributes{}}
 			require.Len(t, overrides, 2)
@@ -55,7 +64,11 @@ func TestRunUpdateWorkerRuntimeConfigTaskKeepsMaxPriorityWhenOverrideProvided(t 
 		},
 	)
 
-	taskID, err := RunUpdateWorkerRuntimeConfigTask(context.Background(), mockRunner, params, lowPriority)
+	taskID, err := RunUpdateWorkerRuntimeConfigTask(context.Background(), mockRunner, req, lowPriority)
 	require.NoError(t, err)
 	require.Equal(t, int32(100), taskID)
+}
+
+func TestRunUpdateWorkerRuntimeConfigTaskPriorityMaxInt32Sanity(t *testing.T) {
+	require.Equal(t, int32(math.MaxInt32), ConfigUpdateTaskPriority)
 }
