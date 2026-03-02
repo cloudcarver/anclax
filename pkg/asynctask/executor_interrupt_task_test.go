@@ -3,12 +3,14 @@ package asynctask
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/cloudcarver/anclax/pkg/taskcore/pgnotify"
+	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
 	"github.com/google/uuid"
@@ -91,4 +93,61 @@ func TestExecuteInterruptTaskListenBeforeNotify(t *testing.T) {
 		ListenTimeout: &listenTimeout,
 	})
 	require.NoError(t, err)
+}
+
+func TestExecuteInterruptTaskRequiresDSN(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	exec := &Executor{model: model.NewMockModelInterface(ctrl), now: time.Now}
+	err := exec.ExecuteInterruptTask(context.Background(), &taskgen.InterruptTaskParameters{TaskID: 1})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "requires pg dsn")
+}
+
+func TestExecuteInterruptTaskNoOnlineWorkers(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	fakeConn := &fakeInterruptAckConn{}
+	prevConnect := connectPgx
+	connectPgx = func(ctx context.Context, dsn string) (pgxConn, error) {
+		return fakeConn, nil
+	}
+	defer func() { connectPgx = prevConnect }()
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{}, nil)
+	mockModel.EXPECT().NotifyWorkerTaskInterrupt(gomock.Any(), gomock.Any()).Times(0)
+
+	exec := &Executor{
+		model:                     mockModel,
+		now:                       time.Now,
+		runtimeListenDSN:          "postgres://example",
+		runtimeConfigHeartbeatTTL: 5 * time.Second,
+	}
+
+	err := exec.ExecuteInterruptTask(context.Background(), &taskgen.InterruptTaskParameters{TaskID: 9})
+	require.NoError(t, err)
+	require.Equal(t, int32(0), fakeConn.waitCalls.Load())
+}
+
+func TestExecuteInterruptTaskInvalidDurations(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	exec := &Executor{
+		model:            model.NewMockModelInterface(ctrl),
+		now:              time.Now,
+		runtimeListenDSN: "postgres://example",
+	}
+
+	invalid := "bad"
+	err := exec.ExecuteInterruptTask(context.Background(), &taskgen.InterruptTaskParameters{
+		TaskID:         7,
+		NotifyInterval: &invalid,
+	})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "invalid notifyInterval duration")
+	require.True(t, errors.Is(err, taskcore.ErrFatalTask))
 }

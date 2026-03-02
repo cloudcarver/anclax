@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -201,6 +202,85 @@ func TestPushTaskSerialAttributes(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, int32(42), id)
+}
+
+func TestPushTaskUniqueTagReturnsExisting(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	uniqueTag := "unique-task"
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockModel.EXPECT().GetTaskByUniqueTag(ctx, &uniqueTag).Return(&querier.AnclaxTask{ID: 99}, nil)
+
+	store := &TaskStore{model: mockModel}
+	id, err := store.PushTask(ctx, &apigen.Task{
+		Attributes: apigen.TaskAttributes{},
+		Spec:       apigen.TaskSpec{Type: "unique", Payload: json.RawMessage(`{"id":1}`)},
+		Status:     apigen.Pending,
+		UniqueTag:  &uniqueTag,
+	})
+	require.NoError(t, err)
+	require.Equal(t, int32(99), id)
+}
+
+func TestPushTaskUniqueTagLookupFails(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	uniqueTag := "unique-task"
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockModel.EXPECT().GetTaskByUniqueTag(ctx, &uniqueTag).Return(nil, errors.New("boom"))
+
+	store := &TaskStore{model: mockModel}
+	_, err := store.PushTask(ctx, &apigen.Task{
+		Attributes: apigen.TaskAttributes{},
+		Spec:       apigen.TaskSpec{Type: "unique", Payload: json.RawMessage(`{"id":1}`)},
+		Status:     apigen.Pending,
+		UniqueTag:  &uniqueTag,
+	})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "failed to check task by unique tag before push")
+}
+
+func TestGetTaskByUniqueTag(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	uniqueTag := "unique-tag"
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockModel.EXPECT().GetTaskByUniqueTag(ctx, &uniqueTag).Return(&querier.AnclaxTask{
+		ID:         10,
+		Attributes: apigen.TaskAttributes{},
+		Spec:       apigen.TaskSpec{Type: "demo"},
+		Status:     string(apigen.Pending),
+	}, nil)
+
+	store := &TaskStore{model: mockModel}
+	task, err := store.GetTaskByUniqueTag(ctx, uniqueTag)
+	require.NoError(t, err)
+	require.Equal(t, int32(10), task.ID)
+	require.Equal(t, apigen.Pending, task.Status)
+}
+
+func TestGetTaskByUniqueTagNotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	uniqueTag := "unique-tag"
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockModel.EXPECT().GetTaskByUniqueTag(ctx, &uniqueTag).Return(nil, pgx.ErrNoRows)
+
+	store := &TaskStore{model: mockModel}
+	_, err := store.GetTaskByUniqueTag(ctx, uniqueTag)
+	require.ErrorIs(t, err, ErrTaskNotFound)
 }
 
 func TestPauseCronJob(t *testing.T) {
