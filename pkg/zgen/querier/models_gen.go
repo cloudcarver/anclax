@@ -32,6 +32,14 @@ type AnclaxEvent struct {
 	CreatedAt time.Time
 }
 
+type AnclaxFsm struct {
+	ID        uuid.UUID
+	Type      string
+	State     string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 type AnclaxOpaqueKey struct {
 	ID        int64
 	Key       []byte

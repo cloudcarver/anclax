@@ -163,6 +163,21 @@ func (mr *MockModelInterfaceMockRecorder) CreateOrg(ctx, name any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateOrg", reflect.TypeOf((*MockModelInterface)(nil).CreateOrg), ctx, name)
 }
 
+// CreateStateMachine mocks base method.
+func (m *MockModelInterface) CreateStateMachine(ctx context.Context, arg querier.CreateStateMachineParams) (uuid.UUID, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateStateMachine", ctx, arg)
+	ret0, _ := ret[0].(uuid.UUID)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateStateMachine indicates an expected call of CreateStateMachine.
+func (mr *MockModelInterfaceMockRecorder) CreateStateMachine(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateStateMachine", reflect.TypeOf((*MockModelInterface)(nil).CreateStateMachine), ctx, arg)
+}
+
 // CreateTask mocks base method.
 func (m *MockModelInterface) CreateTask(ctx context.Context, arg querier.CreateTaskParams) (*querier.AnclaxTask, error) {
 	m.ctrl.T.Helper()
@@ -352,6 +367,21 @@ func (m *MockModelInterface) GetOrgByName(ctx context.Context, name string) (*qu
 func (mr *MockModelInterfaceMockRecorder) GetOrgByName(ctx, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOrgByName", reflect.TypeOf((*MockModelInterface)(nil).GetOrgByName), ctx, name)
+}
+
+// GetStateMachineByID mocks base method.
+func (m *MockModelInterface) GetStateMachineByID(ctx context.Context, id uuid.UUID) (*querier.AnclaxFsm, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetStateMachineByID", ctx, id)
+	ret0, _ := ret[0].(*querier.AnclaxFsm)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetStateMachineByID indicates an expected call of GetStateMachineByID.
+func (mr *MockModelInterfaceMockRecorder) GetStateMachineByID(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStateMachineByID", reflect.TypeOf((*MockModelInterface)(nil).GetStateMachineByID), ctx, id)
 }
 
 // GetTaskByID mocks base method.
@@ -790,6 +820,20 @@ func (m *MockModelInterface) UpdatePendingTaskWeightByLabels(ctx context.Context
 func (mr *MockModelInterfaceMockRecorder) UpdatePendingTaskWeightByLabels(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdatePendingTaskWeightByLabels", reflect.TypeOf((*MockModelInterface)(nil).UpdatePendingTaskWeightByLabels), ctx, arg)
+}
+
+// UpdateStateMachineStateCAS mocks base method.
+func (m *MockModelInterface) UpdateStateMachineStateCAS(ctx context.Context, arg querier.UpdateStateMachineStateCASParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateStateMachineStateCAS", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateStateMachineStateCAS indicates an expected call of UpdateStateMachineStateCAS.
+func (mr *MockModelInterfaceMockRecorder) UpdateStateMachineStateCAS(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateStateMachineStateCAS", reflect.TypeOf((*MockModelInterface)(nil).UpdateStateMachineStateCAS), ctx, arg)
 }
 
 // UpdateTask mocks base method.

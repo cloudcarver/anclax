@@ -21,6 +21,7 @@ type Querier interface {
 	CreateKeyPair(ctx context.Context, arg CreateKeyPairParams) (*AnclaxAccessKeyPair, error)
 	CreateOpaqueKey(ctx context.Context, arg CreateOpaqueKeyParams) (int64, error)
 	CreateOrg(ctx context.Context, name string) (*AnclaxOrg, error)
+	CreateStateMachine(ctx context.Context, arg CreateStateMachineParams) (uuid.UUID, error)
 	CreateTask(ctx context.Context, arg CreateTaskParams) (*AnclaxTask, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (*AnclaxUser, error)
 	CreateWorkerRuntimeConfig(ctx context.Context, payload json.RawMessage) (*AnclaxWorkerRuntimeConfig, error)
@@ -34,6 +35,7 @@ type Querier interface {
 	GetOpaqueKey(ctx context.Context, id int64) ([]byte, error)
 	GetOrg(ctx context.Context, id int32) (*AnclaxOrg, error)
 	GetOrgByName(ctx context.Context, name string) (*AnclaxOrg, error)
+	GetStateMachineByID(ctx context.Context, id uuid.UUID) (*AnclaxFsm, error)
 	GetTaskByID(ctx context.Context, id int32) (*AnclaxTask, error)
 	GetTaskByUniqueTag(ctx context.Context, uniqueTag *string) (*AnclaxTask, error)
 	GetUser(ctx context.Context, id int32) (*AnclaxUser, error)
@@ -60,6 +62,7 @@ type Querier interface {
 	SetUserDefaultOrg(ctx context.Context, arg SetUserDefaultOrgParams) error
 	UpdatePendingTaskPriorityByLabels(ctx context.Context, arg UpdatePendingTaskPriorityByLabelsParams) (int64, error)
 	UpdatePendingTaskWeightByLabels(ctx context.Context, arg UpdatePendingTaskWeightByLabelsParams) (int64, error)
+	UpdateStateMachineStateCAS(ctx context.Context, arg UpdateStateMachineStateCASParams) error
 	UpdateTask(ctx context.Context, arg UpdateTaskParams) error
 	UpdateTaskStartedAt(ctx context.Context, arg UpdateTaskStartedAtParams) error
 	UpdateTaskStartedAtByWorker(ctx context.Context, arg UpdateTaskStartedAtByWorkerParams) (int32, error)

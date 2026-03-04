@@ -1,0 +1,5 @@
+BEGIN;
+
+DROP IF EXISTS TABLE anclax.fsm;
+
+COMMIT;
