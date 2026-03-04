@@ -204,6 +204,44 @@ func TestPushTaskSerialAttributes(t *testing.T) {
 	require.Equal(t, int32(42), id)
 }
 
+func TestPushTaskParentTaskID(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	parentTaskID := int32(41)
+	spec := apigen.TaskSpec{Type: "child", Payload: json.RawMessage(`{"id":41}`)}
+
+	task := &apigen.Task{
+		Attributes: apigen.TaskAttributes{},
+		Spec:       spec,
+		Status:     apigen.Pending,
+	}
+	require.NoError(t, WithParentTaskID(parentTaskID)(task))
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockModel.EXPECT().CreateTask(ctx, utils.NewJSONValueMatcher(t, querier.CreateTaskParams{
+		Attributes: apigen.TaskAttributes{
+			Priority: utils.Ptr(int32(0)),
+			Weight:   utils.Ptr(int32(1)),
+		},
+		Spec:         spec,
+		Status:       string(apigen.Pending),
+		StartedAt:    nil,
+		UniqueTag:    nil,
+		ParentTaskID: &parentTaskID,
+		SerialKey:    nil,
+		SerialID:     nil,
+		Priority:     0,
+		Weight:       1,
+	})).Return(&querier.AnclaxTask{ID: 77}, nil)
+
+	store := &TaskStore{model: mockModel}
+	id, err := store.PushTask(ctx, task)
+	require.NoError(t, err)
+	require.Equal(t, int32(77), id)
+}
+
 func TestPushTaskUniqueTagReturnsExisting(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

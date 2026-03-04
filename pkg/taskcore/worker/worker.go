@@ -272,33 +272,35 @@ func parseRuntimeConfigNotificationPayload(payload string) (requestID string, sh
 }
 
 func (w *Worker) handleTaskInterruptNotification(ctx context.Context, payload string) error {
-	requestID, taskID, shouldProcess, err := parseTaskInterruptNotificationPayload(payload)
+	requestID, taskIDs, shouldProcess, err := parseTaskInterruptNotificationPayload(payload)
 	if err != nil {
 		return err
 	}
 	if !shouldProcess {
 		return nil
 	}
-	w.port.InterruptTask(taskID, taskcore.ErrTaskInterrupted)
+	for _, taskID := range taskIDs {
+		w.port.InterruptTask(taskID, taskcore.ErrTaskInterrupted)
+	}
 	if err := w.port.AckTaskInterruptApplied(ctx, requestID); err != nil {
 		return err
 	}
 	return nil
 }
 
-func parseTaskInterruptNotificationPayload(payload string) (string, int32, bool, error) {
+func parseTaskInterruptNotificationPayload(payload string) (string, []int32, bool, error) {
 	env, err := pgnotify.ParseEnvelope(payload)
 	if err != nil {
-		return "", 0, false, fmt.Errorf("unmarshal task interrupt notification: %w", err)
+		return "", nil, false, fmt.Errorf("unmarshal task interrupt notification: %w", err)
 	}
 	if !pgnotify.MatchesOp(env.Op, pgnotify.OpInterruptTask) {
-		return "", 0, false, nil
+		return "", nil, false, nil
 	}
 	var params pgnotify.TaskInterruptParams
 	if err := json.Unmarshal(env.Params, &params); err != nil {
-		return "", 0, false, fmt.Errorf("unmarshal task interrupt params: %w", err)
+		return "", nil, false, fmt.Errorf("unmarshal task interrupt params: %w", err)
 	}
-	return params.RequestID, params.TaskID, true, nil
+	return params.RequestID, params.TaskIDs, true, nil
 }
 
 func waitForListenReady(ctx context.Context, errCh <-chan error, readyChans ...<-chan struct{}) error {

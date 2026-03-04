@@ -354,8 +354,8 @@ WHERE id = $1 AND worker_id = $2
 RETURNING id;
 
 -- name: CreateTask :one
-INSERT INTO anclax.tasks (attributes, spec, status, started_at, unique_tag, serial_key, serial_id, priority, weight)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (unique_tag) DO NOTHING RETURNING *;
+INSERT INTO anclax.tasks (attributes, spec, status, started_at, unique_tag, parent_task_id, serial_key, serial_id, priority, weight)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (unique_tag) DO NOTHING RETURNING *;
 
 -- name: GetTaskByUniqueTag :one
 SELECT * FROM anclax.tasks
@@ -376,6 +376,18 @@ LIMIT 1;
 -- name: GetTaskByID :one
 SELECT * FROM anclax.tasks
 WHERE id = $1;
+
+-- name: ListTaskDescendantIDs :many
+WITH RECURSIVE descendants AS (
+    SELECT t.id
+    FROM anclax.tasks t
+    WHERE t.parent_task_id = $1
+    UNION ALL
+    SELECT t.id
+    FROM anclax.tasks t
+    JOIN descendants d ON t.parent_task_id = d.id
+)
+SELECT id FROM descendants;
 
 -- name: IncrementAttempts :exec
 UPDATE anclax.tasks

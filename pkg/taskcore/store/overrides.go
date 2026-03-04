@@ -43,6 +43,13 @@ func WithUniqueTag(uniqueTag string) TaskOverride {
 	}
 }
 
+func WithParentTaskID(parentTaskID int32) TaskOverride {
+	return func(task *apigen.Task) error {
+		task.ParentTaskId = &parentTaskID
+		return nil
+	}
+}
+
 func WithLabels(labels []string) TaskOverride {
 	return func(task *apigen.Task) error {
 		labelsCopy := append([]string(nil), labels...)

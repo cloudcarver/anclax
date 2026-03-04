@@ -186,7 +186,8 @@ CREATE TABLE anclax_tasks (
     started_at TIMESTAMP,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    unique_tag TEXT UNIQUE         -- 用于防止重复
+    unique_tag TEXT UNIQUE,        -- 用于防止重复
+    parent_task_id INTEGER         -- 可选的父任务
 );
 
 -- Cron 作业调度
@@ -414,6 +415,7 @@ taskID, err := taskRunner.RunSendWelcomeEmail(ctx, params,
     taskcore.WithRetryPolicy("1h", 5),           // 自定义重试
     taskcore.WithTimeout("2m"),                  // 自定义超时
     taskcore.WithUniqueTag("user-123-welcome"),  // 防止重复
+    taskcore.WithParentTaskID(parentID),         // 关联父任务
     taskcore.WithDelay(time.Hour),               // 延迟执行
 )
 ```
@@ -422,6 +424,10 @@ taskID, err := taskRunner.RunSendWelcomeEmail(ctx, params,
 - 覆盖作为函数选项应用
 - 它们在数据库插入前修改任务属性
 - 类型安全验证确保覆盖兼容性
+
+### 任务层级与控制面中断
+
+任务可以通过可选的 `parentTaskId` 形成层级。入队子任务时使用 `taskcore.WithParentTaskID`。当控制面收到 `PauseTask` 或 `CancelTask` 请求时，会在同一事务内对目标任务及其所有后代任务应用状态更新，并一次性入队包含全部任务 ID 的 interrupt task。
 
 ### 等待任务完成
 

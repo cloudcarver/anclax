@@ -186,7 +186,8 @@ CREATE TABLE anclax_tasks (
     started_at TIMESTAMP,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    unique_tag TEXT UNIQUE         -- For preventing duplicates
+    unique_tag TEXT UNIQUE,        -- For preventing duplicates
+    parent_task_id INTEGER         -- Optional parent task for hierarchies
 );
 
 -- Cron job scheduling
@@ -414,6 +415,7 @@ taskID, err := taskRunner.RunSendWelcomeEmail(ctx, params,
     taskcore.WithRetryPolicy("1h", 5),           // Custom retry
     taskcore.WithTimeout("2m"),                  // Custom timeout
     taskcore.WithUniqueTag("user-123-welcome"),  // Prevent duplicates
+    taskcore.WithParentTaskID(parentID),         // Link to parent task
     taskcore.WithDelay(time.Hour),               // Delay execution
 )
 ```
@@ -422,6 +424,10 @@ taskID, err := taskRunner.RunSendWelcomeEmail(ctx, params,
 - Overrides are applied as functional options
 - They modify the task attributes before database insertion
 - Type-safe validation ensures override compatibility
+
+### Task Hierarchies and Control-Plane Interrupts
+
+Tasks may include an optional `parentTaskId` to form a hierarchy. Use `taskcore.WithParentTaskID` when enqueueing child tasks. When the control plane receives a `PauseTask` or `CancelTask` request, it now applies the status change to the target task and all descendants inside the same transaction, then enqueues a single interrupt task that contains the full list of task IDs.
 
 ### Waiting for Task Completion
 

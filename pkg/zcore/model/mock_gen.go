@@ -592,6 +592,21 @@ func (mr *MockModelInterfaceMockRecorder) ListOrgs(ctx, userID any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListOrgs", reflect.TypeOf((*MockModelInterface)(nil).ListOrgs), ctx, userID)
 }
 
+// ListTaskDescendantIDs mocks base method.
+func (m *MockModelInterface) ListTaskDescendantIDs(ctx context.Context, parentTaskID *int32) ([]int32, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListTaskDescendantIDs", ctx, parentTaskID)
+	ret0, _ := ret[0].([]int32)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListTaskDescendantIDs indicates an expected call of ListTaskDescendantIDs.
+func (mr *MockModelInterfaceMockRecorder) ListTaskDescendantIDs(ctx, parentTaskID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTaskDescendantIDs", reflect.TypeOf((*MockModelInterface)(nil).ListTaskDescendantIDs), ctx, parentTaskID)
+}
+
 // MarkWorkerOffline mocks base method.
 func (m *MockModelInterface) MarkWorkerOffline(ctx context.Context, id uuid.UUID) error {
 	m.ctrl.T.Helper()

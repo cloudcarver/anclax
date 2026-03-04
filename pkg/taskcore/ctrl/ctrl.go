@@ -21,6 +21,27 @@ func NewWorkerControlPlane(model model.ModelInterface, runner taskgen.TaskRunner
 	return &WorkerControlPlane{model: model, runner: runner, store: store}
 }
 
+func collectTaskAndDescendantIDs(ctx context.Context, txm model.ModelInterface, rootTaskID int32) ([]int32, error) {
+	descendants, err := txm.ListTaskDescendantIDs(ctx, &rootTaskID)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]int32, 0, len(descendants)+1)
+	seen := make(map[int32]struct{}, len(descendants)+1)
+	appendUnique := func(id int32) {
+		if _, ok := seen[id]; ok {
+			return
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	appendUnique(rootTaskID)
+	for _, id := range descendants {
+		appendUnique(id)
+	}
+	return ids, nil
+}
+
 // UpdateWorkerRuntimeConfig enqueues a runtime config update task and waits for all workers to ack it.
 func (c *WorkerControlPlane) UpdateWorkerRuntimeConfig(ctx context.Context, req *UpdateWorkerRuntimeConfigRequest) error {
 	if req == nil {
@@ -41,13 +62,20 @@ func (c *WorkerControlPlane) PauseTask(ctx context.Context, taskID int32) error 
 	if taskID <= 0 {
 		return errors.New("pause task requires a positive taskID")
 	}
-	params := &taskgen.InterruptTaskParameters{TaskID: taskID}
 
 	var cancelTaskID int32
-	err := c.model.RunTransactionWithTx(ctx, func(tx core.Tx, _ model.ModelInterface) error {
-		if err := c.store.WithTx(tx).PauseTask(ctx, taskID); err != nil {
-			return errors.Wrap(err, "pause task")
+	err := c.model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
+		taskIDs, err := collectTaskAndDescendantIDs(ctx, txm, taskID)
+		if err != nil {
+			return errors.Wrap(err, "collect task descendants")
 		}
+		storeTx := c.store.WithTx(tx)
+		for _, id := range taskIDs {
+			if err := storeTx.PauseTask(ctx, id); err != nil {
+				return errors.Wrap(err, "pause task")
+			}
+		}
+		params := &taskgen.InterruptTaskParameters{TaskIDs: taskIDs}
 		id, err := c.runner.RunInterruptTaskWithTx(ctx, tx, params)
 		if err != nil {
 			return errors.Wrap(err, "enqueue pause task cancel")
@@ -69,12 +97,19 @@ func (c *WorkerControlPlane) CancelTask(ctx context.Context, taskID int32) error
 	if taskID <= 0 {
 		return errors.New("cancel task requires a positive taskID")
 	}
-	params := &taskgen.InterruptTaskParameters{TaskID: taskID}
 	var interruptTaskID int32
-	err := c.model.RunTransactionWithTx(ctx, func(tx core.Tx, _ model.ModelInterface) error {
-		if err := c.store.WithTx(tx).CancelTask(ctx, taskID); err != nil {
-			return errors.Wrap(err, "cancel task")
+	err := c.model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
+		taskIDs, err := collectTaskAndDescendantIDs(ctx, txm, taskID)
+		if err != nil {
+			return errors.Wrap(err, "collect task descendants")
 		}
+		storeTx := c.store.WithTx(tx)
+		for _, id := range taskIDs {
+			if err := storeTx.CancelTask(ctx, id); err != nil {
+				return errors.Wrap(err, "cancel task")
+			}
+		}
+		params := &taskgen.InterruptTaskParameters{TaskIDs: taskIDs}
 		id, err := c.runner.RunInterruptTaskWithTx(ctx, tx, params)
 		if err != nil {
 			return errors.Wrap(err, "enqueue interrupt task")

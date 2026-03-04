@@ -190,6 +190,7 @@ taskID, err := h.taskRunner.RunTaskName(ctx, params,
     taskcore.WithRetryPolicy("1h", 5),
     taskcore.WithTimeout("30m"),
     taskcore.WithUniqueTag("user-123-daily-task"),
+    taskcore.WithParentTaskID(parentID),
 )
 ```
 
@@ -238,6 +239,18 @@ err := controlPlane.UpdateWorkerRuntimeConfig(ctx,
 
 完整语义（strict cap、标签组映射、LISTEN/NOTIFY 传播、ACK 收敛、supersede 行为）请见：
 - [调度与运行时配置指南](async-task-scheduling-runtime-config.zh.md)
+
+#### 任务层级与控制面中断
+
+任务可以通过 `parentTaskId` 关联父任务。入队子任务时使用 `taskcore.WithParentTaskID`：
+
+```go
+childID, err := h.taskRunner.RunTaskName(ctx, params,
+    taskcore.WithParentTaskID(parentID),
+)
+```
+
+当调用 `PauseTask` 或 `CancelTask` 时，控制面会在同一事务内对目标任务及其所有后代任务应用暂停或取消，并一次性入队 interrupt task 来通知全部任务 ID。
 
 ### 事务性任务
 

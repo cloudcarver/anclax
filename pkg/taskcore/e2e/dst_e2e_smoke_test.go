@@ -279,6 +279,24 @@ func (a *taskStoreActor) SetTaskStartOffset(ctx context.Context, task string, of
 	})
 }
 
+func (a *taskStoreActor) SetTaskParent(ctx context.Context, task string, parent string) error {
+	if task == "" || parent == "" {
+		return fmt.Errorf("task and parent are required")
+	}
+	childID, err := a.taskIDByName(ctx, task)
+	if err != nil {
+		return err
+	}
+	parentID, err := a.taskIDByName(ctx, parent)
+	if err != nil {
+		return err
+	}
+	return a.model.RunTransactionWithTx(ctx, func(tx core.Tx, _ model.ModelInterface) error {
+		_, err := tx.Exec(ctx, "update anclax.tasks set parent_task_id = $1 where id = $2", parentID, childID)
+		return err
+	})
+}
+
 func (a *taskStoreActor) taskIDByName(ctx context.Context, task string) (int32, error) {
 	var id int32
 	err := a.model.RunTransactionWithTx(ctx, func(tx core.Tx, _ model.ModelInterface) error {

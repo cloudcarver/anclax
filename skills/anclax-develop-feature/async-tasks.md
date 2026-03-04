@@ -122,6 +122,7 @@ if err := controlPlane.PauseTask(ctx, taskID); err != nil {
 ```
 
 The pause operation is transactional: `PauseTask` uses a DB transaction to pause the task and enqueue the interrupt task together.
+Pause/cancel operations now cascade to all descendant tasks (using `parentTaskId` links) in the same transaction, then enqueue a single interrupt task containing all affected task IDs.
 To cancel a task instead, call `CancelTask`, which marks the task `cancelled` and enqueues the interrupt task.
 
 ## Runtime overrides
@@ -132,6 +133,7 @@ Use `taskcore.TaskOverride` helpers:
 - `taskcore.WithDelay(delay)`
 - `taskcore.WithStartedAt(time)`
 - `taskcore.WithUniqueTag(tag)`
+- `taskcore.WithParentTaskID(parentID)`
 - `taskcore.WithLabels([]string{"billing", "critical"})`
 - `taskcore.WithSerialKey("order-42")`
 - `taskcore.WithSerialID(7)`

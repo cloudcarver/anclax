@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/cloudcarver/anclax/core"
+	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	"github.com/cloudcarver/anclax/pkg/utils"
-	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/pkg/errors"
 )
 
@@ -19,35 +19,37 @@ func init() {
 	utils.Noop()
 }
 
-const (
-	DeleteOpaqueKey = "deleteOpaqueKey"
+const ( 
+	DeleteOpaqueKey = "deleteOpaqueKey" 
 
-	UpdateWorkerRuntimeConfig = "updateWorkerRuntimeConfig"
+	UpdateWorkerRuntimeConfig = "updateWorkerRuntimeConfig" 
 
-	InterruptTask = "interruptTask"
+	InterruptTask = "interruptTask" 
 
-	StressProbe = "stressProbe"
+	StressProbe = "stressProbe" 
 )
 
-type TaskRunner interface {
-	// Delete an opaque key
+
+
+type TaskRunner interface { 
+    // Delete an opaque key
 	RunDeleteOpaqueKey(ctx context.Context, params *DeleteOpaqueKeyParameters, overrides ...taskcore.TaskOverride) (int32, error)
-	// Delete an opaque key
+    // Delete an opaque key
 	RunDeleteOpaqueKeyWithTx(ctx context.Context, tx core.Tx, params *DeleteOpaqueKeyParameters, overrides ...taskcore.TaskOverride) (int32, error)
 
-	// Update worker runtime config and wait for alive workers to apply it
+    // Update worker runtime config and wait for alive workers to apply it
 	RunUpdateWorkerRuntimeConfig(ctx context.Context, params *UpdateWorkerRuntimeConfigParameters, overrides ...taskcore.TaskOverride) (int32, error)
-	// Update worker runtime config and wait for alive workers to apply it
+    // Update worker runtime config and wait for alive workers to apply it
 	RunUpdateWorkerRuntimeConfigWithTx(ctx context.Context, tx core.Tx, params *UpdateWorkerRuntimeConfigParameters, overrides ...taskcore.TaskOverride) (int32, error)
 
-	// Interrupt a task and stop any in-flight execution
+    // Interrupt a task and stop any in-flight execution
 	RunInterruptTask(ctx context.Context, params *InterruptTaskParameters, overrides ...taskcore.TaskOverride) (int32, error)
-	// Interrupt a task and stop any in-flight execution
+    // Interrupt a task and stop any in-flight execution
 	RunInterruptTaskWithTx(ctx context.Context, tx core.Tx, params *InterruptTaskParameters, overrides ...taskcore.TaskOverride) (int32, error)
 
-	// No-op stress probe task for worker E2E benchmarking
+    // No-op stress probe task for worker E2E benchmarking
 	RunStressProbe(ctx context.Context, params *StressProbeParameters, overrides ...taskcore.TaskOverride) (int32, error)
-	// No-op stress probe task for worker E2E benchmarking
+    // No-op stress probe task for worker E2E benchmarking
 	RunStressProbeWithTx(ctx context.Context, tx core.Tx, params *StressProbeParameters, overrides ...taskcore.TaskOverride) (int32, error)
 }
 
@@ -62,6 +64,7 @@ func NewTaskRunner(taskStore taskcore.TaskStoreInterface) TaskRunner {
 		now:       time.Now,
 	}
 }
+
 
 func (c *Client) RunDeleteOpaqueKey(ctx context.Context, params *DeleteOpaqueKeyParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 	return c.runDeleteOpaqueKey(ctx, c.taskStore, params, overrides...)
@@ -82,18 +85,20 @@ func (c *Client) runDeleteOpaqueKey(ctx context.Context, taskstore taskcore.Task
 		Payload: payload,
 	}
 	attributes := apigen.TaskAttributes{}
-
+	
 	attributes.RetryPolicy = &apigen.TaskRetryPolicy{
 		Interval:    "30m",
 		MaxAttempts: -1,
 	}
-
+	
+	
+	
 	task := &apigen.Task{
 		Attributes: attributes,
 		Spec:       spec,
 		Status:     apigen.Pending,
 	}
-
+	
 	for _, override := range overrides {
 		if err := override(task); err != nil {
 			return 0, errors.Wrap(err, "failed to apply task override")
@@ -129,14 +134,15 @@ func (c *Client) runUpdateWorkerRuntimeConfig(ctx context.Context, taskstore tas
 		Interval:    "2s",
 		MaxAttempts: -1,
 	}
-
+	
+	
 	attributes.Priority = utils.Ptr(int32(2147483647))
 	task := &apigen.Task{
 		Attributes: attributes,
 		Spec:       spec,
 		Status:     apigen.Pending,
 	}
-
+	
 	for _, override := range overrides {
 		if err := override(task); err != nil {
 			return 0, errors.Wrap(err, "failed to apply task override")
@@ -172,14 +178,15 @@ func (c *Client) runInterruptTask(ctx context.Context, taskstore taskcore.TaskSt
 		Interval:    "2s",
 		MaxAttempts: -1,
 	}
-
+	
+	
 	attributes.Priority = utils.Ptr(int32(2147483647))
 	task := &apigen.Task{
 		Attributes: attributes,
 		Spec:       spec,
 		Status:     apigen.Pending,
 	}
-
+	
 	for _, override := range overrides {
 		if err := override(task); err != nil {
 			return 0, errors.Wrap(err, "failed to apply task override")
@@ -215,13 +222,15 @@ func (c *Client) runStressProbe(ctx context.Context, taskstore taskcore.TaskStor
 		Interval:    "1s",
 		MaxAttempts: 1,
 	}
-
+	
+	
+	
 	task := &apigen.Task{
 		Attributes: attributes,
 		Spec:       spec,
 		Status:     apigen.Pending,
 	}
-
+	
 	for _, override := range overrides {
 		if err := override(task); err != nil {
 			return 0, errors.Wrap(err, "failed to apply task override")
@@ -234,56 +243,60 @@ func (c *Client) runStressProbe(ctx context.Context, taskstore taskcore.TaskStor
 	return taskID, nil
 }
 
-type DeleteOpaqueKeyParameters struct {
-	// The ID of the opaque key to delete
+
+type DeleteOpaqueKeyParameters struct { 
+    // The ID of the opaque key to delete
 	KeyID int64 `json:"keyID" yaml:"keyID"`
 }
 
-type UpdateWorkerRuntimeConfigParameters struct {
-	// Ack listen timeout window for one iteration
+
+
+type UpdateWorkerRuntimeConfigParameters struct { 
+    // Ack listen timeout window for one iteration
 	ListenTimeout *string `json:"listenTimeout" yaml:"listenTimeout"`
 
-	// Correlation ID for notify and ack messages
+    // Correlation ID for notify and ack messages
 	RequestID *string `json:"requestID" yaml:"requestID"`
 
-	// Maximum percentage of strict-priority slots (0-100)
+    // Maximum percentage of strict-priority slots (0-100)
 	MaxStrictPercentage *int32 `json:"maxStrictPercentage" yaml:"maxStrictPercentage"`
 
-	// Default weight for unlabeled task group
+    // Default weight for unlabeled task group
 	DefaultWeight *int32 `json:"defaultWeight" yaml:"defaultWeight"`
 
-	// Label names for weighted groups
+    // Label names for weighted groups
 	Labels []string `json:"labels" yaml:"labels"`
 
-	// Weights for labels by index
+    // Weights for labels by index
 	Weights []int32 `json:"weights" yaml:"weights"`
 
-	// Fallback retry interval when ack listening is unavailable
+    // Fallback retry interval when ack listening is unavailable
 	NotifyInterval *string `json:"notifyInterval" yaml:"notifyInterval"`
 }
 
-type InterruptTaskParameters struct {
-	// The task ID to interrupt
-	TaskID int32 `json:"taskID" yaml:"taskID"`
 
-	// Correlation ID for notify and ack messages
+type InterruptTaskParameters struct { 
+    // Task IDs to interrupt
+	TaskIDs []int32 `json:"taskIDs" yaml:"taskIDs"`
+
+    // Correlation ID for notify and ack messages
 	RequestID *string `json:"requestID" yaml:"requestID"`
 
-	// Fallback retry interval when ack listening is unavailable
+    // Fallback retry interval when ack listening is unavailable
 	NotifyInterval *string `json:"notifyInterval" yaml:"notifyInterval"`
 
-	// Ack listen timeout window for one iteration
+    // Ack listen timeout window for one iteration
 	ListenTimeout *string `json:"listenTimeout" yaml:"listenTimeout"`
 }
 
-type StressProbeParameters struct {
-	// Logical task id for stress-run metrics correlation
+type StressProbeParameters struct { 
+    // Logical task id for stress-run metrics correlation
 	JobID int64 `json:"jobID" yaml:"jobID"`
 
-	// Simulated task execution time in milliseconds
+    // Simulated task execution time in milliseconds
 	SleepMs int32 `json:"sleepMs" yaml:"sleepMs"`
 
-	// Logical group name for test-side metrics and labels
+    // Logical group name for test-side metrics and labels
 	Group string `json:"group" yaml:"group"`
 }
 
@@ -316,21 +329,24 @@ func (r *StressProbeParameters) Marshal() (json.RawMessage, error) {
 	return json.Marshal(r)
 }
 
-type ExecutorInterface interface {
-	// Delete an opaque key
+type ExecutorInterface interface { 
+     // Delete an opaque key
 	ExecuteDeleteOpaqueKey(ctx context.Context, params *DeleteOpaqueKeyParameters) error
-
+ 
 	// Hook called when deleteOpaqueKey fails
 	OnDeleteOpaqueKeyFailed(ctx context.Context, taskID int32, params *DeleteOpaqueKeyParameters, tx core.Tx) error
 
-	// Update worker runtime config and wait for alive workers to apply it
+     // Update worker runtime config and wait for alive workers to apply it
 	ExecuteUpdateWorkerRuntimeConfig(ctx context.Context, params *UpdateWorkerRuntimeConfigParameters) error
+ 
 
-	// Interrupt a task and stop any in-flight execution
+     // Interrupt a task and stop any in-flight execution
 	ExecuteInterruptTask(ctx context.Context, params *InterruptTaskParameters) error
+ 
 
-	// No-op stress probe task for worker E2E benchmarking
+     // No-op stress probe task for worker E2E benchmarking
 	ExecuteStressProbe(ctx context.Context, params *StressProbeParameters) error
+ 
 }
 
 type TaskHandler struct {
@@ -360,35 +376,35 @@ func (f *TaskHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) erro
 		return nil
 	}
 
-	switch spec.GetType() {
+	switch spec.GetType() { 
 	case DeleteOpaqueKey:
 		var params DeleteOpaqueKeyParameters
 		if err := params.Parse(spec.GetPayload()); err != nil {
 			return fmt.Errorf("failed to parse deleteOpaqueKey parameters: %w", err)
 		}
 		return f.executor.ExecuteDeleteOpaqueKey(ctx, &params)
-
+		
 	case UpdateWorkerRuntimeConfig:
 		var params UpdateWorkerRuntimeConfigParameters
 		if err := params.Parse(spec.GetPayload()); err != nil {
 			return fmt.Errorf("failed to parse updateWorkerRuntimeConfig parameters: %w", err)
 		}
 		return f.executor.ExecuteUpdateWorkerRuntimeConfig(ctx, &params)
-
+		
 	case InterruptTask:
 		var params InterruptTaskParameters
 		if err := params.Parse(spec.GetPayload()); err != nil {
 			return fmt.Errorf("failed to parse interruptTask parameters: %w", err)
 		}
 		return f.executor.ExecuteInterruptTask(ctx, &params)
-
+		
 	case StressProbe:
 		var params StressProbeParameters
 		if err := params.Parse(spec.GetPayload()); err != nil {
 			return fmt.Errorf("failed to parse stressProbe parameters: %w", err)
 		}
 		return f.executor.ExecuteStressProbe(ctx, &params)
-
+		
 	default:
 		return errors.Wrapf(worker.ErrUnknownTaskType, "unknown task type: %s", spec.GetType())
 	}
@@ -406,7 +422,7 @@ func (f *TaskHandler) OnTaskFailed(ctx context.Context, tx core.Tx, failedTaskSp
 	}
 
 	// Call the appropriate OnXXXFailed hook method
-	switch failedTaskSpec.GetType() {
+	switch failedTaskSpec.GetType() { 
 	case DeleteOpaqueKey:
 		var params DeleteOpaqueKeyParameters
 		if err := params.Parse(failedTaskSpec.GetPayload()); err != nil {

@@ -30,8 +30,24 @@ func (e *Executor) ExecuteInterruptTask(ctx context.Context, params *taskgen.Int
 	if params == nil {
 		return errors.Wrap(taskcore.ErrFatalTask, "interrupt task params cannot be nil")
 	}
-	if params.TaskID <= 0 {
-		return errors.Wrap(taskcore.ErrFatalTask, "taskID must be positive")
+	if len(params.TaskIDs) == 0 {
+		return errors.Wrap(taskcore.ErrFatalTask, "taskIDs must be non-empty")
+	}
+
+	taskIDs := make([]int32, 0, len(params.TaskIDs))
+	seen := make(map[int32]struct{}, len(params.TaskIDs))
+	for _, taskID := range params.TaskIDs {
+		if taskID <= 0 {
+			return errors.Wrap(taskcore.ErrFatalTask, "taskIDs must be positive")
+		}
+		if _, ok := seen[taskID]; ok {
+			continue
+		}
+		seen[taskID] = struct{}{}
+		taskIDs = append(taskIDs, taskID)
+	}
+	if len(taskIDs) == 0 {
+		return errors.Wrap(taskcore.ErrFatalTask, "taskIDs must be non-empty")
 	}
 
 	requestID := ""
@@ -49,7 +65,7 @@ func (e *Executor) ExecuteInterruptTask(ctx context.Context, params *taskgen.Int
 		Op: pgnotify.OpInterruptTask,
 		Params: pgnotify.TaskInterruptParams{
 			RequestID: requestID,
-			TaskID:    params.TaskID,
+			TaskIDs:   taskIDs,
 		},
 	})
 	if err != nil {

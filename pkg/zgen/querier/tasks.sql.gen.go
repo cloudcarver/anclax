@@ -16,7 +16,7 @@ import (
 const claimNormalTaskByGroup = `-- name: ClaimNormalTaskByGroup :one
 WITH
     eligible AS (
-        SELECT t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight
+        SELECT t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id
         FROM anclax.tasks t
         WHERE
             t.status = 'pending'
@@ -97,7 +97,7 @@ WHERE
     anclax.tasks.id = (SELECT id FROM candidate)
     AND anclax.tasks.status = 'pending'
     AND (anclax.tasks.locked_at IS NULL OR anclax.tasks.locked_at < $2)
-RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight
+RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight, parent_task_id
 `
 
 type ClaimNormalTaskByGroupParams struct {
@@ -135,6 +135,7 @@ func (q *Queries) ClaimNormalTaskByGroup(ctx context.Context, arg ClaimNormalTas
 		&i.SerialID,
 		&i.Priority,
 		&i.Weight,
+		&i.ParentTaskID,
 	)
 	return &i, err
 }
@@ -142,7 +143,7 @@ func (q *Queries) ClaimNormalTaskByGroup(ctx context.Context, arg ClaimNormalTas
 const claimStrictTask = `-- name: ClaimStrictTask :one
 WITH
     eligible AS (
-        SELECT t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight
+        SELECT t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id
         FROM anclax.tasks t
         WHERE
             t.status = 'pending'
@@ -207,7 +208,7 @@ WHERE
     anclax.tasks.id = (SELECT id FROM candidate)
     AND anclax.tasks.status = 'pending'
     AND (anclax.tasks.locked_at IS NULL OR anclax.tasks.locked_at < $2)
-RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight
+RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight, parent_task_id
 `
 
 type ClaimStrictTaskParams struct {
@@ -241,6 +242,7 @@ func (q *Queries) ClaimStrictTask(ctx context.Context, arg ClaimStrictTaskParams
 		&i.SerialID,
 		&i.Priority,
 		&i.Weight,
+		&i.ParentTaskID,
 	)
 	return &i, err
 }
@@ -248,7 +250,7 @@ func (q *Queries) ClaimStrictTask(ctx context.Context, arg ClaimStrictTaskParams
 const claimTask = `-- name: ClaimTask :one
 WITH
     eligible AS (
-        SELECT t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight
+        SELECT t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id
         FROM anclax.tasks t
         WHERE
             t.status = 'pending'
@@ -312,7 +314,7 @@ WHERE
     anclax.tasks.id = (SELECT id FROM candidate)
     AND anclax.tasks.status = 'pending'
     AND (anclax.tasks.locked_at IS NULL OR anclax.tasks.locked_at < $2)
-RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight
+RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight, parent_task_id
 `
 
 type ClaimTaskParams struct {
@@ -346,6 +348,7 @@ func (q *Queries) ClaimTask(ctx context.Context, arg ClaimTaskParams) (*AnclaxTa
 		&i.SerialID,
 		&i.Priority,
 		&i.Weight,
+		&i.ParentTaskID,
 	)
 	return &i, err
 }
@@ -353,7 +356,7 @@ func (q *Queries) ClaimTask(ctx context.Context, arg ClaimTaskParams) (*AnclaxTa
 const claimTaskByID = `-- name: ClaimTaskByID :one
 WITH
     eligible AS (
-        SELECT t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight
+        SELECT t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id
         FROM anclax.tasks t
         WHERE
             t.id = $3
@@ -417,7 +420,7 @@ WHERE
     anclax.tasks.id = (SELECT id FROM candidate)
     AND anclax.tasks.status = 'pending'
     AND (anclax.tasks.locked_at IS NULL OR anclax.tasks.locked_at < $2)
-RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight
+RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight, parent_task_id
 `
 
 type ClaimTaskByIDParams struct {
@@ -453,25 +456,27 @@ func (q *Queries) ClaimTaskByID(ctx context.Context, arg ClaimTaskByIDParams) (*
 		&i.SerialID,
 		&i.Priority,
 		&i.Weight,
+		&i.ParentTaskID,
 	)
 	return &i, err
 }
 
 const createTask = `-- name: CreateTask :one
-INSERT INTO anclax.tasks (attributes, spec, status, started_at, unique_tag, serial_key, serial_id, priority, weight)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (unique_tag) DO NOTHING RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight
+INSERT INTO anclax.tasks (attributes, spec, status, started_at, unique_tag, parent_task_id, serial_key, serial_id, priority, weight)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (unique_tag) DO NOTHING RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight, parent_task_id
 `
 
 type CreateTaskParams struct {
-	Attributes apigen.TaskAttributes
-	Spec       apigen.TaskSpec
-	Status     string
-	StartedAt  *time.Time
-	UniqueTag  *string
-	SerialKey  *string
-	SerialID   *int32
-	Priority   int32
-	Weight     int32
+	Attributes   apigen.TaskAttributes
+	Spec         apigen.TaskSpec
+	Status       string
+	StartedAt    *time.Time
+	UniqueTag    *string
+	ParentTaskID *int32
+	SerialKey    *string
+	SerialID     *int32
+	Priority     int32
+	Weight       int32
 }
 
 func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (*AnclaxTask, error) {
@@ -481,6 +486,7 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (*Anclax
 		arg.Status,
 		arg.StartedAt,
 		arg.UniqueTag,
+		arg.ParentTaskID,
 		arg.SerialKey,
 		arg.SerialID,
 		arg.Priority,
@@ -503,6 +509,7 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (*Anclax
 		&i.SerialID,
 		&i.Priority,
 		&i.Weight,
+		&i.ParentTaskID,
 	)
 	return &i, err
 }
@@ -523,7 +530,7 @@ func (q *Queries) GetLastTaskErrorEvent(ctx context.Context, taskID int32) (*Anc
 }
 
 const getTaskByID = `-- name: GetTaskByID :one
-SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight FROM anclax.tasks
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight, parent_task_id FROM anclax.tasks
 WHERE id = $1
 `
 
@@ -546,12 +553,13 @@ func (q *Queries) GetTaskByID(ctx context.Context, id int32) (*AnclaxTask, error
 		&i.SerialID,
 		&i.Priority,
 		&i.Weight,
+		&i.ParentTaskID,
 	)
 	return &i, err
 }
 
 const getTaskByUniqueTag = `-- name: GetTaskByUniqueTag :one
-SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight FROM anclax.tasks
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight, parent_task_id FROM anclax.tasks
 WHERE unique_tag = $1
 `
 
@@ -574,6 +582,7 @@ func (q *Queries) GetTaskByUniqueTag(ctx context.Context, uniqueTag *string) (*A
 		&i.SerialID,
 		&i.Priority,
 		&i.Weight,
+		&i.ParentTaskID,
 	)
 	return &i, err
 }
@@ -603,7 +612,7 @@ func (q *Queries) InsertEvent(ctx context.Context, spec apigen.EventSpec) (*Ancl
 }
 
 const listAllPendingTasks = `-- name: ListAllPendingTasks :many
-SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight FROM anclax.tasks
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight, parent_task_id FROM anclax.tasks
 WHERE
     status = 'pending'
     AND (
@@ -636,10 +645,44 @@ func (q *Queries) ListAllPendingTasks(ctx context.Context) ([]*AnclaxTask, error
 			&i.SerialID,
 			&i.Priority,
 			&i.Weight,
+			&i.ParentTaskID,
 		); err != nil {
 			return nil, err
 		}
 		items = append(items, &i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTaskDescendantIDs = `-- name: ListTaskDescendantIDs :many
+WITH RECURSIVE descendants AS (
+    SELECT t.id
+    FROM anclax.tasks t
+    WHERE t.parent_task_id = $1
+    UNION ALL
+    SELECT t.id
+    FROM anclax.tasks t
+    JOIN descendants d ON t.parent_task_id = d.id
+)
+SELECT id FROM descendants
+`
+
+func (q *Queries) ListTaskDescendantIDs(ctx context.Context, parentTaskID *int32) ([]int32, error) {
+	rows, err := q.db.Query(ctx, listTaskDescendantIDs, parentTaskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int32
+	for rows.Next() {
+		var id int32
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

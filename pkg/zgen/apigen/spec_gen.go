@@ -132,9 +132,12 @@ type Task struct {
 	CreatedAt  time.Time      `json:"createdAt"`
 	Events     []TaskEvents   `json:"events"`
 	LockedAt   *time.Time     `json:"lockedAt,omitempty"`
-	Spec       TaskSpec       `json:"spec"`
-	StartedAt  *time.Time     `json:"startedAt,omitempty"`
-	Status     TaskStatus     `json:"status"`
+
+	// ParentTaskId Parent task ID if this task was spawned from another task
+	ParentTaskId *int32     `json:"parentTaskId,omitempty"`
+	Spec         TaskSpec   `json:"spec"`
+	StartedAt    *time.Time `json:"startedAt,omitempty"`
+	Status       TaskStatus `json:"status"`
 
 	// UniqueTag Unique tag of the task
 	UniqueTag *string   `json:"uniqueTag,omitempty"`

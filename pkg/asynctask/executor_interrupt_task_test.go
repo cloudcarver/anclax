@@ -75,7 +75,7 @@ func TestExecuteInterruptTaskListenBeforeNotify(t *testing.T) {
 			var parsed pgnotify.TaskInterruptNotification
 			require.NoError(t, json.Unmarshal([]byte(payload), &parsed))
 			require.Equal(t, requestID, parsed.Params.RequestID)
-			require.Equal(t, int32(42), parsed.Params.TaskID)
+			require.Equal(t, []int32{42}, parsed.Params.TaskIDs)
 			return nil
 		},
 	)
@@ -88,7 +88,7 @@ func TestExecuteInterruptTaskListenBeforeNotify(t *testing.T) {
 	}
 
 	err = exec.ExecuteInterruptTask(context.Background(), &taskgen.InterruptTaskParameters{
-		TaskID:        42,
+		TaskIDs:       []int32{42},
 		RequestID:     &requestID,
 		ListenTimeout: &listenTimeout,
 	})
@@ -100,7 +100,7 @@ func TestExecuteInterruptTaskRequiresDSN(t *testing.T) {
 	defer ctrl.Finish()
 
 	exec := &Executor{model: model.NewMockModelInterface(ctrl), now: time.Now}
-	err := exec.ExecuteInterruptTask(context.Background(), &taskgen.InterruptTaskParameters{TaskID: 1})
+	err := exec.ExecuteInterruptTask(context.Background(), &taskgen.InterruptTaskParameters{TaskIDs: []int32{1}})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "requires pg dsn")
 }
@@ -127,7 +127,7 @@ func TestExecuteInterruptTaskNoOnlineWorkers(t *testing.T) {
 		runtimeConfigHeartbeatTTL: 5 * time.Second,
 	}
 
-	err := exec.ExecuteInterruptTask(context.Background(), &taskgen.InterruptTaskParameters{TaskID: 9})
+	err := exec.ExecuteInterruptTask(context.Background(), &taskgen.InterruptTaskParameters{TaskIDs: []int32{9}})
 	require.NoError(t, err)
 	require.Equal(t, int32(0), fakeConn.waitCalls.Load())
 }
@@ -144,7 +144,7 @@ func TestExecuteInterruptTaskInvalidDurations(t *testing.T) {
 
 	invalid := "bad"
 	err := exec.ExecuteInterruptTask(context.Background(), &taskgen.InterruptTaskParameters{
-		TaskID:         7,
+		TaskIDs:        []int32{7},
 		NotifyInterval: &invalid,
 	})
 	require.Error(t, err)

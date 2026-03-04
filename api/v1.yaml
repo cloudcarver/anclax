@@ -225,6 +225,10 @@ components:
         ID:
           type: integer
           format: int32
+        parentTaskId:
+          type: integer
+          format: int32
+          description: Parent task ID if this task was spawned from another task
         attributes:
           $ref: "#/components/schemas/TaskAttributes"
         spec:

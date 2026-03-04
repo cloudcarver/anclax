@@ -73,15 +73,16 @@ func (s *TaskStore) PushTask(ctx context.Context, task *apigen.Task) (int32, err
 	task.Attributes.Weight = utils.Ptr(weight)
 
 	createdTask, err := s.model.CreateTask(ctx, querier.CreateTaskParams{
-		Attributes: task.Attributes,
-		Spec:       task.Spec,
-		StartedAt:  task.StartedAt,
-		Status:     string(task.Status),
-		UniqueTag:  task.UniqueTag,
-		SerialKey:  serialKey,
-		SerialID:   serialID,
-		Priority:   priority,
-		Weight:     weight,
+		Attributes:   task.Attributes,
+		Spec:         task.Spec,
+		StartedAt:    task.StartedAt,
+		Status:       string(task.Status),
+		UniqueTag:    task.UniqueTag,
+		ParentTaskID: task.ParentTaskId,
+		SerialKey:    serialKey,
+		SerialID:     serialID,
+		Priority:     priority,
+		Weight:       weight,
 	})
 	if err != nil {
 		return 0, errors.Wrap(err, "failed to push task")

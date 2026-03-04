@@ -26,8 +26,8 @@ type RuntimeConfigParams struct {
 }
 
 type TaskInterruptParams struct {
-	RequestID string `json:"request_id"`
-	TaskID    int32  `json:"task_id"`
+	RequestID string  `json:"request_id"`
+	TaskIDs   []int32 `json:"task_ids"`
 }
 
 type RuntimeConfigAckParams struct {

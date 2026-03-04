@@ -190,6 +190,7 @@ taskID, err := h.taskRunner.RunTaskName(ctx, params,
     taskcore.WithRetryPolicy("1h", 5),
     taskcore.WithTimeout("30m"),
     taskcore.WithUniqueTag("user-123-daily-task"),
+    taskcore.WithParentTaskID(parentID),
 )
 ```
 
@@ -238,6 +239,18 @@ The control plane always enqueues the config-update task with reserved max stric
 
 For full semantics (strict cap formula, label-group mapping, LISTEN/NOTIFY propagation, ACK convergence, and supersede behavior), see:
 - [Scheduling & Runtime Config Guide](async-task-scheduling-runtime-config.md)
+
+#### Task hierarchy and control-plane interrupts
+
+Tasks can optionally reference a parent task via `parentTaskId`. Use `taskcore.WithParentTaskID` when enqueueing child tasks:
+
+```go
+childID, err := h.taskRunner.RunTaskName(ctx, params,
+    taskcore.WithParentTaskID(parentID),
+)
+```
+
+When you call `PauseTask` or `CancelTask` on a task, the control plane now applies the same status change to all descendants in the hierarchy within the same transaction, then enqueues a single interrupt task for the entire set of task IDs.
 
 ### Transactional Tasks
 

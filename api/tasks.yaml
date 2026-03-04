@@ -59,12 +59,14 @@ tasks:
     priority: "INF"
     parameters:
       type: object
-      required: [taskID]
+      required: [taskIDs]
       properties:
-        taskID:
-          type: integer
-          format: int32
-          description: The task ID to interrupt
+        taskIDs:
+          type: array
+          items:
+            type: integer
+            format: int32
+          description: Task IDs to interrupt
         requestID:
           type: string
           description: Correlation ID for notify and ack messages
