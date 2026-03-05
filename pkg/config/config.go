@@ -59,6 +59,15 @@ type Worker struct {
 
 	// (Optional) Static worker ID (UUID). If unset, a random UUID is generated.
 	WorkerID *string `yaml:"workerId"`
+
+	// (Optional) Maximum percentage (0-100) of worker concurrency allowed for strict-priority tasks. Default is 100.
+	MaxStrictPercentage *int `yaml:"maxStrictPercentage"`
+
+	// (Optional) Fallback poll interval for runtime scheduling config refresh when notifications are missed/unavailable. Disabled by default.
+	RuntimeConfigPollInterval *time.Duration `yaml:"runtimeConfigPollInterval"`
+
+	// (Optional) Whether to use the legacy worker implementation. Default is false (worker v2).
+	UseLegacyWorker bool `yaml:"useLegacyWorker"`
 }
 
 type Debug struct {
@@ -87,6 +96,9 @@ type Config struct {
 
 	// The test account configuration
 	TestAccount *TestAccount `yaml:"testaccount"`
+
+	// (Optional) Whether to disable the default sign-up endpoint, default is false
+	DisableDefaultSignUp bool `yaml:"disableDefaultSignUp"`
 
 	// (Optional) The port of the metrics server, default is 9020
 	MetricsPort int `yaml:"metricsport"`

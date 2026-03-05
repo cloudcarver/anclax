@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/cloudcarver/anclax"
+	dst_codegen "github.com/cloudcarver/anclax/lib/dst"
 	task_codegen "github.com/cloudcarver/anclax/pkg/codegen/task"
 	xware_codegen "github.com/cloudcarver/anclax/pkg/codegen/xware"
 	"github.com/oasdiff/yaml"
@@ -122,6 +123,43 @@ func genXware(workdir string, config *XwareConfig) error {
 		return errors.Wrap(err, "failed to create output directory")
 	}
 	return xware_codegen.Generate(workdir, config.Package, config.Path, config.Out)
+}
+
+func genDST(workdir string, config *DSTConfig) error {
+	if config.Path == "" {
+		return errors.New("dst path is required")
+	}
+	if config.Out == "" {
+		return errors.New("dst out is required")
+	}
+
+	specPath := config.Path
+	if !filepath.IsAbs(specPath) {
+		specPath = filepath.Join(workdir, config.Path)
+	}
+	spec, err := dst_codegen.LoadHybridSpecFromFile(specPath)
+	if err != nil {
+		return errors.Wrap(err, "failed to load dst spec")
+	}
+	if err := dst_codegen.ValidateHybridSpec(spec); err != nil {
+		return errors.Wrap(err, "failed to validate dst spec")
+	}
+	code, err := dst_codegen.GenerateHybridGo(spec, config.Package)
+	if err != nil {
+		return errors.Wrap(err, "failed to generate dst code")
+	}
+
+	outPath := config.Out
+	if !filepath.IsAbs(outPath) {
+		outPath = filepath.Join(workdir, config.Out)
+	}
+	if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
+		return errors.Wrap(err, "failed to create output directory")
+	}
+	if err := os.WriteFile(outPath, []byte(code), 0644); err != nil {
+		return errors.Wrap(err, "failed to write dst generated code")
+	}
+	return nil
 }
 
 func runGen(c *cli.Context) error {
@@ -267,6 +305,12 @@ func _codegen(config *Config, workdir string) error {
 	if config.TaskHandler != nil {
 		if err := genTaskHandler(workdir, config.TaskHandler); err != nil {
 			return errors.Wrap(err, "failed to generate task handler")
+		}
+	}
+
+	for i := range config.DST {
+		if err := genDST(workdir, &config.DST[i]); err != nil {
+			return errors.Wrapf(err, "failed to generate dst[%d]", i)
 		}
 	}
 

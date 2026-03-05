@@ -9,7 +9,7 @@ import (
 
 	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
-	"github.com/cloudcarver/anclax/pkg/taskcore"
+	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/pkg/errors"
@@ -53,14 +53,14 @@ func NewTaskRunner(taskStore taskcore.TaskStoreInterface) TaskRunner {
 
 
 func (c *Client) RunAutoIncrementCounter(ctx context.Context, params *AutoIncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	return c.runAutoIncrementCounter(ctx, c.taskStore, params, overrides...)
+	return c.runAutoIncrementCounter(ctx, c.taskStore, nil, params, overrides...)
 }
 
 func (c *Client) RunAutoIncrementCounterWithTx(ctx context.Context, tx core.Tx, params *AutoIncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	return c.runAutoIncrementCounter(ctx, c.taskStore.WithTx(tx), params, overrides...)
+	return c.runAutoIncrementCounter(ctx, c.taskStore, tx, params, overrides...)
 }
 
-func (c *Client) runAutoIncrementCounter(ctx context.Context, taskstore taskcore.TaskStoreInterface, params *AutoIncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+func (c *Client) runAutoIncrementCounter(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *AutoIncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 	payload, err := params.Marshal()
 	if err != nil {
 		return 0, err
@@ -80,6 +80,7 @@ func (c *Client) runAutoIncrementCounter(ctx context.Context, taskstore taskcore
 		CronExpression: "*/5 * * * * *",
 	}
 	
+	
 	task := &apigen.Task{
 		Attributes: attributes,
 		Spec:       spec,
@@ -91,21 +92,26 @@ func (c *Client) runAutoIncrementCounter(ctx context.Context, taskstore taskcore
 			return 0, errors.Wrap(err, "failed to apply task override")
 		}
 	}
-	taskID, err := taskstore.PushTask(ctx, task)
+	var taskID int32
+	if tx == nil {
+		taskID, err = taskstore.PushTask(ctx, task)
+	} else {
+		taskID, err = taskstore.PushTaskWithTx(ctx, tx, task)
+	}
 	if err != nil {
 		return 0, err
 	}
 	return taskID, nil
 }
 func (c *Client) RunIncrementCounter(ctx context.Context, params *IncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	return c.runIncrementCounter(ctx, c.taskStore, params, overrides...)
+	return c.runIncrementCounter(ctx, c.taskStore, nil, params, overrides...)
 }
 
 func (c *Client) RunIncrementCounterWithTx(ctx context.Context, tx core.Tx, params *IncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	return c.runIncrementCounter(ctx, c.taskStore.WithTx(tx), params, overrides...)
+	return c.runIncrementCounter(ctx, c.taskStore, tx, params, overrides...)
 }
 
-func (c *Client) runIncrementCounter(ctx context.Context, taskstore taskcore.TaskStoreInterface, params *IncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+func (c *Client) runIncrementCounter(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *IncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 	payload, err := params.Marshal()
 	if err != nil {
 		return 0, err
@@ -123,6 +129,7 @@ func (c *Client) runIncrementCounter(ctx context.Context, taskstore taskcore.Tas
 	}
 	
 	
+	
 	task := &apigen.Task{
 		Attributes: attributes,
 		Spec:       spec,
@@ -134,7 +141,12 @@ func (c *Client) runIncrementCounter(ctx context.Context, taskstore taskcore.Tas
 			return 0, errors.Wrap(err, "failed to apply task override")
 		}
 	}
-	taskID, err := taskstore.PushTask(ctx, task)
+	var taskID int32
+	if tx == nil {
+		taskID, err = taskstore.PushTask(ctx, task)
+	} else {
+		taskID, err = taskstore.PushTaskWithTx(ctx, tx, task)
+	}
 	if err != nil {
 		return 0, err
 	}

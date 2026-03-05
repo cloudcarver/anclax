@@ -12,22 +12,29 @@ Join our [Discord server](https://discord.gg/XxXXbyF59H).
 
 ### Recommended setup
 
-Use the Anclax skill with the coding agent:
-
-1. Install Anclax CLI:
+1. Install the Anclax CLI:
 
   ```bash
   go install github.com/cloudcarver/anclax/cmd/anclax@latest
   ```
 
-2. Init your project:
+2. Bootstrap a new project (installs toolchain + runs codegen):
 
   ```bash
   anclax init myapp github.com/me/myapp
   cd myapp
   ```
 
-3. Add Anclax skill to your coding agent
+3. For existing repos (or after changing `anclax.yaml`), sync tools and regenerate:
+
+  ```bash
+  anclax install
+  anclax gen
+  ```
+
+  External tools are installed into `.anclax/bin` for reproducible builds.
+
+4. Optional: add the Anclax skill to your coding agent:
 
   ```bash
   npx skills add cloudcarver/anclax
@@ -38,12 +45,14 @@ Use the Anclax skill with the coding agent:
 ### Highlights ✨
 
 - **YAML-first, codegen-backed**: Define HTTP and task schemas in YAML; Anclax generates strongly-typed interfaces so missing implementations fail at compile time, not in prod.
-- **Async tasks you can trust**: At-least-once delivery, automatic retries, and cron scheduling out of the box.
+- **Async tasks you can trust**: At-least-once delivery, automatic retries, cron scheduling, plus priority/weight lanes you can tune at runtime.
+- **Serial task execution**: Use `taskcore.WithSerialKey`/`WithSerialID` to run related tasks strictly one-by-one.
 - **Transaction-safe flows**: A `WithTx` pattern ensures hooks always run and side effects are consistent.
 - **Typed database layer**: Powered by `sqlc` for safe, fast queries.
 - **Fast HTTP server**: Built on Fiber for performance and ergonomics.
 - **AuthN/Z built-in**: Macaroons-based authentication and authorization.
 - **Pluggable architecture**: First-class plugin system for clean modularity.
+- **E2E scenarios as code**: Describe distributed flows in DST YAML and generate typed runners.
 - **Ergonomic DI**: Wire-based dependency injection keeps code testable and explicit.
 
 ### Why Anclax? (The problem it solves) 🤔
@@ -57,6 +66,7 @@ Use the Anclax skill with the coding agent:
 
 - **Compile-time confidence**: Schema → interfaces → concrete implementations you cannot forget to write.
 - **Productivity**: `anclax init` + `anclax gen` reduces boilerplate and wiring.
+- **Reproducible toolchains**: External tools are pinned in `anclax.yaml` and installed into `.anclax/bin`.
 - **Extensibility**: Clean plugin boundaries and event-driven architecture.
 - **Predictability**: Singletons for core services, DI for clarity, and well-defined lifecycles.
 
@@ -109,9 +119,13 @@ paths:
 
 ```yaml
 tasks:
-  incrementCounter:
+  - name: IncrementCounter
     description: Increment the counter value
-    cron: "*/1 * * * *"
+    cronjob:
+      cronExpression: "*/1 * * * * *"
+    retryPolicy:
+      interval: 5s
+      maxAttempts: 3
 ```
 
 3) Generate and implement 🛠️
@@ -155,7 +169,7 @@ paths:
             - x.OperationPermit(c, operationID)
 ```
 
-### Security scheme (JWT example)
+### Security scheme (macaroon bearer tokens)
 ```yaml
 components:
   securitySchemes:
@@ -165,9 +179,9 @@ components:
       bearerFormat: macaroon
 ```
 
-### Async tasks: at-least-once, retries, cron
+### Async tasks: at-least-once, retries, cron, priority/weight
 - **Pain points before**: hand-building `apigen.Task` payloads and attributes was repetitive and easy to get wrong.
-- **Pain points before**: retry/cron/unique-tag logic got duplicated and drifted across services.
+- **Pain points before**: retry/cronjob/unique-tag logic got duplicated and drifted across services.
 - **Pain points before**: enqueueing inside a DB transaction required custom glue code.
 - **Pain points before**: task params and handler signatures could fall out of sync.
 
@@ -190,7 +204,9 @@ tasks:
     retryPolicy:
       interval: 5m
       maxAttempts: 3
-    cron: "0 * * * *"
+    timeout: 30s
+    cronjob:
+      cronExpression: "0 * * * * *"
 ```
 
 Before (manual task record):
@@ -221,6 +237,17 @@ err := model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface
   }, taskcore.WithUniqueTag("welcome:"+strconv.Itoa(int(user.ID))))
   return err
 })
+```
+
+Need ordering or scheduling controls? Add overrides like `taskcore.WithSerialKey`, `taskcore.WithPriority`, and `taskcore.WithWeight` when enqueueing:
+
+```go
+params := &taskgen.SendWelcomeEmailParameters{UserId: user.ID, TemplateId: "welcome"}
+_, err := taskrunner.RunSendWelcomeEmail(ctx, params,
+  taskcore.WithSerialKey("user:"+strconv.Itoa(int(user.ID))),
+  taskcore.WithPriority(10),
+  taskcore.WithWeight(3),
+)
 ```
 
 ### Transactions: compose everything with WithTx
@@ -298,7 +325,10 @@ Need more dependencies inside `Init`? Add them as parameters (e.g., `model.Model
 
 - **Transaction Management**: [docs/transaction.md](docs/transaction.md) ([中文](docs/transaction.zh.md))
 - **Middleware (x-functions & x-check-rules)**: [docs/middleware.md](docs/middleware.md) ([中文](docs/middleware.zh.md))
-- **Async Tasks**: Tutorial [docs/async-tasks-tutorial.md](docs/async-tasks-tutorial.md) · Tech reference [docs/async-tasks-technical.md](docs/async-tasks-technical.md) ([中文](docs/async-tasks-tutorial.zh.md), [中文](docs/async-tasks-technical.zh.md))
+- **Async Tasks**: Tutorial [docs/async-tasks-tutorial.md](docs/async-tasks-tutorial.md) · Tech reference [docs/async-tasks-technical.md](docs/async-tasks-technical.md) · Scheduling/runtime-config guide [docs/async-task-scheduling-runtime-config.md](docs/async-task-scheduling-runtime-config.md) ([中文](docs/async-tasks-tutorial.zh.md), [中文](docs/async-tasks-technical.zh.md), [中文](docs/async-task-scheduling-runtime-config.zh.md))
+- **DST E2E Testing**: [docs/dst-e2e.md](docs/dst-e2e.md)
+- **Async Task Worker Lease**: [docs/async-task-worker-lease.md](docs/async-task-worker-lease.md)
+- **Async Task Production-Readiness Testing**: [docs/async-task-testing-production-readiness.md](docs/async-task-testing-production-readiness.md)
 
 ## Examples 🧪
 

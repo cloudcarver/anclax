@@ -1,0 +1,33 @@
+version: dst/hybrid/v1alpha1
+package: dstgen
+
+interfaces:
+  Worker:
+    methods:
+      - Claim(ctx context.Context) error
+      - Complete(ctx context.Context, taskID int32) error
+
+  TaskStore:
+    methods:
+      - Enqueue(ctx context.Context, task string) error
+
+instances:
+  worker1: Worker
+  worker2: Worker
+  taskStore: TaskStore
+
+scenarios:
+  - name: basic_claim_flow
+    description: enqueue then both workers claim
+    steps:
+      - id: s1
+        parallel:
+          taskStore:
+            - Enqueue(ctx, "S1")
+            - Enqueue(ctx, "S2")
+      - id: s2
+        parallel:
+          worker1:
+            - Claim(ctx)
+          worker2:
+            - Claim(ctx)

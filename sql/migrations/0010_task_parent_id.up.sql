@@ -1,0 +1,6 @@
+BEGIN;
+
+ALTER TABLE anclax.tasks
+    ADD COLUMN IF NOT EXISTS parent_task_id INTEGER;
+
+COMMIT;

@@ -5,6 +5,7 @@
 package querier
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
@@ -77,17 +78,22 @@ type AnclaxRoleAccessRule struct {
 }
 
 type AnclaxTask struct {
-	ID         int32
-	Attributes apigen.TaskAttributes
-	Spec       apigen.TaskSpec
-	Status     string
-	UniqueTag  *string
-	StartedAt  *time.Time
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
-	Attempts   int32
-	LockedAt   *time.Time
-	WorkerID   uuid.NullUUID
+	ID           int32
+	Attributes   apigen.TaskAttributes
+	Spec         apigen.TaskSpec
+	Status       string
+	UniqueTag    *string
+	StartedAt    *time.Time
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	Attempts     int32
+	LockedAt     *time.Time
+	WorkerID     uuid.NullUUID
+	SerialKey    *string
+	SerialID     *int32
+	Priority     int32
+	Weight       int32
+	ParentTaskID *int32
 }
 
 type AnclaxUser struct {
@@ -114,10 +120,17 @@ type AnclaxUsersRole struct {
 }
 
 type AnclaxWorker struct {
-	ID            uuid.UUID
-	Labels        []byte
-	Status        string
-	LastHeartbeat time.Time
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID                   uuid.UUID
+	Labels               []byte
+	Status               string
+	LastHeartbeat        time.Time
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+	AppliedConfigVersion int64
+}
+
+type AnclaxWorkerRuntimeConfig struct {
+	Version   int64
+	Payload   json.RawMessage
+	CreatedAt time.Time
 }

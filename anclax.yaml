@@ -8,6 +8,8 @@ clean:
   - pkg/zgen/apigen/*_gen.go
   - pkg/zgen/querier/*
   - pkg/zgen/taskgen/*
+  - pkg/taskcore/e2e/gen/*
+  - pkg/taskcore/dtmtest/gen/*
 
 oapi-codegen:
   path: api/v1.yaml
@@ -30,6 +32,15 @@ task-handler:
   package: taskgen
   out: pkg/zgen/taskgen/runner_gen.go
 
+# DST generation is built into `anclax gen` (no separate external tool entry needed).
+dst:
+  - path: pkg/taskcore/e2e/e2e.yaml
+    out: pkg/taskcore/e2e/gen/taskstore_gen.go
+    package: taskcoree2e
+  - path: pkg/taskcore/dtmtest/e2e.yaml
+    out: pkg/taskcore/dtmtest/gen/taskstore_gen.go
+    package: taskcoredtmtest
+
 sqlc:
   path: dev/sqlc.yaml
 
@@ -47,9 +58,9 @@ mockgen:
     - source: pkg/auth/auth.go
       destination: pkg/auth/mock_gen.go
       package: auth
-    - source: pkg/taskcore/interfaces.go
-      destination: pkg/taskcore/mock_gen.go
-      package: taskcore
+    - source: pkg/taskcore/store/interfaces.go
+      destination: pkg/taskcore/store/mock_gen.go
+      package: store
     - source: pkg/taskcore/worker/interfaces.go
       destination: pkg/taskcore/worker/mock_gen.go
       package: worker

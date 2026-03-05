@@ -3,3 +3,4 @@ bin/*
 .anchor/*
 coverage.out
 coverage.html
+CURRENT_TASK.md

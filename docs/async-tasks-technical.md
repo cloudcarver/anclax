@@ -2,7 +2,9 @@
 
 English | [中文](async-tasks-technical.zh.md)
 
-> 🚀 **New to async tasks?** Start with the [Tutorial Guide](async-tasks-tutorial.md) for step-by-step examples and practical usage patterns.
+> 🚀 **New to async tasks?** Start with the [Tutorial Guide](async-tasks-tutorial.md) for step-by-step usage.
+>
+> ⚖️ **Need scheduling internals?** See [Scheduling & Runtime Config Guide](async-task-scheduling-runtime-config.md) for strict/normal lane semantics, `WithPriority`/`WithWeight`, and runtime propagation flow.
 
 This document provides a comprehensive overview of Anclax's async task system, covering both the user experience flow and the underlying technical mechanisms.
 
@@ -12,12 +14,37 @@ This document provides a comprehensive overview of Anclax's async task system, c
 - [User Experience Flow](#user-experience-flow)
 - [Underlying Architecture](#underlying-architecture)
 - [Task Lifecycle](#task-lifecycle)
+- [Scheduling: Priority, Weight, and Runtime Config](#scheduling-priority-weight-and-runtime-config)
 - [Advanced Features](#advanced-features)
 - [Performance and Reliability](#performance-and-reliability)
 
 ## Overview
 
 Anclax's async task system provides a robust, reliable way to execute background work with at-least-once delivery guarantees. The system is designed around a simple principle: define tasks declaratively, implement them in code, and let the framework handle all the complexity of queuing, retrying, and monitoring.
+
+### Developer Orientation (Read Before Diving In)
+
+If you're extending or debugging async tasks, start with the high-level concepts and checkpoints below.
+This prevents chasing scattered code paths and assumptions.
+
+**What you should understand first:**
+- **Task definition and generation**: tasks are declared in a spec, then code is generated. Always confirm what is generated and what is hand-written.
+- **Runtime responsibilities**: task enqueueing, worker execution, retry decisions, and events are separate concerns with different owners.
+- **Persistence contract**: tasks and events live in the database; status transitions and retries are persisted, not in-memory.
+
+**What to check (in order):**
+1. **Specs and config**: task definitions, retry policy defaults, timeouts, and generation settings.
+2. **Generated interfaces**: TaskRunner and Executor APIs that your code must implement or call.
+3. **Task store layer**: enqueueing, updating status, and helper utilities (e.g., wait-for-completion).
+4. **Worker lifecycle**: claiming/locking, executing, error handling, and retries.
+5. **Events and hooks**: how TaskError events are emitted and when failure hooks run.
+6. **Database queries**: authoritative behavior for task selection, retries, and event lookup.
+7. **Tests and examples**: validate behavior assumptions and discover edge cases.
+
+**Guiding principles:**
+- Treat generated code as the contract between layers; do not hand-edit it.
+- Treat SQL and specs as the source of truth for persistence and API types.
+- When behavior seems unclear, start from data flow (task record → worker → event) rather than searching for a single entry point.
 
 ### Key Benefits
 
@@ -159,7 +186,8 @@ CREATE TABLE anclax_tasks (
     started_at TIMESTAMP,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    unique_tag TEXT UNIQUE         -- For preventing duplicates
+    unique_tag TEXT UNIQUE,        -- For preventing duplicates
+    parent_task_id INTEGER         -- Optional parent task for hierarchies
 );
 
 -- Cron job scheduling
@@ -318,6 +346,64 @@ Scheduled tasks follow a different lifecycle:
    - Cron expressions can be updated
    - Jobs can be deleted
 
+## Scheduling: Priority, Weight, and Runtime Config
+
+### Lane semantics
+
+- **Strict lane**: tasks with `priority > 0`
+  - claimed first when strict slots are available
+  - ordered by `priority DESC`, then `created_at ASC`, then `id ASC`
+- **Normal lane**: tasks with `priority == 0`
+  - selected through weighted label-group rotation
+  - group-level fairness is controlled by runtime `labelWeights`
+
+Strict lane capacity is bounded by:
+
+```text
+strict_cap = ceil(concurrency * maxStrictPercentage / 100)
+```
+
+### Task-level controls
+
+- `taskcore.WithPriority(priority int32)`
+  - validates `priority >= 0`
+- `taskcore.WithWeight(weight int32)`
+  - validates `weight >= 1`
+  - affects normal-lane ordering within a selected group (`weight DESC`)
+
+### Runtime worker config update
+
+The built-in task `updateWorkerRuntimeConfig` writes versioned config rows and propagates updates through Postgres notifications.
+
+Flow summary:
+1. Persist new version in `anclax.worker_runtime_configs`.
+2. Emit `up_config` notify payload (`request_id`, `version`) on `anclax_worker_runtime_config`.
+3. Workers refresh latest config, apply atomically, and update `workers.applied_config_version` monotonically.
+4. Workers send ACK notifications on `anclax_worker_runtime_config_ack`.
+5. Convergence is determined from DB lagging-worker state; ACK notify is only a fast path.
+
+For runnable examples and operational guidance, see:
+- [Scheduling & Runtime Config Guide](async-task-scheduling-runtime-config.md)
+- [Async Task Worker Lease Design](async-task-worker-lease.md)
+- [Async Task Testing for Production Readiness](async-task-testing-production-readiness.md)
+
+### Worker control LISTEN/NOTIFY requests
+
+Worker control-plane messages (runtime config update, task interrupt) share a unified JSON envelope:
+
+```json
+{"op": "<operation>", "params": {"...": "..."}}
+```
+
+The canonical schema (ops, params, channels, ACK params) lives in `pkg/taskcore/pgnotify`. A single worker listen loop consumes all worker control notifications.
+
+When adding a new request to immediately inform workers:
+1. **Define schema**: add an op constant and params struct in `pkg/taskcore/pgnotify` (and ACK params if needed).
+2. **Add channel + SQL notify**: extend `sql/queries/workers.sql` with a `pg_notify` query (and regenerate via `anclax gen` if required).
+3. **Emit notification**: marshal the `pgnotify.*Notification` in the control-plane executor and call the model `NotifyWorker...` method.
+4. **Handle in worker**: register the channel in `pkg/taskcore/worker/worker.go` and route the op in the unified listen loop.
+5. **Wire ACKs/tests**: update ACK waiters (if applicable) and add unit/e2e coverage for the new request.
+
 ## Advanced Features
 
 ### Task Overrides
@@ -329,6 +415,7 @@ taskID, err := taskRunner.RunSendWelcomeEmail(ctx, params,
     taskcore.WithRetryPolicy("1h", 5),           // Custom retry
     taskcore.WithTimeout("2m"),                  // Custom timeout
     taskcore.WithUniqueTag("user-123-welcome"),  // Prevent duplicates
+    taskcore.WithParentTaskID(parentID),         // Link to parent task
     taskcore.WithDelay(time.Hour),               // Delay execution
 )
 ```
@@ -337,6 +424,36 @@ taskID, err := taskRunner.RunSendWelcomeEmail(ctx, params,
 - Overrides are applied as functional options
 - They modify the task attributes before database insertion
 - Type-safe validation ensures override compatibility
+
+### Task Hierarchies and Control-Plane Interrupts
+
+Tasks may include an optional `parentTaskId` to form a hierarchy. Use `taskcore.WithParentTaskID` when enqueueing child tasks. When the control plane receives a `PauseTask` or `CancelTask` request, it now applies the status change to the target task and all descendants inside the same transaction, then enqueues a single interrupt task that contains the full list of task IDs.
+
+### Waiting for Task Completion
+
+Sometimes you need to block until a task finishes (for tests, orchestration, or CLI workflows).
+TaskStore provides a polling helper that waits for terminal states and includes failure context.
+
+```go
+store := taskcore.NewTaskStore(model)
+err := store.WaitForTask(ctx, taskID,
+    taskcore.WithWaitForTaskPollInterval(200*time.Millisecond),
+    taskcore.WithWaitForTaskTimeout(30*time.Second),
+)
+```
+
+**How it works:**
+- Polls `GetTaskByID` until the task is `completed` or `failed`.
+- On failure, reads the most recent TaskError event and returns a message that includes:
+  - the task attempt count
+  - the retry policy max attempts
+  - the last error message from the TaskError event
+- On timeout or context cancellation, returns the context error.
+
+**Implementation references:**
+- `pkg/taskcore/wait.go` implements the polling helper.
+- `pkg/taskcore/store.go` exposes `GetTaskByID` and `GetLastTaskErrorEvent`.
+- `sql/queries/tasks.sql` defines `GetLastTaskErrorEvent` for the events table.
 
 ### Failure Hooks
 

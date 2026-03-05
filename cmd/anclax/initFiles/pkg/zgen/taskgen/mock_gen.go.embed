@@ -14,7 +14,7 @@ import (
 	reflect "reflect"
 
 	core "github.com/cloudcarver/anclax/core"
-	taskcore "github.com/cloudcarver/anclax/pkg/taskcore"
+	store "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -43,7 +43,7 @@ func (m *MockTaskRunner) EXPECT() *MockTaskRunnerMockRecorder {
 }
 
 // RunAutoIncrementCounter mocks base method.
-func (m *MockTaskRunner) RunAutoIncrementCounter(ctx context.Context, params *AutoIncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+func (m *MockTaskRunner) RunAutoIncrementCounter(ctx context.Context, params *AutoIncrementCounterParameters, overrides ...store.TaskOverride) (int32, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, params}
 	for _, a := range overrides {
@@ -63,7 +63,7 @@ func (mr *MockTaskRunnerMockRecorder) RunAutoIncrementCounter(ctx, params any, o
 }
 
 // RunAutoIncrementCounterWithTx mocks base method.
-func (m *MockTaskRunner) RunAutoIncrementCounterWithTx(ctx context.Context, tx core.Tx, params *AutoIncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+func (m *MockTaskRunner) RunAutoIncrementCounterWithTx(ctx context.Context, tx core.Tx, params *AutoIncrementCounterParameters, overrides ...store.TaskOverride) (int32, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, tx, params}
 	for _, a := range overrides {
@@ -83,7 +83,7 @@ func (mr *MockTaskRunnerMockRecorder) RunAutoIncrementCounterWithTx(ctx, tx, par
 }
 
 // RunIncrementCounter mocks base method.
-func (m *MockTaskRunner) RunIncrementCounter(ctx context.Context, params *IncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+func (m *MockTaskRunner) RunIncrementCounter(ctx context.Context, params *IncrementCounterParameters, overrides ...store.TaskOverride) (int32, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, params}
 	for _, a := range overrides {
@@ -103,7 +103,7 @@ func (mr *MockTaskRunnerMockRecorder) RunIncrementCounter(ctx, params any, overr
 }
 
 // RunIncrementCounterWithTx mocks base method.
-func (m *MockTaskRunner) RunIncrementCounterWithTx(ctx context.Context, tx core.Tx, params *IncrementCounterParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+func (m *MockTaskRunner) RunIncrementCounterWithTx(ctx context.Context, tx core.Tx, params *IncrementCounterParameters, overrides ...store.TaskOverride) (int32, error) {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, tx, params}
 	for _, a := range overrides {

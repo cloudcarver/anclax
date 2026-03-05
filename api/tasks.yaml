@@ -14,3 +14,91 @@ tasks:
       maxAttempts: -1
     events:
       - onFailed
+
+  - name: updateWorkerRuntimeConfig
+    description: Update worker runtime config and wait for alive workers to apply it
+    priority: "INF"
+    parameters:
+      type: object
+      properties:
+        requestID:
+          type: string
+          description: Correlation ID for notify and ack messages
+        maxStrictPercentage:
+          type: integer
+          format: int32
+          description: Maximum percentage of strict-priority slots (0-100)
+        defaultWeight:
+          type: integer
+          format: int32
+          description: Default weight for unlabeled task group
+        labels:
+          type: array
+          items:
+            type: string
+          description: Label names for weighted groups
+        weights:
+          type: array
+          items:
+            type: integer
+            format: int32
+          description: Weights for labels by index
+        notifyInterval:
+          type: string
+          description: Fallback retry interval when ack listening is unavailable
+        listenTimeout:
+          type: string
+          description: Ack listen timeout window for one iteration
+    retryPolicy:
+      interval: 2s
+      maxAttempts: -1
+    timeout: 20s
+
+  - name: interruptTask
+    description: Interrupt a task and stop any in-flight execution
+    priority: "INF"
+    parameters:
+      type: object
+      required: [taskIDs]
+      properties:
+        taskIDs:
+          type: array
+          items:
+            type: integer
+            format: int32
+          description: Task IDs to interrupt
+        requestID:
+          type: string
+          description: Correlation ID for notify and ack messages
+        notifyInterval:
+          type: string
+          description: Fallback retry interval when ack listening is unavailable
+        listenTimeout:
+          type: string
+          description: Ack listen timeout window for one iteration
+    retryPolicy:
+      interval: 2s
+      maxAttempts: -1
+    timeout: 20s
+
+  - name: stressProbe
+    description: No-op stress probe task for worker E2E benchmarking
+    parameters:
+      type: object
+      required: [jobID, sleepMs, group]
+      properties:
+        jobID:
+          type: integer
+          format: int64
+          description: Logical task id for stress-run metrics correlation
+        sleepMs:
+          type: integer
+          format: int32
+          description: Simulated task execution time in milliseconds
+        group:
+          type: string
+          description: Logical group name for test-side metrics and labels
+    retryPolicy:
+      interval: 1s
+      maxAttempts: 1
+    timeout: 30s

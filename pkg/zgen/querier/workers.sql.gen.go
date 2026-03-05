@@ -7,9 +7,111 @@ package querier
 
 import (
 	"context"
+	"encoding/json"
+	"time"
 
 	"github.com/google/uuid"
 )
+
+const createWorkerRuntimeConfig = `-- name: CreateWorkerRuntimeConfig :one
+INSERT INTO anclax.worker_runtime_configs (payload)
+VALUES ($1)
+RETURNING version, payload, created_at
+`
+
+func (q *Queries) CreateWorkerRuntimeConfig(ctx context.Context, payload json.RawMessage) (*AnclaxWorkerRuntimeConfig, error) {
+	row := q.db.QueryRow(ctx, createWorkerRuntimeConfig, payload)
+	var i AnclaxWorkerRuntimeConfig
+	err := row.Scan(&i.Version, &i.Payload, &i.CreatedAt)
+	return &i, err
+}
+
+const getLatestWorkerRuntimeConfig = `-- name: GetLatestWorkerRuntimeConfig :one
+SELECT version, payload, created_at FROM anclax.worker_runtime_configs
+ORDER BY version DESC
+LIMIT 1
+`
+
+func (q *Queries) GetLatestWorkerRuntimeConfig(ctx context.Context) (*AnclaxWorkerRuntimeConfig, error) {
+	row := q.db.QueryRow(ctx, getLatestWorkerRuntimeConfig)
+	var i AnclaxWorkerRuntimeConfig
+	err := row.Scan(&i.Version, &i.Payload, &i.CreatedAt)
+	return &i, err
+}
+
+const getWorkerRuntimeConfigByVersion = `-- name: GetWorkerRuntimeConfigByVersion :one
+SELECT version, payload, created_at FROM anclax.worker_runtime_configs
+WHERE version = $1
+`
+
+func (q *Queries) GetWorkerRuntimeConfigByVersion(ctx context.Context, version int64) (*AnclaxWorkerRuntimeConfig, error) {
+	row := q.db.QueryRow(ctx, getWorkerRuntimeConfigByVersion, version)
+	var i AnclaxWorkerRuntimeConfig
+	err := row.Scan(&i.Version, &i.Payload, &i.CreatedAt)
+	return &i, err
+}
+
+const listLaggingAliveWorkers = `-- name: ListLaggingAliveWorkers :many
+SELECT id
+FROM anclax.workers
+WHERE
+    status = 'online'
+    AND last_heartbeat >= $1
+    AND applied_config_version < $2
+`
+
+type ListLaggingAliveWorkersParams struct {
+	HeartbeatCutoff time.Time
+	Version         int64
+}
+
+func (q *Queries) ListLaggingAliveWorkers(ctx context.Context, arg ListLaggingAliveWorkersParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listLaggingAliveWorkers, arg.HeartbeatCutoff, arg.Version)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOnlineWorkerIDs = `-- name: ListOnlineWorkerIDs :many
+SELECT id
+FROM anclax.workers
+WHERE
+    status = 'online'
+    AND last_heartbeat >= $1
+`
+
+func (q *Queries) ListOnlineWorkerIDs(ctx context.Context, heartbeatCutoff time.Time) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listOnlineWorkerIDs, heartbeatCutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
 
 const markWorkerOffline = `-- name: MarkWorkerOffline :exec
 UPDATE anclax.workers
@@ -22,13 +124,67 @@ func (q *Queries) MarkWorkerOffline(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const notifyWorkerRuntimeConfig = `-- name: NotifyWorkerRuntimeConfig :exec
+SELECT pg_notify('anclax_worker_runtime_config', $1::text)
+`
+
+func (q *Queries) NotifyWorkerRuntimeConfig(ctx context.Context, payload string) error {
+	_, err := q.db.Exec(ctx, notifyWorkerRuntimeConfig, payload)
+	return err
+}
+
+const notifyWorkerRuntimeConfigAck = `-- name: NotifyWorkerRuntimeConfigAck :exec
+SELECT pg_notify('anclax_worker_runtime_config_ack', $1::text)
+`
+
+func (q *Queries) NotifyWorkerRuntimeConfigAck(ctx context.Context, payload string) error {
+	_, err := q.db.Exec(ctx, notifyWorkerRuntimeConfigAck, payload)
+	return err
+}
+
+const notifyWorkerTaskInterrupt = `-- name: NotifyWorkerTaskInterrupt :exec
+SELECT pg_notify('anclax_worker_task_interrupt', $1::text)
+`
+
+func (q *Queries) NotifyWorkerTaskInterrupt(ctx context.Context, payload string) error {
+	_, err := q.db.Exec(ctx, notifyWorkerTaskInterrupt, payload)
+	return err
+}
+
+const notifyWorkerTaskInterruptAck = `-- name: NotifyWorkerTaskInterruptAck :exec
+SELECT pg_notify('anclax_worker_task_interrupt_ack', $1::text)
+`
+
+func (q *Queries) NotifyWorkerTaskInterruptAck(ctx context.Context, payload string) error {
+	_, err := q.db.Exec(ctx, notifyWorkerTaskInterruptAck, payload)
+	return err
+}
+
+const updateWorkerAppliedConfigVersion = `-- name: UpdateWorkerAppliedConfigVersion :exec
+UPDATE anclax.workers
+SET
+    applied_config_version = GREATEST(applied_config_version, $1),
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = $2
+`
+
+type UpdateWorkerAppliedConfigVersionParams struct {
+	AppliedConfigVersion int64
+	ID                   uuid.UUID
+}
+
+func (q *Queries) UpdateWorkerAppliedConfigVersion(ctx context.Context, arg UpdateWorkerAppliedConfigVersionParams) error {
+	_, err := q.db.Exec(ctx, updateWorkerAppliedConfigVersion, arg.AppliedConfigVersion, arg.ID)
+	return err
+}
+
 const updateWorkerHeartbeat = `-- name: UpdateWorkerHeartbeat :one
 UPDATE anclax.workers
 SET last_heartbeat = CURRENT_TIMESTAMP,
     status = 'online',
     updated_at = CURRENT_TIMESTAMP
 WHERE id = $1
-RETURNING id, labels, status, last_heartbeat, created_at, updated_at
+RETURNING id, labels, status, last_heartbeat, created_at, updated_at, applied_config_version
 `
 
 func (q *Queries) UpdateWorkerHeartbeat(ctx context.Context, id uuid.UUID) (*AnclaxWorker, error) {
@@ -41,29 +197,31 @@ func (q *Queries) UpdateWorkerHeartbeat(ctx context.Context, id uuid.UUID) (*Anc
 		&i.LastHeartbeat,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AppliedConfigVersion,
 	)
 	return &i, err
 }
 
 const upsertWorker = `-- name: UpsertWorker :one
-INSERT INTO anclax.workers (id, labels, status, last_heartbeat)
-VALUES ($1, $2, 'online', CURRENT_TIMESTAMP)
+INSERT INTO anclax.workers (id, labels, status, last_heartbeat, applied_config_version)
+VALUES ($1, $2, 'online', CURRENT_TIMESTAMP, $3)
 ON CONFLICT (id)
 DO UPDATE SET
     labels = EXCLUDED.labels,
     status = 'online',
     last_heartbeat = CURRENT_TIMESTAMP,
     updated_at = CURRENT_TIMESTAMP
-RETURNING id, labels, status, last_heartbeat, created_at, updated_at
+RETURNING id, labels, status, last_heartbeat, created_at, updated_at, applied_config_version
 `
 
 type UpsertWorkerParams struct {
-	ID     uuid.UUID
-	Labels []byte
+	ID                   uuid.UUID
+	Labels               []byte
+	AppliedConfigVersion int64
 }
 
 func (q *Queries) UpsertWorker(ctx context.Context, arg UpsertWorkerParams) (*AnclaxWorker, error) {
-	row := q.db.QueryRow(ctx, upsertWorker, arg.ID, arg.Labels)
+	row := q.db.QueryRow(ctx, upsertWorker, arg.ID, arg.Labels, arg.AppliedConfigVersion)
 	var i AnclaxWorker
 	err := row.Scan(
 		&i.ID,
@@ -72,6 +230,7 @@ func (q *Queries) UpsertWorker(ctx context.Context, arg UpsertWorkerParams) (*An
 		&i.LastHeartbeat,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AppliedConfigVersion,
 	)
 	return &i, err
 }

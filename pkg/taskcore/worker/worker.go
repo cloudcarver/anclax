@@ -3,52 +3,40 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"net/url"
 	"time"
 
-	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/globalctx"
 	"github.com/cloudcarver/anclax/pkg/logger"
-	"github.com/cloudcarver/anclax/pkg/metrics"
-	"github.com/cloudcarver/anclax/pkg/taskcore"
-	"github.com/cloudcarver/anclax/pkg/taskcore/types"
+	"github.com/cloudcarver/anclax/pkg/taskcore/pgnotify"
+	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
+	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
-	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
-	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
 var log = logger.NewLogAgent("worker")
 
 type Worker struct {
-	model model.ModelInterface
-
-	lifeCycleHandler TaskLifeCycleHandlerInterface
-
 	globalCtx *globalctx.GlobalContext
 
+	engine  *Engine
+	runtime *Runtime
+	port    *ModelPort
+
 	taskHandler TaskHandler
+	semaphore   chan struct{}
 
-	pollInterval time.Duration
-
-	workerID            uuid.UUID
-	labels              []string
-	hasLabels           bool
-	labelsJSON          json.RawMessage
-	heartbeatInterval   time.Duration
-	lockTTL             time.Duration
-	lockRefreshInterval time.Duration
-	concurrency         int
-	semaphore           chan struct{}
-
-	now func() time.Time
+	runtimeListenDSN string
 }
 
-func NewWorker(globalCtx *globalctx.GlobalContext, cfg *config.Config, model model.ModelInterface, taskHandler TaskHandler) (WorkerInterface, error) {
-	pollInterval := 1 * time.Second
+func NewWorker(globalCtx *globalctx.GlobalContext, cfg *config.Config, m model.ModelInterface, taskHandler TaskHandler) (WorkerInterface, error) {
+	pollInterval := time.Second
 	if cfg.Worker.PollInterval != nil {
 		pollInterval = *cfg.Worker.PollInterval
 	}
@@ -68,6 +56,11 @@ func NewWorker(globalCtx *globalctx.GlobalContext, cfg *config.Config, model mod
 		lockRefreshInterval = *cfg.Worker.LockRefreshInterval
 	}
 
+	runtimeConfigPoll := time.Duration(0)
+	if cfg.Worker.RuntimeConfigPollInterval != nil {
+		runtimeConfigPoll = *cfg.Worker.RuntimeConfigPollInterval
+	}
+
 	concurrency := 10
 	if cfg.Worker.Concurrency != nil {
 		concurrency = *cfg.Worker.Concurrency
@@ -80,84 +73,112 @@ func NewWorker(globalCtx *globalctx.GlobalContext, cfg *config.Config, model mod
 	if cfg.Worker.WorkerID != nil {
 		parsed, err := uuid.Parse(*cfg.Worker.WorkerID)
 		if err != nil {
-			return nil, errors.Wrap(err, "invalid workerId")
+			return nil, fmt.Errorf("invalid workerId: %w", err)
 		}
 		workerID = parsed
 	}
 
-	labels := cfg.Worker.Labels
-	labelsJSON, err := json.Marshal(labels)
+	if runtimeConfigPoll < 0 {
+		runtimeConfigPoll = 0
+	}
+
+	maxStrictPercentage := int32(100)
+	if cfg.Worker.MaxStrictPercentage != nil {
+		maxStrictPercentage = int32(*cfg.Worker.MaxStrictPercentage)
+	}
+
+	port, err := NewModelPort(m, workerID, cfg.Worker.Labels, taskHandler, lockTTL, lockRefreshInterval)
 	if err != nil {
-		return nil, errors.Wrap(err, "marshal worker labels")
+		return nil, err
 	}
 
-	w := &Worker{
-		model:               model,
-		lifeCycleHandler:    NewTaskLifeCycleHandler(model, taskHandler, workerID),
-		globalCtx:           globalCtx,
-		taskHandler:         taskHandler,
-		pollInterval:        pollInterval,
-		workerID:            workerID,
-		labels:              labels,
-		hasLabels:           len(labels) > 0,
-		labelsJSON:          labelsJSON,
-		heartbeatInterval:   heartbeatInterval,
-		lockTTL:             lockTTL,
-		lockRefreshInterval: lockRefreshInterval,
-		concurrency:         concurrency,
-		semaphore:           make(chan struct{}, concurrency),
-		now:                 time.Now,
-	}
+	engine := NewEngine(EngineConfig{
+		WorkerID:            workerID.String(),
+		Labels:              cfg.Worker.Labels,
+		Concurrency:         concurrency,
+		MaxStrictPercentage: maxStrictPercentage,
+		LabelWeights: map[string]int32{
+			DefaultWeightGroup: 1,
+		},
+	})
 
-	return w, nil
+	runtime := NewRuntime(engine, port, RuntimeOptions{
+		PollInterval:          pollInterval,
+		HeartbeatInterval:     heartbeatInterval,
+		RuntimeConfigInterval: runtimeConfigPoll,
+		OnError: func(err error) {
+			log.Error("worker runtime error", zap.Error(err))
+		},
+	})
+
+	return &Worker{
+		globalCtx:        globalCtx,
+		engine:           engine,
+		runtime:          runtime,
+		port:             port,
+		taskHandler:      taskHandler,
+		semaphore:        make(chan struct{}, concurrency),
+		runtimeListenDSN: runtimeListenDSNFromConfig(cfg),
+	}, nil
 }
 
 func (w *Worker) Start() {
-	if err := w.registerWorker(w.globalCtx.Context()); err != nil {
-		log.Error("failed to register worker", zap.Error(err))
-		return
-	}
-
-	go w.heartbeatLoop()
-
-	ticker := time.NewTicker(w.pollInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-w.globalCtx.Context().Done():
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			_ = w.markOffline(ctx)
+	ctx := w.globalCtx.Context()
+	if w.runtimeListenDSN != "" {
+		ready := make(chan struct{})
+		errCh := make(chan error, 1)
+		go w.workerNotifyListenLoop(ctx, ready, errCh)
+		if err := waitForListenReady(ctx, errCh, ready); err != nil {
+			log.Error("worker listen setup failed", zap.Error(err))
+			w.globalCtx.Cancel()
 			return
-		case <-ticker.C:
-			go func() {
-				metrics.WorkerGoroutines.Inc()
-				defer metrics.WorkerGoroutines.Dec()
-				if err := w.pullAndRun(w.globalCtx.Context()); err != nil {
-					metrics.RunTaskErrors.Inc()
-					log.Error("error running task", zap.Error(err))
-				}
-			}()
 		}
+		go func() {
+			select {
+			case err := <-errCh:
+				if err != nil && ctx.Err() == nil {
+					log.Error("worker listen loop exited", zap.Error(err))
+					w.globalCtx.Cancel()
+				}
+			case <-ctx.Done():
+			}
+		}()
 	}
+	w.runtime.Start(ctx)
 }
 
-func (w *Worker) tryAcquireSlot() bool {
-	if w.semaphore == nil {
-		return true
+func (w *Worker) RunTask(ctx context.Context, taskID int32) error {
+	if err := w.acquireSlot(ctx); err != nil {
+		return err
 	}
-	select {
-	case w.semaphore <- struct{}{}:
-		return true
-	default:
-		return false
+	defer w.releaseSlot()
+
+	task, err := w.port.ClaimByID(ctx, taskID, ClaimRequest{})
+	if err != nil {
+		if err == ErrNoTask {
+			return nil
+		}
+		return err
 	}
+	if task == nil {
+		return nil
+	}
+
+	execErr := w.port.ExecuteTask(ctx, *task)
+	if err := w.port.FinalizeTask(ctx, *task, execErr); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (w *Worker) RegisterTaskHandler(handler TaskHandler) {
+	if w.taskHandler == nil {
+		return
+	}
+	w.taskHandler.RegisterTaskHandler(handler)
 }
 
 func (w *Worker) acquireSlot(ctx context.Context) error {
-	if w.semaphore == nil {
-		return nil
-	}
 	select {
 	case w.semaphore <- struct{}{}:
 		return nil
@@ -167,9 +188,6 @@ func (w *Worker) acquireSlot(ctx context.Context) error {
 }
 
 func (w *Worker) releaseSlot() {
-	if w.semaphore == nil {
-		return
-	}
 	select {
 	case <-w.semaphore:
 	default:
@@ -177,229 +195,152 @@ func (w *Worker) releaseSlot() {
 	}
 }
 
-func (w *Worker) pullAndRun(parentCtx context.Context) error {
-	if !w.tryAcquireSlot() {
-		return nil
+func (w *Worker) workerNotifyListenLoop(ctx context.Context, ready chan<- struct{}, errCh chan<- error) {
+	if err := w.listenWorkerNotifications(ctx, ready); err != nil && ctx.Err() == nil {
+		errCh <- err
 	}
-	defer w.releaseSlot()
-	task, err := w.claimTask(parentCtx)
-	if err != nil {
-		return err
-	}
-	if task == nil {
-		return nil
-	}
-	metrics.PulledTasks.Inc()
-	return w.runTask(parentCtx, *task)
 }
 
-func (w *Worker) RunTask(ctx context.Context, taskID int32) error {
-	if err := w.acquireSlot(ctx); err != nil {
-		return err
-	}
-	defer w.releaseSlot()
-	task, err := w.claimTaskByID(ctx, taskID)
+func (w *Worker) listenWorkerNotifications(ctx context.Context, ready chan<- struct{}) error {
+	conn, err := pgx.Connect(ctx, w.runtimeListenDSN)
 	if err != nil {
-		return err
+		return fmt.Errorf("connect worker listener: %w", err)
 	}
-	if task == nil {
-		return nil
+	defer conn.Close(context.Background())
+
+	if _, err := conn.Exec(ctx, fmt.Sprintf("LISTEN %s", pgnotify.ChannelRuntimeConfig)); err != nil {
+		return fmt.Errorf("listen runtime config channel: %w", err)
 	}
-	return w.runTask(ctx, *task)
-}
+	if _, err := conn.Exec(ctx, fmt.Sprintf("LISTEN %s", pgnotify.ChannelTaskInterrupt)); err != nil {
+		return fmt.Errorf("listen task interrupt channel: %w", err)
+	}
+	signalListenReady(ready)
 
-func (w *Worker) runTask(_ctx context.Context, task apigen.Task) error {
-	var (
-		ctx    context.Context
-		cancel context.CancelFunc
-	)
-
-	if task.Attributes.Timeout == nil {
-		ctx, cancel = context.WithCancel(_ctx)
-	} else {
-		timeout, err := time.ParseDuration(*task.Attributes.Timeout)
+	for {
+		waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		notification, err := conn.WaitForNotification(waitCtx)
+		cancel()
 		if err != nil {
-			return errors.Wrap(err, "failed to parse timeout")
-		}
-		ctx, cancel = context.WithTimeout(_ctx, timeout)
-	}
-	defer cancel()
-
-	refreshCancel := w.startLockRefresh(ctx, task.ID)
-	defer refreshCancel()
-
-	log.Info("executing task", zap.Int32("task_id", task.ID), zap.Any("task", task))
-
-	if err := w.runHandleAttributes(ctx, task); err != nil {
-		if errors.Is(err, taskcore.ErrTaskLockLost) {
-			log.Warn("task lock lost before execution", zap.Int32("task_id", task.ID))
-			return nil
-		}
-		return errors.Wrap(err, "failed to handle attributes")
-	}
-
-	err := w.taskHandler.HandleTask(ctx, &task.Spec)
-	if err != nil { // handle failed
-		if err != taskcore.ErrRetryTaskWithoutErrorEvent {
-			log.Error("error executing task", zap.Int32("task_id", task.ID), zap.Error(err))
-		}
-		if err := w.runHandleFailed(ctx, task, err); err != nil {
-			if errors.Is(err, taskcore.ErrTaskLockLost) {
-				log.Warn("task lock lost after failure", zap.Int32("task_id", task.ID))
+			if errors.Is(err, context.DeadlineExceeded) {
+				continue
+			}
+			if errors.Is(err, context.Canceled) && ctx.Err() != nil {
 				return nil
 			}
-			return errors.Wrap(err, "failed to handle failed task")
+			return fmt.Errorf("wait for worker notification: %w", err)
 		}
-	} else { // handle completed
-		if err := w.runHandleCompleted(ctx, task); err != nil {
-			if errors.Is(err, taskcore.ErrTaskLockLost) {
-				log.Warn("task lock lost after completion", zap.Int32("task_id", task.ID))
-				return nil
+		switch notification.Channel {
+		case pgnotify.ChannelRuntimeConfig:
+			if err := w.handleRuntimeConfigNotification(ctx, notification.Payload); err != nil {
+				log.Error("failed to handle runtime config notification", zap.Error(err), zap.String("payload", notification.Payload))
 			}
-			log.Error("error handling completed task", zap.Int32("task_id", task.ID), zap.Error(err))
-			return errors.Wrap(err, "failed to handle completed task")
+		case pgnotify.ChannelTaskInterrupt:
+			if err := w.handleTaskInterruptNotification(ctx, notification.Payload); err != nil {
+				log.Error("failed to handle task interrupt notification", zap.Error(err), zap.String("payload", notification.Payload))
+			}
+		default:
+			log.Warn("received unknown worker notification channel", zap.String("channel", notification.Channel))
 		}
-		log.Info("task completed", zap.Int32("task_id", task.ID))
+	}
+}
+
+func (w *Worker) handleRuntimeConfigNotification(ctx context.Context, payload string) error {
+	requestID, shouldRefresh, err := parseRuntimeConfigNotificationPayload(payload)
+	if err != nil {
+		return err
+	}
+	if !shouldRefresh {
+		return nil
+	}
+	w.runtime.NotifyRuntimeConfig(ctx, requestID)
+	return nil
+}
+
+func parseRuntimeConfigNotificationPayload(payload string) (requestID string, shouldRefresh bool, err error) {
+	env, err := pgnotify.ParseEnvelope(payload)
+	if err != nil {
+		return "", false, fmt.Errorf("unmarshal runtime config notification: %w", err)
+	}
+	if !pgnotify.MatchesOp(env.Op, pgnotify.OpUpdateRuntimeConfig) {
+		return "", false, nil
+	}
+	var params pgnotify.RuntimeConfigParams
+	if err := json.Unmarshal(env.Params, &params); err != nil {
+		return "", false, fmt.Errorf("unmarshal runtime config params: %w", err)
+	}
+	return params.RequestID, true, nil
+}
+
+func (w *Worker) handleTaskInterruptNotification(ctx context.Context, payload string) error {
+	requestID, taskIDs, shouldProcess, err := parseTaskInterruptNotificationPayload(payload)
+	if err != nil {
+		return err
+	}
+	if !shouldProcess {
+		return nil
+	}
+	for _, taskID := range taskIDs {
+		w.port.InterruptTask(taskID, taskcore.ErrTaskInterrupted)
+	}
+	if err := w.port.AckTaskInterruptApplied(ctx, requestID); err != nil {
+		return err
 	}
 	return nil
 }
 
-func (w *Worker) RegisterTaskHandler(handler TaskHandler) {
-	w.taskHandler.RegisterTaskHandler(handler)
-}
-
-func (w *Worker) claimTask(ctx context.Context) (*apigen.Task, error) {
-	var task *apigen.Task
-	lockExpiry := w.now().Add(-w.lockTTL)
-	workerID := w.workerIDParam()
-	if err := w.model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
-		qtask, err := txm.ClaimTask(ctx, querier.ClaimTaskParams{
-			WorkerID:   workerID,
-			LockExpiry: &lockExpiry,
-			Labels:     w.labels,
-			HasLabels:  w.hasLabels,
-		})
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return nil
-			}
-			return err
-		}
-		converted := types.TaskToAPI(qtask)
-		task = &converted
-		return nil
-	}); err != nil {
-		return nil, err
+func parseTaskInterruptNotificationPayload(payload string) (string, []int32, bool, error) {
+	env, err := pgnotify.ParseEnvelope(payload)
+	if err != nil {
+		return "", nil, false, fmt.Errorf("unmarshal task interrupt notification: %w", err)
 	}
-	return task, nil
-}
-
-func (w *Worker) claimTaskByID(ctx context.Context, taskID int32) (*apigen.Task, error) {
-	var task *apigen.Task
-	lockExpiry := w.now().Add(-w.lockTTL)
-	workerID := w.workerIDParam()
-	if err := w.model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
-		qtask, err := txm.ClaimTaskByID(ctx, querier.ClaimTaskByIDParams{
-			ID:         taskID,
-			WorkerID:   workerID,
-			LockExpiry: &lockExpiry,
-			Labels:     w.labels,
-			HasLabels:  w.hasLabels,
-		})
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return nil
-			}
-			return err
-		}
-		converted := types.TaskToAPI(qtask)
-		task = &converted
-		return nil
-	}); err != nil {
-		return nil, err
+	if !pgnotify.MatchesOp(env.Op, pgnotify.OpInterruptTask) {
+		return "", nil, false, nil
 	}
-	return task, nil
-}
-
-func (w *Worker) runHandleAttributes(ctx context.Context, task apigen.Task) error {
-	return w.model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
-		return w.lifeCycleHandler.HandleAttributes(ctx, tx, task)
-	})
-}
-
-func (w *Worker) runHandleFailed(ctx context.Context, task apigen.Task, err error) error {
-	return w.model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
-		return w.lifeCycleHandler.HandleFailed(ctx, tx, task, err)
-	})
-}
-
-func (w *Worker) runHandleCompleted(ctx context.Context, task apigen.Task) error {
-	return w.model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
-		return w.lifeCycleHandler.HandleCompleted(ctx, tx, task)
-	})
-}
-
-func (w *Worker) startLockRefresh(ctx context.Context, taskID int32) context.CancelFunc {
-	if w.lockRefreshInterval <= 0 {
-		return func() {}
+	var params pgnotify.TaskInterruptParams
+	if err := json.Unmarshal(env.Params, &params); err != nil {
+		return "", nil, false, fmt.Errorf("unmarshal task interrupt params: %w", err)
 	}
-	refreshCtx, cancel := context.WithCancel(ctx)
-	go func() {
-		ticker := time.NewTicker(w.lockRefreshInterval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-refreshCtx.Done():
-				return
-			case <-ticker.C:
-				if _, err := w.model.RefreshTaskLock(refreshCtx, querier.RefreshTaskLockParams{
-					ID:       taskID,
-					WorkerID: w.workerIDParam(),
-				}); err != nil {
-					if errors.Is(err, pgx.ErrNoRows) {
-						log.Warn("task lock refresh failed, lock lost", zap.Int32("task_id", taskID))
-						return
-					}
-					log.Error("failed to refresh task lock", zap.Int32("task_id", taskID), zap.Error(err))
-				}
-			}
-		}
-	}()
-	return cancel
+	return params.RequestID, params.TaskIDs, true, nil
 }
 
-func (w *Worker) heartbeatLoop() {
-	ticker := time.NewTicker(w.heartbeatInterval)
-	defer ticker.Stop()
-	for {
+func waitForListenReady(ctx context.Context, errCh <-chan error, readyChans ...<-chan struct{}) error {
+	for _, ready := range readyChans {
 		select {
-		case <-w.globalCtx.Context().Done():
-			return
-		case <-ticker.C:
-			if err := w.heartbeat(w.globalCtx.Context()); err != nil {
-				log.Error("failed to update worker heartbeat", zap.Error(err))
+		case <-ready:
+		case err := <-errCh:
+			if err != nil {
+				return err
 			}
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
+	return nil
 }
 
-func (w *Worker) registerWorker(ctx context.Context) error {
-	_, err := w.model.UpsertWorker(ctx, querier.UpsertWorkerParams{
-		ID:     w.workerID,
-		Labels: w.labelsJSON,
-	})
-	return err
+func signalListenReady(ready chan<- struct{}) {
+	if ready == nil {
+		return
+	}
+	defer func() {
+		_ = recover()
+	}()
+	close(ready)
 }
 
-func (w *Worker) heartbeat(ctx context.Context) error {
-	_, err := w.model.UpdateWorkerHeartbeat(ctx, w.workerID)
-	return err
-}
-
-func (w *Worker) markOffline(ctx context.Context) error {
-	return w.model.MarkWorkerOffline(ctx, w.workerID)
-}
-
-func (w *Worker) workerIDParam() uuid.NullUUID {
-	return uuid.NullUUID{UUID: w.workerID, Valid: true}
+func runtimeListenDSNFromConfig(cfg *config.Config) string {
+	if cfg.Pg.DSN != nil && *cfg.Pg.DSN != "" {
+		return *cfg.Pg.DSN
+	}
+	if cfg.Pg.User == "" || cfg.Pg.Host == "" || cfg.Pg.Port == 0 || cfg.Pg.Db == "" {
+		return ""
+	}
+	dsnURL := &url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(cfg.Pg.User, cfg.Pg.Password),
+		Host:     fmt.Sprintf("%s:%d", cfg.Pg.Host, cfg.Pg.Port),
+		Path:     cfg.Pg.Db,
+		RawQuery: "sslmode=" + utils.IfElse(cfg.Pg.SSLMode == "", "require", cfg.Pg.SSLMode),
+	}
+	return dsnURL.String()
 }

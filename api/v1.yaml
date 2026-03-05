@@ -31,6 +31,27 @@ paths:
         "401":
           description: Invalid credentials
 
+  /auth/sign-up:
+    post:
+      summary: Sign up user
+      description: Create a new user and return credentials
+      operationId: signUp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignUpRequest"
+      responses:
+        "201":
+          description: Successfully signed up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Credentials"
+        "409":
+          description: Username already exists
+
   /auth/sign-out:
     post:
       summary: Sign out user
@@ -156,6 +177,20 @@ components:
           format: password
           description: User's password
 
+    SignUpRequest:
+      type: object
+      required:
+        - name
+        - password
+      properties:
+        name:
+          type: string
+          description: User's name
+        password:
+          type: string
+          format: password
+          description: User's password
+
     Credentials:
       type: object
       required:
@@ -190,13 +225,17 @@ components:
         ID:
           type: integer
           format: int32
+        parentTaskId:
+          type: integer
+          format: int32
+          description: Parent task ID if this task was spawned from another task
         attributes:
           $ref: "#/components/schemas/TaskAttributes"
         spec:
           $ref: "#/components/schemas/TaskSpec"
         status:
           type: string
-          enum: ["pending", "completed", "failed", "paused"]
+          enum: ["pending", "completed", "failed", "paused", "cancelled"]
         uniqueTag:
           type: string
           description: Unique tag of the task
@@ -232,13 +271,24 @@ components:
         type:
           type: string
         payload:
-          type: string
-          format: byte
+          type: object
+          additionalProperties: true
+          x-go-type: "json.RawMessage"
+          x-go-type-imports:
+            - "encoding/json"
           description: The JSONB of the spec of the task
 
     TaskAttributes:
       type: object
       properties:
+        priority:
+          type: integer
+          format: int32
+          description: Strict priority of the task. Higher number runs first. Zero means normal weighted scheduling.
+        weight:
+          type: integer
+          format: int32
+          description: Relative weight of the task within weighted scheduling (normal tasks only).
         timeout:
           type: string
           description: Timeout of the task, a valid go time duration value e.g. 1h, 1d, 1w, 1m
@@ -250,6 +300,13 @@ components:
           type: array
           items:
             type: string
+        serialKey:
+          type: string
+          description: Serial key for forcing tasks with the same key to run one by one
+        serialID:
+          type: integer
+          format: int32
+          description: Optional serial order within the same serial key (lower runs first)
 
     TaskRetryPolicy:
       type: object

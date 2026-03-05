@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"text/template"
 	"time"
@@ -149,6 +151,16 @@ func process(data map[string]any, onFunc func(f Function) error, onParam func(na
 			}
 		}
 
+		// parse priority
+		var priority *int32
+		if rawPriority, ok := fnData["priority"]; ok {
+			parsedPriority, err := parseTaskPriority(rawPriority)
+			if err != nil {
+				return fmt.Errorf("priority for %s: %w", fnName, err)
+			}
+			priority = parsedPriority
+		}
+
 		// parse parameters (optional)
 		var structName string
 		if _, ok := fnData["parameters"]; ok {
@@ -190,11 +202,64 @@ func process(data map[string]any, onFunc func(f Function) error, onParam func(na
 			Delay:         delay,
 			Events:        events,
 			Labels:        labels,
+			Priority:      priority,
 		}); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func parseTaskPriority(raw any) (*int32, error) {
+	switch value := raw.(type) {
+	case int:
+		return parseTaskPriorityInt64(int64(value))
+	case int32:
+		return parseTaskPriorityInt64(int64(value))
+	case int64:
+		return parseTaskPriorityInt64(value)
+	case uint64:
+		if value > math.MaxInt32 {
+			return nil, fmt.Errorf("priority %d exceeds max int32", value)
+		}
+		return parseTaskPriorityInt64(int64(value))
+	case float64:
+		if math.IsInf(value, 0) {
+			max := int32(math.MaxInt32)
+			return &max, nil
+		}
+		if math.IsNaN(value) {
+			return nil, errors.New("priority must be int32 or INF")
+		}
+		if value != math.Trunc(value) {
+			return nil, errors.New("priority must be an integer")
+		}
+		return parseTaskPriorityInt64(int64(value))
+	case string:
+		trimmed := strings.TrimSpace(value)
+		if strings.EqualFold(trimmed, "INF") {
+			max := int32(math.MaxInt32)
+			return &max, nil
+		}
+		parsed, err := strconv.ParseInt(trimmed, 10, 32)
+		if err != nil {
+			return nil, fmt.Errorf("priority %q must be int32 or INF", value)
+		}
+		return parseTaskPriorityInt64(parsed)
+	default:
+		return nil, fmt.Errorf("priority %v must be int32 or INF", raw)
+	}
+}
+
+func parseTaskPriorityInt64(value int64) (*int32, error) {
+	if value < 0 {
+		return nil, errors.New("priority must be non-negative")
+	}
+	if value > math.MaxInt32 {
+		return nil, fmt.Errorf("priority %d exceeds max int32", value)
+	}
+	priority := int32(value)
+	return &priority, nil
 }
 
 func descriptionToComment(description string) string {
@@ -259,6 +324,12 @@ func generateToolInterfaces(packageName string, data map[string]any) (string, er
 
 	tcTemplate, err := template.New("file").Funcs(template.FuncMap{
 		"upperFirst": utils.UpperFirst,
+		"derefInt32": func(v *int32) int32 {
+			if v == nil {
+				return 0
+			}
+			return *v
+		},
 	}).Parse(codeFileTemplate)
 	if err != nil {
 		return "", err

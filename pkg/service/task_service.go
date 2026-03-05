@@ -14,9 +14,18 @@ func taskToApiTask(task *querier.AnclaxTask) *apigen.Task {
 		id := task.WorkerID.UUID.String()
 		workerID = &id
 	}
+	attributes := task.Attributes
+	if attributes.Priority == nil {
+		priority := task.Priority
+		attributes.Priority = &priority
+	}
+	if attributes.Weight == nil {
+		weight := task.Weight
+		attributes.Weight = &weight
+	}
 	return &apigen.Task{
 		ID:         task.ID,
-		Attributes: task.Attributes,
+		Attributes: attributes,
 		Spec:       task.Spec,
 		Status:     apigen.TaskStatus(task.Status),
 		StartedAt:  task.StartedAt,

@@ -16,7 +16,7 @@ import (
 
 	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
-	"github.com/cloudcarver/anclax/pkg/taskcore"
+	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/pkg/errors"
@@ -53,14 +53,14 @@ func NewTaskRunner(taskStore taskcore.TaskStoreInterface) TaskRunner {
 
 {{range .Functions}}
 func (c *Client) Run{{upperFirst .Name}}(ctx context.Context, params *{{.ParameterType}}, overrides ...taskcore.TaskOverride) (int32, error) {
-	return c.run{{upperFirst .Name}}(ctx, c.taskStore, params, overrides...)
+	return c.run{{upperFirst .Name}}(ctx, c.taskStore, nil, params, overrides...)
 }
 
 func (c *Client) Run{{upperFirst .Name}}WithTx(ctx context.Context, tx core.Tx, params *{{.ParameterType}}, overrides ...taskcore.TaskOverride) (int32, error) {
-	return c.run{{upperFirst .Name}}(ctx, c.taskStore.WithTx(tx), params, overrides...)
+	return c.run{{upperFirst .Name}}(ctx, c.taskStore, tx, params, overrides...)
 }
 
-func (c *Client) run{{upperFirst .Name}}(ctx context.Context, taskstore taskcore.TaskStoreInterface, params *{{.ParameterType}}, overrides ...taskcore.TaskOverride) (int32, error) {
+func (c *Client) run{{upperFirst .Name}}(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *{{.ParameterType}}, overrides ...taskcore.TaskOverride) (int32, error) {
 	payload, err := params.Marshal()
 	if err != nil {
 		return 0, err
@@ -80,6 +80,7 @@ func (c *Client) run{{upperFirst .Name}}(ctx context.Context, taskstore taskcore
 		CronExpression: "{{.Cronjob.CronExpression}}",
 	}{{end}}
 	{{if .Labels }}attributes.Labels = &[]string{ {{range $idx, $label := .Labels}}{{if $idx}}, {{end}}"{{$label}}"{{end}} }{{end}}
+	{{if .Priority}}attributes.Priority = utils.Ptr(int32({{derefInt32 .Priority}})){{end}}
 	task := &apigen.Task{
 		Attributes: attributes,
 		Spec:       spec,
@@ -95,7 +96,12 @@ func (c *Client) run{{upperFirst .Name}}(ctx context.Context, taskstore taskcore
 			return 0, errors.Wrap(err, "failed to apply task override")
 		}
 	}
-	taskID, err := taskstore.PushTask(ctx, task)
+	var taskID int32
+	if tx == nil {
+		taskID, err = taskstore.PushTask(ctx, task)
+	} else {
+		taskID, err = taskstore.PushTaskWithTx(ctx, tx, task)
+	}
 	if err != nil {
 		return 0, err
 	}

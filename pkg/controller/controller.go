@@ -15,6 +15,7 @@ type Controller struct {
 	auth auth.AuthInterface
 
 	enableWorkerHTTPTrigger bool
+	disableDefaultSignUp    bool
 }
 
 func NewController(
@@ -26,6 +27,7 @@ func NewController(
 		svc:                     s,
 		auth:                    auth,
 		enableWorkerHTTPTrigger: cfg.Worker.EnableHTTPTrigger,
+		disableDefaultSignUp:    cfg.DisableDefaultSignUp,
 	}
 }
 
@@ -69,6 +71,37 @@ func (controller *Controller) RefreshToken(c *fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusOK).JSON(credentials)
+}
+
+func (controller *Controller) SignUp(c *fiber.Ctx) error {
+	if controller.disableDefaultSignUp {
+		return c.Status(fiber.StatusNotFound).SendString("Cannot POST /api/v1/auth/sign-up")
+	}
+
+	var params apigen.SignUpRequest
+	if err := c.BodyParser(&params); err != nil {
+		return c.SendStatus(fiber.StatusBadRequest)
+	}
+
+	exists, err := controller.svc.IsUsernameExists(c.Context(), params.Name)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return c.SendStatus(fiber.StatusConflict)
+	}
+
+	userMeta, err := controller.svc.CreateNewUser(c.Context(), params.Name, params.Password)
+	if err != nil {
+		return err
+	}
+
+	credentials, err := controller.svc.SignIn(c.Context(), userMeta.UserID)
+	if err != nil {
+		return err
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(credentials)
 }
 
 func (controller *Controller) ListTasks(c *fiber.Ctx) error {

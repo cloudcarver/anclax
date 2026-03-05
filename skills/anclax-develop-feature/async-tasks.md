@@ -2,6 +2,24 @@
 
 Use async tasks for background work with at-least-once delivery, retries, cron schedules, and failure hooks.
 
+## Developer orientation
+
+Use this checklist before diving into implementation details. It prevents chasing scattered code paths.
+
+Understand the system at a top level:
+- Tasks are defined in a spec, then code is generated. Treat generated code as the layer contract.
+- Enqueueing, worker execution, retry decisions, and events are separate responsibilities.
+- Status transitions and retries are persisted in the database, not in memory.
+
+Check in this order when debugging or adding features:
+1. Task definitions and defaults (retry, timeout, cron) in the spec/config.
+2. Generated interfaces (runner/executor) that your code must implement or call.
+3. Task store helpers (enqueue/update/status lookups/waiting utilities).
+4. Worker lifecycle (claim/lock, execute, retry, finalize).
+5. Event emission and hooks for failures.
+6. Queries/migrations that define persistence behavior.
+7. Tests/examples that capture edge cases.
+
 ## Define tasks
 
 `api/tasks.yaml` is the source of truth. Parameters follow JSON Schema.
@@ -40,6 +58,8 @@ Run `anclax gen` after task changes. Generated code lives in `pkg/zgen/taskgen`.
 ## Implement the executor
 
 Implement `taskgen.ExecutorInterface`. Task execution runs outside a DB transaction; open a short transaction inside the handler if needed.
+
+The implementation should be idempotent, task is delivered at-least once.
 
 ```go
 type Executor struct {
@@ -83,6 +103,28 @@ err := model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface
 })
 ```
 
+## Pause tasks (worker)
+
+Use the worker control plane to pause a task and stop any in-flight execution. The pause flow:
+- Marks the task as `paused` in storage.
+- Enqueues an `interruptTask` async task that broadcasts an interrupt signal to all online workers.
+- Waits for LISTEN/NOTIFY acks from each online worker before returning.
+
+Important:
+- This relies on workers listening on Postgres `LISTEN` channels. Workers are marked online only after LISTEN setup succeeds, and they exit if the LISTEN loop dies.
+- Ensure workers are configured with a DB DSN so LISTEN is available.
+
+Example:
+```go
+if err := controlPlane.PauseTask(ctx, taskID); err != nil {
+    return err
+}
+```
+
+The pause operation is transactional: `PauseTask` uses a DB transaction to pause the task and enqueue the interrupt task together.
+Pause/cancel operations now cascade to all descendant tasks (using `parentTaskId` links) in the same transaction, then enqueue a single interrupt task containing all affected task IDs.
+To cancel a task instead, call `CancelTask`, which marks the task `cancelled` and enqueues the interrupt task.
+
 ## Runtime overrides
 
 Use `taskcore.TaskOverride` helpers:
@@ -91,7 +133,10 @@ Use `taskcore.TaskOverride` helpers:
 - `taskcore.WithDelay(delay)`
 - `taskcore.WithStartedAt(time)`
 - `taskcore.WithUniqueTag(tag)`
+- `taskcore.WithParentTaskID(parentID)`
 - `taskcore.WithLabels([]string{"billing", "critical"})`
+- `taskcore.WithSerialKey("order-42")`
+- `taskcore.WithSerialID(7)`
 
 If a unique tag already exists, the existing task ID is returned instead of inserting a new task.
 
@@ -102,6 +147,21 @@ If a unique tag already exists, the existing task ID is returned instead of inse
 - Any other error records a task error event and follows the retry policy.
 
 Cron tasks are rescheduled every run regardless of success or failure.
+
+## Serial execution
+
+Set `serialKey` to force tasks with the same key to run one-by-one. Optionally set `serialID` for explicit ordering.
+
+Ordering policy:
+- If any pending tasks for a key have `serialID`, the smallest `serialID` is always the head of the chain.
+- If no tasks have `serialID`, order by `created_at`, then `started_at` (NULL first), then `id`.
+
+Claim gating and corner cases:
+- A task with `serialID` but no `serialKey` is rejected when enqueuing.
+- Empty `serialKey` is rejected.
+- The head of the chain blocks all other tasks for the same key, even if its `started_at` is in the future.
+- `started_at` only controls eligibility; it does not reorder the serial chain.
+- Mixed tasks: if any task has `serialID`, tasks without `serialID` wait until all `serialID` tasks for that key complete.
 
 ## Worker leases and labels
 

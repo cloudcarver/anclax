@@ -39,6 +39,56 @@ var RunTaskErrors = promauto.NewCounter(
 	},
 )
 
+var WorkerStrictInFlight = promauto.NewGauge(
+	prometheus.GaugeOpts{
+		Name: "anclax_worker_strict_inflight",
+		Help: "Current number of strict-priority tasks in flight for this worker process.",
+	},
+)
+
+var WorkerStrictCap = promauto.NewGauge(
+	prometheus.GaugeOpts{
+		Name: "anclax_worker_strict_cap",
+		Help: "Current strict-priority concurrency cap for this worker process.",
+	},
+)
+
+var WorkerStrictSaturationTotal = promauto.NewCounter(
+	prometheus.CounterOpts{
+		Name: "anclax_worker_strict_saturation_total",
+		Help: "Total number of strict-claim attempts rejected because strict in-flight reached strict cap.",
+	},
+)
+
+var WorkerRuntimeConfigVersion = promauto.NewGauge(
+	prometheus.GaugeOpts{
+		Name: "anclax_worker_runtime_config_version",
+		Help: "Applied runtime config version for this worker process.",
+	},
+)
+
+var RuntimeConfigLaggingWorkers = promauto.NewGauge(
+	prometheus.GaugeOpts{
+		Name: "anclax_runtime_config_lagging_workers",
+		Help: "Current count of alive workers lagging behind a runtime config target version.",
+	},
+)
+
+var RuntimeConfigConvergenceSeconds = promauto.NewHistogram(
+	prometheus.HistogramOpts{
+		Name:    "anclax_runtime_config_convergence_seconds",
+		Help:    "Time taken for a runtime config update task to converge on all alive workers.",
+		Buckets: prometheus.DefBuckets,
+	},
+)
+
+var RuntimeConfigSupersededTotal = promauto.NewCounter(
+	prometheus.CounterOpts{
+		Name: "anclax_runtime_config_superseded_total",
+		Help: "Total number of runtime config update tasks that exited because a newer config version superseded them.",
+	},
+)
+
 type MetricsServer struct {
 	port      int
 	server    *http.Server

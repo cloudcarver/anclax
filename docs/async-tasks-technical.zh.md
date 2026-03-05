@@ -2,7 +2,9 @@
 
 [English](async-tasks-technical.md) | 中文
 
-> 🚀 **异步任务新手？** 从[教程指南](async-tasks-tutorial.zh.md)开始，了解分步示例和实用模式。
+> 🚀 **异步任务新手？** 从[教程指南](async-tasks-tutorial.zh.md)开始，了解分步用法。
+>
+> ⚖️ **需要调度机制细节？** 查看[调度与运行时配置指南](async-task-scheduling-runtime-config.zh.md)，了解 strict/normal 通道语义、`WithPriority`/`WithWeight` 与运行时传播流程。
 
 本文档提供了 Anclax 异步任务系统的全面概述，涵盖用户体验流程和底层技术机制。
 
@@ -12,12 +14,37 @@
 - [用户体验流程](#用户体验流程)
 - [底层架构](#底层架构)
 - [任务生命周期](#任务生命周期)
+- [调度：Priority、Weight 与运行时配置](#调度priorityweight-与运行时配置)
 - [高级功能](#高级功能)
 - [性能和可靠性](#性能和可靠性)
 
 ## 概述
 
 Anclax 的异步任务系统提供了一种强大、可靠的方式来执行后台工作，具有至少一次交付保证。该系统围绕一个简单的原则设计：声明式定义任务，在代码中实现它们，让框架处理排队、重试和监控的所有复杂性。
+
+### 开发者指南（开始之前必读）
+
+如果你要扩展或排查异步任务，请先掌握下面的顶层知识点和检查顺序。
+这能避免在分散的路径和假设中来回搜索。
+
+**首先要理解的内容：**
+- **任务定义与生成**：任务在规范中声明，然后生成代码。务必确认哪些是生成的，哪些是手写的。
+- **运行时职责**：任务入队、工作者执行、重试决策、事件记录是分离的职责。
+- **持久化契约**：任务和事件落库，状态流转与重试均由数据驱动，而非内存状态。
+
+**推荐检查顺序：**
+1. **规范与配置**：任务定义、重试策略默认值、超时设置、生成配置。
+2. **生成接口**：TaskRunner 与 Executor 的 API 作为层间契约。
+3. **任务存储层**：入队、状态更新、辅助工具（例如等待任务完成）。
+4. **工作者生命周期**：领取/锁定、执行、失败处理、重试逻辑。
+5. **事件与钩子**：TaskError 事件如何产生，失败钩子何时触发。
+6. **数据库查询**：任务选择、重试与事件查询的权威行为。
+7. **测试与示例**：验证行为假设并发现边界条件。
+
+**指导原则：**
+- 将生成代码视为层间契约，避免手工修改。
+- 将 SQL 与规范视为持久化与类型的真源。
+- 若行为不明确，从数据流（任务记录 → 工作者 → 事件）入手，而不是寻找单一入口。
 
 ### 主要优势
 
@@ -159,7 +186,8 @@ CREATE TABLE anclax_tasks (
     started_at TIMESTAMP,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    unique_tag TEXT UNIQUE         -- 用于防止重复
+    unique_tag TEXT UNIQUE,        -- 用于防止重复
+    parent_task_id INTEGER         -- 可选的父任务
 );
 
 -- Cron 作业调度
@@ -318,6 +346,64 @@ pending → running → completed
    - Cron 表达式可以更新
    - 作业可以删除
 
+## 调度：Priority、Weight 与运行时配置
+
+### 通道语义
+
+- **严格通道（strict lane）**：`priority > 0`
+  - 在 strict 槽可用时优先领取
+  - 排序：`priority DESC`，然后 `created_at ASC`，然后 `id ASC`
+- **普通通道（normal lane）**：`priority == 0`
+  - 通过标签组加权轮转选择
+  - 组间公平由运行时 `labelWeights` 控制
+
+严格通道容量受以下公式约束：
+
+```text
+strict_cap = ceil(concurrency * maxStrictPercentage / 100)
+```
+
+### 任务级控制
+
+- `taskcore.WithPriority(priority int32)`
+  - 校验 `priority >= 0`
+- `taskcore.WithWeight(weight int32)`
+  - 校验 `weight >= 1`
+  - 在普通通道已选组内影响领取顺序（`weight DESC`）
+
+### 运行时 worker 配置更新
+
+内置任务 `updateWorkerRuntimeConfig` 会写入版本化配置，并通过 Postgres 通知传播更新。
+
+流程摘要：
+1. 在 `anclax.worker_runtime_configs` 中持久化新版本。
+2. 向 `anclax_worker_runtime_config` 发送 `up_config` 通知（`request_id`、`version`）。
+3. worker 刷新最新配置、原子应用，并单调更新 `workers.applied_config_version`。
+4. worker 通过 `anclax_worker_runtime_config_ack` 发送 ACK 通知。
+5. 收敛以 DB 的落后 worker 状态为准；ACK 通知仅用于加速。
+
+可运行示例与运维说明：
+- [调度与运行时配置指南](async-task-scheduling-runtime-config.zh.md)
+- [异步任务 Worker 租约设计](async-task-worker-lease.md)
+- [异步任务生产就绪测试策略](async-task-testing-production-readiness.md)
+
+### Worker 控制 LISTEN/NOTIFY 请求
+
+Worker 控制面消息（运行时配置更新、任务中断）统一使用 JSON 外层结构：
+
+```json
+{"op": "<operation>", "params": {"...": "..."}}
+```
+
+规范化的 schema（op、params、channel、ACK params）集中在 `pkg/taskcore/pgnotify`，Worker 通过单一监听循环处理所有控制通知。
+
+新增用于即时通知 Worker 的请求时：
+1. **定义 schema**：在 `pkg/taskcore/pgnotify` 中新增 op 常量与 params 结构（需要 ACK 时同步新增）。
+2. **新增 channel + SQL 通知**：在 `sql/queries/workers.sql` 添加 `pg_notify` 查询（必要时运行 `anclax gen`）。
+3. **发送通知**：在控制面执行器中构造 `pgnotify.*Notification` 并调用 `NotifyWorker...`。
+4. **Worker 处理**：在 `pkg/taskcore/worker/worker.go` 的统一监听循环中注册 channel 并路由处理。
+5. **ACK 与测试**：更新 ACK 等待逻辑（如适用），并补充单元/端到端测试。
+
 ## 高级功能
 
 ### 任务覆盖
@@ -329,6 +415,7 @@ taskID, err := taskRunner.RunSendWelcomeEmail(ctx, params,
     taskcore.WithRetryPolicy("1h", 5),           // 自定义重试
     taskcore.WithTimeout("2m"),                  // 自定义超时
     taskcore.WithUniqueTag("user-123-welcome"),  // 防止重复
+    taskcore.WithParentTaskID(parentID),         // 关联父任务
     taskcore.WithDelay(time.Hour),               // 延迟执行
 )
 ```
@@ -337,6 +424,36 @@ taskID, err := taskRunner.RunSendWelcomeEmail(ctx, params,
 - 覆盖作为函数选项应用
 - 它们在数据库插入前修改任务属性
 - 类型安全验证确保覆盖兼容性
+
+### 任务层级与控制面中断
+
+任务可以通过可选的 `parentTaskId` 形成层级。入队子任务时使用 `taskcore.WithParentTaskID`。当控制面收到 `PauseTask` 或 `CancelTask` 请求时，会在同一事务内对目标任务及其所有后代任务应用状态更新，并一次性入队包含全部任务 ID 的 interrupt task。
+
+### 等待任务完成
+
+有时需要阻塞直到任务完成（用于测试、编排或 CLI 工作流）。
+TaskStore 提供了轮询辅助方法，用于等待终态并附带失败上下文。
+
+```go
+store := taskcore.NewTaskStore(model)
+err := store.WaitForTask(ctx, taskID,
+    taskcore.WithWaitForTaskPollInterval(200*time.Millisecond),
+    taskcore.WithWaitForTaskTimeout(30*time.Second),
+)
+```
+
+**工作机制：**
+- 轮询 `GetTaskByID`，直到任务状态为 `completed` 或 `failed`。
+- 失败时读取最新的 TaskError 事件，并返回包含以下信息的错误消息：
+  - 任务尝试次数
+  - 重试策略的最大尝试次数
+  - TaskError 事件中的最新错误消息
+- 超时或上下文取消时，直接返回上下文错误。
+
+**实现参考：**
+- `pkg/taskcore/wait.go` 实现轮询辅助方法。
+- `pkg/taskcore/store.go` 暴露 `GetTaskByID` 和 `GetLastTaskErrorEvent`。
+- `sql/queries/tasks.sql` 定义 events 表的 `GetLastTaskErrorEvent` 查询。
 
 ### 失败钩子
 
