@@ -5,7 +5,6 @@ import (
 	"fmt"
 	reflect "reflect"
 
-	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -42,10 +41,6 @@ func NewMockTaskStoreInterfaceWithTx(ctrl *gomock.Controller) *MockTaskStoreInte
 	return &MockTaskStoreInterfaceExtended{
 		MockTaskStoreInterface: NewMockTaskStoreInterface(ctrl),
 	}
-}
-
-func (m *MockTaskStoreInterfaceExtended) WithTx(tx core.Tx) TaskStoreInterface {
-	return m
 }
 
 func (m *MockTaskStoreInterfaceExtended) WaitForTask(ctx context.Context, taskID int32, opts ...WaitForTaskOption) error {

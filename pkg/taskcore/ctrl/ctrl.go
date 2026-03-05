@@ -69,9 +69,8 @@ func (c *WorkerControlPlane) PauseTask(ctx context.Context, taskID int32) error 
 		if err != nil {
 			return errors.Wrap(err, "collect task descendants")
 		}
-		storeTx := c.store.WithTx(tx)
 		for _, id := range taskIDs {
-			if err := storeTx.PauseTask(ctx, id); err != nil {
+			if err := c.store.PauseTaskWithTx(ctx, tx, id); err != nil {
 				return errors.Wrap(err, "pause task")
 			}
 		}
@@ -103,9 +102,8 @@ func (c *WorkerControlPlane) CancelTask(ctx context.Context, taskID int32) error
 		if err != nil {
 			return errors.Wrap(err, "collect task descendants")
 		}
-		storeTx := c.store.WithTx(tx)
 		for _, id := range taskIDs {
-			if err := storeTx.CancelTask(ctx, id); err != nil {
+			if err := c.store.CancelTaskWithTx(ctx, tx, id); err != nil {
 				return errors.Wrap(err, "cancel task")
 			}
 		}

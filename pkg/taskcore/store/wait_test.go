@@ -101,7 +101,7 @@ func TestBuildTaskFailedErrorFallsBackToUnknown(t *testing.T) {
 		Status:   apigen.Failed,
 		Attempts: 2,
 	}
-	err := store.buildTaskFailedError(context.Background(), task)
+	err := store.buildTaskFailedError(context.Background(), mockModel, task)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "last_error=unknown")
 }

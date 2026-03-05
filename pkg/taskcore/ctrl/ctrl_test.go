@@ -47,7 +47,6 @@ func TestPauseTaskUsesTransactionAndWaitsForCancel(t *testing.T) {
 
 	mockModel := model.NewMockModelInterface(ctrl)
 	mockStore := store.NewMockTaskStoreInterface(ctrl)
-	mockStoreTx := store.NewMockTaskStoreInterface(ctrl)
 	mockRunner := taskgen.NewMockTaskRunner(ctrl)
 	fake := &fakeTx{}
 	cancelTaskID := int32(99)
@@ -57,11 +56,10 @@ func TestPauseTaskUsesTransactionAndWaitsForCancel(t *testing.T) {
 			return fn(fake, mockModel)
 		},
 	)
-	mockStore.EXPECT().WithTx(fake).Return(mockStoreTx)
 	mockModel.EXPECT().ListTaskDescendantIDs(ctx, &taskID).Return([]int32{13, 17}, nil)
-	mockStoreTx.EXPECT().PauseTask(ctx, taskID).Return(nil)
-	mockStoreTx.EXPECT().PauseTask(ctx, int32(13)).Return(nil)
-	mockStoreTx.EXPECT().PauseTask(ctx, int32(17)).Return(nil)
+	mockStore.EXPECT().PauseTaskWithTx(ctx, fake, taskID).Return(nil)
+	mockStore.EXPECT().PauseTaskWithTx(ctx, fake, int32(13)).Return(nil)
+	mockStore.EXPECT().PauseTaskWithTx(ctx, fake, int32(17)).Return(nil)
 	mockRunner.EXPECT().RunInterruptTaskWithTx(ctx, fake, gomock.Any()).DoAndReturn(
 		func(ctx context.Context, tx core.Tx, params *taskgen.InterruptTaskParameters, overrides ...store.TaskOverride) (int32, error) {
 			require.ElementsMatch(t, []int32{taskID, 13, 17}, params.TaskIDs)
@@ -87,7 +85,6 @@ func TestPauseTaskWithNestedDescendants(t *testing.T) {
 
 	mockModel := model.NewMockModelInterface(ctrl)
 	mockStore := store.NewMockTaskStoreInterface(ctrl)
-	mockStoreTx := store.NewMockTaskStoreInterface(ctrl)
 	mockRunner := taskgen.NewMockTaskRunner(ctrl)
 	fake := &fakeTx{}
 	cancelTaskID := int32(101)
@@ -97,12 +94,11 @@ func TestPauseTaskWithNestedDescendants(t *testing.T) {
 			return fn(fake, mockModel)
 		},
 	)
-	mockStore.EXPECT().WithTx(fake).Return(mockStoreTx)
 	mockModel.EXPECT().ListTaskDescendantIDs(ctx, &taskID).Return([]int32{childTaskID, grandChildTaskID, greatGrandChildTaskID}, nil)
-	mockStoreTx.EXPECT().PauseTask(ctx, taskID).Return(nil)
-	mockStoreTx.EXPECT().PauseTask(ctx, childTaskID).Return(nil)
-	mockStoreTx.EXPECT().PauseTask(ctx, grandChildTaskID).Return(nil)
-	mockStoreTx.EXPECT().PauseTask(ctx, greatGrandChildTaskID).Return(nil)
+	mockStore.EXPECT().PauseTaskWithTx(ctx, fake, taskID).Return(nil)
+	mockStore.EXPECT().PauseTaskWithTx(ctx, fake, childTaskID).Return(nil)
+	mockStore.EXPECT().PauseTaskWithTx(ctx, fake, grandChildTaskID).Return(nil)
+	mockStore.EXPECT().PauseTaskWithTx(ctx, fake, greatGrandChildTaskID).Return(nil)
 	mockRunner.EXPECT().RunInterruptTaskWithTx(ctx, fake, gomock.Any()).DoAndReturn(
 		func(ctx context.Context, tx core.Tx, params *taskgen.InterruptTaskParameters, overrides ...store.TaskOverride) (int32, error) {
 			require.ElementsMatch(t, []int32{taskID, childTaskID, grandChildTaskID, greatGrandChildTaskID}, params.TaskIDs)
@@ -135,7 +131,7 @@ func TestPauseTaskDescendantLookupFails(t *testing.T) {
 		},
 	)
 	mockModel.EXPECT().ListTaskDescendantIDs(ctx, &taskID).Return(nil, lookupErr)
-	mockStore.EXPECT().WithTx(fake).Times(0)
+	mockStore.EXPECT().PauseTaskWithTx(ctx, fake, gomock.Any()).Times(0)
 	mockRunner.EXPECT().RunInterruptTaskWithTx(ctx, fake, gomock.Any()).Times(0)
 	mockStore.EXPECT().WaitForTask(ctx, gomock.Any()).Times(0)
 
@@ -154,7 +150,6 @@ func TestCancelTaskUsesTransactionAndWaitsForInterrupt(t *testing.T) {
 
 	mockModel := model.NewMockModelInterface(ctrl)
 	mockStore := store.NewMockTaskStoreInterface(ctrl)
-	mockStoreTx := store.NewMockTaskStoreInterface(ctrl)
 	mockRunner := taskgen.NewMockTaskRunner(ctrl)
 	fake := &fakeTx{}
 	interruptTaskID := int32(101)
@@ -164,10 +159,9 @@ func TestCancelTaskUsesTransactionAndWaitsForInterrupt(t *testing.T) {
 			return fn(fake, mockModel)
 		},
 	)
-	mockStore.EXPECT().WithTx(fake).Return(mockStoreTx)
 	mockModel.EXPECT().ListTaskDescendantIDs(ctx, &taskID).Return([]int32{21}, nil)
-	mockStoreTx.EXPECT().CancelTask(ctx, taskID).Return(nil)
-	mockStoreTx.EXPECT().CancelTask(ctx, int32(21)).Return(nil)
+	mockStore.EXPECT().CancelTaskWithTx(ctx, fake, taskID).Return(nil)
+	mockStore.EXPECT().CancelTaskWithTx(ctx, fake, int32(21)).Return(nil)
 	mockRunner.EXPECT().RunInterruptTaskWithTx(ctx, fake, gomock.Any()).DoAndReturn(
 		func(ctx context.Context, tx core.Tx, params *taskgen.InterruptTaskParameters, overrides ...store.TaskOverride) (int32, error) {
 			require.ElementsMatch(t, []int32{taskID, 21}, params.TaskIDs)
@@ -209,7 +203,6 @@ func TestPauseTaskByUniqueTagResolvesTaskID(t *testing.T) {
 
 	mockModel := model.NewMockModelInterface(ctrl)
 	mockStore := store.NewMockTaskStoreInterface(ctrl)
-	mockStoreTx := store.NewMockTaskStoreInterface(ctrl)
 	mockRunner := taskgen.NewMockTaskRunner(ctrl)
 	fake := &fakeTx{}
 	cancelTaskID := int32(88)
@@ -220,9 +213,8 @@ func TestPauseTaskByUniqueTagResolvesTaskID(t *testing.T) {
 			return fn(fake, mockModel)
 		},
 	)
-	mockStore.EXPECT().WithTx(fake).Return(mockStoreTx)
 	mockModel.EXPECT().ListTaskDescendantIDs(ctx, &taskID).Return([]int32{}, nil)
-	mockStoreTx.EXPECT().PauseTask(ctx, taskID).Return(nil)
+	mockStore.EXPECT().PauseTaskWithTx(ctx, fake, taskID).Return(nil)
 	mockRunner.EXPECT().RunInterruptTaskWithTx(ctx, fake, gomock.Any()).DoAndReturn(
 		func(ctx context.Context, tx core.Tx, params *taskgen.InterruptTaskParameters, overrides ...store.TaskOverride) (int32, error) {
 			require.Equal(t, []int32{taskID}, params.TaskIDs)
@@ -246,7 +238,6 @@ func TestCancelTaskByUniqueTagResolvesTaskID(t *testing.T) {
 
 	mockModel := model.NewMockModelInterface(ctrl)
 	mockStore := store.NewMockTaskStoreInterface(ctrl)
-	mockStoreTx := store.NewMockTaskStoreInterface(ctrl)
 	mockRunner := taskgen.NewMockTaskRunner(ctrl)
 	fake := &fakeTx{}
 	interruptTaskID := int32(101)
@@ -257,9 +248,8 @@ func TestCancelTaskByUniqueTagResolvesTaskID(t *testing.T) {
 			return fn(fake, mockModel)
 		},
 	)
-	mockStore.EXPECT().WithTx(fake).Return(mockStoreTx)
 	mockModel.EXPECT().ListTaskDescendantIDs(ctx, &taskID).Return([]int32{}, nil)
-	mockStoreTx.EXPECT().CancelTask(ctx, taskID).Return(nil)
+	mockStore.EXPECT().CancelTaskWithTx(ctx, fake, taskID).Return(nil)
 	mockRunner.EXPECT().RunInterruptTaskWithTx(ctx, fake, gomock.Any()).DoAndReturn(
 		func(ctx context.Context, tx core.Tx, params *taskgen.InterruptTaskParameters, overrides ...store.TaskOverride) (int32, error) {
 			require.Equal(t, []int32{taskID}, params.TaskIDs)

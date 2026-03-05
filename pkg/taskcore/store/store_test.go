@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
@@ -330,12 +331,52 @@ func TestPauseCronJob(t *testing.T) {
 		taskID = int32(1)
 	)
 
+	mockTx := core.NewMockTx(ctrl)
 	mockModel := model.NewMockModelInterface(ctrl)
 
+	mockModel.EXPECT().RunTransactionWithTx(ctx, gomock.Any()).DoAndReturn(
+		func(ctx context.Context, fn func(core.Tx, model.ModelInterface) error) error {
+			return fn(mockTx, mockModel)
+		},
+	)
+	mockModel.EXPECT().GetTaskByID(ctx, taskID).Return(&querier.AnclaxTask{
+		ID:     taskID,
+		Status: string(apigen.Pending),
+	}, nil)
 	mockModel.EXPECT().UpdateTaskStatus(ctx, querier.UpdateTaskStatusParams{
 		ID:     taskID,
 		Status: string(apigen.Paused),
 	}).Return(nil)
+
+	taskStore := &TaskStore{
+		model: mockModel,
+	}
+
+	err := taskStore.PauseTask(ctx, taskID)
+	require.NoError(t, err)
+}
+
+func TestPauseCronJobCancelledIgnored(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	var (
+		ctx    = context.Background()
+		taskID = int32(1)
+	)
+
+	mockTx := core.NewMockTx(ctrl)
+	mockModel := model.NewMockModelInterface(ctrl)
+
+	mockModel.EXPECT().RunTransactionWithTx(ctx, gomock.Any()).DoAndReturn(
+		func(ctx context.Context, fn func(core.Tx, model.ModelInterface) error) error {
+			return fn(mockTx, mockModel)
+		},
+	)
+	mockModel.EXPECT().GetTaskByID(ctx, taskID).Return(&querier.AnclaxTask{
+		ID:     taskID,
+		Status: string(apigen.Cancelled),
+	}, nil)
 
 	taskStore := &TaskStore{
 		model: mockModel,

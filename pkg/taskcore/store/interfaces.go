@@ -33,26 +33,35 @@ type TaskOverride = func(task *apigen.Task) error
 
 type TaskStoreInterface interface {
 	PushTask(ctx context.Context, task *apigen.Task) (int32, error)
+	PushTaskWithTx(ctx context.Context, tx core.Tx, task *apigen.Task) (int32, error)
 
 	UpdateCronJob(ctx context.Context, taskID int32, cronExpression string, spec json.RawMessage) error
+	UpdateCronJobWithTx(ctx context.Context, tx core.Tx, taskID int32, cronExpression string, spec json.RawMessage) error
 
 	PauseTask(ctx context.Context, taskID int32) error
+	PauseTaskWithTx(ctx context.Context, tx core.Tx, taskID int32) error
 
 	CancelTask(ctx context.Context, taskID int32) error
+	CancelTaskWithTx(ctx context.Context, tx core.Tx, taskID int32) error
 
 	ResumeTask(ctx context.Context, taskID int32) error
+	ResumeTaskWithTx(ctx context.Context, tx core.Tx, taskID int32) error
 
 	UpdatePendingTaskPriorityByLabels(ctx context.Context, labels []string, priority int32) (int64, error)
+	UpdatePendingTaskPriorityByLabelsWithTx(ctx context.Context, tx core.Tx, labels []string, priority int32) (int64, error)
 
 	UpdatePendingTaskWeightByLabels(ctx context.Context, labels []string, weight int32) (int64, error)
-
-	WithTx(tx core.Tx) TaskStoreInterface
+	UpdatePendingTaskWeightByLabelsWithTx(ctx context.Context, tx core.Tx, labels []string, weight int32) (int64, error)
 
 	GetTaskByUniqueTag(ctx context.Context, uniqueTag string) (*apigen.Task, error)
+	GetTaskByUniqueTagWithTx(ctx context.Context, tx core.Tx, uniqueTag string) (*apigen.Task, error)
 
 	GetTaskByID(ctx context.Context, taskID int32) (*apigen.Task, error)
+	GetTaskByIDWithTx(ctx context.Context, tx core.Tx, taskID int32) (*apigen.Task, error)
 
 	GetLastTaskErrorEvent(ctx context.Context, taskID int32) (*apigen.Event, error)
+	GetLastTaskErrorEventWithTx(ctx context.Context, tx core.Tx, taskID int32) (*apigen.Event, error)
 
 	WaitForTask(ctx context.Context, taskID int32, opts ...WaitForTaskOption) error
+	WaitForTaskWithTx(ctx context.Context, tx core.Tx, taskID int32, opts ...WaitForTaskOption) error
 }

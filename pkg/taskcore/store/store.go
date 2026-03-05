@@ -29,7 +29,7 @@ type TaskStore struct {
 
 // NewTaskStore returns a TaskStore backed by the provided model and default time source.
 // It uses time.Now for scheduling decisions and the given model for persistence.
-// Callers typically keep a single instance and derive transaction-scoped stores via WithTx.
+// Callers typically keep a single instance and use the WithTx variants for transaction-scoped work.
 func NewTaskStore(model model.ModelInterface) TaskStoreInterface {
 	return &TaskStore{
 		now:   time.Now,
@@ -37,22 +37,20 @@ func NewTaskStore(model model.ModelInterface) TaskStoreInterface {
 	}
 }
 
-// WithTx returns a TaskStore bound to the given transaction while keeping the same time source.
-// The returned store reads/writes through the provided transaction context.
-// Callers are responsible for committing or rolling back the transaction.
-func (s *TaskStore) WithTx(tx core.Tx) TaskStoreInterface {
-	return &TaskStore{
-		now:   s.now,
-		model: s.model.SpawnWithTx(tx),
-	}
-}
-
 // PushTask inserts a task and returns its ID.
 // If task.UniqueTag is set and a matching task exists, it returns the existing ID without inserting.
 // The task's attributes, spec, status, started_at, and unique tag are persisted as provided.
 func (s *TaskStore) PushTask(ctx context.Context, task *apigen.Task) (int32, error) {
+	return s.pushTask(ctx, s.model, task)
+}
+
+func (s *TaskStore) PushTaskWithTx(ctx context.Context, tx core.Tx, task *apigen.Task) (int32, error) {
+	return s.pushTask(ctx, s.model.SpawnWithTx(tx), task)
+}
+
+func (s *TaskStore) pushTask(ctx context.Context, txm model.ModelInterface, task *apigen.Task) (int32, error) {
 	if task.UniqueTag != nil {
-		task, err := s.model.GetTaskByUniqueTag(ctx, task.UniqueTag)
+		task, err := txm.GetTaskByUniqueTag(ctx, task.UniqueTag)
 		if err != nil {
 			if !errors.Is(err, pgx.ErrNoRows) {
 				return 0, errors.Wrap(err, "failed to check task by unique tag before push")
@@ -72,7 +70,7 @@ func (s *TaskStore) PushTask(ctx context.Context, task *apigen.Task) (int32, err
 	task.Attributes.Priority = utils.Ptr(priority)
 	task.Attributes.Weight = utils.Ptr(weight)
 
-	createdTask, err := s.model.CreateTask(ctx, querier.CreateTaskParams{
+	createdTask, err := txm.CreateTask(ctx, querier.CreateTaskParams{
 		Attributes:   task.Attributes,
 		Spec:         task.Spec,
 		StartedAt:    task.StartedAt,
@@ -94,6 +92,14 @@ func (s *TaskStore) PushTask(ctx context.Context, task *apigen.Task) (int32, err
 // It parses the cron expression, computes the next fire time based on the store clock,
 // and persists the updated cron metadata, payload, and started_at timestamp.
 func (s *TaskStore) UpdateCronJob(ctx context.Context, taskID int32, cronExpression string, spec json.RawMessage) error {
+	return s.updateCronJob(ctx, s.model, taskID, cronExpression, spec)
+}
+
+func (s *TaskStore) UpdateCronJobWithTx(ctx context.Context, tx core.Tx, taskID int32, cronExpression string, spec json.RawMessage) error {
+	return s.updateCronJob(ctx, s.model.SpawnWithTx(tx), taskID, cronExpression, spec)
+}
+
+func (s *TaskStore) updateCronJob(ctx context.Context, txm model.ModelInterface, taskID int32, cronExpression string, spec json.RawMessage) error {
 	parser := cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 	cron, err := parser.Parse(cronExpression)
 	if err != nil {
@@ -101,7 +107,7 @@ func (s *TaskStore) UpdateCronJob(ctx context.Context, taskID int32, cronExpress
 	}
 	nextTime := cron.Next(s.now())
 
-	task, err := s.model.GetTaskByID(ctx, taskID)
+	task, err := txm.GetTaskByID(ctx, taskID)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get task")
 	}
@@ -122,7 +128,7 @@ func (s *TaskStore) UpdateCronJob(ctx context.Context, taskID int32, cronExpress
 	task.Attributes.Priority = utils.Ptr(priority)
 	task.Attributes.Weight = utils.Ptr(weight)
 
-	if err := s.model.UpdateTask(ctx, querier.UpdateTaskParams{
+	if err := txm.UpdateTask(ctx, querier.UpdateTaskParams{
 		ID:         taskID,
 		Attributes: task.Attributes,
 		StartedAt:  &nextTime,
@@ -140,11 +146,44 @@ func (s *TaskStore) UpdateCronJob(ctx context.Context, taskID int32, cronExpress
 // PauseTask marks a task as paused so workers will stop picking it up.
 // It updates the task status to Paused in storage.
 func (s *TaskStore) PauseTask(ctx context.Context, taskID int32) error {
-	if err := s.model.UpdateTaskStatus(ctx, querier.UpdateTaskStatusParams{
+	err := s.model.RunTransactionWithTx(ctx, func(_ core.Tx, txm model.ModelInterface) error {
+		return s.pauseTaskInTx(ctx, txm, taskID)
+	})
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, model.ErrAlreadyInTransaction) {
+		if err := s.pauseTaskInTx(ctx, s.model, taskID); err != nil {
+			return errors.Wrap(err, "failed to pause task")
+		}
+		return nil
+	}
+	return errors.Wrap(err, "failed to pause task")
+}
+
+func (s *TaskStore) PauseTaskWithTx(ctx context.Context, tx core.Tx, taskID int32) error {
+	if err := s.pauseTaskInTx(ctx, s.model.SpawnWithTx(tx), taskID); err != nil {
+		return errors.Wrap(err, "failed to pause task")
+	}
+	return nil
+}
+
+func (s *TaskStore) pauseTaskInTx(ctx context.Context, txm model.ModelInterface, taskID int32) error {
+	task, err := txm.GetTaskByID(ctx, taskID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		return errors.Wrap(err, "failed to get task before pause")
+	}
+	if task.Status == string(apigen.Cancelled) {
+		return nil
+	}
+	if err := txm.UpdateTaskStatus(ctx, querier.UpdateTaskStatusParams{
 		ID:     taskID,
 		Status: string(apigen.Paused),
 	}); err != nil {
-		return errors.Wrapf(err, "failed to pause task")
+		return errors.Wrap(err, "failed to update task status")
 	}
 	return nil
 }
@@ -152,7 +191,15 @@ func (s *TaskStore) PauseTask(ctx context.Context, taskID int32) error {
 // CancelTask marks a task as cancelled so workers stop executing it.
 // It updates the task status to Cancelled in storage.
 func (s *TaskStore) CancelTask(ctx context.Context, taskID int32) error {
-	if err := s.model.UpdateTaskStatus(ctx, querier.UpdateTaskStatusParams{
+	return s.cancelTask(ctx, s.model, taskID)
+}
+
+func (s *TaskStore) CancelTaskWithTx(ctx context.Context, tx core.Tx, taskID int32) error {
+	return s.cancelTask(ctx, s.model.SpawnWithTx(tx), taskID)
+}
+
+func (s *TaskStore) cancelTask(ctx context.Context, txm model.ModelInterface, taskID int32) error {
+	if err := txm.UpdateTaskStatus(ctx, querier.UpdateTaskStatusParams{
 		ID:     taskID,
 		Status: string(apigen.Cancelled),
 	}); err != nil {
@@ -164,7 +211,15 @@ func (s *TaskStore) CancelTask(ctx context.Context, taskID int32) error {
 // ResumeTask marks a paused task as pending to make it eligible for execution again.
 // It updates the task status to Pending in storage.
 func (s *TaskStore) ResumeTask(ctx context.Context, taskID int32) error {
-	if err := s.model.UpdateTaskStatus(ctx, querier.UpdateTaskStatusParams{
+	return s.resumeTask(ctx, s.model, taskID)
+}
+
+func (s *TaskStore) ResumeTaskWithTx(ctx context.Context, tx core.Tx, taskID int32) error {
+	return s.resumeTask(ctx, s.model.SpawnWithTx(tx), taskID)
+}
+
+func (s *TaskStore) resumeTask(ctx context.Context, txm model.ModelInterface, taskID int32) error {
+	if err := txm.UpdateTaskStatus(ctx, querier.UpdateTaskStatusParams{
 		ID:     taskID,
 		Status: string(apigen.Pending),
 	}); err != nil {
@@ -174,10 +229,18 @@ func (s *TaskStore) ResumeTask(ctx context.Context, taskID int32) error {
 }
 
 func (s *TaskStore) UpdatePendingTaskPriorityByLabels(ctx context.Context, labels []string, priority int32) (int64, error) {
+	return s.updatePendingTaskPriorityByLabels(ctx, s.model, labels, priority)
+}
+
+func (s *TaskStore) UpdatePendingTaskPriorityByLabelsWithTx(ctx context.Context, tx core.Tx, labels []string, priority int32) (int64, error) {
+	return s.updatePendingTaskPriorityByLabels(ctx, s.model.SpawnWithTx(tx), labels, priority)
+}
+
+func (s *TaskStore) updatePendingTaskPriorityByLabels(ctx context.Context, txm model.ModelInterface, labels []string, priority int32) (int64, error) {
 	if priority < 0 {
 		return 0, errors.New("priority must be non-negative")
 	}
-	ret, err := s.model.UpdatePendingTaskPriorityByLabels(ctx, querier.UpdatePendingTaskPriorityByLabelsParams{
+	ret, err := txm.UpdatePendingTaskPriorityByLabels(ctx, querier.UpdatePendingTaskPriorityByLabelsParams{
 		Priority:  priority,
 		HasLabels: len(labels) > 0,
 		Labels:    labels,
@@ -189,10 +252,18 @@ func (s *TaskStore) UpdatePendingTaskPriorityByLabels(ctx context.Context, label
 }
 
 func (s *TaskStore) UpdatePendingTaskWeightByLabels(ctx context.Context, labels []string, weight int32) (int64, error) {
+	return s.updatePendingTaskWeightByLabels(ctx, s.model, labels, weight)
+}
+
+func (s *TaskStore) UpdatePendingTaskWeightByLabelsWithTx(ctx context.Context, tx core.Tx, labels []string, weight int32) (int64, error) {
+	return s.updatePendingTaskWeightByLabels(ctx, s.model.SpawnWithTx(tx), labels, weight)
+}
+
+func (s *TaskStore) updatePendingTaskWeightByLabels(ctx context.Context, txm model.ModelInterface, labels []string, weight int32) (int64, error) {
 	if weight < 1 {
 		return 0, errors.New("weight must be greater than or equal to 1")
 	}
-	ret, err := s.model.UpdatePendingTaskWeightByLabels(ctx, querier.UpdatePendingTaskWeightByLabelsParams{
+	ret, err := txm.UpdatePendingTaskWeightByLabels(ctx, querier.UpdatePendingTaskWeightByLabelsParams{
 		Weight:    weight,
 		HasLabels: len(labels) > 0,
 		Labels:    labels,
@@ -206,7 +277,15 @@ func (s *TaskStore) UpdatePendingTaskWeightByLabels(ctx context.Context, labels 
 // GetTaskByUniqueTag returns a task by unique tag.
 // It maps the stored model to apigen.Task and returns ErrTaskNotFound when absent.
 func (s *TaskStore) GetTaskByUniqueTag(ctx context.Context, uniqueTag string) (*apigen.Task, error) {
-	task, err := s.model.GetTaskByUniqueTag(ctx, &uniqueTag)
+	return s.getTaskByUniqueTag(ctx, s.model, uniqueTag)
+}
+
+func (s *TaskStore) GetTaskByUniqueTagWithTx(ctx context.Context, tx core.Tx, uniqueTag string) (*apigen.Task, error) {
+	return s.getTaskByUniqueTag(ctx, s.model.SpawnWithTx(tx), uniqueTag)
+}
+
+func (s *TaskStore) getTaskByUniqueTag(ctx context.Context, txm model.ModelInterface, uniqueTag string) (*apigen.Task, error) {
+	task, err := txm.GetTaskByUniqueTag(ctx, &uniqueTag)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrTaskNotFound
@@ -220,7 +299,15 @@ func (s *TaskStore) GetTaskByUniqueTag(ctx context.Context, uniqueTag string) (*
 // GetTaskByID returns a task by ID.
 // It maps the stored model to apigen.Task and returns ErrTaskNotFound when absent.
 func (s *TaskStore) GetTaskByID(ctx context.Context, taskID int32) (*apigen.Task, error) {
-	task, err := s.model.GetTaskByID(ctx, taskID)
+	return s.getTaskByID(ctx, s.model, taskID)
+}
+
+func (s *TaskStore) GetTaskByIDWithTx(ctx context.Context, tx core.Tx, taskID int32) (*apigen.Task, error) {
+	return s.getTaskByID(ctx, s.model.SpawnWithTx(tx), taskID)
+}
+
+func (s *TaskStore) getTaskByID(ctx context.Context, txm model.ModelInterface, taskID int32) (*apigen.Task, error) {
+	task, err := txm.GetTaskByID(ctx, taskID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrTaskNotFound
@@ -234,7 +321,15 @@ func (s *TaskStore) GetTaskByID(ctx context.Context, taskID int32) (*apigen.Task
 // GetLastTaskErrorEvent returns the most recent TaskError event for a task.
 // It returns ErrTaskEventNotFound when the task has no error events.
 func (s *TaskStore) GetLastTaskErrorEvent(ctx context.Context, taskID int32) (*apigen.Event, error) {
-	event, err := s.model.GetLastTaskErrorEvent(ctx, taskID)
+	return s.getLastTaskErrorEvent(ctx, s.model, taskID)
+}
+
+func (s *TaskStore) GetLastTaskErrorEventWithTx(ctx context.Context, tx core.Tx, taskID int32) (*apigen.Event, error) {
+	return s.getLastTaskErrorEvent(ctx, s.model.SpawnWithTx(tx), taskID)
+}
+
+func (s *TaskStore) getLastTaskErrorEvent(ctx context.Context, txm model.ModelInterface, taskID int32) (*apigen.Event, error) {
+	event, err := txm.GetLastTaskErrorEvent(ctx, taskID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrTaskEventNotFound
