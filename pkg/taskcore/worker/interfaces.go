@@ -37,4 +37,7 @@ type WorkerInterface interface {
 	Start()
 	RunTask(ctx context.Context, taskID int32) error
 	RegisterTaskHandler(handler TaskHandler)
+	WorkerID() string
+	NotifyRuntimeConfig(requestID string)
+	InterruptTasks(taskIDs []int32, cause error)
 }

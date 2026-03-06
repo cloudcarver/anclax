@@ -13,8 +13,9 @@ import (
 
 
 type ControlPlane interface {
-	PauseTask(ctx context.Context, task string, notifyInterval string, listenTimeout string) error
-	CancelTask(ctx context.Context, task string, notifyInterval string, listenTimeout string) error
+	UpdateRuntimeConfig(ctx context.Context, key string, maxStrictPercentage int32, defaultWeight int32, w1Weight int32, w2Weight int32) error
+	PauseTask(ctx context.Context, task string) error
+	CancelTask(ctx context.Context, task string) error
 }
 
 
@@ -43,6 +44,7 @@ type Runtime interface {
 	SleepMs(ctx context.Context, ms int32) error
 	CreateRuntimeConfig(ctx context.Context, key string, requestID string, maxStrictPercentage int32, defaultWeight int32, w1Weight int32, w2Weight int32, notify bool) error
 	WaitRuntimeConfigAck(ctx context.Context, key string, requestID string, timeoutMs int32) error
+	CaptureLatestRuntimeConfigVersion(ctx context.Context, key string) error
 	WaitWorkerLagging(ctx context.Context, workerName string, key string, expected bool, timeoutMs int32) error
 	WaitWorkerOnline(ctx context.Context, workerName string, expected bool, timeoutMs int32) error
 	MarkWorkerOffline(ctx context.Context, workerName string) error
@@ -241,8 +243,20 @@ func runAllWithActors(ctx context.Context, actors Actors) error {
 	if err := RunScenarioSmokeRuntimeConfigPoll(ctx, actors); err != nil {
 		return fmt.Errorf("scenario smoke_runtime_config_poll: %w", err)
 	}
-	if err := RunScenarioSmokeRuntimeConfigListenAck(ctx, actors); err != nil {
-		return fmt.Errorf("scenario smoke_runtime_config_listen_ack: %w", err)
+	if err := RunScenarioSmokeRuntimeConfigControlPlaneBroadcast(ctx, actors); err != nil {
+		return fmt.Errorf("scenario smoke_runtime_config_control_plane_broadcast: %w", err)
+	}
+	if err := RunScenarioSmokeRuntimeConfigNewWorkerJoinsAfterBroadcast(ctx, actors); err != nil {
+		return fmt.Errorf("scenario smoke_runtime_config_new_worker_joins_after_broadcast: %w", err)
+	}
+	if err := RunScenarioSmokeRuntimeConfigWorkerStopsDuringBroadcast(ctx, actors); err != nil {
+		return fmt.Errorf("scenario smoke_runtime_config_worker_stops_during_broadcast: %w", err)
+	}
+	if err := RunScenarioSmokePauseTaskWorkerJoinsAfterPause(ctx, actors); err != nil {
+		return fmt.Errorf("scenario smoke_pause_task_worker_joins_after_pause: %w", err)
+	}
+	if err := RunScenarioSmokeCancelTaskWorkerJoinsAfterCancel(ctx, actors); err != nil {
+		return fmt.Errorf("scenario smoke_cancel_task_worker_joins_after_cancel: %w", err)
 	}
 	if err := RunScenarioSmokePauseTaskInterrupt(ctx, actors); err != nil {
 		return fmt.Errorf("scenario smoke_pause_task_interrupt: %w", err)
@@ -2812,19 +2826,19 @@ func runStepSmokeRuntimeConfigPollS2(parent context.Context, actors Actors, vars
 
 
 
-func RunScenarioSmokeRuntimeConfigListenAck(ctx context.Context, actors Actors) error {
+func RunScenarioSmokeRuntimeConfigControlPlaneBroadcast(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
-	if err := runStepSmokeRuntimeConfigListenAckS1(ctx, actors, vars); err != nil {
+	if err := runStepSmokeRuntimeConfigControlPlaneBroadcastS1(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s1: %w", err)
 	}
-	if err := runStepSmokeRuntimeConfigListenAckS2(ctx, actors, vars); err != nil {
+	if err := runStepSmokeRuntimeConfigControlPlaneBroadcastS2(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s2: %w", err)
 	}
 	return nil
 }
 
 
-func runStepSmokeRuntimeConfigListenAckS1(parent context.Context, actors Actors, vars *varStore) error {
+func runStepSmokeRuntimeConfigControlPlaneBroadcastS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
@@ -2833,8 +2847,8 @@ func runStepSmokeRuntimeConfigListenAckS1(parent context.Context, actors Actors,
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := actors.Runtime.StartWorker(ctx, "SRCA_W1", "noop", "noop", []string{}, 20, 20, 200, 20, 1, 0, true, ""); err != nil {
-			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"SRCA_W1\", \"noop\", \"noop\", []string{}, 20, 20, 200, 20, 1, 0, true, \"\")", err)
+		if err := actors.Runtime.StartWorker(ctx, "SRCA_W1", "noop", "noop", []string{}, 20, 20, 200, 20, 1, 0, false, ""); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"SRCA_W1\", \"noop\", \"noop\", []string{}, 20, 20, 200, 20, 1, 0, false, \"\")", err)
 			cancel()
 			return
 		}
@@ -2855,22 +2869,27 @@ func runStepSmokeRuntimeConfigListenAckS1(parent context.Context, actors Actors,
 }
 
 
-func runStepSmokeRuntimeConfigListenAckS2(parent context.Context, actors Actors, vars *varStore) error {
+func runStepSmokeRuntimeConfigControlPlaneBroadcastS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
-	errCh := make(chan error, 1)
+	errCh := make(chan error, 2)
 	
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := actors.Runtime.CreateRuntimeConfig(ctx, "SRCA_CFG", "req-ack-1", 15, 1, 0, 0, true); err != nil {
-			errCh <- fmt.Errorf("actor runtime call %s: %w", "CreateRuntimeConfig(ctx, \"SRCA_CFG\", \"req-ack-1\", 15, 1, 0, 0, true)", err)
+		if err := actors.ControlPlane.UpdateRuntimeConfig(ctx, "SRCA_CFG", 15, 1, 0, 0); err != nil {
+			errCh <- fmt.Errorf("actor controlPlane call %s: %w", "UpdateRuntimeConfig(ctx, \"SRCA_CFG\", 15, 1, 0, 0)", err)
 			cancel()
 			return
 		}
-		if err := actors.Runtime.WaitRuntimeConfigAck(ctx, "SRCA_CFG", "req-ack-1", 8000); err != nil {
-			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitRuntimeConfigAck(ctx, \"SRCA_CFG\", \"req-ack-1\", 8000)", err)
+	}()
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Runtime.CaptureLatestRuntimeConfigVersion(ctx, "SRCA_CFG"); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "CaptureLatestRuntimeConfigVersion(ctx, \"SRCA_CFG\")", err)
 			cancel()
 			return
 		}
@@ -2893,6 +2912,584 @@ func runStepSmokeRuntimeConfigListenAckS2(parent context.Context, actors Actors,
 		}
 	}
 	return nil
+}
+
+
+
+func RunScenarioSmokeRuntimeConfigNewWorkerJoinsAfterBroadcast(ctx context.Context, actors Actors) error {
+	vars := newVarStore()
+	if err := runStepSmokeRuntimeConfigNewWorkerJoinsAfterBroadcastS1(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s1: %w", err)
+	}
+	if err := runStepSmokeRuntimeConfigNewWorkerJoinsAfterBroadcastS2(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s2: %w", err)
+	}
+	if err := runStepSmokeRuntimeConfigNewWorkerJoinsAfterBroadcastS3(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s3: %w", err)
+	}
+	return nil
+}
+
+
+func runStepSmokeRuntimeConfigNewWorkerJoinsAfterBroadcastS1(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Runtime.StartWorker(ctx, "SRCJ_W1", "noop", "noop", []string{}, 20, 20, 200, 20, 1, 50, false, ""); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"SRCJ_W1\", \"noop\", \"noop\", []string{}, 20, 20, 200, 20, 1, 50, false, \"\")", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.WaitWorkerOnline(ctx, "SRCJ_W1", true, 5000); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitWorkerOnline(ctx, \"SRCJ_W1\", true, 5000)", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func runStepSmokeRuntimeConfigNewWorkerJoinsAfterBroadcastS2(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 2)
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.ControlPlane.UpdateRuntimeConfig(ctx, "SRCJ_CFG", 25, 1, 2, 0); err != nil {
+			errCh <- fmt.Errorf("actor controlPlane call %s: %w", "UpdateRuntimeConfig(ctx, \"SRCJ_CFG\", 25, 1, 2, 0)", err)
+			cancel()
+			return
+		}
+	}()
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Runtime.SleepMs(ctx, 100); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "SleepMs(ctx, 100)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.StartWorker(ctx, "SRCJ_W2", "noop", "noop", []string{}, 20, 20, 200, 20, 1, 50, false, ""); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"SRCJ_W2\", \"noop\", \"noop\", []string{}, 20, 20, 200, 20, 1, 50, false, \"\")", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.WaitWorkerOnline(ctx, "SRCJ_W2", true, 5000); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitWorkerOnline(ctx, \"SRCJ_W2\", true, 5000)", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func runStepSmokeRuntimeConfigNewWorkerJoinsAfterBroadcastS3(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Runtime.CaptureLatestRuntimeConfigVersion(ctx, "SRCJ_CFG"); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "CaptureLatestRuntimeConfigVersion(ctx, \"SRCJ_CFG\")", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.WaitWorkerLagging(ctx, "SRCJ_W1", "SRCJ_CFG", false, 7000); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitWorkerLagging(ctx, \"SRCJ_W1\", \"SRCJ_CFG\", false, 7000)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.WaitWorkerLagging(ctx, "SRCJ_W2", "SRCJ_CFG", false, 7000); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitWorkerLagging(ctx, \"SRCJ_W2\", \"SRCJ_CFG\", false, 7000)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.StopWorker(ctx, "SRCJ_W1"); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StopWorker(ctx, \"SRCJ_W1\")", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.StopWorker(ctx, "SRCJ_W2"); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StopWorker(ctx, \"SRCJ_W2\")", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+
+func RunScenarioSmokeRuntimeConfigWorkerStopsDuringBroadcast(ctx context.Context, actors Actors) error {
+	vars := newVarStore()
+	if err := runStepSmokeRuntimeConfigWorkerStopsDuringBroadcastS1(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s1: %w", err)
+	}
+	if err := runStepSmokeRuntimeConfigWorkerStopsDuringBroadcastS2(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s2: %w", err)
+	}
+	if err := runStepSmokeRuntimeConfigWorkerStopsDuringBroadcastS3(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s3: %w", err)
+	}
+	return nil
+}
+
+
+func runStepSmokeRuntimeConfigWorkerStopsDuringBroadcastS1(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Runtime.StartWorker(ctx, "SRCO_W1", "noop", "noop", []string{}, 20, 20, 200, 20, 1, 50, false, ""); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"SRCO_W1\", \"noop\", \"noop\", []string{}, 20, 20, 200, 20, 1, 50, false, \"\")", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.StartWorker(ctx, "SRCO_W2", "noop", "noop", []string{}, 20, 20, 200, 20, 1, 50, false, ""); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"SRCO_W2\", \"noop\", \"noop\", []string{}, 20, 20, 200, 20, 1, 50, false, \"\")", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.WaitWorkerOnline(ctx, "SRCO_W1", true, 5000); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitWorkerOnline(ctx, \"SRCO_W1\", true, 5000)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.WaitWorkerOnline(ctx, "SRCO_W2", true, 5000); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitWorkerOnline(ctx, \"SRCO_W2\", true, 5000)", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func runStepSmokeRuntimeConfigWorkerStopsDuringBroadcastS2(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 2)
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.ControlPlane.UpdateRuntimeConfig(ctx, "SRCO_CFG", 30, 1, 0, 0); err != nil {
+			errCh <- fmt.Errorf("actor controlPlane call %s: %w", "UpdateRuntimeConfig(ctx, \"SRCO_CFG\", 30, 1, 0, 0)", err)
+			cancel()
+			return
+		}
+	}()
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Runtime.SleepMs(ctx, 80); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "SleepMs(ctx, 80)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.StopWorker(ctx, "SRCO_W2"); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StopWorker(ctx, \"SRCO_W2\")", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func runStepSmokeRuntimeConfigWorkerStopsDuringBroadcastS3(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Runtime.CaptureLatestRuntimeConfigVersion(ctx, "SRCO_CFG"); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "CaptureLatestRuntimeConfigVersion(ctx, \"SRCO_CFG\")", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.WaitWorkerLagging(ctx, "SRCO_W1", "SRCO_CFG", false, 7000); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitWorkerLagging(ctx, \"SRCO_W1\", \"SRCO_CFG\", false, 7000)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.WaitWorkerOnline(ctx, "SRCO_W2", false, 5000); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitWorkerOnline(ctx, \"SRCO_W2\", false, 5000)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.StopWorker(ctx, "SRCO_W1"); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StopWorker(ctx, \"SRCO_W1\")", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+
+func RunScenarioSmokePauseTaskWorkerJoinsAfterPause(ctx context.Context, actors Actors) error {
+	vars := newVarStore()
+	if err := runStepSmokePauseTaskWorkerJoinsAfterPauseS1(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s1: %w", err)
+	}
+	if err := runStepSmokePauseTaskWorkerJoinsAfterPauseS2(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s2: %w", err)
+	}
+	if err := runStepSmokePauseTaskWorkerJoinsAfterPauseS3(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s3: %w", err)
+	}
+	if err := runStepSmokePauseTaskWorkerJoinsAfterPauseS4(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s4: %w", err)
+	}
+	return nil
+}
+
+
+func runStepSmokePauseTaskWorkerJoinsAfterPauseS1(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.TaskStore.EnqueueRaw(ctx, "SPJ_TASK", "pause-e2e", "{}", 0, 1, []string{"pause-label"}, "", 0, "", 2); err != nil {
+			errCh <- fmt.Errorf("actor taskStore call %s: %w", "EnqueueRaw(ctx, \"SPJ_TASK\", \"pause-e2e\", \"{}\", 0, 1, []string{\"pause-label\"}, \"\", 0, \"\", 2)", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func runStepSmokePauseTaskWorkerJoinsAfterPauseS2(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.ControlPlane.PauseTask(ctx, "SPJ_TASK"); err != nil {
+			errCh <- fmt.Errorf("actor controlPlane call %s: %w", "PauseTask(ctx, \"SPJ_TASK\")", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func runStepSmokePauseTaskWorkerJoinsAfterPauseS3(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Runtime.StartWorker(ctx, "SPJ_W1", "signal", "pause-e2e", []string{"pause-label"}, 20, 20, 200, 20, 1, 0, false, ""); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"SPJ_W1\", \"signal\", \"pause-e2e\", []string{\"pause-label\"}, 20, 20, 200, 20, 1, 0, false, \"\")", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.SleepMs(ctx, 2500); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "SleepMs(ctx, 2500)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.StopWorker(ctx, "SPJ_W1"); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StopWorker(ctx, \"SPJ_W1\")", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func runStepSmokePauseTaskWorkerJoinsAfterPauseS4(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var err error
+	t := &scriptT{}
+	set := func(name string, value any) {
+		vars.Set(name, value)
+	}
+	get := func(name string) any {
+		val, _ := vars.Get(name)
+		return val
+	}
+	_ = t
+	_ = set
+	_ = get
+	defer func() {
+		if r := recover(); r != nil {
+			if fail, ok := r.(scriptFail); ok {
+				if fail.err != nil {
+					err = fail.err
+					return
+				}
+				err = fmt.Errorf("script failed")
+				return
+			}
+			err = fmt.Errorf("script panic: %v", r)
+			return
+		}
+		if t.failed && err == nil {
+			if t.err != nil {
+				err = t.err
+			} else {
+				err = fmt.Errorf("script failed")
+			}
+		}
+	}()
+	rows, err := actors.Validator.Query(ctx, "select status, attempts from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"SPJ_TASK"})
+	require.NoError(t, err)
+	require.Equal(t, [][]any{{"paused", int32(0)}}, rows)
+	return err
+}
+
+
+
+func RunScenarioSmokeCancelTaskWorkerJoinsAfterCancel(ctx context.Context, actors Actors) error {
+	vars := newVarStore()
+	if err := runStepSmokeCancelTaskWorkerJoinsAfterCancelS1(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s1: %w", err)
+	}
+	if err := runStepSmokeCancelTaskWorkerJoinsAfterCancelS2(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s2: %w", err)
+	}
+	if err := runStepSmokeCancelTaskWorkerJoinsAfterCancelS3(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s3: %w", err)
+	}
+	if err := runStepSmokeCancelTaskWorkerJoinsAfterCancelS4(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s4: %w", err)
+	}
+	return nil
+}
+
+
+func runStepSmokeCancelTaskWorkerJoinsAfterCancelS1(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.TaskStore.EnqueueRaw(ctx, "SCJ_TASK", "pause-e2e", "{}", 0, 1, []string{"cancel-label"}, "", 0, "", 2); err != nil {
+			errCh <- fmt.Errorf("actor taskStore call %s: %w", "EnqueueRaw(ctx, \"SCJ_TASK\", \"pause-e2e\", \"{}\", 0, 1, []string{\"cancel-label\"}, \"\", 0, \"\", 2)", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func runStepSmokeCancelTaskWorkerJoinsAfterCancelS2(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.ControlPlane.CancelTask(ctx, "SCJ_TASK"); err != nil {
+			errCh <- fmt.Errorf("actor controlPlane call %s: %w", "CancelTask(ctx, \"SCJ_TASK\")", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func runStepSmokeCancelTaskWorkerJoinsAfterCancelS3(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Runtime.StartWorker(ctx, "SCJ_W1", "signal", "pause-e2e", []string{"cancel-label"}, 20, 20, 200, 20, 1, 0, false, ""); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"SCJ_W1\", \"signal\", \"pause-e2e\", []string{\"cancel-label\"}, 20, 20, 200, 20, 1, 0, false, \"\")", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.SleepMs(ctx, 2500); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "SleepMs(ctx, 2500)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.StopWorker(ctx, "SCJ_W1"); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StopWorker(ctx, \"SCJ_W1\")", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func runStepSmokeCancelTaskWorkerJoinsAfterCancelS4(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var err error
+	t := &scriptT{}
+	set := func(name string, value any) {
+		vars.Set(name, value)
+	}
+	get := func(name string) any {
+		val, _ := vars.Get(name)
+		return val
+	}
+	_ = t
+	_ = set
+	_ = get
+	defer func() {
+		if r := recover(); r != nil {
+			if fail, ok := r.(scriptFail); ok {
+				if fail.err != nil {
+					err = fail.err
+					return
+				}
+				err = fmt.Errorf("script failed")
+				return
+			}
+			err = fmt.Errorf("script panic: %v", r)
+			return
+		}
+		if t.failed && err == nil {
+			if t.err != nil {
+				err = t.err
+			} else {
+				err = fmt.Errorf("script failed")
+			}
+		}
+	}()
+	rows, err := actors.Validator.Query(ctx, "select status, attempts from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"SCJ_TASK"})
+	require.NoError(t, err)
+	require.Equal(t, [][]any{{"cancelled", int32(0)}}, rows)
+	return err
 }
 
 
@@ -3002,8 +3599,8 @@ func runStepSmokePauseTaskInterruptS3(parent context.Context, actors Actors, var
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := actors.ControlPlane.PauseTask(ctx, "SPC_TASK", "", ""); err != nil {
-			errCh <- fmt.Errorf("actor controlPlane call %s: %w", "PauseTask(ctx, \"SPC_TASK\", \"\", \"\")", err)
+		if err := actors.ControlPlane.PauseTask(ctx, "SPC_TASK"); err != nil {
+			errCh <- fmt.Errorf("actor controlPlane call %s: %w", "PauseTask(ctx, \"SPC_TASK\")", err)
 			cancel()
 			return
 		}
@@ -3188,8 +3785,8 @@ func runStepSmokePauseTaskBeforeStartS2(parent context.Context, actors Actors, v
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := actors.ControlPlane.PauseTask(ctx, "SPB_TASK", "", ""); err != nil {
-			errCh <- fmt.Errorf("actor controlPlane call %s: %w", "PauseTask(ctx, \"SPB_TASK\", \"\", \"\")", err)
+		if err := actors.ControlPlane.PauseTask(ctx, "SPB_TASK"); err != nil {
+			errCh <- fmt.Errorf("actor controlPlane call %s: %w", "PauseTask(ctx, \"SPB_TASK\")", err)
 			cancel()
 			return
 		}
@@ -3385,8 +3982,8 @@ func runStepSmokeCancelTaskInterruptS3(parent context.Context, actors Actors, va
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := actors.ControlPlane.CancelTask(ctx, "SCI_TASK", "", ""); err != nil {
-			errCh <- fmt.Errorf("actor controlPlane call %s: %w", "CancelTask(ctx, \"SCI_TASK\", \"\", \"\")", err)
+		if err := actors.ControlPlane.CancelTask(ctx, "SCI_TASK"); err != nil {
+			errCh <- fmt.Errorf("actor controlPlane call %s: %w", "CancelTask(ctx, \"SCI_TASK\")", err)
 			cancel()
 			return
 		}
@@ -3654,8 +4251,8 @@ func runStepSmokeCancelTaskDescendantsS4(parent context.Context, actors Actors, 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := actors.ControlPlane.CancelTask(ctx, "SCD_ROOT", "", ""); err != nil {
-			errCh <- fmt.Errorf("actor controlPlane call %s: %w", "CancelTask(ctx, \"SCD_ROOT\", \"\", \"\")", err)
+		if err := actors.ControlPlane.CancelTask(ctx, "SCD_ROOT"); err != nil {
+			errCh <- fmt.Errorf("actor controlPlane call %s: %w", "CancelTask(ctx, \"SCD_ROOT\")", err)
 			cancel()
 			return
 		}

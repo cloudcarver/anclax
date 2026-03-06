@@ -18,11 +18,11 @@ type UpdateWorkerRuntimeConfigRequest struct {
 	Weights             []int32
 }
 
-func (r *UpdateWorkerRuntimeConfigRequest) toTaskParams() *taskgen.UpdateWorkerRuntimeConfigParameters {
+func (r *UpdateWorkerRuntimeConfigRequest) toTaskParams() *taskgen.BroadcastUpdateWorkerRuntimeConfigParameters {
 	if r == nil {
 		return nil
 	}
-	return &taskgen.UpdateWorkerRuntimeConfigParameters{
+	return &taskgen.BroadcastUpdateWorkerRuntimeConfigParameters{
 		MaxStrictPercentage: r.MaxStrictPercentage,
 		DefaultWeight:       r.DefaultWeight,
 		Labels:              append([]string(nil), r.Labels...),
@@ -37,5 +37,5 @@ func RunUpdateWorkerRuntimeConfigTask(ctx context.Context, runner taskgen.TaskRu
 	params := req.toTaskParams()
 	allOverrides := append([]taskcore.TaskOverride{}, overrides...)
 	allOverrides = append(allOverrides, taskcore.WithPriority(ConfigUpdateTaskPriority))
-	return runner.RunUpdateWorkerRuntimeConfig(ctx, params, allOverrides...)
+	return runner.RunBroadcastUpdateWorkerRuntimeConfig(ctx, params, allOverrides...)
 }

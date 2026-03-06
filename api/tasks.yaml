@@ -81,6 +81,163 @@ tasks:
       maxAttempts: -1
     timeout: 20s
 
+  - name: broadcastUpdateWorkerRuntimeConfig
+    description: Broadcast a runtime config update command to all alive workers
+    priority: "INF"
+    parameters:
+      type: object
+      properties:
+        requestID:
+          type: string
+          description: Correlation ID for this broadcast command
+        maxStrictPercentage:
+          type: integer
+          format: int32
+          description: Maximum percentage of strict-priority slots (0-100)
+        defaultWeight:
+          type: integer
+          format: int32
+          description: Default weight for unlabeled task group
+        labels:
+          type: array
+          items:
+            type: string
+          description: Label names for weighted groups
+        weights:
+          type: array
+          items:
+            type: integer
+            format: int32
+          description: Weights for labels by index
+        fanoutInterval:
+          type: string
+          description: Poll interval used while waiting for alive workers to converge
+    retryPolicy:
+      interval: 2s
+      maxAttempts: -1
+    timeout: 30s
+
+  - name: applyWorkerRuntimeConfigToWorker
+    description: Apply a runtime config version on one specific worker
+    priority: "INF"
+    parameters:
+      type: object
+      required: [workerID, version]
+      properties:
+        requestID:
+          type: string
+          description: Correlation ID of the parent broadcast command
+        workerID:
+          type: string
+          format: uuid
+          description: Target worker ID
+        version:
+          type: integer
+          format: int64
+          description: Runtime config version to apply
+    retryPolicy:
+      interval: 1s
+      maxAttempts: -1
+    timeout: 20s
+
+  - name: broadcastCancelTask
+    description: Broadcast cancel-task command to alive workers
+    priority: "INF"
+    parameters:
+      type: object
+      required: [taskIDs]
+      properties:
+        requestID:
+          type: string
+          description: Correlation ID for this broadcast command
+        taskIDs:
+          type: array
+          items:
+            type: integer
+            format: int32
+          description: Task IDs to interrupt on each target worker
+        fanoutInterval:
+          type: string
+          description: Poll interval used while waiting worker ack tasks
+    retryPolicy:
+      interval: 2s
+      maxAttempts: -1
+    timeout: 30s
+
+  - name: cancelTaskOnWorker
+    description: Cancel in-flight task execution on one specific worker
+    priority: "INF"
+    parameters:
+      type: object
+      required: [workerID, taskIDs]
+      properties:
+        requestID:
+          type: string
+          description: Correlation ID of the parent broadcast command
+        workerID:
+          type: string
+          format: uuid
+          description: Target worker ID
+        taskIDs:
+          type: array
+          items:
+            type: integer
+            format: int32
+          description: Task IDs to interrupt on the target worker
+    retryPolicy:
+      interval: 1s
+      maxAttempts: -1
+    timeout: 20s
+
+  - name: broadcastPauseTask
+    description: Broadcast pause-task command to alive workers
+    priority: "INF"
+    parameters:
+      type: object
+      required: [taskIDs]
+      properties:
+        requestID:
+          type: string
+          description: Correlation ID for this broadcast command
+        taskIDs:
+          type: array
+          items:
+            type: integer
+            format: int32
+          description: Task IDs to interrupt on each target worker
+        fanoutInterval:
+          type: string
+          description: Poll interval used while waiting worker ack tasks
+    retryPolicy:
+      interval: 2s
+      maxAttempts: -1
+    timeout: 30s
+
+  - name: pauseTaskOnWorker
+    description: Pause in-flight task execution on one specific worker
+    priority: "INF"
+    parameters:
+      type: object
+      required: [workerID, taskIDs]
+      properties:
+        requestID:
+          type: string
+          description: Correlation ID of the parent broadcast command
+        workerID:
+          type: string
+          format: uuid
+          description: Target worker ID
+        taskIDs:
+          type: array
+          items:
+            type: integer
+            format: int32
+          description: Task IDs to interrupt on the target worker
+    retryPolicy:
+      interval: 1s
+      maxAttempts: -1
+    timeout: 20s
+
   - name: stressProbe
     description: No-op stress probe task for worker E2E benchmarking
     parameters:

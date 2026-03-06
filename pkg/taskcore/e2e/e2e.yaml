@@ -37,6 +37,7 @@ interfaces:
       - SleepMs(ctx context.Context, ms int32) error
       - CreateRuntimeConfig(ctx context.Context, key string, requestID string, maxStrictPercentage int32, defaultWeight int32, w1Weight int32, w2Weight int32, notify bool) error
       - WaitRuntimeConfigAck(ctx context.Context, key string, requestID string, timeoutMs int32) error
+      - CaptureLatestRuntimeConfigVersion(ctx context.Context, key string) error
       - WaitWorkerLagging(ctx context.Context, workerName string, key string, expected bool, timeoutMs int32) error
       - WaitWorkerOnline(ctx context.Context, workerName string, expected bool, timeoutMs int32) error
       - MarkWorkerOffline(ctx context.Context, workerName string) error
@@ -47,8 +48,9 @@ interfaces:
 
   ControlPlane:
     methods:
-      - PauseTask(ctx context.Context, task string, notifyInterval string, listenTimeout string) error
-      - CancelTask(ctx context.Context, task string, notifyInterval string, listenTimeout string) error
+      - UpdateRuntimeConfig(ctx context.Context, key string, maxStrictPercentage int32, defaultWeight int32, w1Weight int32, w2Weight int32) error
+      - PauseTask(ctx context.Context, task string) error
+      - CancelTask(ctx context.Context, task string) error
 
 instances:
   taskStore: TaskStore
@@ -515,22 +517,129 @@ scenarios:
             - WaitWorkerLagging(ctx, "SRCP_W1", "SRCP_CFG", false, 7000)
             - StopWorker(ctx, "SRCP_W1")
 
-  - name: smoke_runtime_config_listen_ack
-    description: runtime config LISTEN path sends ack.
+  - name: smoke_runtime_config_control_plane_broadcast
+    description: runtime config update converges via control-plane broadcast tasks without LISTEN dependency.
     steps:
       - id: s1
         parallel:
           runtime:
-            - StartWorker(ctx, "SRCA_W1", "noop", "noop", []string{}, 20, 20, 200, 20, 1, 0, true, "")
+            - StartWorker(ctx, "SRCA_W1", "noop", "noop", []string{}, 20, 20, 200, 20, 1, 0, false, "")
             - WaitWorkerOnline(ctx, "SRCA_W1", true, 5000)
 
       - id: s2
         parallel:
+          controlPlane:
+            - UpdateRuntimeConfig(ctx, "SRCA_CFG", 15, 1, 0, 0)
           runtime:
-            - CreateRuntimeConfig(ctx, "SRCA_CFG", "req-ack-1", 15, 1, 0, 0, true)
-            - WaitRuntimeConfigAck(ctx, "SRCA_CFG", "req-ack-1", 8000)
+            - CaptureLatestRuntimeConfigVersion(ctx, "SRCA_CFG")
             - WaitWorkerLagging(ctx, "SRCA_W1", "SRCA_CFG", false, 7000)
             - StopWorker(ctx, "SRCA_W1")
+
+  - name: smoke_runtime_config_new_worker_joins_after_broadcast
+    description: worker started right after control-plane update should catch up to latest runtime config.
+    steps:
+      - id: s1
+        parallel:
+          runtime:
+            - StartWorker(ctx, "SRCJ_W1", "noop", "noop", []string{}, 20, 20, 200, 20, 1, 50, false, "")
+            - WaitWorkerOnline(ctx, "SRCJ_W1", true, 5000)
+
+      - id: s2
+        parallel:
+          controlPlane:
+            - UpdateRuntimeConfig(ctx, "SRCJ_CFG", 25, 1, 2, 0)
+          runtime:
+            - SleepMs(ctx, 100)
+            - StartWorker(ctx, "SRCJ_W2", "noop", "noop", []string{}, 20, 20, 200, 20, 1, 50, false, "")
+            - WaitWorkerOnline(ctx, "SRCJ_W2", true, 5000)
+
+      - id: s3
+        parallel:
+          runtime:
+            - CaptureLatestRuntimeConfigVersion(ctx, "SRCJ_CFG")
+            - WaitWorkerLagging(ctx, "SRCJ_W1", "SRCJ_CFG", false, 7000)
+            - WaitWorkerLagging(ctx, "SRCJ_W2", "SRCJ_CFG", false, 7000)
+            - StopWorker(ctx, "SRCJ_W1")
+            - StopWorker(ctx, "SRCJ_W2")
+
+  - name: smoke_runtime_config_worker_stops_during_broadcast
+    description: control-plane update should converge when one targeted worker stops during broadcast.
+    steps:
+      - id: s1
+        parallel:
+          runtime:
+            - StartWorker(ctx, "SRCO_W1", "noop", "noop", []string{}, 20, 20, 200, 20, 1, 50, false, "")
+            - StartWorker(ctx, "SRCO_W2", "noop", "noop", []string{}, 20, 20, 200, 20, 1, 50, false, "")
+            - WaitWorkerOnline(ctx, "SRCO_W1", true, 5000)
+            - WaitWorkerOnline(ctx, "SRCO_W2", true, 5000)
+
+      - id: s2
+        parallel:
+          controlPlane:
+            - UpdateRuntimeConfig(ctx, "SRCO_CFG", 30, 1, 0, 0)
+          runtime:
+            - SleepMs(ctx, 80)
+            - StopWorker(ctx, "SRCO_W2")
+
+      - id: s3
+        parallel:
+          runtime:
+            - CaptureLatestRuntimeConfigVersion(ctx, "SRCO_CFG")
+            - WaitWorkerLagging(ctx, "SRCO_W1", "SRCO_CFG", false, 7000)
+            - WaitWorkerOnline(ctx, "SRCO_W2", false, 5000)
+            - StopWorker(ctx, "SRCO_W1")
+
+  - name: smoke_pause_task_worker_joins_after_pause
+    description: worker joining after pause should never execute paused task.
+    steps:
+      - id: s1
+        parallel:
+          taskStore:
+            - EnqueueRaw(ctx, "SPJ_TASK", "pause-e2e", "{}", 0, 1, []string{"pause-label"}, "", 0, "", 2)
+
+      - id: s2
+        parallel:
+          controlPlane:
+            - PauseTask(ctx, "SPJ_TASK")
+
+      - id: s3
+        parallel:
+          runtime:
+            - StartWorker(ctx, "SPJ_W1", "signal", "pause-e2e", []string{"pause-label"}, 20, 20, 200, 20, 1, 0, false, "")
+            - SleepMs(ctx, 2500)
+            - StopWorker(ctx, "SPJ_W1")
+
+      - id: s4
+        script: |
+          rows, err := actors.Validator.Query(ctx, "select status, attempts from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"SPJ_TASK"})
+          require.NoError(t, err)
+          require.Equal(t, [][]any{{"paused", int32(0)}}, rows)
+
+  - name: smoke_cancel_task_worker_joins_after_cancel
+    description: worker joining after cancel should never execute cancelled task.
+    steps:
+      - id: s1
+        parallel:
+          taskStore:
+            - EnqueueRaw(ctx, "SCJ_TASK", "pause-e2e", "{}", 0, 1, []string{"cancel-label"}, "", 0, "", 2)
+
+      - id: s2
+        parallel:
+          controlPlane:
+            - CancelTask(ctx, "SCJ_TASK")
+
+      - id: s3
+        parallel:
+          runtime:
+            - StartWorker(ctx, "SCJ_W1", "signal", "pause-e2e", []string{"cancel-label"}, 20, 20, 200, 20, 1, 0, false, "")
+            - SleepMs(ctx, 2500)
+            - StopWorker(ctx, "SCJ_W1")
+
+      - id: s4
+        script: |
+          rows, err := actors.Validator.Query(ctx, "select status, attempts from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"SCJ_TASK"})
+          require.NoError(t, err)
+          require.Equal(t, [][]any{{"cancelled", int32(0)}}, rows)
 
   - name: smoke_pause_task_interrupt
     description: pausing a running task interrupts execution and marks it paused.
@@ -552,7 +661,7 @@ scenarios:
       - id: s3
         parallel:
           controlPlane:
-            - PauseTask(ctx, "SPC_TASK", "", "")
+            - PauseTask(ctx, "SPC_TASK")
 
       - id: s4
         parallel:
@@ -585,7 +694,7 @@ scenarios:
       - id: s2
         parallel:
           controlPlane:
-            - PauseTask(ctx, "SPB_TASK", "", "")
+            - PauseTask(ctx, "SPB_TASK")
 
       - id: s3
         parallel:
@@ -619,7 +728,7 @@ scenarios:
       - id: s3
         parallel:
           controlPlane:
-            - CancelTask(ctx, "SCI_TASK", "", "")
+            - CancelTask(ctx, "SCI_TASK")
 
       - id: s4
         parallel:
@@ -667,7 +776,7 @@ scenarios:
       - id: s4
         parallel:
           controlPlane:
-            - CancelTask(ctx, "SCD_ROOT", "", "")
+            - CancelTask(ctx, "SCD_ROOT")
 
       - id: s5
         script: |

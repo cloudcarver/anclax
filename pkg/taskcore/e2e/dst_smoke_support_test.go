@@ -411,7 +411,33 @@ func newControlPlaneActor(model model.ModelInterface, store taskcore.TaskStoreIn
 	return &controlPlaneActor{controlPlane: controlPlane, model: model}
 }
 
-func (a *controlPlaneActor) PauseTask(ctx context.Context, task string, notifyInterval string, listenTimeout string) error {
+func (a *controlPlaneActor) UpdateRuntimeConfig(ctx context.Context, key string, maxStrictPercentage int32, defaultWeight int32, w1Weight int32, w2Weight int32) error {
+	if key == "" {
+		return fmt.Errorf("runtime config key is required")
+	}
+	labels := make([]string, 0, 2)
+	weights := make([]int32, 0, 2)
+	if w1Weight > 0 {
+		labels = append(labels, "w1")
+		weights = append(weights, w1Weight)
+	}
+	if w2Weight > 0 {
+		labels = append(labels, "w2")
+		weights = append(weights, w2Weight)
+	}
+	req := &ctrl.UpdateWorkerRuntimeConfigRequest{
+		MaxStrictPercentage: int32Ptr(maxStrictPercentage),
+		DefaultWeight:       int32Ptr(defaultWeight),
+		Labels:              labels,
+		Weights:             weights,
+	}
+	if err := a.controlPlane.UpdateWorkerRuntimeConfig(ctx, req); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (a *controlPlaneActor) PauseTask(ctx context.Context, task string) error {
 	if task == "" {
 		return fmt.Errorf("task name is required")
 	}
@@ -419,12 +445,10 @@ func (a *controlPlaneActor) PauseTask(ctx context.Context, task string, notifyIn
 	if err != nil {
 		return err
 	}
-	_ = notifyInterval
-	_ = listenTimeout
 	return a.controlPlane.PauseTask(ctx, taskID)
 }
 
-func (a *controlPlaneActor) CancelTask(ctx context.Context, task string, notifyInterval string, listenTimeout string) error {
+func (a *controlPlaneActor) CancelTask(ctx context.Context, task string) error {
 	if task == "" {
 		return fmt.Errorf("task name is required")
 	}
@@ -432,8 +456,6 @@ func (a *controlPlaneActor) CancelTask(ctx context.Context, task string, notifyI
 	if err != nil {
 		return err
 	}
-	_ = notifyInterval
-	_ = listenTimeout
 	return a.controlPlane.CancelTask(ctx, taskID)
 }
 
@@ -527,14 +549,17 @@ func (a *runtimeActor) StartWorker(
 	if err != nil {
 		return err
 	}
-	compositeHandler := taskgen.NewTaskHandler(asynctask.NewExecutor(cfg, a.model))
+	executor := asynctask.NewExecutor(cfg, a.model, taskgen.NewTaskRunner(taskcore.NewTaskStore(a.model)))
+	compositeHandler := taskgen.NewTaskHandler(executor)
 	compositeHandler.RegisterTaskHandler(baseHandler)
 
 	gctx := globalctx.New()
-	workerInstance, err := worker.NewWorker(gctx, cfg, a.model, compositeHandler)
+	workerInstance, err := worker.NewWorkerFromConfig(gctx, cfg, a.model, compositeHandler)
 	if err != nil {
 		return err
 	}
+	workerInstance.RegisterTaskHandler(asynctask.NewWorkerControlTaskHandler(workerInstance))
+	executor.SetLocalWorker(workerInstance)
 
 	a.mu.Lock()
 	if prev, ok := a.workers[name]; ok && prev.gctx != nil {
@@ -936,6 +961,20 @@ func (a *runtimeActor) WaitRuntimeConfigAck(ctx context.Context, key string, req
 		time.Sleep(20 * time.Millisecond)
 	}
 	return fmt.Errorf("timeout waiting runtime config ack for request %q", requestID)
+}
+
+func (a *runtimeActor) CaptureLatestRuntimeConfigVersion(ctx context.Context, key string) error {
+	if key == "" {
+		return fmt.Errorf("runtime config key is required")
+	}
+	latest, err := a.model.GetLatestWorkerRuntimeConfig(ctx)
+	if err != nil {
+		return err
+	}
+	a.mu.Lock()
+	a.configVersion[key] = latest.Version
+	a.mu.Unlock()
+	return nil
 }
 
 func (a *runtimeActor) WaitWorkerLagging(ctx context.Context, workerName string, key string, expected bool, timeoutMs int32) error {

@@ -35,7 +35,18 @@ type Worker struct {
 	runtimeListenDSN string
 }
 
-func NewWorker(globalCtx *globalctx.GlobalContext, cfg *config.Config, m model.ModelInterface, taskHandler TaskHandler) (WorkerInterface, error) {
+type WorkerComponents struct {
+	Engine           *Engine
+	Runtime          *Runtime
+	Port             *ModelPort
+	Concurrency      int
+	RuntimeListenDSN string
+}
+
+func BuildWorkerComponents(cfg *config.Config, m model.ModelInterface, taskHandler TaskHandler) (*WorkerComponents, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("config cannot be nil")
+	}
 	pollInterval := time.Second
 	if cfg.Worker.PollInterval != nil {
 		pollInterval = *cfg.Worker.PollInterval
@@ -60,6 +71,9 @@ func NewWorker(globalCtx *globalctx.GlobalContext, cfg *config.Config, m model.M
 	if cfg.Worker.RuntimeConfigPollInterval != nil {
 		runtimeConfigPoll = *cfg.Worker.RuntimeConfigPollInterval
 	}
+	if runtimeConfigPoll < 0 {
+		runtimeConfigPoll = 0
+	}
 
 	concurrency := 10
 	if cfg.Worker.Concurrency != nil {
@@ -78,23 +92,21 @@ func NewWorker(globalCtx *globalctx.GlobalContext, cfg *config.Config, m model.M
 		workerID = parsed
 	}
 
-	if runtimeConfigPoll < 0 {
-		runtimeConfigPoll = 0
-	}
+	labels := configuredWorkerLabels(cfg.Worker.Labels, workerID.String())
 
 	maxStrictPercentage := int32(100)
 	if cfg.Worker.MaxStrictPercentage != nil {
 		maxStrictPercentage = int32(*cfg.Worker.MaxStrictPercentage)
 	}
 
-	port, err := NewModelPort(m, workerID, cfg.Worker.Labels, taskHandler, lockTTL, lockRefreshInterval)
+	port, err := NewModelPort(m, workerID, labels, taskHandler, lockTTL, lockRefreshInterval)
 	if err != nil {
 		return nil, err
 	}
 
 	engine := NewEngine(EngineConfig{
 		WorkerID:            workerID.String(),
-		Labels:              cfg.Worker.Labels,
+		Labels:              labels,
 		Concurrency:         concurrency,
 		MaxStrictPercentage: maxStrictPercentage,
 		LabelWeights: map[string]int32{
@@ -111,15 +123,75 @@ func NewWorker(globalCtx *globalctx.GlobalContext, cfg *config.Config, m model.M
 		},
 	})
 
+	return &WorkerComponents{
+		Engine:           engine,
+		Runtime:          runtime,
+		Port:             port,
+		Concurrency:      concurrency,
+		RuntimeListenDSN: runtimeListenDSNFromConfig(cfg),
+	}, nil
+}
+
+func configuredWorkerLabels(labels []string, workerID string) []string {
+	out := append([]string(nil), labels...)
+	reserved := fmt.Sprintf("worker:%s", workerID)
+	for _, label := range out {
+		if label == reserved {
+			return out
+		}
+	}
+	out = append(out, reserved)
+	return out
+}
+
+func NewWorker(globalCtx *globalctx.GlobalContext, components *WorkerComponents, taskHandler TaskHandler) (WorkerInterface, error) {
+	if components == nil || components.Engine == nil || components.Runtime == nil || components.Port == nil {
+		return nil, fmt.Errorf("worker components are incomplete")
+	}
+	concurrency := components.Concurrency
+	if concurrency < 1 {
+		concurrency = 1
+	}
 	return &Worker{
 		globalCtx:        globalCtx,
-		engine:           engine,
-		runtime:          runtime,
-		port:             port,
+		engine:           components.Engine,
+		runtime:          components.Runtime,
+		port:             components.Port,
 		taskHandler:      taskHandler,
 		semaphore:        make(chan struct{}, concurrency),
-		runtimeListenDSN: runtimeListenDSNFromConfig(cfg),
+		runtimeListenDSN: components.RuntimeListenDSN,
 	}, nil
+}
+
+func NewWorkerFromConfig(globalCtx *globalctx.GlobalContext, cfg *config.Config, m model.ModelInterface, taskHandler TaskHandler) (WorkerInterface, error) {
+	components, err := BuildWorkerComponents(cfg, m, taskHandler)
+	if err != nil {
+		return nil, err
+	}
+	return NewWorker(globalCtx, components, taskHandler)
+}
+
+func (w *Worker) WorkerID() string {
+	if w.engine == nil {
+		return ""
+	}
+	return w.engine.WorkerID()
+}
+
+func (w *Worker) NotifyRuntimeConfig(requestID string) {
+	if w.runtime == nil {
+		return
+	}
+	w.runtime.NotifyRuntimeConfig(w.globalCtx.Context(), requestID)
+}
+
+func (w *Worker) InterruptTasks(taskIDs []int32, cause error) {
+	if w.port == nil {
+		return
+	}
+	for _, taskID := range taskIDs {
+		w.port.InterruptTask(taskID, cause)
+	}
 }
 
 func (w *Worker) Start() {

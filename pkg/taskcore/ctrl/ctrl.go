@@ -57,13 +57,13 @@ func (c *WorkerControlPlane) UpdateWorkerRuntimeConfig(ctx context.Context, req 
 	return nil
 }
 
-// PauseTask pauses a task and broadcasts an interrupt request to workers, waiting for acknowledgements.
+// PauseTask pauses a task and broadcasts a worker pause command, waiting for acknowledgements.
 func (c *WorkerControlPlane) PauseTask(ctx context.Context, taskID int32) error {
 	if taskID <= 0 {
 		return errors.New("pause task requires a positive taskID")
 	}
 
-	var cancelTaskID int32
+	var broadcastTaskID int32
 	err := c.model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
 		taskIDs, err := collectTaskAndDescendantIDs(ctx, txm, taskID)
 		if err != nil {
@@ -74,29 +74,29 @@ func (c *WorkerControlPlane) PauseTask(ctx context.Context, taskID int32) error 
 				return errors.Wrap(err, "pause task")
 			}
 		}
-		params := &taskgen.InterruptTaskParameters{TaskIDs: taskIDs}
-		id, err := c.runner.RunInterruptTaskWithTx(ctx, tx, params)
+		params := &taskgen.BroadcastPauseTaskParameters{TaskIDs: taskIDs}
+		id, err := c.runner.RunBroadcastPauseTaskWithTx(ctx, tx, params)
 		if err != nil {
-			return errors.Wrap(err, "enqueue pause task cancel")
+			return errors.Wrap(err, "enqueue broadcast pause task")
 		}
-		cancelTaskID = id
+		broadcastTaskID = id
 		return nil
 	})
 	if err != nil {
 		return err
 	}
-	if err := c.store.WaitForTask(ctx, cancelTaskID); err != nil {
-		return errors.Wrap(err, "wait for pause task cancel")
+	if err := c.store.WaitForTask(ctx, broadcastTaskID); err != nil {
+		return errors.Wrap(err, "wait for broadcast pause task")
 	}
 	return nil
 }
 
-// CancelTask cancels a task and broadcasts an interrupt request to workers, waiting for acknowledgements.
+// CancelTask cancels a task and broadcasts a worker cancel command, waiting for acknowledgements.
 func (c *WorkerControlPlane) CancelTask(ctx context.Context, taskID int32) error {
 	if taskID <= 0 {
 		return errors.New("cancel task requires a positive taskID")
 	}
-	var interruptTaskID int32
+	var broadcastTaskID int32
 	err := c.model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
 		taskIDs, err := collectTaskAndDescendantIDs(ctx, txm, taskID)
 		if err != nil {
@@ -107,19 +107,19 @@ func (c *WorkerControlPlane) CancelTask(ctx context.Context, taskID int32) error
 				return errors.Wrap(err, "cancel task")
 			}
 		}
-		params := &taskgen.InterruptTaskParameters{TaskIDs: taskIDs}
-		id, err := c.runner.RunInterruptTaskWithTx(ctx, tx, params)
+		params := &taskgen.BroadcastCancelTaskParameters{TaskIDs: taskIDs}
+		id, err := c.runner.RunBroadcastCancelTaskWithTx(ctx, tx, params)
 		if err != nil {
-			return errors.Wrap(err, "enqueue interrupt task")
+			return errors.Wrap(err, "enqueue broadcast cancel task")
 		}
-		interruptTaskID = id
+		broadcastTaskID = id
 		return nil
 	})
 	if err != nil {
 		return err
 	}
-	if err := c.store.WaitForTask(ctx, interruptTaskID); err != nil {
-		return errors.Wrap(err, "wait for interrupt task")
+	if err := c.store.WaitForTask(ctx, broadcastTaskID); err != nil {
+		return errors.Wrap(err, "wait for broadcast cancel task")
 	}
 	return nil
 }

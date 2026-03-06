@@ -24,8 +24,8 @@ func TestRunUpdateWorkerRuntimeConfigTaskAddsMaxPriority(t *testing.T) {
 		Weights:             []int32{3},
 	}
 
-	mockRunner.EXPECT().RunUpdateWorkerRuntimeConfig(context.Background(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(ctx context.Context, params *taskgen.UpdateWorkerRuntimeConfigParameters, overrides ...func(*apigen.Task) error) (int32, error) {
+	mockRunner.EXPECT().RunBroadcastUpdateWorkerRuntimeConfig(context.Background(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, params *taskgen.BroadcastUpdateWorkerRuntimeConfigParameters, overrides ...func(*apigen.Task) error) (int32, error) {
 			require.Equal(t, req.MaxStrictPercentage, params.MaxStrictPercentage)
 			require.Equal(t, req.Labels, params.Labels)
 			require.Equal(t, req.Weights, params.Weights)
@@ -52,8 +52,8 @@ func TestRunUpdateWorkerRuntimeConfigTaskKeepsMaxPriorityWhenOverrideProvided(t 
 	req := &UpdateWorkerRuntimeConfigRequest{}
 	lowPriority := taskcore.WithPriority(1)
 
-	mockRunner.EXPECT().RunUpdateWorkerRuntimeConfig(context.Background(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(ctx context.Context, params *taskgen.UpdateWorkerRuntimeConfigParameters, overrides ...func(*apigen.Task) error) (int32, error) {
+	mockRunner.EXPECT().RunBroadcastUpdateWorkerRuntimeConfig(context.Background(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, params *taskgen.BroadcastUpdateWorkerRuntimeConfigParameters, overrides ...func(*apigen.Task) error) (int32, error) {
 			task := &apigen.Task{Attributes: apigen.TaskAttributes{}}
 			require.Len(t, overrides, 2)
 			require.NoError(t, overrides[0](task))
