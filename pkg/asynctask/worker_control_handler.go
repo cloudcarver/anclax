@@ -17,11 +17,11 @@ func NewWorkerControlTaskHandler(w worker.WorkerInterface) worker.TaskHandler {
 	return &WorkerControlTaskHandler{worker: w}
 }
 
-func (h *WorkerControlTaskHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) error {
-	switch spec.GetType() {
+func (h *WorkerControlTaskHandler) HandleTask(ctx context.Context, task worker.Task) error {
+	switch task.GetType() {
 	case taskgen.ApplyWorkerRuntimeConfigToWorker:
 		var params taskgen.ApplyWorkerRuntimeConfigToWorkerParameters
-		if err := params.Parse(spec.GetPayload()); err != nil {
+		if err := params.Parse(task.GetPayload()); err != nil {
 			return err
 		}
 		if !h.isTargetWorker(params.WorkerID) {
@@ -35,7 +35,7 @@ func (h *WorkerControlTaskHandler) HandleTask(ctx context.Context, spec worker.T
 		return nil
 	case taskgen.CancelTaskOnWorker:
 		var params taskgen.CancelTaskOnWorkerParameters
-		if err := params.Parse(spec.GetPayload()); err != nil {
+		if err := params.Parse(task.GetPayload()); err != nil {
 			return err
 		}
 		if !h.isTargetWorker(params.WorkerID) {
@@ -45,7 +45,7 @@ func (h *WorkerControlTaskHandler) HandleTask(ctx context.Context, spec worker.T
 		return nil
 	case taskgen.PauseTaskOnWorker:
 		var params taskgen.PauseTaskOnWorkerParameters
-		if err := params.Parse(spec.GetPayload()); err != nil {
+		if err := params.Parse(task.GetPayload()); err != nil {
 			return err
 		}
 		if !h.isTargetWorker(params.WorkerID) {

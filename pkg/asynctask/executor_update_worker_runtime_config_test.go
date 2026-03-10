@@ -11,6 +11,7 @@ import (
 	"github.com/cloudcarver/anclax/pkg/metrics"
 	"github.com/cloudcarver/anclax/pkg/taskcore/pgnotify"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
+	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
@@ -29,7 +30,7 @@ func TestExecuteUpdateWorkerRuntimeConfigRejectsInvalidParams(t *testing.T) {
 		now:   time.Now,
 	}
 
-	err := e.ExecuteUpdateWorkerRuntimeConfig(context.Background(), &taskgen.UpdateWorkerRuntimeConfigParameters{
+	err := e.ExecuteUpdateWorkerRuntimeConfig(context.Background(), worker.Task{}, &taskgen.UpdateWorkerRuntimeConfigParameters{
 		Labels:  []string{"billing"},
 		Weights: []int32{},
 	})
@@ -95,7 +96,7 @@ func TestExecuteUpdateWorkerRuntimeConfigConvergesAfterNotifyAndAckWait(t *testi
 		Version:         7,
 	}).Return([]uuid.UUID{}, nil)
 
-	err := e.ExecuteUpdateWorkerRuntimeConfig(ctx, &taskgen.UpdateWorkerRuntimeConfigParameters{
+	err := e.ExecuteUpdateWorkerRuntimeConfig(ctx, worker.Task{}, &taskgen.UpdateWorkerRuntimeConfigParameters{
 		RequestID:           &requestID,
 		MaxStrictPercentage: &maxStrict,
 		DefaultWeight:       &defaultWeight,
@@ -124,7 +125,7 @@ func TestExecuteUpdateWorkerRuntimeConfigSupersededByNewerVersion(t *testing.T) 
 	mockModel.EXPECT().GetLatestWorkerRuntimeConfig(ctx).Return(&querier.AnclaxWorkerRuntimeConfig{Version: 6}, nil)
 
 	before := testutil.ToFloat64(metrics.RuntimeConfigSupersededTotal)
-	err := e.ExecuteUpdateWorkerRuntimeConfig(ctx, &taskgen.UpdateWorkerRuntimeConfigParameters{
+	err := e.ExecuteUpdateWorkerRuntimeConfig(ctx, worker.Task{}, &taskgen.UpdateWorkerRuntimeConfigParameters{
 		RequestID: &requestID,
 	})
 	require.NoError(t, err)
@@ -154,7 +155,7 @@ func TestExecuteUpdateWorkerRuntimeConfigReturnsWaitError(t *testing.T) {
 	mockModel.EXPECT().ListLaggingAliveWorkers(ctx, gomock.Any()).Return([]uuid.UUID{uuid.New()}, nil)
 	mockModel.EXPECT().NotifyWorkerRuntimeConfig(ctx, gomock.Any()).Return(nil)
 
-	err := e.ExecuteUpdateWorkerRuntimeConfig(ctx, &taskgen.UpdateWorkerRuntimeConfigParameters{
+	err := e.ExecuteUpdateWorkerRuntimeConfig(ctx, worker.Task{}, &taskgen.UpdateWorkerRuntimeConfigParameters{
 		RequestID: &requestID,
 	})
 	require.Error(t, err)
@@ -191,7 +192,7 @@ func TestExecuteUpdateWorkerRuntimeConfigGeneratesRequestIDWhenMissing(t *testin
 	mockModel.EXPECT().GetLatestWorkerRuntimeConfig(ctx).Return(&querier.AnclaxWorkerRuntimeConfig{Version: 21}, nil)
 	mockModel.EXPECT().ListLaggingAliveWorkers(ctx, gomock.Any()).Return([]uuid.UUID{}, nil)
 
-	err := e.ExecuteUpdateWorkerRuntimeConfig(ctx, &taskgen.UpdateWorkerRuntimeConfigParameters{
+	err := e.ExecuteUpdateWorkerRuntimeConfig(ctx, worker.Task{}, &taskgen.UpdateWorkerRuntimeConfigParameters{
 		NotifyInterval: &notifyInterval,
 	})
 	require.NoError(t, err)
@@ -226,7 +227,7 @@ func TestExecuteUpdateWorkerRuntimeConfigUsesExecutorHeartbeatTTL(t *testing.T) 
 		Version:         25,
 	}).Return([]uuid.UUID{}, nil)
 
-	err := e.ExecuteUpdateWorkerRuntimeConfig(ctx, &taskgen.UpdateWorkerRuntimeConfigParameters{
+	err := e.ExecuteUpdateWorkerRuntimeConfig(ctx, worker.Task{}, &taskgen.UpdateWorkerRuntimeConfigParameters{
 		NotifyInterval: &notifyInterval,
 	})
 	require.NoError(t, err)
@@ -254,7 +255,7 @@ func TestExecuteUpdateWorkerRuntimeConfigReturnsContextErrorWithoutAckWaiter(t *
 	mockModel.EXPECT().ListLaggingAliveWorkers(ctx, gomock.Any()).Return([]uuid.UUID{uuid.New()}, nil)
 	mockModel.EXPECT().NotifyWorkerRuntimeConfig(ctx, gomock.Any()).Return(nil)
 
-	err := e.ExecuteUpdateWorkerRuntimeConfig(ctx, &taskgen.UpdateWorkerRuntimeConfigParameters{
+	err := e.ExecuteUpdateWorkerRuntimeConfig(ctx, worker.Task{}, &taskgen.UpdateWorkerRuntimeConfigParameters{
 		NotifyInterval: &notifyInterval,
 	})
 	require.ErrorIs(t, err, context.Canceled)
@@ -276,7 +277,7 @@ func TestExecuteUpdateWorkerRuntimeConfigPropagatesCreateError(t *testing.T) {
 		Return(nil, errors.New("create failed"))
 
 	exec := &Executor{model: mockModel, now: time.Now}
-	err := exec.ExecuteUpdateWorkerRuntimeConfig(ctx, &taskgen.UpdateWorkerRuntimeConfigParameters{})
+	err := exec.ExecuteUpdateWorkerRuntimeConfig(ctx, worker.Task{}, &taskgen.UpdateWorkerRuntimeConfigParameters{})
 	require.ErrorContains(t, err, "create worker runtime config")
 }
 
@@ -292,7 +293,7 @@ func TestExecuteUpdateWorkerRuntimeConfigPropagatesGetLatestError(t *testing.T) 
 		Return(nil, errors.New("latest failed"))
 
 	exec := &Executor{model: mockModel, now: time.Now}
-	err := exec.ExecuteUpdateWorkerRuntimeConfig(ctx, &taskgen.UpdateWorkerRuntimeConfigParameters{})
+	err := exec.ExecuteUpdateWorkerRuntimeConfig(ctx, worker.Task{}, &taskgen.UpdateWorkerRuntimeConfigParameters{})
 	require.ErrorContains(t, err, "get latest runtime config")
 }
 
@@ -310,7 +311,7 @@ func TestExecuteUpdateWorkerRuntimeConfigPropagatesListLaggingError(t *testing.T
 		Return(nil, errors.New("list failed"))
 
 	exec := &Executor{model: mockModel, now: time.Now}
-	err := exec.ExecuteUpdateWorkerRuntimeConfig(ctx, &taskgen.UpdateWorkerRuntimeConfigParameters{})
+	err := exec.ExecuteUpdateWorkerRuntimeConfig(ctx, worker.Task{}, &taskgen.UpdateWorkerRuntimeConfigParameters{})
 	require.ErrorContains(t, err, "list lagging alive workers")
 }
 
@@ -330,7 +331,7 @@ func TestExecuteUpdateWorkerRuntimeConfigPropagatesNotifyError(t *testing.T) {
 		Return(errors.New("notify failed"))
 
 	exec := &Executor{model: mockModel, now: time.Now}
-	err := exec.ExecuteUpdateWorkerRuntimeConfig(ctx, &taskgen.UpdateWorkerRuntimeConfigParameters{})
+	err := exec.ExecuteUpdateWorkerRuntimeConfig(ctx, worker.Task{}, &taskgen.UpdateWorkerRuntimeConfigParameters{})
 	require.ErrorContains(t, err, "notify worker runtime config")
 }
 

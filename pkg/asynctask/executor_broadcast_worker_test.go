@@ -43,7 +43,7 @@ func TestExecuteBroadcastCancelTaskLocalAndRemoteWorker(t *testing.T) {
 
 	mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{w1, w2}, nil).AnyTimes()
 
-	mockRunner.EXPECT().RunCancelTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+	mockRunner.EXPECT().RunCancelTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, params *taskgen.CancelTaskOnWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 			require.Equal(t, w2.String(), params.WorkerID)
 			require.Equal(t, []int32{101, 102}, params.TaskIDs)
@@ -55,6 +55,8 @@ func TestExecuteBroadcastCancelTaskLocalAndRemoteWorker(t *testing.T) {
 			require.Equal(t, []string{"worker:" + w2.String()}, *task.Attributes.Labels)
 			require.NotNil(t, task.UniqueTag)
 			require.Equal(t, cancelOnWorkerUniqueTag(requestID, w2), *task.UniqueTag)
+			require.NotNil(t, task.ParentTaskId)
+			require.Equal(t, int32(777), *task.ParentTaskId)
 			return int32(1001), nil
 		},
 	)
@@ -66,10 +68,10 @@ func TestExecuteBroadcastCancelTaskLocalAndRemoteWorker(t *testing.T) {
 		},
 	)
 
-	err := exec.ExecuteBroadcastCancelTask(context.Background(), &taskgen.BroadcastCancelTaskParameters{
-		RequestID:      &requestID,
-		TaskIDs:        []int32{101, 102},
-		FanoutInterval: &fanout,
+	err := exec.ExecuteBroadcastCancelTask(context.Background(), worker.Task{ID: 777}, &taskgen.BroadcastCancelTaskParameters{
+		RequestID:       &requestID,
+		TaskIDs:         []int32{101, 102},
+		AckPollInterval: &fanout,
 	})
 	require.NoError(t, err)
 }
@@ -94,10 +96,10 @@ func TestExecuteBroadcastCancelTaskRemoteFailure(t *testing.T) {
 	mockRunner.EXPECT().RunCancelTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int32(2001), nil)
 	mockModel.EXPECT().GetTaskByUniqueTag(gomock.Any(), gomock.Any()).Return(&querier.AnclaxTask{ID: 2001, Status: string(apigen.Failed)}, nil)
 
-	err := exec.ExecuteBroadcastCancelTask(context.Background(), &taskgen.BroadcastCancelTaskParameters{
-		RequestID:      &requestID,
-		TaskIDs:        []int32{101},
-		FanoutInterval: &fanout,
+	err := exec.ExecuteBroadcastCancelTask(context.Background(), worker.Task{}, &taskgen.BroadcastCancelTaskParameters{
+		RequestID:       &requestID,
+		TaskIDs:         []int32{101},
+		AckPollInterval: &fanout,
 	})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "worker command task failed")
@@ -149,21 +151,21 @@ func TestExecuteBroadcastPauseTaskLocalAndRemoteWorker(t *testing.T) {
 		},
 	)
 
-	err := exec.ExecuteBroadcastPauseTask(context.Background(), &taskgen.BroadcastPauseTaskParameters{
-		RequestID:      &requestID,
-		TaskIDs:        []int32{201},
-		FanoutInterval: &fanout,
+	err := exec.ExecuteBroadcastPauseTask(context.Background(), worker.Task{}, &taskgen.BroadcastPauseTaskParameters{
+		RequestID:       &requestID,
+		TaskIDs:         []int32{201},
+		AckPollInterval: &fanout,
 	})
 	require.NoError(t, err)
 }
 
 func TestExecuteWorkerOnlyCommandsReturnFatal(t *testing.T) {
 	exec := &Executor{}
-	err := exec.ExecuteApplyWorkerRuntimeConfigToWorker(context.Background(), &taskgen.ApplyWorkerRuntimeConfigToWorkerParameters{})
+	err := exec.ExecuteApplyWorkerRuntimeConfigToWorker(context.Background(), worker.Task{}, &taskgen.ApplyWorkerRuntimeConfigToWorkerParameters{})
 	require.ErrorIs(t, err, taskcore.ErrFatalTask)
-	err = exec.ExecuteCancelTaskOnWorker(context.Background(), &taskgen.CancelTaskOnWorkerParameters{})
+	err = exec.ExecuteCancelTaskOnWorker(context.Background(), worker.Task{}, &taskgen.CancelTaskOnWorkerParameters{})
 	require.ErrorIs(t, err, taskcore.ErrFatalTask)
-	err = exec.ExecutePauseTaskOnWorker(context.Background(), &taskgen.PauseTaskOnWorkerParameters{})
+	err = exec.ExecutePauseTaskOnWorker(context.Background(), worker.Task{}, &taskgen.PauseTaskOnWorkerParameters{})
 	require.ErrorIs(t, err, taskcore.ErrFatalTask)
 }
 
@@ -192,6 +194,7 @@ func TestExecuteBroadcastUpdateWorkerRuntimeConfigLocalAndRemote(t *testing.T) {
 
 	gomock.InOrder(
 		mockModel.EXPECT().CreateWorkerRuntimeConfig(gomock.Any(), gomock.Any()).Return(&querier.AnclaxWorkerRuntimeConfig{Version: 7}, nil),
+		mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{w1, w2}, nil),
 		mockModel.EXPECT().GetLatestWorkerRuntimeConfig(gomock.Any()).Return(&querier.AnclaxWorkerRuntimeConfig{Version: 7}, nil),
 		mockModel.EXPECT().ListLaggingAliveWorkers(gomock.Any(), gomock.Any()).Return([]uuid.UUID{w1, w2}, nil),
 		mockModel.EXPECT().GetLatestWorkerRuntimeConfig(gomock.Any()).Return(&querier.AnclaxWorkerRuntimeConfig{Version: 7}, nil),
@@ -214,9 +217,9 @@ func TestExecuteBroadcastUpdateWorkerRuntimeConfigLocalAndRemote(t *testing.T) {
 		},
 	)
 
-	err := exec.ExecuteBroadcastUpdateWorkerRuntimeConfig(context.Background(), &taskgen.BroadcastUpdateWorkerRuntimeConfigParameters{
-		RequestID:      &requestID,
-		FanoutInterval: &fanout,
+	err := exec.ExecuteBroadcastUpdateWorkerRuntimeConfig(context.Background(), worker.Task{}, &taskgen.BroadcastUpdateWorkerRuntimeConfigParameters{
+		RequestID:       &requestID,
+		AckPollInterval: &fanout,
 	})
 	require.NoError(t, err)
 }
@@ -225,16 +228,16 @@ func TestExecuteBroadcastCancelTaskInvalidParamsFatal(t *testing.T) {
 	exec := &Executor{}
 	fanout := "bad"
 
-	err := exec.ExecuteBroadcastCancelTask(context.Background(), nil)
+	err := exec.ExecuteBroadcastCancelTask(context.Background(), worker.Task{}, nil)
 	require.ErrorIs(t, err, taskcore.ErrFatalTask)
 
-	err = exec.ExecuteBroadcastCancelTask(context.Background(), &taskgen.BroadcastCancelTaskParameters{})
+	err = exec.ExecuteBroadcastCancelTask(context.Background(), worker.Task{}, &taskgen.BroadcastCancelTaskParameters{})
 	require.ErrorIs(t, err, taskcore.ErrFatalTask)
 
-	err = exec.ExecuteBroadcastCancelTask(context.Background(), &taskgen.BroadcastCancelTaskParameters{TaskIDs: []int32{0}})
+	err = exec.ExecuteBroadcastCancelTask(context.Background(), worker.Task{}, &taskgen.BroadcastCancelTaskParameters{TaskIDs: []int32{0}})
 	require.ErrorIs(t, err, taskcore.ErrFatalTask)
 
-	err = exec.ExecuteBroadcastCancelTask(context.Background(), &taskgen.BroadcastCancelTaskParameters{TaskIDs: []int32{1}, FanoutInterval: &fanout})
+	err = exec.ExecuteBroadcastCancelTask(context.Background(), worker.Task{}, &taskgen.BroadcastCancelTaskParameters{TaskIDs: []int32{1}, AckPollInterval: &fanout})
 	require.ErrorIs(t, err, taskcore.ErrFatalTask)
 }
 
@@ -242,16 +245,16 @@ func TestExecuteBroadcastPauseTaskInvalidParamsFatal(t *testing.T) {
 	exec := &Executor{}
 	fanout := "bad"
 
-	err := exec.ExecuteBroadcastPauseTask(context.Background(), nil)
+	err := exec.ExecuteBroadcastPauseTask(context.Background(), worker.Task{}, nil)
 	require.ErrorIs(t, err, taskcore.ErrFatalTask)
 
-	err = exec.ExecuteBroadcastPauseTask(context.Background(), &taskgen.BroadcastPauseTaskParameters{})
+	err = exec.ExecuteBroadcastPauseTask(context.Background(), worker.Task{}, &taskgen.BroadcastPauseTaskParameters{})
 	require.ErrorIs(t, err, taskcore.ErrFatalTask)
 
-	err = exec.ExecuteBroadcastPauseTask(context.Background(), &taskgen.BroadcastPauseTaskParameters{TaskIDs: []int32{-1}})
+	err = exec.ExecuteBroadcastPauseTask(context.Background(), worker.Task{}, &taskgen.BroadcastPauseTaskParameters{TaskIDs: []int32{-1}})
 	require.ErrorIs(t, err, taskcore.ErrFatalTask)
 
-	err = exec.ExecuteBroadcastPauseTask(context.Background(), &taskgen.BroadcastPauseTaskParameters{TaskIDs: []int32{1}, FanoutInterval: &fanout})
+	err = exec.ExecuteBroadcastPauseTask(context.Background(), worker.Task{}, &taskgen.BroadcastPauseTaskParameters{TaskIDs: []int32{1}, AckPollInterval: &fanout})
 	require.ErrorIs(t, err, taskcore.ErrFatalTask)
 }
 
@@ -260,22 +263,22 @@ func TestExecuteBroadcastUpdateWorkerRuntimeConfigInvalidParamsFatal(t *testing.
 	fanout := "bad"
 	tooHigh := int32(101)
 
-	err := exec.ExecuteBroadcastUpdateWorkerRuntimeConfig(context.Background(), nil)
+	err := exec.ExecuteBroadcastUpdateWorkerRuntimeConfig(context.Background(), worker.Task{}, nil)
 	require.ErrorIs(t, err, taskcore.ErrFatalTask)
 
-	err = exec.ExecuteBroadcastUpdateWorkerRuntimeConfig(context.Background(), &taskgen.BroadcastUpdateWorkerRuntimeConfigParameters{
+	err = exec.ExecuteBroadcastUpdateWorkerRuntimeConfig(context.Background(), worker.Task{}, &taskgen.BroadcastUpdateWorkerRuntimeConfigParameters{
 		Labels:  []string{"a"},
 		Weights: []int32{},
 	})
 	require.ErrorIs(t, err, taskcore.ErrFatalTask)
 
-	err = exec.ExecuteBroadcastUpdateWorkerRuntimeConfig(context.Background(), &taskgen.BroadcastUpdateWorkerRuntimeConfigParameters{
+	err = exec.ExecuteBroadcastUpdateWorkerRuntimeConfig(context.Background(), worker.Task{}, &taskgen.BroadcastUpdateWorkerRuntimeConfigParameters{
 		MaxStrictPercentage: &tooHigh,
 	})
 	require.ErrorIs(t, err, taskcore.ErrFatalTask)
 
-	err = exec.ExecuteBroadcastUpdateWorkerRuntimeConfig(context.Background(), &taskgen.BroadcastUpdateWorkerRuntimeConfigParameters{
-		FanoutInterval: &fanout,
+	err = exec.ExecuteBroadcastUpdateWorkerRuntimeConfig(context.Background(), worker.Task{}, &taskgen.BroadcastUpdateWorkerRuntimeConfigParameters{
+		AckPollInterval: &fanout,
 	})
 	require.ErrorIs(t, err, taskcore.ErrFatalTask)
 }
@@ -291,7 +294,7 @@ func TestExecuteBroadcastCancelTaskNoAliveWorkers(t *testing.T) {
 	mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{}, nil)
 	mockRunner.EXPECT().RunCancelTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
-	err := exec.ExecuteBroadcastCancelTask(context.Background(), &taskgen.BroadcastCancelTaskParameters{TaskIDs: []int32{1}})
+	err := exec.ExecuteBroadcastCancelTask(context.Background(), worker.Task{}, &taskgen.BroadcastCancelTaskParameters{TaskIDs: []int32{1}})
 	require.NoError(t, err)
 }
 
@@ -305,7 +308,7 @@ func TestExecuteBroadcastCancelTaskListAliveWorkersError(t *testing.T) {
 	errBoom := stdErrors.New("boom")
 	mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return(nil, errBoom)
 
-	err := exec.ExecuteBroadcastCancelTask(context.Background(), &taskgen.BroadcastCancelTaskParameters{TaskIDs: []int32{1}})
+	err := exec.ExecuteBroadcastCancelTask(context.Background(), worker.Task{}, &taskgen.BroadcastCancelTaskParameters{TaskIDs: []int32{1}})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "list online workers")
 }
@@ -318,10 +321,11 @@ func TestExecuteBroadcastUpdateWorkerRuntimeConfigSuperseded(t *testing.T) {
 	exec := &Executor{model: mockModel, now: time.Now, runtimeConfigHeartbeatTTL: 9 * time.Second}
 
 	mockModel.EXPECT().CreateWorkerRuntimeConfig(gomock.Any(), gomock.Any()).Return(&querier.AnclaxWorkerRuntimeConfig{Version: 1}, nil)
+	mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{}, nil)
 	mockModel.EXPECT().GetLatestWorkerRuntimeConfig(gomock.Any()).Return(&querier.AnclaxWorkerRuntimeConfig{Version: 2}, nil)
 	mockModel.EXPECT().ListLaggingAliveWorkers(gomock.Any(), gomock.Any()).Times(0)
 
-	err := exec.ExecuteBroadcastUpdateWorkerRuntimeConfig(context.Background(), &taskgen.BroadcastUpdateWorkerRuntimeConfigParameters{})
+	err := exec.ExecuteBroadcastUpdateWorkerRuntimeConfig(context.Background(), worker.Task{}, &taskgen.BroadcastUpdateWorkerRuntimeConfigParameters{})
 	require.NoError(t, err)
 }
 
@@ -335,7 +339,7 @@ func TestExecuteBroadcastUpdateWorkerRuntimeConfigCreateError(t *testing.T) {
 	errBoom := stdErrors.New("boom")
 	mockModel.EXPECT().CreateWorkerRuntimeConfig(gomock.Any(), gomock.Any()).Return(nil, errBoom)
 
-	err := exec.ExecuteBroadcastUpdateWorkerRuntimeConfig(context.Background(), &taskgen.BroadcastUpdateWorkerRuntimeConfigParameters{})
+	err := exec.ExecuteBroadcastUpdateWorkerRuntimeConfig(context.Background(), worker.Task{}, &taskgen.BroadcastUpdateWorkerRuntimeConfigParameters{})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "create worker runtime config")
 }
@@ -350,11 +354,10 @@ func TestExecuteBroadcastUpdateWorkerRuntimeConfigRunnerRequired(t *testing.T) {
 	w1 := uuid.New()
 	gomock.InOrder(
 		mockModel.EXPECT().CreateWorkerRuntimeConfig(gomock.Any(), gomock.Any()).Return(&querier.AnclaxWorkerRuntimeConfig{Version: 1}, nil),
-		mockModel.EXPECT().GetLatestWorkerRuntimeConfig(gomock.Any()).Return(&querier.AnclaxWorkerRuntimeConfig{Version: 1}, nil),
-		mockModel.EXPECT().ListLaggingAliveWorkers(gomock.Any(), gomock.Any()).Return([]uuid.UUID{w1}, nil),
+		mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{w1}, nil),
 	)
 
-	err := exec.ExecuteBroadcastUpdateWorkerRuntimeConfig(context.Background(), &taskgen.BroadcastUpdateWorkerRuntimeConfigParameters{})
+	err := exec.ExecuteBroadcastUpdateWorkerRuntimeConfig(context.Background(), worker.Task{}, &taskgen.BroadcastUpdateWorkerRuntimeConfigParameters{})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "task runner is required")
 }
@@ -447,16 +450,28 @@ func TestEnqueueHelpersRunnerError(t *testing.T) {
 	errBoom := stdErrors.New("enqueue")
 
 	mockRunner.EXPECT().RunApplyWorkerRuntimeConfigToWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int32(0), errBoom)
-	err := exec.enqueueApplyRuntimeConfigToWorker(context.Background(), "r", wid, 1)
+	err := exec.enqueueApplyRuntimeConfigToWorker(context.Background(), 0, "r", wid, 1)
 	require.Error(t, err)
 
 	mockRunner.EXPECT().RunCancelTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int32(0), errBoom)
-	err = exec.enqueueCancelTaskOnWorker(context.Background(), "r", wid, []int32{1})
+	err = exec.enqueueCancelTaskOnWorker(context.Background(), 0, "r", wid, []int32{1})
 	require.Error(t, err)
 
 	mockRunner.EXPECT().RunPauseTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int32(0), errBoom)
-	err = exec.enqueuePauseTaskOnWorker(context.Background(), "r", wid, []int32{1})
+	err = exec.enqueuePauseTaskOnWorker(context.Background(), 0, "r", wid, []int32{1})
 	require.Error(t, err)
+}
+
+func TestBroadcastChildTaskOverridesUsesParentTaskID(t *testing.T) {
+	exec := &Executor{}
+	overrides := exec.broadcastChildTaskOverrides(55, taskcore.WithUniqueTag("u"))
+	task := &apigen.Task{Attributes: apigen.TaskAttributes{}}
+	for _, override := range overrides {
+		require.NoError(t, override(task))
+	}
+	require.NotNil(t, task.ParentTaskId)
+	require.Equal(t, int32(55), *task.ParentTaskId)
+	require.NotNil(t, task.UniqueTag)
 }
 
 func TestHelperEdgeCases(t *testing.T) {
@@ -467,11 +482,11 @@ func TestHelperEdgeCases(t *testing.T) {
 	_, err = normalizeBroadcastTaskIDs(nil)
 	require.Error(t, err)
 
-	d, err := parseFanoutInterval(nil)
+	d, err := parseAckPollInterval(nil)
 	require.NoError(t, err)
 	require.Equal(t, time.Second, d)
 
-	_, err = parseFanoutInterval(strPtr("-1s"))
+	_, err = parseAckPollInterval(strPtr("-1s"))
 	require.Error(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -480,7 +495,7 @@ func TestHelperEdgeCases(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 
 	exec := &Executor{}
-	err = exec.enqueuePauseTaskOnWorker(context.Background(), "r", uuid.New(), []int32{1})
+	err = exec.enqueuePauseTaskOnWorker(context.Background(), 0, "r", uuid.New(), []int32{1})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "task runner is required")
 }

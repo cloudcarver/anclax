@@ -31,10 +31,10 @@ func TestWorkerControlTaskHandlerApplyRuntimeConfigToTargetWorker(t *testing.T) 
 	mockWorker.EXPECT().WorkerID().Return("w-1")
 	mockWorker.EXPECT().NotifyRuntimeConfig(requestID)
 
-	err = handler.HandleTask(context.Background(), worker.NewTaskSpec(apigen.TaskSpec{
+	err = handler.HandleTask(context.Background(), worker.Task{Spec: apigen.TaskSpec{
 		Type:    taskgen.ApplyWorkerRuntimeConfigToWorker,
 		Payload: payload,
-	}))
+	}})
 	require.NoError(t, err)
 }
 
@@ -55,10 +55,10 @@ func TestWorkerControlTaskHandlerApplyRuntimeConfigToDifferentWorkerNoop(t *test
 	mockWorker.EXPECT().WorkerID().Return("w-1")
 	mockWorker.EXPECT().NotifyRuntimeConfig(gomock.Any()).Times(0)
 
-	err = handler.HandleTask(context.Background(), worker.NewTaskSpec(apigen.TaskSpec{
+	err = handler.HandleTask(context.Background(), worker.Task{Spec: apigen.TaskSpec{
 		Type:    taskgen.ApplyWorkerRuntimeConfigToWorker,
 		Payload: payload,
-	}))
+	}})
 	require.NoError(t, err)
 }
 
@@ -69,7 +69,7 @@ func TestWorkerControlTaskHandlerUnknownTaskType(t *testing.T) {
 	mockWorker := worker.NewMockWorkerInterface(ctrl)
 	handler := NewWorkerControlTaskHandler(mockWorker)
 
-	err := handler.HandleTask(context.Background(), worker.NewTaskSpec(apigen.TaskSpec{Type: "unknown"}))
+	err := handler.HandleTask(context.Background(), worker.Task{Spec: apigen.TaskSpec{Type: "unknown"}})
 	require.ErrorIs(t, err, worker.ErrUnknownTaskType)
 }
 
@@ -101,10 +101,10 @@ func TestWorkerControlTaskHandlerEmptyTargetWorkerIDAppliesToLocal(t *testing.T)
 	mockWorker.EXPECT().WorkerID().Times(0)
 	mockWorker.EXPECT().InterruptTasks([]int32{9}, taskcore.ErrTaskCancelled)
 
-	err = handler.HandleTask(context.Background(), worker.NewTaskSpec(apigen.TaskSpec{
+	err = handler.HandleTask(context.Background(), worker.Task{Spec: apigen.TaskSpec{
 		Type:    taskgen.CancelTaskOnWorker,
 		Payload: payload,
-	}))
+	}})
 	require.NoError(t, err)
 }
 
@@ -115,10 +115,10 @@ func TestWorkerControlTaskHandlerPayloadParseError(t *testing.T) {
 	mockWorker := worker.NewMockWorkerInterface(ctrl)
 	handler := NewWorkerControlTaskHandler(mockWorker)
 
-	err := handler.HandleTask(context.Background(), worker.NewTaskSpec(apigen.TaskSpec{
+	err := handler.HandleTask(context.Background(), worker.Task{Spec: apigen.TaskSpec{
 		Type:    taskgen.CancelTaskOnWorker,
 		Payload: []byte("not-json"),
-	}))
+	}})
 	require.Error(t, err)
 }
 
@@ -143,15 +143,15 @@ func TestWorkerControlTaskHandlerCancelAndPause(t *testing.T) {
 	mockWorker.EXPECT().WorkerID().Return("w-1")
 	mockWorker.EXPECT().InterruptTasks(taskIDs, taskcore.ErrTaskPaused)
 
-	err = handler.HandleTask(context.Background(), worker.NewTaskSpec(apigen.TaskSpec{
+	err = handler.HandleTask(context.Background(), worker.Task{Spec: apigen.TaskSpec{
 		Type:    taskgen.CancelTaskOnWorker,
 		Payload: cancelPayload,
-	}))
+	}})
 	require.NoError(t, err)
 
-	err = handler.HandleTask(context.Background(), worker.NewTaskSpec(apigen.TaskSpec{
+	err = handler.HandleTask(context.Background(), worker.Task{Spec: apigen.TaskSpec{
 		Type:    taskgen.PauseTaskOnWorker,
 		Payload: pausePayload,
-	}))
+	}})
 	require.NoError(t, err)
 }

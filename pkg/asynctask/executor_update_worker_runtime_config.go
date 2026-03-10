@@ -13,6 +13,7 @@ import (
 	"github.com/cloudcarver/anclax/pkg/metrics"
 	"github.com/cloudcarver/anclax/pkg/taskcore/pgnotify"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
+	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
@@ -21,7 +22,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (e *Executor) ExecuteUpdateWorkerRuntimeConfig(ctx context.Context, params *taskgen.UpdateWorkerRuntimeConfigParameters) error {
+func (e *Executor) ExecuteUpdateWorkerRuntimeConfig(ctx context.Context, _ worker.Task, params *taskgen.UpdateWorkerRuntimeConfigParameters) error {
 	startAt := e.now()
 	requestID := ""
 	if params.RequestID != nil && *params.RequestID != "" {

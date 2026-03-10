@@ -4,10 +4,11 @@ import (
 	"context"
 	"time"
 
+	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
 )
 
-func (e *Executor) ExecuteStressProbe(ctx context.Context, params *taskgen.StressProbeParameters) error {
+func (e *Executor) ExecuteStressProbe(ctx context.Context, _ worker.Task, params *taskgen.StressProbeParameters) error {
 	sleep := time.Duration(params.SleepMs) * time.Millisecond
 	if sleep <= 0 {
 		return nil
@@ -21,4 +22,3 @@ func (e *Executor) ExecuteStressProbe(ctx context.Context, params *taskgen.Stres
 		return nil
 	}
 }
-

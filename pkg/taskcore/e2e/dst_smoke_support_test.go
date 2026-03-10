@@ -143,7 +143,7 @@ func newSmokeWorkerHandler() *smokeWorkerHandler {
 	}
 }
 
-func (h *smokeWorkerHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) error {
+func (h *smokeWorkerHandler) HandleTask(ctx context.Context, spec worker.Task) error {
 	if spec.GetType() != "smoke-worker" {
 		return worker.ErrUnknownTaskType
 	}
@@ -188,7 +188,7 @@ func newRetryWorkerHandler() *retryWorkerHandler {
 	}
 }
 
-func (h *retryWorkerHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) error {
+func (h *retryWorkerHandler) HandleTask(ctx context.Context, spec worker.Task) error {
 	if spec.GetType() != "smoke-retry" {
 		return worker.ErrUnknownTaskType
 	}
@@ -223,7 +223,7 @@ func newCronWorkerHandler() *cronWorkerHandler {
 	return &cronWorkerHandler{ranCh: make(chan struct{})}
 }
 
-func (h *cronWorkerHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) error {
+func (h *cronWorkerHandler) HandleTask(ctx context.Context, spec worker.Task) error {
 	if spec.GetType() != "smoke-cron" {
 		return worker.ErrUnknownTaskType
 	}
@@ -243,7 +243,7 @@ func (h *cronWorkerHandler) ran() <-chan struct{} {
 
 type noopWorkerHandler struct{}
 
-func (h *noopWorkerHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) error {
+func (h *noopWorkerHandler) HandleTask(ctx context.Context, spec worker.Task) error {
 	return worker.ErrUnknownTaskType
 }
 
@@ -269,7 +269,7 @@ func newBlockingWorkerHandler(taskType string) *blockingWorkerHandler {
 	}
 }
 
-func (h *blockingWorkerHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) error {
+func (h *blockingWorkerHandler) HandleTask(ctx context.Context, spec worker.Task) error {
 	if spec.GetType() != h.taskType {
 		return worker.ErrUnknownTaskType
 	}
@@ -311,7 +311,7 @@ func newSignalWorkerHandler(taskType string) *signalWorkerHandler {
 	return &signalWorkerHandler{taskType: taskType, doneCh: make(chan struct{})}
 }
 
-func (h *signalWorkerHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) error {
+func (h *signalWorkerHandler) HandleTask(ctx context.Context, spec worker.Task) error {
 	if spec.GetType() != h.taskType {
 		return worker.ErrUnknownTaskType
 	}
@@ -339,7 +339,7 @@ func newFailureWorkerHandler(taskType string, failErr error) *failureWorkerHandl
 	return &failureWorkerHandler{taskType: taskType, failErr: failErr, failedCh: make(chan struct{})}
 }
 
-func (h *failureWorkerHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) error {
+func (h *failureWorkerHandler) HandleTask(ctx context.Context, spec worker.Task) error {
 	if spec.GetType() != h.taskType {
 		return worker.ErrUnknownTaskType
 	}
@@ -1300,7 +1300,7 @@ func newRuntimeCaptureWorkerHandler(taskType string, workerName string, captures
 	return h
 }
 
-func (h *runtimeCaptureWorkerHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) error {
+func (h *runtimeCaptureWorkerHandler) HandleTask(ctx context.Context, spec worker.Task) error {
 	if spec.GetType() != h.taskType {
 		return worker.ErrUnknownTaskType
 	}
@@ -1382,7 +1382,7 @@ func newRuntimeContentionWorkerHandler(taskType string, tracker *runtimeContenti
 	}
 }
 
-func (h *runtimeContentionWorkerHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) error {
+func (h *runtimeContentionWorkerHandler) HandleTask(ctx context.Context, spec worker.Task) error {
 	if spec.GetType() != h.taskType {
 		return worker.ErrUnknownTaskType
 	}

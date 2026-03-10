@@ -109,9 +109,9 @@ tasks:
             type: integer
             format: int32
           description: Weights for labels by index
-        fanoutInterval:
+        ackPollInterval:
           type: string
-          description: Poll interval used while waiting for alive workers to converge
+          description: Poll interval used while waiting for worker convergence
     retryPolicy:
       interval: 2s
       maxAttempts: -1
@@ -156,7 +156,7 @@ tasks:
             type: integer
             format: int32
           description: Task IDs to interrupt on each target worker
-        fanoutInterval:
+        ackPollInterval:
           type: string
           description: Poll interval used while waiting worker ack tasks
     retryPolicy:
@@ -205,7 +205,7 @@ tasks:
             type: integer
             format: int32
           description: Task IDs to interrupt on each target worker
-        fanoutInterval:
+        ackPollInterval:
           type: string
           description: Poll interval used while waiting worker ack tasks
     retryPolicy:

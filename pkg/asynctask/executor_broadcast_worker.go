@@ -10,6 +10,7 @@ import (
 	"github.com/cloudcarver/anclax/pkg/metrics"
 	"github.com/cloudcarver/anclax/pkg/taskcore/pgnotify"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
+	taskworker "github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
@@ -18,7 +19,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (e *Executor) ExecuteBroadcastUpdateWorkerRuntimeConfig(ctx context.Context, params *taskgen.BroadcastUpdateWorkerRuntimeConfigParameters) error {
+func (e *Executor) ExecuteBroadcastUpdateWorkerRuntimeConfig(ctx context.Context, task taskworker.Task, params *taskgen.BroadcastUpdateWorkerRuntimeConfigParameters) error {
 	if params == nil {
 		return errors.Wrap(taskcore.ErrFatalTask, "broadcast update worker runtime config params cannot be nil")
 	}
@@ -28,7 +29,7 @@ func (e *Executor) ExecuteBroadcastUpdateWorkerRuntimeConfig(ctx context.Context
 		requestID = uuid.NewString()
 	}
 
-	fanoutInterval, err := parseFanoutInterval(params.FanoutInterval)
+	ackPollInterval, err := parseAckPollInterval(params.AckPollInterval)
 	if err != nil {
 		return errors.Wrap(taskcore.ErrFatalTask, err.Error())
 	}
@@ -50,10 +51,23 @@ func (e *Executor) ExecuteBroadcastUpdateWorkerRuntimeConfig(ctx context.Context
 	if err != nil {
 		return errors.Wrap(err, "create worker runtime config")
 	}
-	heartbeatTTL := e.workerHeartbeatTTL()
 	targetVersion := created.Version
 	localWorkerID := e.localWorkerID()
+	targetWorkers, err := e.listAliveWorkers(ctx)
+	if err != nil {
+		return err
+	}
+	for _, workerID := range targetWorkers {
+		if localWorkerID != "" && workerID.String() == localWorkerID && e.localWorker != nil {
+			e.localWorker.NotifyRuntimeConfig(requestID)
+			continue
+		}
+		if err := e.enqueueApplyRuntimeConfigToWorker(ctx, task.ID, requestID, workerID, targetVersion); err != nil {
+			return err
+		}
+	}
 
+	heartbeatTTL := e.workerHeartbeatTTL()
 	for {
 		latest, err := e.model.GetLatestWorkerRuntimeConfig(ctx)
 		if err != nil {
@@ -63,7 +77,6 @@ func (e *Executor) ExecuteBroadcastUpdateWorkerRuntimeConfig(ctx context.Context
 			metrics.RuntimeConfigSupersededTotal.Inc()
 			return nil
 		}
-
 		laggingWorkers, err := e.model.ListLaggingAliveWorkers(ctx, querier.ListLaggingAliveWorkersParams{
 			HeartbeatCutoff: e.now().Add(-heartbeatTTL),
 			Version:         targetVersion,
@@ -76,28 +89,17 @@ func (e *Executor) ExecuteBroadcastUpdateWorkerRuntimeConfig(ctx context.Context
 			metrics.RuntimeConfigConvergenceSeconds.Observe(e.now().Sub(startAt).Seconds())
 			return nil
 		}
-
-		for _, workerID := range laggingWorkers {
-			if localWorkerID != "" && workerID.String() == localWorkerID && e.localWorker != nil {
-				e.localWorker.NotifyRuntimeConfig(requestID)
-				continue
-			}
-			if err := e.enqueueApplyRuntimeConfigToWorker(ctx, requestID, workerID, targetVersion); err != nil {
-				return err
-			}
-		}
-
-		if err := sleepOrDone(ctx, fanoutInterval); err != nil {
+		if err := sleepOrDone(ctx, ackPollInterval); err != nil {
 			return err
 		}
 	}
 }
 
-func (e *Executor) ExecuteApplyWorkerRuntimeConfigToWorker(ctx context.Context, params *taskgen.ApplyWorkerRuntimeConfigToWorkerParameters) error {
+func (e *Executor) ExecuteApplyWorkerRuntimeConfigToWorker(ctx context.Context, _ taskworker.Task, params *taskgen.ApplyWorkerRuntimeConfigToWorkerParameters) error {
 	return errors.Wrap(taskcore.ErrFatalTask, "applyWorkerRuntimeConfigToWorker must be handled by worker control task handler")
 }
 
-func (e *Executor) ExecuteBroadcastCancelTask(ctx context.Context, params *taskgen.BroadcastCancelTaskParameters) error {
+func (e *Executor) ExecuteBroadcastCancelTask(ctx context.Context, task taskworker.Task, params *taskgen.BroadcastCancelTaskParameters) error {
 	if params == nil {
 		return errors.Wrap(taskcore.ErrFatalTask, "broadcast cancel task params cannot be nil")
 	}
@@ -109,7 +111,7 @@ func (e *Executor) ExecuteBroadcastCancelTask(ctx context.Context, params *taskg
 	if requestID == "" {
 		requestID = uuid.NewString()
 	}
-	fanoutInterval, err := parseFanoutInterval(params.FanoutInterval)
+	ackPollInterval, err := parseAckPollInterval(params.AckPollInterval)
 	if err != nil {
 		return errors.Wrap(taskcore.ErrFatalTask, err.Error())
 	}
@@ -129,7 +131,7 @@ func (e *Executor) ExecuteBroadcastCancelTask(ctx context.Context, params *taskg
 			e.localWorker.InterruptTasks(taskIDs, taskcore.ErrTaskCancelled)
 			continue
 		}
-		if err := e.enqueueCancelTaskOnWorker(ctx, requestID, workerID, taskIDs); err != nil {
+		if err := e.enqueueCancelTaskOnWorker(ctx, task.ID, requestID, workerID, taskIDs); err != nil {
 			return err
 		}
 		waitTargets = append(waitTargets, workerID)
@@ -138,16 +140,16 @@ func (e *Executor) ExecuteBroadcastCancelTask(ctx context.Context, params *taskg
 		return nil
 	}
 
-	return e.waitForWorkerCommandTasks(ctx, waitTargets, fanoutInterval, func(workerID uuid.UUID) string {
+	return e.waitForWorkerCommandTasks(ctx, waitTargets, ackPollInterval, func(workerID uuid.UUID) string {
 		return cancelOnWorkerUniqueTag(requestID, workerID)
 	})
 }
 
-func (e *Executor) ExecuteCancelTaskOnWorker(ctx context.Context, params *taskgen.CancelTaskOnWorkerParameters) error {
+func (e *Executor) ExecuteCancelTaskOnWorker(ctx context.Context, _ taskworker.Task, params *taskgen.CancelTaskOnWorkerParameters) error {
 	return errors.Wrap(taskcore.ErrFatalTask, "cancelTaskOnWorker must be handled by worker control task handler")
 }
 
-func (e *Executor) ExecuteBroadcastPauseTask(ctx context.Context, params *taskgen.BroadcastPauseTaskParameters) error {
+func (e *Executor) ExecuteBroadcastPauseTask(ctx context.Context, task taskworker.Task, params *taskgen.BroadcastPauseTaskParameters) error {
 	if params == nil {
 		return errors.Wrap(taskcore.ErrFatalTask, "broadcast pause task params cannot be nil")
 	}
@@ -159,7 +161,7 @@ func (e *Executor) ExecuteBroadcastPauseTask(ctx context.Context, params *taskge
 	if requestID == "" {
 		requestID = uuid.NewString()
 	}
-	fanoutInterval, err := parseFanoutInterval(params.FanoutInterval)
+	ackPollInterval, err := parseAckPollInterval(params.AckPollInterval)
 	if err != nil {
 		return errors.Wrap(taskcore.ErrFatalTask, err.Error())
 	}
@@ -179,7 +181,7 @@ func (e *Executor) ExecuteBroadcastPauseTask(ctx context.Context, params *taskge
 			e.localWorker.InterruptTasks(taskIDs, taskcore.ErrTaskPaused)
 			continue
 		}
-		if err := e.enqueuePauseTaskOnWorker(ctx, requestID, workerID, taskIDs); err != nil {
+		if err := e.enqueuePauseTaskOnWorker(ctx, task.ID, requestID, workerID, taskIDs); err != nil {
 			return err
 		}
 		waitTargets = append(waitTargets, workerID)
@@ -188,12 +190,12 @@ func (e *Executor) ExecuteBroadcastPauseTask(ctx context.Context, params *taskge
 		return nil
 	}
 
-	return e.waitForWorkerCommandTasks(ctx, waitTargets, fanoutInterval, func(workerID uuid.UUID) string {
+	return e.waitForWorkerCommandTasks(ctx, waitTargets, ackPollInterval, func(workerID uuid.UUID) string {
 		return pauseOnWorkerUniqueTag(requestID, workerID)
 	})
 }
 
-func (e *Executor) ExecutePauseTaskOnWorker(ctx context.Context, params *taskgen.PauseTaskOnWorkerParameters) error {
+func (e *Executor) ExecutePauseTaskOnWorker(ctx context.Context, _ taskworker.Task, params *taskgen.PauseTaskOnWorkerParameters) error {
 	return errors.Wrap(taskcore.ErrFatalTask, "pauseTaskOnWorker must be handled by worker control task handler")
 }
 
@@ -227,7 +229,7 @@ func (e *Executor) workerHeartbeatTTL() time.Duration {
 	return heartbeatTTL
 }
 
-func (e *Executor) enqueueApplyRuntimeConfigToWorker(ctx context.Context, requestID string, workerID uuid.UUID, version int64) error {
+func (e *Executor) enqueueApplyRuntimeConfigToWorker(ctx context.Context, parentTaskID int32, requestID string, workerID uuid.UUID, version int64) error {
 	if e.runner == nil {
 		return errors.New("task runner is required for broadcast runtime config")
 	}
@@ -238,17 +240,18 @@ func (e *Executor) enqueueApplyRuntimeConfigToWorker(ctx context.Context, reques
 	if requestID != "" {
 		params.RequestID = &requestID
 	}
-	_, err := e.runner.RunApplyWorkerRuntimeConfigToWorker(ctx, params,
+	overrides := e.broadcastChildTaskOverrides(parentTaskID,
 		taskcore.WithLabels([]string{workerLabel(workerID)}),
 		taskcore.WithUniqueTag(applyRuntimeConfigUniqueTag(requestID, workerID, version)),
 	)
+	_, err := e.runner.RunApplyWorkerRuntimeConfigToWorker(ctx, params, overrides...)
 	if err != nil {
 		return errors.Wrapf(err, "enqueue apply runtime config task for worker %s", workerID)
 	}
 	return nil
 }
 
-func (e *Executor) enqueueCancelTaskOnWorker(ctx context.Context, requestID string, workerID uuid.UUID, taskIDs []int32) error {
+func (e *Executor) enqueueCancelTaskOnWorker(ctx context.Context, parentTaskID int32, requestID string, workerID uuid.UUID, taskIDs []int32) error {
 	if e.runner == nil {
 		return errors.New("task runner is required for broadcast cancel task")
 	}
@@ -259,17 +262,18 @@ func (e *Executor) enqueueCancelTaskOnWorker(ctx context.Context, requestID stri
 	if requestID != "" {
 		params.RequestID = &requestID
 	}
-	_, err := e.runner.RunCancelTaskOnWorker(ctx, params,
+	overrides := e.broadcastChildTaskOverrides(parentTaskID,
 		taskcore.WithLabels([]string{workerLabel(workerID)}),
 		taskcore.WithUniqueTag(cancelOnWorkerUniqueTag(requestID, workerID)),
 	)
+	_, err := e.runner.RunCancelTaskOnWorker(ctx, params, overrides...)
 	if err != nil {
 		return errors.Wrapf(err, "enqueue cancel task command for worker %s", workerID)
 	}
 	return nil
 }
 
-func (e *Executor) enqueuePauseTaskOnWorker(ctx context.Context, requestID string, workerID uuid.UUID, taskIDs []int32) error {
+func (e *Executor) enqueuePauseTaskOnWorker(ctx context.Context, parentTaskID int32, requestID string, workerID uuid.UUID, taskIDs []int32) error {
 	if e.runner == nil {
 		return errors.New("task runner is required for broadcast pause task")
 	}
@@ -280,10 +284,11 @@ func (e *Executor) enqueuePauseTaskOnWorker(ctx context.Context, requestID strin
 	if requestID != "" {
 		params.RequestID = &requestID
 	}
-	_, err := e.runner.RunPauseTaskOnWorker(ctx, params,
+	overrides := e.broadcastChildTaskOverrides(parentTaskID,
 		taskcore.WithLabels([]string{workerLabel(workerID)}),
 		taskcore.WithUniqueTag(pauseOnWorkerUniqueTag(requestID, workerID)),
 	)
+	_, err := e.runner.RunPauseTaskOnWorker(ctx, params, overrides...)
 	if err != nil {
 		return errors.Wrapf(err, "enqueue pause task command for worker %s", workerID)
 	}
@@ -367,19 +372,27 @@ func normalizeBroadcastTaskIDs(taskIDs []int32) ([]int32, error) {
 	return out, nil
 }
 
-func parseFanoutInterval(raw *string) (time.Duration, error) {
+func parseAckPollInterval(raw *string) (time.Duration, error) {
 	interval := time.Second
 	if raw == nil || *raw == "" {
 		return interval, nil
 	}
 	parsed, err := time.ParseDuration(*raw)
 	if err != nil {
-		return 0, errors.Wrap(err, "invalid fanoutInterval duration")
+		return 0, errors.Wrap(err, "invalid ackPollInterval duration")
 	}
 	if parsed <= 0 {
-		return 0, errors.New("fanoutInterval must be positive")
+		return 0, errors.New("ackPollInterval must be positive")
 	}
 	return parsed, nil
+}
+
+func (e *Executor) broadcastChildTaskOverrides(parentTaskID int32, overrides ...taskcore.TaskOverride) []taskcore.TaskOverride {
+	out := append([]taskcore.TaskOverride{}, overrides...)
+	if parentTaskID > 0 {
+		out = append(out, taskcore.WithParentTaskID(parentTaskID))
+	}
+	return out
 }
 
 func optionalRequestID(requestID *string) string {

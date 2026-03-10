@@ -28,7 +28,7 @@ func NewTaskSpec(spec apigen.TaskSpec) TaskSpec {
 }
 
 type TaskHandler interface {
-	HandleTask(ctx context.Context, spec TaskSpec) error
+	HandleTask(ctx context.Context, task Task) error
 	OnTaskFailed(ctx context.Context, tx core.Tx, failedTaskSpec TaskSpec, taskID int32) error
 	RegisterTaskHandler(handler TaskHandler)
 }

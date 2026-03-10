@@ -15,6 +15,7 @@ import (
 
 	core "github.com/cloudcarver/anclax/core"
 	store "github.com/cloudcarver/anclax/pkg/taskcore/store"
+	worker "github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -467,143 +468,143 @@ func (m *MockExecutorInterface) EXPECT() *MockExecutorInterfaceMockRecorder {
 }
 
 // ExecuteApplyWorkerRuntimeConfigToWorker mocks base method.
-func (m *MockExecutorInterface) ExecuteApplyWorkerRuntimeConfigToWorker(ctx context.Context, params *ApplyWorkerRuntimeConfigToWorkerParameters) error {
+func (m *MockExecutorInterface) ExecuteApplyWorkerRuntimeConfigToWorker(ctx context.Context, task worker.Task, params *ApplyWorkerRuntimeConfigToWorkerParameters) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ExecuteApplyWorkerRuntimeConfigToWorker", ctx, params)
+	ret := m.ctrl.Call(m, "ExecuteApplyWorkerRuntimeConfigToWorker", ctx, task, params)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // ExecuteApplyWorkerRuntimeConfigToWorker indicates an expected call of ExecuteApplyWorkerRuntimeConfigToWorker.
-func (mr *MockExecutorInterfaceMockRecorder) ExecuteApplyWorkerRuntimeConfigToWorker(ctx, params any) *gomock.Call {
+func (mr *MockExecutorInterfaceMockRecorder) ExecuteApplyWorkerRuntimeConfigToWorker(ctx, task, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteApplyWorkerRuntimeConfigToWorker", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteApplyWorkerRuntimeConfigToWorker), ctx, params)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteApplyWorkerRuntimeConfigToWorker", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteApplyWorkerRuntimeConfigToWorker), ctx, task, params)
 }
 
 // ExecuteBroadcastCancelTask mocks base method.
-func (m *MockExecutorInterface) ExecuteBroadcastCancelTask(ctx context.Context, params *BroadcastCancelTaskParameters) error {
+func (m *MockExecutorInterface) ExecuteBroadcastCancelTask(ctx context.Context, task worker.Task, params *BroadcastCancelTaskParameters) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ExecuteBroadcastCancelTask", ctx, params)
+	ret := m.ctrl.Call(m, "ExecuteBroadcastCancelTask", ctx, task, params)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // ExecuteBroadcastCancelTask indicates an expected call of ExecuteBroadcastCancelTask.
-func (mr *MockExecutorInterfaceMockRecorder) ExecuteBroadcastCancelTask(ctx, params any) *gomock.Call {
+func (mr *MockExecutorInterfaceMockRecorder) ExecuteBroadcastCancelTask(ctx, task, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteBroadcastCancelTask", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteBroadcastCancelTask), ctx, params)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteBroadcastCancelTask", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteBroadcastCancelTask), ctx, task, params)
 }
 
 // ExecuteBroadcastPauseTask mocks base method.
-func (m *MockExecutorInterface) ExecuteBroadcastPauseTask(ctx context.Context, params *BroadcastPauseTaskParameters) error {
+func (m *MockExecutorInterface) ExecuteBroadcastPauseTask(ctx context.Context, task worker.Task, params *BroadcastPauseTaskParameters) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ExecuteBroadcastPauseTask", ctx, params)
+	ret := m.ctrl.Call(m, "ExecuteBroadcastPauseTask", ctx, task, params)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // ExecuteBroadcastPauseTask indicates an expected call of ExecuteBroadcastPauseTask.
-func (mr *MockExecutorInterfaceMockRecorder) ExecuteBroadcastPauseTask(ctx, params any) *gomock.Call {
+func (mr *MockExecutorInterfaceMockRecorder) ExecuteBroadcastPauseTask(ctx, task, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteBroadcastPauseTask", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteBroadcastPauseTask), ctx, params)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteBroadcastPauseTask", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteBroadcastPauseTask), ctx, task, params)
 }
 
 // ExecuteBroadcastUpdateWorkerRuntimeConfig mocks base method.
-func (m *MockExecutorInterface) ExecuteBroadcastUpdateWorkerRuntimeConfig(ctx context.Context, params *BroadcastUpdateWorkerRuntimeConfigParameters) error {
+func (m *MockExecutorInterface) ExecuteBroadcastUpdateWorkerRuntimeConfig(ctx context.Context, task worker.Task, params *BroadcastUpdateWorkerRuntimeConfigParameters) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ExecuteBroadcastUpdateWorkerRuntimeConfig", ctx, params)
+	ret := m.ctrl.Call(m, "ExecuteBroadcastUpdateWorkerRuntimeConfig", ctx, task, params)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // ExecuteBroadcastUpdateWorkerRuntimeConfig indicates an expected call of ExecuteBroadcastUpdateWorkerRuntimeConfig.
-func (mr *MockExecutorInterfaceMockRecorder) ExecuteBroadcastUpdateWorkerRuntimeConfig(ctx, params any) *gomock.Call {
+func (mr *MockExecutorInterfaceMockRecorder) ExecuteBroadcastUpdateWorkerRuntimeConfig(ctx, task, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteBroadcastUpdateWorkerRuntimeConfig", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteBroadcastUpdateWorkerRuntimeConfig), ctx, params)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteBroadcastUpdateWorkerRuntimeConfig", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteBroadcastUpdateWorkerRuntimeConfig), ctx, task, params)
 }
 
 // ExecuteCancelTaskOnWorker mocks base method.
-func (m *MockExecutorInterface) ExecuteCancelTaskOnWorker(ctx context.Context, params *CancelTaskOnWorkerParameters) error {
+func (m *MockExecutorInterface) ExecuteCancelTaskOnWorker(ctx context.Context, task worker.Task, params *CancelTaskOnWorkerParameters) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ExecuteCancelTaskOnWorker", ctx, params)
+	ret := m.ctrl.Call(m, "ExecuteCancelTaskOnWorker", ctx, task, params)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // ExecuteCancelTaskOnWorker indicates an expected call of ExecuteCancelTaskOnWorker.
-func (mr *MockExecutorInterfaceMockRecorder) ExecuteCancelTaskOnWorker(ctx, params any) *gomock.Call {
+func (mr *MockExecutorInterfaceMockRecorder) ExecuteCancelTaskOnWorker(ctx, task, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteCancelTaskOnWorker", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteCancelTaskOnWorker), ctx, params)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteCancelTaskOnWorker", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteCancelTaskOnWorker), ctx, task, params)
 }
 
 // ExecuteDeleteOpaqueKey mocks base method.
-func (m *MockExecutorInterface) ExecuteDeleteOpaqueKey(ctx context.Context, params *DeleteOpaqueKeyParameters) error {
+func (m *MockExecutorInterface) ExecuteDeleteOpaqueKey(ctx context.Context, task worker.Task, params *DeleteOpaqueKeyParameters) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ExecuteDeleteOpaqueKey", ctx, params)
+	ret := m.ctrl.Call(m, "ExecuteDeleteOpaqueKey", ctx, task, params)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // ExecuteDeleteOpaqueKey indicates an expected call of ExecuteDeleteOpaqueKey.
-func (mr *MockExecutorInterfaceMockRecorder) ExecuteDeleteOpaqueKey(ctx, params any) *gomock.Call {
+func (mr *MockExecutorInterfaceMockRecorder) ExecuteDeleteOpaqueKey(ctx, task, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteDeleteOpaqueKey", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteDeleteOpaqueKey), ctx, params)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteDeleteOpaqueKey", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteDeleteOpaqueKey), ctx, task, params)
 }
 
 // ExecuteInterruptTask mocks base method.
-func (m *MockExecutorInterface) ExecuteInterruptTask(ctx context.Context, params *InterruptTaskParameters) error {
+func (m *MockExecutorInterface) ExecuteInterruptTask(ctx context.Context, task worker.Task, params *InterruptTaskParameters) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ExecuteInterruptTask", ctx, params)
+	ret := m.ctrl.Call(m, "ExecuteInterruptTask", ctx, task, params)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // ExecuteInterruptTask indicates an expected call of ExecuteInterruptTask.
-func (mr *MockExecutorInterfaceMockRecorder) ExecuteInterruptTask(ctx, params any) *gomock.Call {
+func (mr *MockExecutorInterfaceMockRecorder) ExecuteInterruptTask(ctx, task, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteInterruptTask", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteInterruptTask), ctx, params)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteInterruptTask", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteInterruptTask), ctx, task, params)
 }
 
 // ExecutePauseTaskOnWorker mocks base method.
-func (m *MockExecutorInterface) ExecutePauseTaskOnWorker(ctx context.Context, params *PauseTaskOnWorkerParameters) error {
+func (m *MockExecutorInterface) ExecutePauseTaskOnWorker(ctx context.Context, task worker.Task, params *PauseTaskOnWorkerParameters) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ExecutePauseTaskOnWorker", ctx, params)
+	ret := m.ctrl.Call(m, "ExecutePauseTaskOnWorker", ctx, task, params)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // ExecutePauseTaskOnWorker indicates an expected call of ExecutePauseTaskOnWorker.
-func (mr *MockExecutorInterfaceMockRecorder) ExecutePauseTaskOnWorker(ctx, params any) *gomock.Call {
+func (mr *MockExecutorInterfaceMockRecorder) ExecutePauseTaskOnWorker(ctx, task, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecutePauseTaskOnWorker", reflect.TypeOf((*MockExecutorInterface)(nil).ExecutePauseTaskOnWorker), ctx, params)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecutePauseTaskOnWorker", reflect.TypeOf((*MockExecutorInterface)(nil).ExecutePauseTaskOnWorker), ctx, task, params)
 }
 
 // ExecuteStressProbe mocks base method.
-func (m *MockExecutorInterface) ExecuteStressProbe(ctx context.Context, params *StressProbeParameters) error {
+func (m *MockExecutorInterface) ExecuteStressProbe(ctx context.Context, task worker.Task, params *StressProbeParameters) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ExecuteStressProbe", ctx, params)
+	ret := m.ctrl.Call(m, "ExecuteStressProbe", ctx, task, params)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // ExecuteStressProbe indicates an expected call of ExecuteStressProbe.
-func (mr *MockExecutorInterfaceMockRecorder) ExecuteStressProbe(ctx, params any) *gomock.Call {
+func (mr *MockExecutorInterfaceMockRecorder) ExecuteStressProbe(ctx, task, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteStressProbe", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteStressProbe), ctx, params)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteStressProbe", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteStressProbe), ctx, task, params)
 }
 
 // ExecuteUpdateWorkerRuntimeConfig mocks base method.
-func (m *MockExecutorInterface) ExecuteUpdateWorkerRuntimeConfig(ctx context.Context, params *UpdateWorkerRuntimeConfigParameters) error {
+func (m *MockExecutorInterface) ExecuteUpdateWorkerRuntimeConfig(ctx context.Context, task worker.Task, params *UpdateWorkerRuntimeConfigParameters) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ExecuteUpdateWorkerRuntimeConfig", ctx, params)
+	ret := m.ctrl.Call(m, "ExecuteUpdateWorkerRuntimeConfig", ctx, task, params)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // ExecuteUpdateWorkerRuntimeConfig indicates an expected call of ExecuteUpdateWorkerRuntimeConfig.
-func (mr *MockExecutorInterfaceMockRecorder) ExecuteUpdateWorkerRuntimeConfig(ctx, params any) *gomock.Call {
+func (mr *MockExecutorInterfaceMockRecorder) ExecuteUpdateWorkerRuntimeConfig(ctx, task, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteUpdateWorkerRuntimeConfig", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteUpdateWorkerRuntimeConfig), ctx, params)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteUpdateWorkerRuntimeConfig", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteUpdateWorkerRuntimeConfig), ctx, task, params)
 }
 
 // OnDeleteOpaqueKeyFailed mocks base method.

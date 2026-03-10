@@ -11,6 +11,7 @@ import (
 
 	"github.com/cloudcarver/anclax/pkg/taskcore/pgnotify"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
+	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
 	"github.com/google/uuid"
@@ -87,7 +88,7 @@ func TestExecuteInterruptTaskListenBeforeNotify(t *testing.T) {
 		runtimeConfigHeartbeatTTL: 5 * time.Second,
 	}
 
-	err = exec.ExecuteInterruptTask(context.Background(), &taskgen.InterruptTaskParameters{
+	err = exec.ExecuteInterruptTask(context.Background(), worker.Task{}, &taskgen.InterruptTaskParameters{
 		TaskIDs:       []int32{42},
 		RequestID:     &requestID,
 		ListenTimeout: &listenTimeout,
@@ -100,7 +101,7 @@ func TestExecuteInterruptTaskRequiresDSN(t *testing.T) {
 	defer ctrl.Finish()
 
 	exec := &Executor{model: model.NewMockModelInterface(ctrl), now: time.Now}
-	err := exec.ExecuteInterruptTask(context.Background(), &taskgen.InterruptTaskParameters{TaskIDs: []int32{1}})
+	err := exec.ExecuteInterruptTask(context.Background(), worker.Task{}, &taskgen.InterruptTaskParameters{TaskIDs: []int32{1}})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "requires pg dsn")
 }
@@ -127,7 +128,7 @@ func TestExecuteInterruptTaskNoOnlineWorkers(t *testing.T) {
 		runtimeConfigHeartbeatTTL: 5 * time.Second,
 	}
 
-	err := exec.ExecuteInterruptTask(context.Background(), &taskgen.InterruptTaskParameters{TaskIDs: []int32{9}})
+	err := exec.ExecuteInterruptTask(context.Background(), worker.Task{}, &taskgen.InterruptTaskParameters{TaskIDs: []int32{9}})
 	require.NoError(t, err)
 	require.Equal(t, int32(0), fakeConn.waitCalls.Load())
 }
@@ -143,7 +144,7 @@ func TestExecuteInterruptTaskInvalidDurations(t *testing.T) {
 	}
 
 	invalid := "bad"
-	err := exec.ExecuteInterruptTask(context.Background(), &taskgen.InterruptTaskParameters{
+	err := exec.ExecuteInterruptTask(context.Background(), worker.Task{}, &taskgen.InterruptTaskParameters{
 		TaskIDs:        []int32{7},
 		NotifyInterval: &invalid,
 	})

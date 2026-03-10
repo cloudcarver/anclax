@@ -211,7 +211,7 @@ func (p *ModelPort) ExecuteTask(ctx context.Context, task Task) error {
 		return nil
 	}
 
-	err = p.taskHandler.HandleTask(execCtx, NewTaskSpec(task.Spec))
+	err = p.taskHandler.HandleTask(execCtx, task)
 	if err != nil {
 		return err
 	}
