@@ -10,6 +10,7 @@ import (
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/require"
@@ -60,6 +61,7 @@ func TestPauseTaskUsesTransactionAndWaitsForCancel(t *testing.T) {
 	mockStore.EXPECT().PauseTaskWithTx(ctx, fake, taskID).Return(nil)
 	mockStore.EXPECT().PauseTaskWithTx(ctx, fake, int32(13)).Return(nil)
 	mockStore.EXPECT().PauseTaskWithTx(ctx, fake, int32(17)).Return(nil)
+	mockModel.EXPECT().ListOnlineWorkerIDs(ctx, gomock.Any()).Return([]uuid.UUID{uuid.New()}, nil)
 	mockRunner.EXPECT().RunBroadcastPauseTaskWithTx(ctx, fake, gomock.Any()).DoAndReturn(
 		func(ctx context.Context, tx core.Tx, params *taskgen.BroadcastPauseTaskParameters, overrides ...store.TaskOverride) (int32, error) {
 			require.ElementsMatch(t, []int32{taskID, 13, 17}, params.TaskIDs)
@@ -99,6 +101,7 @@ func TestPauseTaskWithNestedDescendants(t *testing.T) {
 	mockStore.EXPECT().PauseTaskWithTx(ctx, fake, childTaskID).Return(nil)
 	mockStore.EXPECT().PauseTaskWithTx(ctx, fake, grandChildTaskID).Return(nil)
 	mockStore.EXPECT().PauseTaskWithTx(ctx, fake, greatGrandChildTaskID).Return(nil)
+	mockModel.EXPECT().ListOnlineWorkerIDs(ctx, gomock.Any()).Return([]uuid.UUID{uuid.New()}, nil)
 	mockRunner.EXPECT().RunBroadcastPauseTaskWithTx(ctx, fake, gomock.Any()).DoAndReturn(
 		func(ctx context.Context, tx core.Tx, params *taskgen.BroadcastPauseTaskParameters, overrides ...store.TaskOverride) (int32, error) {
 			require.ElementsMatch(t, []int32{taskID, childTaskID, grandChildTaskID, greatGrandChildTaskID}, params.TaskIDs)
@@ -162,6 +165,7 @@ func TestCancelTaskUsesTransactionAndWaitsForInterrupt(t *testing.T) {
 	mockModel.EXPECT().ListTaskDescendantIDs(ctx, &taskID).Return([]int32{21}, nil)
 	mockStore.EXPECT().CancelTaskWithTx(ctx, fake, taskID).Return(nil)
 	mockStore.EXPECT().CancelTaskWithTx(ctx, fake, int32(21)).Return(nil)
+	mockModel.EXPECT().ListOnlineWorkerIDs(ctx, gomock.Any()).Return([]uuid.UUID{uuid.New()}, nil)
 	mockRunner.EXPECT().RunBroadcastCancelTaskWithTx(ctx, fake, gomock.Any()).DoAndReturn(
 		func(ctx context.Context, tx core.Tx, params *taskgen.BroadcastCancelTaskParameters, overrides ...store.TaskOverride) (int32, error) {
 			require.ElementsMatch(t, []int32{taskID, 21}, params.TaskIDs)
@@ -215,6 +219,7 @@ func TestPauseTaskByUniqueTagResolvesTaskID(t *testing.T) {
 	)
 	mockModel.EXPECT().ListTaskDescendantIDs(ctx, &taskID).Return([]int32{}, nil)
 	mockStore.EXPECT().PauseTaskWithTx(ctx, fake, taskID).Return(nil)
+	mockModel.EXPECT().ListOnlineWorkerIDs(ctx, gomock.Any()).Return([]uuid.UUID{uuid.New()}, nil)
 	mockRunner.EXPECT().RunBroadcastPauseTaskWithTx(ctx, fake, gomock.Any()).DoAndReturn(
 		func(ctx context.Context, tx core.Tx, params *taskgen.BroadcastPauseTaskParameters, overrides ...store.TaskOverride) (int32, error) {
 			require.Equal(t, []int32{taskID}, params.TaskIDs)
@@ -250,6 +255,7 @@ func TestCancelTaskByUniqueTagResolvesTaskID(t *testing.T) {
 	)
 	mockModel.EXPECT().ListTaskDescendantIDs(ctx, &taskID).Return([]int32{}, nil)
 	mockStore.EXPECT().CancelTaskWithTx(ctx, fake, taskID).Return(nil)
+	mockModel.EXPECT().ListOnlineWorkerIDs(ctx, gomock.Any()).Return([]uuid.UUID{uuid.New()}, nil)
 	mockRunner.EXPECT().RunBroadcastCancelTaskWithTx(ctx, fake, gomock.Any()).DoAndReturn(
 		func(ctx context.Context, tx core.Tx, params *taskgen.BroadcastCancelTaskParameters, overrides ...store.TaskOverride) (int32, error) {
 			require.Equal(t, []int32{taskID}, params.TaskIDs)
@@ -345,6 +351,7 @@ func TestPauseTaskWaitError(t *testing.T) {
 	)
 	mockModel.EXPECT().ListTaskDescendantIDs(ctx, &taskID).Return([]int32{}, nil)
 	mockStore.EXPECT().PauseTaskWithTx(ctx, fake, taskID).Return(nil)
+	mockModel.EXPECT().ListOnlineWorkerIDs(ctx, gomock.Any()).Return([]uuid.UUID{uuid.New()}, nil)
 	mockRunner.EXPECT().RunBroadcastPauseTaskWithTx(ctx, fake, gomock.Any()).Return(broadcastTaskID, nil)
 	mockStore.EXPECT().WaitForTask(ctx, broadcastTaskID).Return(errors.New("wait boom"))
 
@@ -374,6 +381,7 @@ func TestCancelTaskWaitError(t *testing.T) {
 	)
 	mockModel.EXPECT().ListTaskDescendantIDs(ctx, &taskID).Return([]int32{}, nil)
 	mockStore.EXPECT().CancelTaskWithTx(ctx, fake, taskID).Return(nil)
+	mockModel.EXPECT().ListOnlineWorkerIDs(ctx, gomock.Any()).Return([]uuid.UUID{uuid.New()}, nil)
 	mockRunner.EXPECT().RunBroadcastCancelTaskWithTx(ctx, fake, gomock.Any()).Return(broadcastTaskID, nil)
 	mockStore.EXPECT().WaitForTask(ctx, broadcastTaskID).Return(errors.New("wait boom"))
 
@@ -381,6 +389,62 @@ func TestCancelTaskWaitError(t *testing.T) {
 	err := cp.CancelTask(ctx, taskID)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "wait for broadcast cancel task")
+}
+
+func TestPauseTaskSkipsBroadcastWhenNoAliveWorkers(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	taskID := int32(42)
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockStore := store.NewMockTaskStoreInterface(ctrl)
+	mockRunner := taskgen.NewMockTaskRunner(ctrl)
+	fake := &fakeTx{}
+
+	mockModel.EXPECT().RunTransactionWithTx(ctx, gomock.Any()).DoAndReturn(
+		func(ctx context.Context, fn func(core.Tx, model.ModelInterface) error) error {
+			return fn(fake, mockModel)
+		},
+	)
+	mockModel.EXPECT().ListTaskDescendantIDs(ctx, &taskID).Return([]int32{}, nil)
+	mockStore.EXPECT().PauseTaskWithTx(ctx, fake, taskID).Return(nil)
+	mockModel.EXPECT().ListOnlineWorkerIDs(ctx, gomock.Any()).Return(nil, nil)
+	mockRunner.EXPECT().RunBroadcastPauseTaskWithTx(ctx, fake, gomock.Any()).Times(0)
+	mockStore.EXPECT().WaitForTask(ctx, gomock.Any()).Times(0)
+
+	cp := NewWorkerControlPlane(mockModel, mockRunner, mockStore)
+	err := cp.PauseTask(ctx, taskID)
+	require.NoError(t, err)
+}
+
+func TestCancelTaskSkipsBroadcastWhenNoAliveWorkers(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	taskID := int32(42)
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockStore := store.NewMockTaskStoreInterface(ctrl)
+	mockRunner := taskgen.NewMockTaskRunner(ctrl)
+	fake := &fakeTx{}
+
+	mockModel.EXPECT().RunTransactionWithTx(ctx, gomock.Any()).DoAndReturn(
+		func(ctx context.Context, fn func(core.Tx, model.ModelInterface) error) error {
+			return fn(fake, mockModel)
+		},
+	)
+	mockModel.EXPECT().ListTaskDescendantIDs(ctx, &taskID).Return([]int32{}, nil)
+	mockStore.EXPECT().CancelTaskWithTx(ctx, fake, taskID).Return(nil)
+	mockModel.EXPECT().ListOnlineWorkerIDs(ctx, gomock.Any()).Return(nil, nil)
+	mockRunner.EXPECT().RunBroadcastCancelTaskWithTx(ctx, fake, gomock.Any()).Times(0)
+	mockStore.EXPECT().WaitForTask(ctx, gomock.Any()).Times(0)
+
+	cp := NewWorkerControlPlane(mockModel, mockRunner, mockStore)
+	err := cp.CancelTask(ctx, taskID)
+	require.NoError(t, err)
 }
 
 func TestResumeTaskStoreError(t *testing.T) {

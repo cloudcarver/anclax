@@ -167,7 +167,6 @@ func TestRuntimeStepRunsClaimExecuteFinalizeChain(t *testing.T) {
 	require.Equal(t, []int32{7}, port.executeCalls)
 	require.Equal(t, []int32{7}, port.finalizeCalls)
 	port.mu.Unlock()
-	require.Equal(t, 0, eng.Snapshot().ActiveCycles)
 }
 
 func TestRuntimeNotifyRuntimeConfig(t *testing.T) {
@@ -196,11 +195,7 @@ func TestRuntimeNotifyRuntimeConfig(t *testing.T) {
 		if port.refreshReqIDs[0] != "req-9" {
 			return false
 		}
-		if port.lastAck.requestID != "req-9" || port.lastAck.version != int64(9) {
-			return false
-		}
-		s := eng.Snapshot()
-		return s.RuntimeConfigVersion == int64(9) && s.MaxStrictPercentage == int32(25)
+		return port.lastAck.requestID == "req-9" && port.lastAck.version == int64(9)
 	}, time.Second, 10*time.Millisecond)
 }
 

@@ -8,7 +8,9 @@ import (
 
 	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/taskcore/pgnotify"
+	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
+	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -62,6 +64,55 @@ func TestModelPortRefreshRuntimeConfigDecode(t *testing.T) {
 	require.NotNil(t, cfg.MaxStrictPercentage)
 	require.Equal(t, int32(30), *cfg.MaxStrictPercentage)
 	require.Equal(t, int32(3), cfg.LabelWeights["w1"])
+}
+
+func TestHasUserClaimLabels(t *testing.T) {
+	t.Run("only reserved worker labels", func(t *testing.T) {
+		require.False(t, hasUserClaimLabels([]string{"worker:abc", "worker:def"}))
+	})
+	t.Run("contains non-reserved label", func(t *testing.T) {
+		require.True(t, hasUserClaimLabels([]string{"worker:abc", "ops"}))
+	})
+	t.Run("empty labels", func(t *testing.T) {
+		require.False(t, hasUserClaimLabels(nil))
+	})
+}
+
+func TestNewModelPortHasLabelsIgnoresReservedWorkerLabel(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	workerID := uuid.New()
+	mockModel := model.NewMockModelInterface(ctrl)
+
+	port, err := NewModelPort(mockModel, workerID, []string{"worker:" + workerID.String()}, nil, 5*time.Second, 0)
+	require.NoError(t, err)
+	require.False(t, port.hasLabels)
+
+	port2, err := NewModelPort(mockModel, workerID, []string{"worker:" + workerID.String(), "ops"}, nil, 5*time.Second, 0)
+	require.NoError(t, err)
+	require.True(t, port2.hasLabels)
+}
+
+func TestModelPortTaskInterruptCauseFromStore(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	workerID := uuid.New()
+	mockModel := model.NewMockModelInterface(ctrl)
+	port, err := NewModelPort(mockModel, workerID, nil, nil, 5*time.Second, 0)
+	require.NoError(t, err)
+
+	taskID := int32(9)
+
+	mockModel.EXPECT().GetTaskByID(context.Background(), taskID).Return(&querier.AnclaxTask{Status: string(apigen.Paused)}, nil)
+	require.ErrorIs(t, port.taskInterruptCauseFromStore(context.Background(), taskID), taskcore.ErrTaskPaused)
+
+	mockModel.EXPECT().GetTaskByID(context.Background(), taskID).Return(&querier.AnclaxTask{Status: string(apigen.Cancelled)}, nil)
+	require.ErrorIs(t, port.taskInterruptCauseFromStore(context.Background(), taskID), taskcore.ErrTaskCancelled)
+
+	mockModel.EXPECT().GetTaskByID(context.Background(), taskID).Return(nil, pgx.ErrNoRows)
+	require.ErrorIs(t, port.taskInterruptCauseFromStore(context.Background(), taskID), taskcore.ErrTaskInterrupted)
 }
 
 func TestModelPortAckRuntimeConfigApplied(t *testing.T) {

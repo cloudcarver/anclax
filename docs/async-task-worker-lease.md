@@ -51,8 +51,18 @@ Heartbeat is for monitoring only; task claims use `locked_at` TTL only.
 
 - Task labels come from `api/tasks.yaml` and runtime overrides.
 - Worker labels come from config.
-- If a worker has labels, it can claim tasks with intersecting labels or no labels.
-- If a worker has no labels, it can claim all tasks.
+- Claiming uses **all-match** semantics:
+  - unlabeled task (`[]`) can be claimed by any worker.
+  - labeled task can be claimed only when **all task labels are contained in worker labels**.
+- Each worker always has an internal `worker:<workerID>` label for worker-targeted control tasks.
+- If a worker has no business labels (only internal `worker:<workerID>`), it can claim:
+  - unlabeled tasks, and
+  - tasks labeled with its own `worker:<workerID>`.
+
+Example:
+- Task labels: `["gpu", "arm"]`
+- Worker A labels: `["gpu"]` → cannot claim
+- Worker B labels: `["gpu", "arm"]` → can claim
 
 ## Execution flow
 

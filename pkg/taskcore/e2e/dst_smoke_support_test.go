@@ -971,8 +971,27 @@ func (a *runtimeActor) CaptureLatestRuntimeConfigVersion(ctx context.Context, ke
 	if err != nil {
 		return err
 	}
+	captured := latest
+
+	// In some smoke scenarios this method runs concurrently with control-plane update calls.
+	// Wait long enough for the update task to be claimed/executed so we don't capture a stale baseline.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		curr, err := a.model.GetLatestWorkerRuntimeConfig(ctx)
+		if err == nil && curr.Version > captured.Version {
+			captured = curr
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
 	a.mu.Lock()
-	a.configVersion[key] = latest.Version
+	a.configVersion[key] = captured.Version
 	a.mu.Unlock()
 	return nil
 }
@@ -988,6 +1007,7 @@ func (a *runtimeActor) WaitWorkerLagging(ctx context.Context, workerName string,
 	}
 
 	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
+	guardUntil := time.Now().Add(200 * time.Millisecond)
 	for time.Now().Before(deadline) {
 		select {
 		case <-ctx.Done():
@@ -1000,13 +1020,38 @@ func (a *runtimeActor) WaitWorkerLagging(ctx context.Context, workerName string,
 			Version:         version,
 		})
 		if err == nil {
-			if runtimeContainsUUID(workers, workerID) == expected {
-				return nil
+			matched := runtimeContainsUUID(workers, workerID) == expected
+			if matched {
+				if expected || time.Now().Before(guardUntil) {
+					// For expected=false add a short guard window to let in-flight
+					// control-plane update tasks be enqueued/observed.
+				} else {
+					inflight, inflightErr := a.hasInFlightRuntimeConfigUpdateTask(ctx)
+					if inflightErr == nil && !inflight {
+						return nil
+					}
+				}
 			}
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	return fmt.Errorf("worker %q lagging expected=%v was not reached", workerName, expected)
+}
+
+func (a *runtimeActor) hasInFlightRuntimeConfigUpdateTask(ctx context.Context) (bool, error) {
+	var count int64
+	err := a.model.RunTransactionWithTx(ctx, func(tx core.Tx, _ model.ModelInterface) error {
+		return tx.QueryRow(ctx, `
+			select count(*)
+			from anclax.tasks
+			where spec->>'type' in ('updateWorkerRuntimeConfig', 'broadcastUpdateWorkerRuntimeConfig')
+			  and status = 'pending'
+		`).Scan(&count)
+	})
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 func (a *runtimeActor) WaitWorkerOnline(ctx context.Context, workerName string, expected bool, timeoutMs int32) error {

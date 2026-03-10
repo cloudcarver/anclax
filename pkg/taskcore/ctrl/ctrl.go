@@ -2,23 +2,38 @@ package ctrl
 
 import (
 	"context"
+	"time"
 
 	"github.com/cloudcarver/anclax/core"
+	"github.com/cloudcarver/anclax/pkg/logger"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
 	"github.com/pkg/errors"
 )
 
+var log = logger.NewLogAgent("taskcore.ctrl")
+
+const defaultAliveWorkerHeartbeatTTL = 9 * time.Second
+
 // WorkerControlPlane coordinates worker runtime configuration updates.
 type WorkerControlPlane struct {
 	model  model.ModelInterface
 	runner taskgen.TaskRunner
 	store  taskcore.TaskStoreInterface
+
+	now            func() time.Time
+	aliveWorkerTTL time.Duration
 }
 
 func NewWorkerControlPlane(model model.ModelInterface, runner taskgen.TaskRunner, store taskcore.TaskStoreInterface) *WorkerControlPlane {
-	return &WorkerControlPlane{model: model, runner: runner, store: store}
+	return &WorkerControlPlane{
+		model:          model,
+		runner:         runner,
+		store:          store,
+		now:            time.Now,
+		aliveWorkerTTL: defaultAliveWorkerHeartbeatTTL,
+	}
 }
 
 func collectTaskAndDescendantIDs(ctx context.Context, txm model.ModelInterface, rootTaskID int32) ([]int32, error) {
@@ -74,6 +89,15 @@ func (c *WorkerControlPlane) PauseTask(ctx context.Context, taskID int32) error 
 				return errors.Wrap(err, "pause task")
 			}
 		}
+
+		aliveWorkerIDs, err := txm.ListOnlineWorkerIDs(ctx, c.now().Add(-c.aliveWorkerTTL))
+		if err != nil {
+			return errors.Wrap(err, "list online worker ids")
+		}
+		if len(aliveWorkerIDs) == 0 {
+			return nil
+		}
+
 		params := &taskgen.BroadcastPauseTaskParameters{TaskIDs: taskIDs}
 		id, err := c.runner.RunBroadcastPauseTaskWithTx(ctx, tx, params)
 		if err != nil {
@@ -84,6 +108,10 @@ func (c *WorkerControlPlane) PauseTask(ctx context.Context, taskID int32) error 
 	})
 	if err != nil {
 		return err
+	}
+	if broadcastTaskID == 0 {
+		log.Info("no alive workers to broadcast pause task to")
+		return nil
 	}
 	if err := c.store.WaitForTask(ctx, broadcastTaskID); err != nil {
 		return errors.Wrap(err, "wait for broadcast pause task")
@@ -107,6 +135,15 @@ func (c *WorkerControlPlane) CancelTask(ctx context.Context, taskID int32) error
 				return errors.Wrap(err, "cancel task")
 			}
 		}
+
+		aliveWorkerIDs, err := txm.ListOnlineWorkerIDs(ctx, c.now().Add(-c.aliveWorkerTTL))
+		if err != nil {
+			return errors.Wrap(err, "list online worker ids")
+		}
+		if len(aliveWorkerIDs) == 0 {
+			return nil
+		}
+
 		params := &taskgen.BroadcastCancelTaskParameters{TaskIDs: taskIDs}
 		id, err := c.runner.RunBroadcastCancelTaskWithTx(ctx, tx, params)
 		if err != nil {
@@ -117,6 +154,10 @@ func (c *WorkerControlPlane) CancelTask(ctx context.Context, taskID int32) error
 	})
 	if err != nil {
 		return err
+	}
+	if broadcastTaskID == 0 {
+		log.Info("no alive workers to broadcast cancel task to")
+		return nil
 	}
 	if err := c.store.WaitForTask(ctx, broadcastTaskID); err != nil {
 		return errors.Wrap(err, "wait for broadcast cancel task")

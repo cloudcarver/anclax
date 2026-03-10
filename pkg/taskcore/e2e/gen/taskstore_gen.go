@@ -219,6 +219,12 @@ func runAllWithActors(ctx context.Context, actors Actors) error {
 	if err := RunScenarioWorkerLabelFiltering(ctx, actors); err != nil {
 		return fmt.Errorf("scenario worker_label_filtering: %w", err)
 	}
+	if err := RunScenarioWorkerLabelAllMatchGpuArm(ctx, actors); err != nil {
+		return fmt.Errorf("scenario worker_label_all_match_gpu_arm: %w", err)
+	}
+	if err := RunScenarioWorkerLabelInternalOnlyScope(ctx, actors); err != nil {
+		return fmt.Errorf("scenario worker_label_internal_only_scope: %w", err)
+	}
 	if err := RunScenarioStrictQueryDoesNotPickNormal(ctx, actors); err != nil {
 		return fmt.Errorf("scenario strict_query_does_not_pick_normal: %w", err)
 	}
@@ -326,8 +332,8 @@ func runStepStrictPriorityAndWeightedGroupsS1(parent context.Context, actors Act
 			cancel()
 			return
 		}
-		if err := actors.Runtime.StartWorker(ctx, "spwg_w1", "capture", "dst-taskstore", []string{}, 20, 20, 200, 20, 1, 50, false, ""); err != nil {
-			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"spwg_w1\", \"capture\", \"dst-taskstore\", []string{}, 20, 20, 200, 20, 1, 50, false, \"\")", err)
+		if err := actors.Runtime.StartWorker(ctx, "spwg_w1", "capture", "dst-taskstore", []string{"w1", "w2"}, 20, 20, 200, 20, 1, 50, false, ""); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"spwg_w1\", \"capture\", \"dst-taskstore\", []string{\"w1\", \"w2\"}, 20, 20, 200, 20, 1, 50, false, \"\")", err)
 			cancel()
 			return
 		}
@@ -744,8 +750,8 @@ func runStepDefaultGroupUnknownLabelFallbackS1(parent context.Context, actors Ac
 			cancel()
 			return
 		}
-		if err := actors.Runtime.StartWorker(ctx, "dgf_w1", "capture", "dst-taskstore", []string{}, 20, 20, 200, 20, 1, 50, false, ""); err != nil {
-			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"dgf_w1\", \"capture\", \"dst-taskstore\", []string{}, 20, 20, 200, 20, 1, 50, false, \"\")", err)
+		if err := actors.Runtime.StartWorker(ctx, "dgf_w1", "capture", "dst-taskstore", []string{"unknown-label"}, 20, 20, 200, 20, 1, 50, false, ""); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"dgf_w1\", \"capture\", \"dst-taskstore\", []string{\"unknown-label\"}, 20, 20, 200, 20, 1, 50, false, \"\")", err)
 			cancel()
 			return
 		}
@@ -1379,6 +1385,412 @@ func runStepWorkerLabelFilteringS5(parent context.Context, actors Actors, vars *
 
 
 func runStepWorkerLabelFilteringS6(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var err error
+	t := &scriptT{}
+	set := func(name string, value any) {
+		vars.Set(name, value)
+	}
+	get := func(name string) any {
+		val, _ := vars.Get(name)
+		return val
+	}
+	_ = t
+	_ = set
+	_ = get
+	defer func() {
+		if r := recover(); r != nil {
+			if fail, ok := r.(scriptFail); ok {
+				if fail.err != nil {
+					err = fail.err
+					return
+				}
+				err = fmt.Errorf("script failed")
+				return
+			}
+			err = fmt.Errorf("script panic: %v", r)
+			return
+		}
+		if t.failed && err == nil {
+			if t.err != nil {
+				err = t.err
+			} else {
+				err = fmt.Errorf("script failed")
+			}
+		}
+	}()
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+	require.NoError(t, err)
+	require.Equal(t, [][]any{{int64(0)}}, rows)
+	return err
+}
+
+
+
+func RunScenarioWorkerLabelAllMatchGpuArm(ctx context.Context, actors Actors) error {
+	vars := newVarStore()
+	if err := runStepWorkerLabelAllMatchGpuArmS1(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s1: %w", err)
+	}
+	if err := runStepWorkerLabelAllMatchGpuArmS2(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s2: %w", err)
+	}
+	if err := runStepWorkerLabelAllMatchGpuArmS3(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s3: %w", err)
+	}
+	if err := runStepWorkerLabelAllMatchGpuArmS4(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s4: %w", err)
+	}
+	return nil
+}
+
+
+func runStepWorkerLabelAllMatchGpuArmS1(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 2)
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Runtime.ResetCaptured(ctx); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "ResetCaptured(ctx)", err)
+			cancel()
+			return
+		}
+	}()
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.TaskStore.Enqueue(ctx, "LB_GPU_ARM", 0, 1, []string{"gpu", "arm"}); err != nil {
+			errCh <- fmt.Errorf("actor taskStore call %s: %w", "Enqueue(ctx, \"LB_GPU_ARM\", 0, 1, []string{\"gpu\", \"arm\"})", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func runStepWorkerLabelAllMatchGpuArmS2(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Runtime.StartWorker(ctx, "lb_gpu", "capture", "dst-taskstore", []string{"gpu"}, 20, 20, 200, 20, 1, 0, false, ""); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"lb_gpu\", \"capture\", \"dst-taskstore\", []string{\"gpu\"}, 20, 20, 200, 20, 1, 0, false, \"\")", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.StartWorker(ctx, "lb_gpu_arm", "capture", "dst-taskstore", []string{"gpu", "arm"}, 20, 20, 200, 20, 1, 0, false, ""); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"lb_gpu_arm\", \"capture\", \"dst-taskstore\", []string{\"gpu\", \"arm\"}, 20, 20, 200, 20, 1, 0, false, \"\")", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func runStepWorkerLabelAllMatchGpuArmS3(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Runtime.WaitCapturedCount(ctx, 1, 5000); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitCapturedCount(ctx, 1, 5000)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.AssertCapturedByWorkerContains(ctx, "lb_gpu_arm", []string{"LB_GPU_ARM"}); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "AssertCapturedByWorkerContains(ctx, \"lb_gpu_arm\", []string{\"LB_GPU_ARM\"})", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.StopWorker(ctx, "lb_gpu"); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StopWorker(ctx, \"lb_gpu\")", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.StopWorker(ctx, "lb_gpu_arm"); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StopWorker(ctx, \"lb_gpu_arm\")", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func runStepWorkerLabelAllMatchGpuArmS4(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var err error
+	t := &scriptT{}
+	set := func(name string, value any) {
+		vars.Set(name, value)
+	}
+	get := func(name string) any {
+		val, _ := vars.Get(name)
+		return val
+	}
+	_ = t
+	_ = set
+	_ = get
+	defer func() {
+		if r := recover(); r != nil {
+			if fail, ok := r.(scriptFail); ok {
+				if fail.err != nil {
+					err = fail.err
+					return
+				}
+				err = fmt.Errorf("script failed")
+				return
+			}
+			err = fmt.Errorf("script panic: %v", r)
+			return
+		}
+		if t.failed && err == nil {
+			if t.err != nil {
+				err = t.err
+			} else {
+				err = fmt.Errorf("script failed")
+			}
+		}
+	}()
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+	require.NoError(t, err)
+	require.Equal(t, [][]any{{int64(0)}}, rows)
+	return err
+}
+
+
+
+func RunScenarioWorkerLabelInternalOnlyScope(ctx context.Context, actors Actors) error {
+	vars := newVarStore()
+	if err := runStepWorkerLabelInternalOnlyScopeS1(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s1: %w", err)
+	}
+	if err := runStepWorkerLabelInternalOnlyScopeS2(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s2: %w", err)
+	}
+	if err := runStepWorkerLabelInternalOnlyScopeS3(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s3: %w", err)
+	}
+	if err := runStepWorkerLabelInternalOnlyScopeS4(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s4: %w", err)
+	}
+	if err := runStepWorkerLabelInternalOnlyScopeS5(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s5: %w", err)
+	}
+	return nil
+}
+
+
+func runStepWorkerLabelInternalOnlyScopeS1(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 2)
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Runtime.ResetCaptured(ctx); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "ResetCaptured(ctx)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.StartWorker(ctx, "lb_internal", "capture", "dst-taskstore", []string{}, 20, 20, 200, 20, 1, 0, false, "11111111-1111-1111-1111-111111111111"); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"lb_internal\", \"capture\", \"dst-taskstore\", []string{}, 20, 20, 200, 20, 1, 0, false, \"11111111-1111-1111-1111-111111111111\")", err)
+			cancel()
+			return
+		}
+	}()
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.TaskStore.Enqueue(ctx, "LBI_UNLABELED", 0, 1, []string{}); err != nil {
+			errCh <- fmt.Errorf("actor taskStore call %s: %w", "Enqueue(ctx, \"LBI_UNLABELED\", 0, 1, []string{})", err)
+			cancel()
+			return
+		}
+		if err := actors.TaskStore.Enqueue(ctx, "LBI_OWN", 0, 1, []string{"worker:11111111-1111-1111-1111-111111111111"}); err != nil {
+			errCh <- fmt.Errorf("actor taskStore call %s: %w", "Enqueue(ctx, \"LBI_OWN\", 0, 1, []string{\"worker:11111111-1111-1111-1111-111111111111\"})", err)
+			cancel()
+			return
+		}
+		if err := actors.TaskStore.Enqueue(ctx, "LBI_OTHER", 0, 1, []string{"worker:22222222-2222-2222-2222-222222222222"}); err != nil {
+			errCh <- fmt.Errorf("actor taskStore call %s: %w", "Enqueue(ctx, \"LBI_OTHER\", 0, 1, []string{\"worker:22222222-2222-2222-2222-222222222222\"})", err)
+			cancel()
+			return
+		}
+		if err := actors.TaskStore.Enqueue(ctx, "LBI_BIZ", 0, 1, []string{"w1"}); err != nil {
+			errCh <- fmt.Errorf("actor taskStore call %s: %w", "Enqueue(ctx, \"LBI_BIZ\", 0, 1, []string{\"w1\"})", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func runStepWorkerLabelInternalOnlyScopeS2(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Runtime.WaitCapturedCount(ctx, 2, 5000); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitCapturedCount(ctx, 2, 5000)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.AssertCapturedByWorkerContains(ctx, "lb_internal", []string{"LBI_UNLABELED", "LBI_OWN"}); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "AssertCapturedByWorkerContains(ctx, \"lb_internal\", []string{\"LBI_UNLABELED\", \"LBI_OWN\"})", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.StopWorker(ctx, "lb_internal"); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StopWorker(ctx, \"lb_internal\")", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func runStepWorkerLabelInternalOnlyScopeS3(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var err error
+	t := &scriptT{}
+	set := func(name string, value any) {
+		vars.Set(name, value)
+	}
+	get := func(name string) any {
+		val, _ := vars.Get(name)
+		return val
+	}
+	_ = t
+	_ = set
+	_ = get
+	defer func() {
+		if r := recover(); r != nil {
+			if fail, ok := r.(scriptFail); ok {
+				if fail.err != nil {
+					err = fail.err
+					return
+				}
+				err = fmt.Errorf("script failed")
+				return
+			}
+			err = fmt.Errorf("script panic: %v", r)
+			return
+		}
+		if t.failed && err == nil {
+			if t.err != nil {
+				err = t.err
+			} else {
+				err = fmt.Errorf("script failed")
+			}
+		}
+	}()
+	rows, err := actors.Validator.Query(ctx, "select spec->'payload'->>'name' from anclax.tasks where status = 'pending' and spec->'payload'->>'name' like 'LBI_%' order by 1", []any{})
+	require.NoError(t, err)
+	require.Equal(t, [][]any{{"LBI_BIZ"}, {"LBI_OTHER"}}, rows)
+	return err
+}
+
+
+func runStepWorkerLabelInternalOnlyScopeS4(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Runtime.StartWorker(ctx, "lb_drain", "capture", "dst-taskstore", []string{"w1"}, 20, 20, 200, 20, 1, 0, false, "22222222-2222-2222-2222-222222222222"); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"lb_drain\", \"capture\", \"dst-taskstore\", []string{\"w1\"}, 20, 20, 200, 20, 1, 0, false, \"22222222-2222-2222-2222-222222222222\")", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.WaitNoPendingTasks(ctx, 5000); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitNoPendingTasks(ctx, 5000)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.StopWorker(ctx, "lb_drain"); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StopWorker(ctx, \"lb_drain\")", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func runStepWorkerLabelInternalOnlyScopeS5(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var err error
@@ -2399,8 +2811,8 @@ func runStepSmokePriorityWeightS1(parent context.Context, actors Actors, vars *v
 			cancel()
 			return
 		}
-		if err := actors.Runtime.StartWorker(ctx, "spw_w1", "capture", "dst-taskstore", []string{}, 20, 20, 200, 20, 1, 50, false, ""); err != nil {
-			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"spw_w1\", \"capture\", \"dst-taskstore\", []string{}, 20, 20, 200, 20, 1, 50, false, \"\")", err)
+		if err := actors.Runtime.StartWorker(ctx, "spw_w1", "capture", "dst-taskstore", []string{"w1", "w2"}, 20, 20, 200, 20, 1, 50, false, ""); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"spw_w1\", \"capture\", \"dst-taskstore\", []string{\"w1\", \"w2\"}, 20, 20, 200, 20, 1, 50, false, \"\")", err)
 			cancel()
 			return
 		}
@@ -4992,8 +5404,8 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS1(parent context.Context, a
 			cancel()
 			return
 		}
-		if err := actors.Runtime.StartWorker(ctx, "crrf_cap", "capture", "dst-taskstore", []string{}, 20, 20, 200, 20, 1, 0, true, ""); err != nil {
-			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"crrf_cap\", \"capture\", \"dst-taskstore\", []string{}, 20, 20, 200, 20, 1, 0, true, \"\")", err)
+		if err := actors.Runtime.StartWorker(ctx, "crrf_cap", "capture", "dst-taskstore", []string{"w1", "w2"}, 20, 20, 200, 20, 1, 0, true, ""); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"crrf_cap\", \"capture\", \"dst-taskstore\", []string{\"w1\", \"w2\"}, 20, 20, 200, 20, 1, 0, true, \"\")", err)
 			cancel()
 			return
 		}

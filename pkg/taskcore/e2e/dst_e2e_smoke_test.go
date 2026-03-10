@@ -52,6 +52,9 @@ func TestDSTTaskStoreScenariosStressSmoke(t *testing.T) {
 				ControlPlane: env.controlPlane,
 			}, nil
 		}, taskcoree2e.RunOptions{Repeat: 3, ContinueOnError: true})
+		for _, run := range report.Runs {
+			t.Logf("stress run %d duration=%s err=%v", run.Iteration, run.Duration, run.Err)
+		}
 		require.NoError(t, err)
 		require.Equal(t, 0, report.FailedRuns)
 	})

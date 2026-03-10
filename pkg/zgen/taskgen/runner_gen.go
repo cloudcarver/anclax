@@ -608,15 +608,6 @@ type DeleteOpaqueKeyParameters struct {
 
 
 type UpdateWorkerRuntimeConfigParameters struct { 
-    // Weights for labels by index
-	Weights []int32 `json:"weights" yaml:"weights"`
-
-    // Fallback retry interval when ack listening is unavailable
-	NotifyInterval *string `json:"notifyInterval" yaml:"notifyInterval"`
-
-    // Ack listen timeout window for one iteration
-	ListenTimeout *string `json:"listenTimeout" yaml:"listenTimeout"`
-
     // Correlation ID for notify and ack messages
 	RequestID *string `json:"requestID" yaml:"requestID"`
 
@@ -628,15 +619,9 @@ type UpdateWorkerRuntimeConfigParameters struct {
 
     // Label names for weighted groups
 	Labels []string `json:"labels" yaml:"labels"`
-}
 
-
-type InterruptTaskParameters struct { 
-    // Task IDs to interrupt
-	TaskIDs []int32 `json:"taskIDs" yaml:"taskIDs"`
-
-    // Correlation ID for notify and ack messages
-	RequestID *string `json:"requestID" yaml:"requestID"`
+    // Weights for labels by index
+	Weights []int32 `json:"weights" yaml:"weights"`
 
     // Fallback retry interval when ack listening is unavailable
 	NotifyInterval *string `json:"notifyInterval" yaml:"notifyInterval"`
@@ -646,8 +631,29 @@ type InterruptTaskParameters struct {
 }
 
 
+type InterruptTaskParameters struct { 
+    // Ack listen timeout window for one iteration
+	ListenTimeout *string `json:"listenTimeout" yaml:"listenTimeout"`
+
+    // Task IDs to interrupt
+	TaskIDs []int32 `json:"taskIDs" yaml:"taskIDs"`
+
+    // Correlation ID for notify and ack messages
+	RequestID *string `json:"requestID" yaml:"requestID"`
+
+    // Fallback retry interval when ack listening is unavailable
+	NotifyInterval *string `json:"notifyInterval" yaml:"notifyInterval"`
+}
+
+
 
 type BroadcastUpdateWorkerRuntimeConfigParameters struct { 
+    // Maximum percentage of strict-priority slots (0-100)
+	MaxStrictPercentage *int32 `json:"maxStrictPercentage" yaml:"maxStrictPercentage"`
+
+    // Default weight for unlabeled task group
+	DefaultWeight *int32 `json:"defaultWeight" yaml:"defaultWeight"`
+
     // Label names for weighted groups
 	Labels []string `json:"labels" yaml:"labels"`
 
@@ -659,12 +665,6 @@ type BroadcastUpdateWorkerRuntimeConfigParameters struct {
 
     // Correlation ID for this broadcast command
 	RequestID *string `json:"requestID" yaml:"requestID"`
-
-    // Maximum percentage of strict-priority slots (0-100)
-	MaxStrictPercentage *int32 `json:"maxStrictPercentage" yaml:"maxStrictPercentage"`
-
-    // Default weight for unlabeled task group
-	DefaultWeight *int32 `json:"defaultWeight" yaml:"defaultWeight"`
 }
 
 type ApplyWorkerRuntimeConfigToWorkerParameters struct { 
@@ -692,38 +692,38 @@ type BroadcastCancelTaskParameters struct {
 
 
 type CancelTaskOnWorkerParameters struct { 
-    // Correlation ID of the parent broadcast command
-	RequestID *string `json:"requestID" yaml:"requestID"`
-
     // Target worker ID
 	WorkerID string `json:"workerID" yaml:"workerID"`
 
     // Task IDs to interrupt on the target worker
 	TaskIDs []int32 `json:"taskIDs" yaml:"taskIDs"`
+
+    // Correlation ID of the parent broadcast command
+	RequestID *string `json:"requestID" yaml:"requestID"`
 }
 
 
 type BroadcastPauseTaskParameters struct { 
-    // Correlation ID for this broadcast command
-	RequestID *string `json:"requestID" yaml:"requestID"`
-
     // Task IDs to interrupt on each target worker
 	TaskIDs []int32 `json:"taskIDs" yaml:"taskIDs"`
 
     // Poll interval used while waiting worker ack tasks
 	AckPollInterval *string `json:"ackPollInterval" yaml:"ackPollInterval"`
+
+    // Correlation ID for this broadcast command
+	RequestID *string `json:"requestID" yaml:"requestID"`
 }
 
 
 type PauseTaskOnWorkerParameters struct { 
+    // Correlation ID of the parent broadcast command
+	RequestID *string `json:"requestID" yaml:"requestID"`
+
     // Target worker ID
 	WorkerID string `json:"workerID" yaml:"workerID"`
 
     // Task IDs to interrupt on the target worker
 	TaskIDs []int32 `json:"taskIDs" yaml:"taskIDs"`
-
-    // Correlation ID of the parent broadcast command
-	RequestID *string `json:"requestID" yaml:"requestID"`
 }
 
 type StressProbeParameters struct { 

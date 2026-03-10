@@ -103,27 +103,28 @@ err := model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface
 })
 ```
 
-## Pause tasks (worker)
+## Pause/cancel tasks (worker control plane)
 
-Use the worker control plane to pause a task and stop any in-flight execution. The pause flow:
-- Marks the task as `paused` in storage.
-- Enqueues an `interruptTask` async task that broadcasts an interrupt signal to all online workers.
-- Waits for LISTEN/NOTIFY acks from each online worker before returning.
+Use the worker control plane to pause or cancel tasks and interrupt in-flight execution.
 
-Important:
-- This relies on workers listening on Postgres `LISTEN` channels. Workers are marked online only after LISTEN setup succeeds, and they exit if the LISTEN loop dies.
-- Ensure workers are configured with a DB DSN so LISTEN is available.
+Current flow (task-driven, backend-agnostic):
+- Marks the target task status in storage (`paused` or `cancelled`).
+- Cascades to descendants (`parentTaskId` chain) in the same transaction.
+- Enqueues broadcast control tasks via the task system (not Postgres LISTEN/NOTIFY).
+- Fanout child tasks are idempotent (unique tags + `parent_task_id`).
+- ACK/NACK is inferred from child task terminal states, polled with `ackPollInterval`.
+- If no workers are alive, control plane skips broadcast enqueue/wait.
 
 Example:
 ```go
 if err := controlPlane.PauseTask(ctx, taskID); err != nil {
     return err
 }
-```
 
-The pause operation is transactional: `PauseTask` uses a DB transaction to pause the task and enqueue the interrupt task together.
-Pause/cancel operations now cascade to all descendant tasks (using `parentTaskId` links) in the same transaction, then enqueue a single interrupt task containing all affected task IDs.
-To cancel a task instead, call `CancelTask`, which marks the task `cancelled` and enqueues the interrupt task.
+if err := controlPlane.CancelTask(ctx, taskID); err != nil {
+    return err
+}
+```
 
 ## Runtime overrides
 
@@ -180,7 +181,17 @@ Worker config keys:
 
 Task labels:
 - Add `labels` to `api/tasks.yaml` task definitions.
-- Workers only claim tasks with matching labels; unlabeled tasks are eligible for all workers.
+- Claiming uses **all-match** semantics for business labels: every task label must exist on the worker.
+- Unlabeled tasks are eligible for all workers.
+- Each worker always includes an internal `worker:<workerId>` label.
+- A worker with no business labels (only internal `worker:<workerId>`) can claim only:
+  - unlabeled tasks, and
+  - tasks labeled with its own `worker:<workerId>`.
+
+Example:
+- Task labels: `["gpu", "arm"]`
+- Worker labels `["gpu"]` → cannot claim
+- Worker labels `["gpu", "arm"]` → can claim
 
 ## Wiring
 
