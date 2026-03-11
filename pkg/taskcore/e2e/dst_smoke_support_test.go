@@ -401,6 +401,8 @@ type runtimeActor struct {
 }
 
 type controlPlaneActor struct {
+	mu           sync.Mutex
+	available    bool
 	controlPlane *ctrl.WorkerControlPlane
 	model        model.ModelInterface
 }
@@ -408,10 +410,28 @@ type controlPlaneActor struct {
 func newControlPlaneActor(model model.ModelInterface, store taskcore.TaskStoreInterface) *controlPlaneActor {
 	runner := taskgen.NewTaskRunner(store)
 	controlPlane := ctrl.NewWorkerControlPlane(model, runner, store)
-	return &controlPlaneActor{controlPlane: controlPlane, model: model}
+	return &controlPlaneActor{available: true, controlPlane: controlPlane, model: model}
+}
+
+func (a *controlPlaneActor) SetAvailable(available bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.available = available
+}
+
+func (a *controlPlaneActor) ensureAvailable() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.available {
+		return fmt.Errorf("control plane unavailable")
+	}
+	return nil
 }
 
 func (a *controlPlaneActor) UpdateRuntimeConfig(ctx context.Context, key string, maxStrictPercentage int32, defaultWeight int32, w1Weight int32, w2Weight int32) error {
+	if err := a.ensureAvailable(); err != nil {
+		return err
+	}
 	if key == "" {
 		return fmt.Errorf("runtime config key is required")
 	}
@@ -438,6 +458,9 @@ func (a *controlPlaneActor) UpdateRuntimeConfig(ctx context.Context, key string,
 }
 
 func (a *controlPlaneActor) PauseTask(ctx context.Context, task string) error {
+	if err := a.ensureAvailable(); err != nil {
+		return err
+	}
 	if task == "" {
 		return fmt.Errorf("task name is required")
 	}
@@ -449,6 +472,9 @@ func (a *controlPlaneActor) PauseTask(ctx context.Context, task string) error {
 }
 
 func (a *controlPlaneActor) CancelTask(ctx context.Context, task string) error {
+	if err := a.ensureAvailable(); err != nil {
+		return err
+	}
 	if task == "" {
 		return fmt.Errorf("task name is required")
 	}
