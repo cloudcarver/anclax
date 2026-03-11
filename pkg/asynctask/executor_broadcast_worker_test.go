@@ -3,6 +3,8 @@ package asynctask
 import (
 	"context"
 	stdErrors "errors"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -438,6 +440,127 @@ func TestWaitForWorkerCommandTasksMissingThenDead(t *testing.T) {
 		return "tag"
 	})
 	require.NoError(t, err)
+}
+
+func TestWaitForWorkerCommandTasksPartialAckThenConverge(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	exec := &Executor{model: mockModel, now: time.Now, runtimeConfigHeartbeatTTL: 9 * time.Second}
+	w1 := uuid.New()
+	w2 := uuid.New()
+
+	var poll int32
+	mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, cutoff time.Time) ([]uuid.UUID, error) {
+			atomic.AddInt32(&poll, 1)
+			return []uuid.UUID{w1, w2}, nil
+		},
+	).AnyTimes()
+	mockModel.EXPECT().GetTaskByUniqueTag(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, uniqueTag *string) (*querier.AnclaxTask, error) {
+			switch {
+			case strings.HasSuffix(*uniqueTag, w1.String()):
+				return &querier.AnclaxTask{ID: 1, Status: string(apigen.Completed)}, nil
+			case strings.HasSuffix(*uniqueTag, w2.String()):
+				if atomic.LoadInt32(&poll) < 2 {
+					return &querier.AnclaxTask{ID: 2, Status: string(apigen.Pending)}, nil
+				}
+				return &querier.AnclaxTask{ID: 2, Status: string(apigen.Completed)}, nil
+			default:
+				return nil, stdErrors.New("unexpected unique tag")
+			}
+		},
+	).AnyTimes()
+
+	err := exec.waitForWorkerCommandTasks(context.Background(), []uuid.UUID{w1, w2}, time.Millisecond, func(workerID uuid.UUID) string {
+		return "tag-" + workerID.String()
+	})
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, atomic.LoadInt32(&poll), int32(2))
+}
+
+func TestWaitForWorkerCommandTasksPendingThenWorkerDead(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	exec := &Executor{model: mockModel, now: time.Now, runtimeConfigHeartbeatTTL: 9 * time.Second}
+	w1 := uuid.New()
+
+	gomock.InOrder(
+		mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{w1}, nil),
+		mockModel.EXPECT().GetTaskByUniqueTag(gomock.Any(), gomock.Any()).Return(&querier.AnclaxTask{ID: 1, Status: string(apigen.Pending)}, nil),
+		mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{}, nil),
+	)
+
+	err := exec.waitForWorkerCommandTasks(context.Background(), []uuid.UUID{w1}, time.Millisecond, func(workerID uuid.UUID) string {
+		return "tag"
+	})
+	require.NoError(t, err)
+}
+
+func TestExecuteBroadcastCancelTaskTimeoutWhilePending(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockRunner := taskgen.NewMockTaskRunner(ctrl)
+	exec := &Executor{model: mockModel, runner: mockRunner, now: time.Now, runtimeConfigHeartbeatTTL: 9 * time.Second}
+	w1 := uuid.New()
+	ackPoll := "5ms"
+
+	mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{w1}, nil).AnyTimes()
+	mockRunner.EXPECT().RunCancelTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int32(1001), nil)
+	mockModel.EXPECT().GetTaskByUniqueTag(gomock.Any(), gomock.Any()).Return(&querier.AnclaxTask{ID: 1001, Status: string(apigen.Pending)}, nil).AnyTimes()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	err := exec.ExecuteBroadcastCancelTask(ctx, worker.Task{}, &taskgen.BroadcastCancelTaskParameters{
+		RequestID:       strPtr("req-timeout"),
+		TaskIDs:         []int32{101},
+		AckPollInterval: &ackPoll,
+	})
+	require.Error(t, err)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
+func TestEnqueueCancelTaskOnWorkerRetryUsesStableUniqueTagAndParent(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRunner := taskgen.NewMockTaskRunner(ctrl)
+	exec := &Executor{runner: mockRunner}
+	wid := uuid.New()
+	requestID := "req-stable"
+	parentTaskID := int32(77)
+
+	var uniqueTags []string
+	var parentIDs []int32
+	mockRunner.EXPECT().RunCancelTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, params *taskgen.CancelTaskOnWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+			task := &apigen.Task{Attributes: apigen.TaskAttributes{}}
+			for _, override := range overrides {
+				require.NoError(t, override(task))
+			}
+			require.NotNil(t, task.UniqueTag)
+			require.NotNil(t, task.ParentTaskId)
+			uniqueTags = append(uniqueTags, *task.UniqueTag)
+			parentIDs = append(parentIDs, *task.ParentTaskId)
+			return int32(1), nil
+		},
+	).Times(2)
+
+	err := exec.enqueueCancelTaskOnWorker(context.Background(), parentTaskID, requestID, wid, []int32{1})
+	require.NoError(t, err)
+	err = exec.enqueueCancelTaskOnWorker(context.Background(), parentTaskID, requestID, wid, []int32{1})
+	require.NoError(t, err)
+
+	require.Len(t, uniqueTags, 2)
+	require.Equal(t, uniqueTags[0], uniqueTags[1])
+	require.Equal(t, cancelOnWorkerUniqueTag(requestID, wid), uniqueTags[0])
+	require.Equal(t, []int32{parentTaskID, parentTaskID}, parentIDs)
 }
 
 func TestEnqueueHelpersRunnerError(t *testing.T) {

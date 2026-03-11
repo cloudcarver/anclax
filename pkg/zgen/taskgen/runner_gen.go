@@ -608,12 +608,6 @@ type DeleteOpaqueKeyParameters struct {
 
 
 type UpdateWorkerRuntimeConfigParameters struct { 
-    // Correlation ID for notify and ack messages
-	RequestID *string `json:"requestID" yaml:"requestID"`
-
-    // Maximum percentage of strict-priority slots (0-100)
-	MaxStrictPercentage *int32 `json:"maxStrictPercentage" yaml:"maxStrictPercentage"`
-
     // Default weight for unlabeled task group
 	DefaultWeight *int32 `json:"defaultWeight" yaml:"defaultWeight"`
 
@@ -628,13 +622,16 @@ type UpdateWorkerRuntimeConfigParameters struct {
 
     // Ack listen timeout window for one iteration
 	ListenTimeout *string `json:"listenTimeout" yaml:"listenTimeout"`
+
+    // Correlation ID for notify and ack messages
+	RequestID *string `json:"requestID" yaml:"requestID"`
+
+    // Maximum percentage of strict-priority slots (0-100)
+	MaxStrictPercentage *int32 `json:"maxStrictPercentage" yaml:"maxStrictPercentage"`
 }
 
 
 type InterruptTaskParameters struct { 
-    // Ack listen timeout window for one iteration
-	ListenTimeout *string `json:"listenTimeout" yaml:"listenTimeout"`
-
     // Task IDs to interrupt
 	TaskIDs []int32 `json:"taskIDs" yaml:"taskIDs"`
 
@@ -643,14 +640,14 @@ type InterruptTaskParameters struct {
 
     // Fallback retry interval when ack listening is unavailable
 	NotifyInterval *string `json:"notifyInterval" yaml:"notifyInterval"`
+
+    // Ack listen timeout window for one iteration
+	ListenTimeout *string `json:"listenTimeout" yaml:"listenTimeout"`
 }
 
 
 
 type BroadcastUpdateWorkerRuntimeConfigParameters struct { 
-    // Maximum percentage of strict-priority slots (0-100)
-	MaxStrictPercentage *int32 `json:"maxStrictPercentage" yaml:"maxStrictPercentage"`
-
     // Default weight for unlabeled task group
 	DefaultWeight *int32 `json:"defaultWeight" yaml:"defaultWeight"`
 
@@ -665,6 +662,9 @@ type BroadcastUpdateWorkerRuntimeConfigParameters struct {
 
     // Correlation ID for this broadcast command
 	RequestID *string `json:"requestID" yaml:"requestID"`
+
+    // Maximum percentage of strict-priority slots (0-100)
+	MaxStrictPercentage *int32 `json:"maxStrictPercentage" yaml:"maxStrictPercentage"`
 }
 
 type ApplyWorkerRuntimeConfigToWorkerParameters struct { 
@@ -692,14 +692,14 @@ type BroadcastCancelTaskParameters struct {
 
 
 type CancelTaskOnWorkerParameters struct { 
+    // Correlation ID of the parent broadcast command
+	RequestID *string `json:"requestID" yaml:"requestID"`
+
     // Target worker ID
 	WorkerID string `json:"workerID" yaml:"workerID"`
 
     // Task IDs to interrupt on the target worker
 	TaskIDs []int32 `json:"taskIDs" yaml:"taskIDs"`
-
-    // Correlation ID of the parent broadcast command
-	RequestID *string `json:"requestID" yaml:"requestID"`
 }
 
 

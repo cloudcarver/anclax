@@ -331,6 +331,36 @@ scenarios:
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 
+  - name: worker_label_all_match_strict_priority
+    description: strict tasks also require all labels to match; gpu+arm strict task requires both labels.
+    steps:
+      - id: s1
+        parallel:
+          runtime:
+            - ResetCaptured(ctx)
+          taskStore:
+            - Enqueue(ctx, "LBS_GPU_ARM_STRICT", 9, 1, []string{"gpu", "arm"})
+
+      - id: s2
+        parallel:
+          runtime:
+            - StartWorker(ctx, "lbs_gpu", "capture", "dst-taskstore", []string{"gpu"}, 20, 20, 200, 20, 1, 0, false, "")
+            - StartWorker(ctx, "lbs_gpu_arm", "capture", "dst-taskstore", []string{"gpu", "arm"}, 20, 20, 200, 20, 1, 0, false, "")
+
+      - id: s3
+        parallel:
+          runtime:
+            - WaitCapturedCount(ctx, 1, 5000)
+            - AssertCapturedByWorkerContains(ctx, "lbs_gpu_arm", []string{"LBS_GPU_ARM_STRICT"})
+            - StopWorker(ctx, "lbs_gpu")
+            - StopWorker(ctx, "lbs_gpu_arm")
+
+      - id: s4
+        script: |
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          require.NoError(t, err)
+          require.Equal(t, [][]any{{int64(0)}}, rows)
+
   - name: strict_query_does_not_pick_normal
     description: when strict lane is disabled, normal tasks still make progress.
     steps:
@@ -817,6 +847,75 @@ scenarios:
           runtime:
             - StopWorker(ctx, "SCI_W1")
             - StopWorker(ctx, "SCI_W2")
+
+  - name: smoke_control_plane_pause_cancel_race_with_worker_churn
+    description: concurrent pause/cancel calls during worker churn should converge with no pending broadcast/control tasks.
+    steps:
+      - id: s1
+        parallel:
+          taskStore:
+            - EnqueueRaw(ctx, "SCRACE_TASK", "pause-e2e", "{}", 0, 1, []string{"cancel-label"}, "", 0, "", 0)
+          runtime:
+            - StartWorker(ctx, "SCRACE_EXEC", "blocking", "pause-e2e", []string{"cancel-label"}, 20, 20, 200, 20, 1, 0, true, "11111111-1111-1111-1111-111111111111")
+            - StartWorker(ctx, "SCRACE_CTRL", "noop", "pause-e2e", []string{"control"}, 20, 20, 200, 20, 1, 0, true, "22222222-2222-2222-2222-222222222222")
+
+      - id: s2
+        parallel:
+          runtime:
+            - WaitSignal(ctx, "SCRACE_EXEC", "started", 5000)
+            - WaitTaskLock(ctx, "SCRACE_TASK", 5000)
+
+      - id: s3
+        script: |
+          var wg sync.WaitGroup
+
+          wg.Add(1)
+          go func() {
+            defer wg.Done()
+            require.NoError(t, actors.ControlPlane.PauseTask(ctx, "SCRACE_TASK"))
+          }()
+
+          wg.Add(1)
+          go func() {
+            defer wg.Done()
+            require.NoError(t, actors.ControlPlane.CancelTask(ctx, "SCRACE_TASK"))
+          }()
+
+          wg.Add(1)
+          go func() {
+            defer wg.Done()
+            require.NoError(t, actors.Runtime.StartWorker(ctx, "SCRACE_CHURN", "noop", "pause-e2e", []string{"control"}, 20, 20, 200, 20, 1, 0, true, "33333333-3333-3333-3333-333333333333"))
+            time.Sleep(40 * time.Millisecond)
+            require.NoError(t, actors.Runtime.StopWorker(ctx, "SCRACE_CHURN"))
+            time.Sleep(20 * time.Millisecond)
+            require.NoError(t, actors.Runtime.StartWorker(ctx, "SCRACE_CHURN", "noop", "pause-e2e", []string{"control"}, 20, 20, 200, 20, 1, 0, true, "33333333-3333-3333-3333-333333333333"))
+          }()
+
+          wg.Wait()
+
+      - id: s4
+        parallel:
+          runtime:
+            - WaitSignal(ctx, "SCRACE_EXEC", "done", 7000)
+            - WaitTaskUnlock(ctx, "SCRACE_TASK", 7000)
+            - WaitNoPendingTasks(ctx, 9000)
+
+      - id: s5
+        script: |
+          rows, err := actors.Validator.Query(ctx, "select status from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"SCRACE_TASK"})
+          require.NoError(t, err)
+          require.Equal(t, [][]any{{"cancelled"}}, rows)
+
+          rows, err = actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type' in ('broadcastPauseTask','broadcastCancelTask','pauseTaskOnWorker','cancelTaskOnWorker')", []any{})
+          require.NoError(t, err)
+          require.Equal(t, [][]any{{int64(0)}}, rows)
+
+      - id: s6
+        parallel:
+          runtime:
+            - StopWorker(ctx, "SCRACE_EXEC")
+            - StopWorker(ctx, "SCRACE_CTRL")
+            - StopWorker(ctx, "SCRACE_CHURN")
 
   - name: smoke_cancel_task_descendants
     description: cancelling a task cancels all descendants in the hierarchy.
