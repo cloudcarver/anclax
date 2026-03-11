@@ -632,6 +632,9 @@ type UpdateWorkerRuntimeConfigParameters struct {
 
 
 type InterruptTaskParameters struct { 
+    // Task IDs to interrupt
+	TaskIDs []int32 `json:"taskIDs" yaml:"taskIDs"`
+
     // Correlation ID for notify and ack messages
 	RequestID *string `json:"requestID" yaml:"requestID"`
 
@@ -640,9 +643,6 @@ type InterruptTaskParameters struct {
 
     // Ack listen timeout window for one iteration
 	ListenTimeout *string `json:"listenTimeout" yaml:"listenTimeout"`
-
-    // Task IDs to interrupt
-	TaskIDs []int32 `json:"taskIDs" yaml:"taskIDs"`
 }
 
 
@@ -692,26 +692,26 @@ type BroadcastCancelTaskParameters struct {
 
 
 type CancelTaskOnWorkerParameters struct { 
-    // Correlation ID of the parent broadcast command
-	RequestID *string `json:"requestID" yaml:"requestID"`
-
     // Target worker ID
 	WorkerID string `json:"workerID" yaml:"workerID"`
 
     // Task IDs to interrupt on the target worker
 	TaskIDs []int32 `json:"taskIDs" yaml:"taskIDs"`
+
+    // Correlation ID of the parent broadcast command
+	RequestID *string `json:"requestID" yaml:"requestID"`
 }
 
 
 type BroadcastPauseTaskParameters struct { 
+    // Poll interval used while waiting worker ack tasks
+	AckPollInterval *string `json:"ackPollInterval" yaml:"ackPollInterval"`
+
     // Correlation ID for this broadcast command
 	RequestID *string `json:"requestID" yaml:"requestID"`
 
     // Task IDs to interrupt on each target worker
 	TaskIDs []int32 `json:"taskIDs" yaml:"taskIDs"`
-
-    // Poll interval used while waiting worker ack tasks
-	AckPollInterval *string `json:"ackPollInterval" yaml:"ackPollInterval"`
 }
 
 
@@ -727,14 +727,14 @@ type PauseTaskOnWorkerParameters struct {
 }
 
 type StressProbeParameters struct { 
-    // Simulated task execution time in milliseconds
-	SleepMs int32 `json:"sleepMs" yaml:"sleepMs"`
-
     // Logical group name for test-side metrics and labels
 	Group string `json:"group" yaml:"group"`
 
     // Logical task id for stress-run metrics correlation
 	JobID int64 `json:"jobID" yaml:"jobID"`
+
+    // Simulated task execution time in milliseconds
+	SleepMs int32 `json:"sleepMs" yaml:"sleepMs"`
 }
 
 func (r *DeleteOpaqueKeyParameters) Parse(spec json.RawMessage) error {

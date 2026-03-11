@@ -31,6 +31,8 @@ interfaces:
       - AssertCapturedContains(ctx context.Context, tasks []string) error
       - AssertCapturedBefore(ctx context.Context, first string, second string) error
       - AssertCapturedByWorkerContains(ctx context.Context, workerName string, tasks []string) error
+      - AssertCapturedTaskCount(ctx context.Context, task string, expected int32) error
+      - AssertIdempotentStats(ctx context.Context, workerName string, task string, attempts int32, sideEffects int32) error
       - AssertContentionCounts(ctx context.Context, expected int32) error
       - AssertTaskErrorEvent(ctx context.Context, task string, expectedError string) error
       - SetTaskStatus(ctx context.Context, task string, status string) error
@@ -1175,3 +1177,80 @@ scenarios:
           rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
+
+  - name: bounded_soak_no_backlog_with_worker_churn
+    description: bounded enqueue/churn run should drain pending and running tasks.
+    steps:
+      - id: s1
+        parallel:
+          runtime:
+            - ResetCaptured(ctx)
+            - StartWorker(ctx, "soak_w1", "capture", "dst-taskstore", []string{"w1"}, 20, 20, 200, 3600000, 1, 0, false, "")
+            - StartWorker(ctx, "soak_w2", "capture", "dst-taskstore", []string{"w2"}, 20, 20, 200, 3600000, 1, 0, false, "")
+
+      - id: s2
+        script: |
+          for i := 0; i < 60; i++ {
+            task := "SOAK_UNLABELED"
+            labels := []string{}
+            switch i % 3 {
+            case 1:
+              task = "SOAK_W1"
+              labels = []string{"w1"}
+            case 2:
+              task = "SOAK_W2"
+              labels = []string{"w2"}
+            }
+            require.NoError(t, actors.TaskStore.Enqueue(ctx, task, 0, 1, labels))
+            if i > 0 && i%20 == 0 {
+              require.NoError(t, actors.Runtime.StopWorker(ctx, "soak_w1"))
+              require.NoError(t, actors.Runtime.StartWorker(ctx, "soak_w1", "capture", "dst-taskstore", []string{"w1"}, 20, 20, 200, 3600000, 1, 0, false, ""))
+            }
+            require.NoError(t, actors.Runtime.SleepMs(ctx, 20))
+          }
+
+      - id: s3
+        parallel:
+          runtime:
+            - WaitNoPendingTasks(ctx, 20000)
+            - StopWorker(ctx, "soak_w1")
+            - StopWorker(ctx, "soak_w2")
+
+      - id: s4
+        script: |
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','running')", []any{})
+          require.NoError(t, err)
+          require.Equal(t, [][]any{{int64(0)}}, rows)
+
+  - name: at_least_once_retry_and_idempotent_side_effect_pattern
+    description: retries can execute a task more than once; idempotent handler should apply side effect only once.
+    steps:
+      - id: s1
+        parallel:
+          runtime:
+            - ResetCaptured(ctx)
+            - StartWorker(ctx, "ao_dup", "capture-fail-once:AO_DUP", "dst-taskstore", []string{}, 20, 20, 200, 3600000, 1, 0, false, "")
+          taskStore:
+            - EnqueueRaw(ctx, "AO_DUP", "dst-taskstore", "{}", 0, 1, []string{}, "100ms", 2, "", 0)
+
+      - id: s2
+        parallel:
+          runtime:
+            - WaitTaskCompletion(ctx, "AO_DUP", 10000)
+            - AssertCapturedTaskCount(ctx, "AO_DUP", 2)
+            - StopWorker(ctx, "ao_dup")
+
+      - id: s3
+        parallel:
+          runtime:
+            - StartWorker(ctx, "ao_idem", "idempotent-fail-once:AO_IDEM", "idem-task", []string{}, 20, 20, 200, 3600000, 1, 0, false, "")
+          taskStore:
+            - EnqueueRaw(ctx, "AO_IDEM", "idem-task", "{}", 0, 1, []string{}, "100ms", 2, "", 0)
+
+      - id: s4
+        parallel:
+          runtime:
+            - WaitTaskCompletion(ctx, "AO_IDEM", 10000)
+            - AssertIdempotentStats(ctx, "ao_idem", "AO_IDEM", 2, 1)
+            - StopWorker(ctx, "ao_idem")
+            - WaitNoPendingTasks(ctx, 5000)

@@ -916,6 +916,46 @@ func (a *runtimeActor) AssertCapturedByWorkerContains(ctx context.Context, worke
 	return nil
 }
 
+func (a *runtimeActor) AssertCapturedTaskCount(ctx context.Context, task string, expected int32) error {
+	if task == "" {
+		return fmt.Errorf("task name is required")
+	}
+	if expected < 0 {
+		return fmt.Errorf("expected must be non-negative")
+	}
+	count := int32(0)
+	for _, r := range a.captures.snapshot() {
+		if r.Task == task {
+			count++
+		}
+	}
+	if count != expected {
+		return fmt.Errorf("captured task count mismatch for %q: expected=%d got=%d", task, expected, count)
+	}
+	return nil
+}
+
+func (a *runtimeActor) AssertIdempotentStats(ctx context.Context, workerName string, task string, attempts int32, sideEffects int32) error {
+	if workerName == "" || task == "" {
+		return fmt.Errorf("workerName and task are required")
+	}
+	w, err := a.workerByName(workerName)
+	if err != nil {
+		return err
+	}
+	h, ok := w.handler.(*runtimeIdempotentFailOnceHandler)
+	if !ok {
+		return fmt.Errorf("worker %q is not using idempotent-fail-once handler", workerName)
+	}
+	if got := int32(h.AttemptCount(task)); got != attempts {
+		return fmt.Errorf("idempotent attempts mismatch for %q on %q: expected=%d got=%d", task, workerName, attempts, got)
+	}
+	if got := int32(h.SideEffectCount(task)); got != sideEffects {
+		return fmt.Errorf("idempotent side effects mismatch for %q on %q: expected=%d got=%d", task, workerName, sideEffects, got)
+	}
+	return nil
+}
+
 func (a *runtimeActor) AssertContentionCounts(ctx context.Context, expected int32) error {
 	return a.contention.assertCounts(int(expected))
 }
@@ -1197,6 +1237,12 @@ func (a *runtimeActor) newHandler(workerName string, mode string, taskType strin
 			return nil, fmt.Errorf("capture-fail-once requires task name")
 		}
 		return newRuntimeCaptureWorkerHandler(taskType, workerName, a.captures, task), nil
+	case strings.HasPrefix(mode, "idempotent-fail-once:"):
+		task := strings.TrimPrefix(mode, "idempotent-fail-once:")
+		if task == "" {
+			return nil, fmt.Errorf("idempotent-fail-once requires task name")
+		}
+		return newRuntimeIdempotentFailOnceHandler(taskType, task), nil
 	default:
 		return nil, fmt.Errorf("unknown runtime mode %q", mode)
 	}
@@ -1450,6 +1496,70 @@ func (h *runtimeCaptureWorkerHandler) RegisterTaskHandler(handler worker.TaskHan
 
 func (h *runtimeCaptureWorkerHandler) OnTaskFailed(ctx context.Context, tx core.Tx, failedTaskSpec worker.TaskSpec, taskID int32) error {
 	return nil
+}
+
+type runtimeIdempotentFailOnceHandler struct {
+	taskType string
+
+	mu          sync.Mutex
+	failOnce    map[string]struct{}
+	sideEffects map[string]int
+	attempts    map[string]int
+}
+
+func newRuntimeIdempotentFailOnceHandler(taskType string, failTask string) *runtimeIdempotentFailOnceHandler {
+	h := &runtimeIdempotentFailOnceHandler{
+		taskType:    taskType,
+		failOnce:    map[string]struct{}{},
+		sideEffects: map[string]int{},
+		attempts:    map[string]int{},
+	}
+	h.failOnce[failTask] = struct{}{}
+	return h
+}
+
+func (h *runtimeIdempotentFailOnceHandler) HandleTask(ctx context.Context, spec worker.Task) error {
+	if spec.GetType() != h.taskType {
+		return worker.ErrUnknownTaskType
+	}
+	taskName, err := runtimeTaskNameFromPayload(spec.GetPayload())
+	if err != nil {
+		return err
+	}
+
+	h.mu.Lock()
+	h.attempts[taskName]++
+	if h.sideEffects[taskName] == 0 {
+		h.sideEffects[taskName] = 1
+	}
+	_, shouldFail := h.failOnce[taskName]
+	if shouldFail {
+		delete(h.failOnce, taskName)
+	}
+	h.mu.Unlock()
+
+	if shouldFail {
+		return errors.New("intentional idempotent fail once")
+	}
+	return nil
+}
+
+func (h *runtimeIdempotentFailOnceHandler) RegisterTaskHandler(handler worker.TaskHandler) {}
+
+func (h *runtimeIdempotentFailOnceHandler) OnTaskFailed(ctx context.Context, tx core.Tx, failedTaskSpec worker.TaskSpec, taskID int32) error {
+	return nil
+}
+
+func (h *runtimeIdempotentFailOnceHandler) AttemptCount(task string) int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.attempts[task]
+}
+
+func (h *runtimeIdempotentFailOnceHandler) SideEffectCount(task string) int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.sideEffects[task]
 }
 
 func runtimeTaskNameFromPayload(payload []byte) (string, error) {

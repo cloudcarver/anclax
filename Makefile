@@ -29,7 +29,7 @@ prepare-test:
 python-test: prepare-test
 	cd test && uv run main.py
 
-test: ut dst smoke
+test: ut test-deterministic smoke
 
 ut:
 	@COLOR=ALWAYS go test -race -covermode=atomic -coverprofile=coverage.out -tags ut ./... -timeout $(UT_TIMEOUT)
@@ -43,11 +43,9 @@ smoke:
 
 smoke-worker: smoke
 
-dst:
+test-deterministic:
 	GOCACHE=/tmp/go-cache go run ./cmd/anclax gen
 	GOCACHE=/tmp/go-cache go test ./pkg/taskcore/dtmtest -count=1 -v -timeout $(DST_TIMEOUT)
-
-dtmtest: dst
 
 gen:
 	go run cmd/dev/main.go copy-templates --src examples/simple --dst cmd/anclax/initFiles --exclude .anclax,go.sum
