@@ -72,3 +72,113 @@ func TestSmokeFailureInjectionRecovery(t *testing.T) {
 		require.NoError(t, env.runtime.WaitNoPendingTasks(ctx, 10000))
 	})
 }
+
+func TestChaosControlPlaneBroadcastDuringDBRestart(t *testing.T) {
+	withSmokePostgres(t, func(ctx context.Context, m model.ModelInterface) {
+		env, err := newDSTEnv(m)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = env.runtime.stopAllWorkers(ctx, 3*time.Second) })
+
+		require.NoError(t, env.runtime.StartWorker(ctx, "cp_w1", "noop", "noop", []string{}, 20, 20, 200, 3600000, 1, 50, true, ""))
+		require.NoError(t, env.runtime.StartWorker(ctx, "cp_w2", "noop", "noop", []string{}, 20, 20, 200, 3600000, 1, 50, true, ""))
+		require.NoError(t, env.runtime.WaitWorkerOnline(ctx, "cp_w1", true, 5000))
+		require.NoError(t, env.runtime.WaitWorkerOnline(ctx, "cp_w2", true, 5000))
+
+		require.NoError(t, runDocker(t, "stop", smokeContainerName))
+		downCtx, cancel := context.WithTimeout(ctx, 1200*time.Millisecond)
+		err = env.controlPlane.UpdateRuntimeConfig(downCtx, "CP_CFG_DOWN", 35, 1, 2, 1)
+		cancel()
+		require.Error(t, err)
+
+		require.NoError(t, runDocker(t, "start", smokeContainerName))
+		require.NoError(t, waitForPostgres(t, smokePostgresDSN(), 20*time.Second))
+		require.NoError(t, env.runtime.MarkWorkerOffline(ctx, "cp_w1"))
+		require.NoError(t, env.runtime.MarkWorkerOffline(ctx, "cp_w2"))
+
+		require.NoError(t, env.runtime.StartWorker(ctx, "cp_w1", "noop", "noop", []string{}, 20, 20, 200, 3600000, 1, 50, true, ""))
+		require.NoError(t, env.runtime.StartWorker(ctx, "cp_w2", "noop", "noop", []string{}, 20, 20, 200, 3600000, 1, 50, true, ""))
+		require.NoError(t, env.controlPlane.UpdateRuntimeConfig(ctx, "CP_CFG_UP", 45, 1, 3, 1))
+		require.NoError(t, env.runtime.CaptureLatestRuntimeConfigVersion(ctx, "CP_CFG_UP"))
+		require.NoError(t, env.runtime.WaitWorkerLagging(ctx, "cp_w1", "CP_CFG_UP", false, 7000))
+		require.NoError(t, env.runtime.WaitWorkerLagging(ctx, "cp_w2", "CP_CFG_UP", false, 7000))
+		assertNoPendingRunningControlTasks(t, ctx, env)
+
+		require.NoError(t, env.runtime.StopWorker(ctx, "cp_w1"))
+		require.NoError(t, env.runtime.StopWorker(ctx, "cp_w2"))
+	})
+}
+
+func TestChaosLockRefreshTakeoverAfterDBRestart(t *testing.T) {
+	withSmokePostgres(t, func(ctx context.Context, m model.ModelInterface) {
+		env, err := newDSTEnv(m)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = env.runtime.stopAllWorkers(ctx, 3*time.Second) })
+
+		require.NoError(t, env.taskStore.EnqueueRaw(ctx, "LOCK_CHAOS", "lock-chaos", "{}", 0, 1, []string{}, "", 0, "", 0))
+		require.NoError(t, env.runtime.StartWorker(ctx, "lock_owner", "blocking", "lock-chaos", []string{}, 20, 20, 200, 3600000, 1, 0, false, ""))
+		require.NoError(t, env.runtime.WaitSignal(ctx, "lock_owner", "started", 5000))
+		require.NoError(t, env.runtime.WaitTaskLock(ctx, "LOCK_CHAOS", 5000))
+		require.NoError(t, env.runtime.WaitLockRefresh(ctx, "LOCK_CHAOS", 5000))
+
+		require.NoError(t, runDocker(t, "stop", smokeContainerName))
+		require.NoError(t, runDocker(t, "start", smokeContainerName))
+		require.NoError(t, waitForPostgres(t, smokePostgresDSN(), 20*time.Second))
+
+		require.NoError(t, env.runtime.StartWorker(ctx, "lock_takeover", "signal", "lock-chaos", []string{}, 20, 20, 200, 3600000, 1, 0, false, ""))
+		require.NoError(t, env.runtime.StopWorker(ctx, "lock_owner"))
+		require.NoError(t, env.runtime.SleepMs(ctx, 260))
+		require.NoError(t, env.runtime.WaitTaskCompletion(ctx, "LOCK_CHAOS", 10000))
+		require.NoError(t, env.runtime.StopWorker(ctx, "lock_takeover"))
+		require.NoError(t, env.runtime.WaitNoPendingTasks(ctx, 10000))
+	})
+}
+
+func TestChaosWorkerKillRecoveryWithInFlightTasks(t *testing.T) {
+	withSmokePostgres(t, func(ctx context.Context, m model.ModelInterface) {
+		env, err := newDSTEnv(m)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = env.runtime.stopAllWorkers(ctx, 3*time.Second) })
+
+		tasks := []string{"KILL_1", "KILL_2", "KILL_3"}
+		for _, task := range tasks {
+			require.NoError(t, env.taskStore.EnqueueRaw(ctx, task, "kill-chaos", "{}", 0, 1, []string{}, "", 0, "", 0))
+		}
+
+		require.NoError(t, env.runtime.StartWorker(ctx, "kill_owner", "blocking", "kill-chaos", []string{}, 20, 20, 200, 3600000, 1, 0, false, ""))
+		require.NoError(t, env.runtime.WaitSignal(ctx, "kill_owner", "started", 5000))
+		require.NoError(t, env.runtime.StopWorker(ctx, "kill_owner"))
+
+		require.NoError(t, env.runtime.StartWorker(ctx, "kill_recover1", "signal", "kill-chaos", []string{}, 20, 20, 200, 3600000, 1, 0, false, ""))
+		require.NoError(t, env.runtime.StartWorker(ctx, "kill_recover2", "signal", "kill-chaos", []string{}, 20, 20, 200, 3600000, 1, 0, false, ""))
+		for _, task := range tasks {
+			require.NoError(t, env.runtime.WaitTaskCompletion(ctx, task, 12000))
+		}
+
+		rows, err := env.validator.Query(ctx, "select count(*) from anclax.tasks where spec->'payload'->>'name' = any($1::text[]) and attempts >= 2", []any{tasks})
+		require.NoError(t, err)
+		require.Len(t, rows, 1)
+		require.Len(t, rows[0], 1)
+		require.GreaterOrEqual(t, rows[0][0].(int64), int64(1))
+
+		require.NoError(t, env.runtime.StopWorker(ctx, "kill_recover1"))
+		require.NoError(t, env.runtime.StopWorker(ctx, "kill_recover2"))
+		require.NoError(t, env.runtime.WaitNoPendingTasks(ctx, 10000))
+	})
+}
+
+func assertNoPendingRunningControlTasks(t *testing.T, ctx context.Context, env *dstEnv) {
+	t.Helper()
+	types := []string{
+		"broadcastCancelTask",
+		"cancelTaskOnWorker",
+		"broadcastPauseTask",
+		"pauseTaskOnWorker",
+		"broadcastUpdateWorkerRuntimeConfig",
+		"applyWorkerRuntimeConfigToWorker",
+		"updateWorkerRuntimeConfig",
+		"interruptTask",
+	}
+	rows, err := env.validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','running') and spec->>'type' = any($1::text[])", []any{types})
+	require.NoError(t, err)
+	require.Equal(t, [][]any{{int64(0)}}, rows)
+}
