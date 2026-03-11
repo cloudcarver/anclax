@@ -573,7 +573,7 @@ func (a *runtimeActor) StartWorker(
 	a.mu.Unlock()
 
 	go workerInstance.Start()
-	return nil
+	return a.waitWorkerOnlineByID(ctx, workerID, true, 2*time.Second)
 }
 
 func (a *runtimeActor) StopWorker(ctx context.Context, name string) error {
@@ -586,7 +586,67 @@ func (a *runtimeActor) StopWorker(ctx context.Context, name string) error {
 	if w.gctx != nil {
 		w.gctx.Cancel()
 	}
+	if err := a.waitWorkerOnlineByID(ctx, w.workerID, false, 3*time.Second); err != nil {
+		return fmt.Errorf("worker %q did not go offline: %w", name, err)
+	}
 	return nil
+}
+
+func (a *runtimeActor) stopAllWorkers(ctx context.Context, timeout time.Duration) error {
+	a.mu.Lock()
+	workers := make([]*runtimeWorker, 0, len(a.workers))
+	for name, w := range a.workers {
+		workers = append(workers, w)
+		delete(a.workers, name)
+	}
+	a.mu.Unlock()
+
+	if len(workers) == 0 {
+		return nil
+	}
+
+	ids := make([]uuid.UUID, 0, len(workers))
+	for _, w := range workers {
+		if w == nil {
+			continue
+		}
+		if w.gctx != nil {
+			w.gctx.Cancel()
+		}
+		if w.workerID != uuid.Nil {
+			ids = append(ids, w.workerID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+
+	if timeout <= 0 {
+		timeout = 3 * time.Second
+	}
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		online, err := a.model.ListOnlineWorkerIDs(ctx, time.Now().Add(-1*time.Minute))
+		if err == nil {
+			anyOnline := false
+			for _, id := range ids {
+				if runtimeContainsUUID(online, id) {
+					anyOnline = true
+					break
+				}
+			}
+			if !anyOnline {
+				return nil
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	return fmt.Errorf("timeout waiting all workers offline")
 }
 
 func (a *runtimeActor) ReleaseWorker(ctx context.Context, name string) error {
@@ -752,7 +812,19 @@ func (a *runtimeActor) WaitNoPendingTasks(ctx context.Context, timeoutMs int32) 
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	return fmt.Errorf("pending tasks did not drain")
+	pending, err := a.model.ListAllPendingTasks(ctx)
+	if err != nil {
+		return fmt.Errorf("pending tasks did not drain and list failed: %w", err)
+	}
+	names := make([]string, 0, len(pending))
+	for _, t := range pending {
+		name := fmt.Sprintf("id=%d", t.ID)
+		if payloadName := taskPayloadName(t.Spec.Payload); payloadName != "" {
+			name = payloadName
+		}
+		names = append(names, name)
+	}
+	return fmt.Errorf("pending tasks did not drain: count=%d names=%v", len(pending), names)
 }
 
 func (a *runtimeActor) ResetCaptured(ctx context.Context) error {
@@ -1059,7 +1131,20 @@ func (a *runtimeActor) WaitWorkerOnline(ctx context.Context, workerName string, 
 	if err != nil {
 		return err
 	}
-	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
+	if timeoutMs <= 0 {
+		timeoutMs = 1000
+	}
+	if err := a.waitWorkerOnlineByID(ctx, workerID, expected, time.Duration(timeoutMs)*time.Millisecond); err != nil {
+		return fmt.Errorf("worker %q online expected=%v was not reached: %w", workerName, expected, err)
+	}
+	return nil
+}
+
+func (a *runtimeActor) waitWorkerOnlineByID(ctx context.Context, workerID uuid.UUID, expected bool, timeout time.Duration) error {
+	if timeout <= 0 {
+		timeout = time.Second
+	}
+	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		select {
 		case <-ctx.Done():
@@ -1075,7 +1160,7 @@ func (a *runtimeActor) WaitWorkerOnline(ctx context.Context, workerName string, 
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	return fmt.Errorf("worker %q online expected=%v was not reached", workerName, expected)
+	return fmt.Errorf("timeout")
 }
 
 func (a *runtimeActor) MarkWorkerOffline(ctx context.Context, workerName string) error {
@@ -1381,6 +1466,14 @@ func runtimeTaskNameFromPayload(payload []byte) (string, error) {
 		return "", fmt.Errorf("payload name must be non-empty string")
 	}
 	return name, nil
+}
+
+func taskPayloadName(payload []byte) string {
+	name, err := runtimeTaskNameFromPayload(payload)
+	if err != nil {
+		return ""
+	}
+	return name
 }
 
 type runtimeContentionPayload struct {

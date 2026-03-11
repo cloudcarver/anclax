@@ -347,13 +347,12 @@ func (h *runtimeHarness) WaitCallCount(ctx context.Context, call string, expecte
 }
 
 func (h *runtimeHarness) WaitSnapshot(ctx context.Context, inFlight int32, strictInFlight int32, activeCycles int32, timeoutMs int32) error {
-	eng, _, _, _, _, err := h.current()
-	if err != nil {
-		return err
-	}
 	deadline := time.Now().Add(durationOrDefault(timeoutMs, time.Second))
 	for time.Now().Before(deadline) {
-		s := eng.Snapshot()
+		s, err := h.snapshot(ctx)
+		if err != nil {
+			return err
+		}
 		if s.InFlight == int(inFlight) && s.StrictInFlight == int(strictInFlight) && s.ActiveCycles == int(activeCycles) {
 			return nil
 		}
@@ -363,7 +362,10 @@ func (h *runtimeHarness) WaitSnapshot(ctx context.Context, inFlight int32, stric
 		case <-time.After(5 * time.Millisecond):
 		}
 	}
-	s := eng.Snapshot()
+	s, err := h.snapshot(ctx)
+	if err != nil {
+		return err
+	}
 	return fmt.Errorf("timeout waiting snapshot inFlight=%d strictInFlight=%d activeCycles=%d (got inFlight=%d strictInFlight=%d activeCycles=%d)", inFlight, strictInFlight, activeCycles, s.InFlight, s.StrictInFlight, s.ActiveCycles)
 }
 
@@ -422,25 +424,24 @@ func (h *runtimeHarness) AssertAck(ctx context.Context, requestID string, versio
 }
 
 func (h *runtimeHarness) AssertStrictCap(ctx context.Context, expected int32) error {
-	eng, _, _, _, _, err := h.current()
+	s, err := h.snapshot(ctx)
 	if err != nil {
 		return err
 	}
-	got := eng.Snapshot().StrictCap
-	if got != int(expected) {
-		return fmt.Errorf("strict cap mismatch: got=%d want=%d", got, expected)
+	if s.StrictCap != int(expected) {
+		return fmt.Errorf("strict cap mismatch: got=%d want=%d", s.StrictCap, expected)
 	}
 	return nil
 }
 
 func (h *runtimeHarness) AssertWeightedLabels(ctx context.Context, labels []string) error {
-	eng, _, _, _, _, err := h.current()
+	s, err := h.snapshot(ctx)
 	if err != nil {
 		return err
 	}
 	expected := append([]string(nil), labels...)
 	sort.Strings(expected)
-	got := append([]string(nil), eng.Snapshot().WeightedLabels...)
+	got := append([]string(nil), s.WeightedLabels...)
 	sort.Strings(got)
 	if !slices.Equal(got, expected) {
 		return fmt.Errorf("weighted labels mismatch: got=%v want=%v", got, expected)
@@ -466,11 +467,14 @@ func (h *runtimeHarness) AssertClaimGroupsPrefix(ctx context.Context, groups []s
 }
 
 func (h *runtimeHarness) AssertInvariants(ctx context.Context) error {
-	eng, _, _, _, concurrency, err := h.current()
+	_, _, _, _, concurrency, err := h.current()
 	if err != nil {
 		return err
 	}
-	s := eng.Snapshot()
+	s, err := h.snapshot(ctx)
+	if err != nil {
+		return err
+	}
 	if s.InFlight < 0 || s.StrictInFlight < 0 || s.ActiveCycles < 0 {
 		return fmt.Errorf("negative counters in snapshot: %+v", s)
 	}
@@ -490,13 +494,12 @@ func (h *runtimeHarness) AssertInvariants(ctx context.Context) error {
 }
 
 func (h *runtimeHarness) AssertStopped(ctx context.Context, expected bool) error {
-	eng, _, _, _, _, err := h.current()
+	s, err := h.snapshot(ctx)
 	if err != nil {
 		return err
 	}
-	got := eng.Snapshot().Stopped
-	if got != expected {
-		return fmt.Errorf("stopped mismatch: got=%v want=%v", got, expected)
+	if s.Stopped != expected {
+		return fmt.Errorf("stopped mismatch: got=%v want=%v", s.Stopped, expected)
 	}
 	return nil
 }
@@ -540,6 +543,22 @@ func (h *runtimeHarness) current() (*worker.Engine, *worker.Runtime, *determinis
 		return nil, nil, nil, nil, 0, fmt.Errorf("runtime harness not started")
 	}
 	return h.engine, h.runtime, h.port, h.runtimeCtx, h.concurrency, nil
+}
+
+func (h *runtimeHarness) snapshot(ctx context.Context) (worker.Snapshot, error) {
+	eng, rt, _, _, _, err := h.current()
+	if err != nil {
+		return worker.Snapshot{}, err
+	}
+	s, ok := rt.Snapshot(ctx)
+	if ok {
+		return s, nil
+	}
+	if ctx != nil && ctx.Err() != nil {
+		return worker.Snapshot{}, ctx.Err()
+	}
+	// Runtime already stopped: no more engine mutations should occur.
+	return eng.Snapshot(), nil
 }
 
 type claimResult struct {

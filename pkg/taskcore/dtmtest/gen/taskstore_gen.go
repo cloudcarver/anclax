@@ -158,6 +158,9 @@ func runAllWithActors(ctx context.Context, actors Actors) error {
 	if err := RunScenarioDeterministicStopBlocksNewWork(ctx, actors); err != nil {
 		return fmt.Errorf("scenario deterministic_stop_blocks_new_work: %w", err)
 	}
+	if err := RunScenarioDeterministicHeartbeatFailureStopsRuntime(ctx, actors); err != nil {
+		return fmt.Errorf("scenario deterministic_heartbeat_failure_stops_runtime: %w", err)
+	}
 	if err := RunScenarioStaleResultEventsIgnored(ctx, actors); err != nil {
 		return fmt.Errorf("scenario stale_result_events_ignored: %w", err)
 	}
@@ -732,6 +735,126 @@ func runStepDeterministicStopBlocksNewWorkS2(parent context.Context, actors Acto
 		}
 		if err := actors.Runtime.AssertStopped(ctx, true); err != nil {
 			errCh <- fmt.Errorf("actor runtime call %s: %w", "AssertStopped(ctx, true)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.AssertInvariants(ctx); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "AssertInvariants(ctx)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.Stop(ctx); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "Stop(ctx)", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+
+func RunScenarioDeterministicHeartbeatFailureStopsRuntime(ctx context.Context, actors Actors) error {
+	vars := newVarStore()
+	if err := runStepDeterministicHeartbeatFailureStopsRuntimeS1(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s1: %w", err)
+	}
+	if err := runStepDeterministicHeartbeatFailureStopsRuntimeS2(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s2: %w", err)
+	}
+	return nil
+}
+
+
+func runStepDeterministicHeartbeatFailureStopsRuntimeS1(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Runtime.Start(ctx, 1, 100); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "Start(ctx, 1, 100)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.SetPortError(ctx, "heartbeat", "", true); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "SetPortError(ctx, \"heartbeat\", \"\", true)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.EmitEvent(ctx, "heartbeat_tick", 0, "", 0); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "EmitEvent(ctx, \"heartbeat_tick\", 0, \"\", 0)", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func runStepDeterministicHeartbeatFailureStopsRuntimeS2(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+	
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Runtime.WaitRuntimeErrorCount(ctx, 1, 3000); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitRuntimeErrorCount(ctx, 1, 3000)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.WaitCallCount(ctx, "mark_offline", 1, 3000); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitCallCount(ctx, \"mark_offline\", 1, 3000)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.AssertStopped(ctx, true); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "AssertStopped(ctx, true)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.QueueStrictTask(ctx, "HB_STOPPED", 9); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "QueueStrictTask(ctx, \"HB_STOPPED\", 9)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.Poll(ctx); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "Poll(ctx)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.WaitCallCount(ctx, "claim_strict", 0, 3000); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitCallCount(ctx, \"claim_strict\", 0, 3000)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.WaitCallCount(ctx, "execute", 0, 3000); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitCallCount(ctx, \"execute\", 0, 3000)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.WaitCallCount(ctx, "finalize", 0, 3000); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitCallCount(ctx, \"finalize\", 0, 3000)", err)
 			cancel()
 			return
 		}

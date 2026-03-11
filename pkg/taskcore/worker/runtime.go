@@ -23,9 +23,11 @@ func DefaultRuntimeOptions() RuntimeOptions {
 }
 
 type runtimeEnvelope struct {
-	ctx   context.Context
-	event Event
-	done  chan struct{}
+	ctx      context.Context
+	event    Event
+	done     chan struct{}
+	snapshot chan Snapshot
+	skip     bool
 }
 
 type Runtime struct {
@@ -80,6 +82,42 @@ func (r *Runtime) Step(ctx context.Context, event Event) {
 	r.enqueue(ctx, event, true)
 }
 
+// Snapshot captures engine state on the runtime event loop goroutine.
+// Returns false when runtime is closed or context is canceled before capture.
+func (r *Runtime) Snapshot(ctx context.Context) (Snapshot, bool) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	env := runtimeEnvelope{
+		ctx:      ctx,
+		done:     make(chan struct{}),
+		snapshot: make(chan Snapshot, 1),
+		skip:     true,
+	}
+
+	select {
+	case <-ctx.Done():
+		return Snapshot{}, false
+	case <-r.loopDone:
+		return Snapshot{}, false
+	case r.inbox <- env:
+	}
+
+	select {
+	case <-ctx.Done():
+		return Snapshot{}, false
+	case <-r.loopDone:
+		return Snapshot{}, false
+	case <-env.done:
+		select {
+		case s := <-env.snapshot:
+			return s, true
+		default:
+			return Snapshot{}, false
+		}
+	}
+}
+
 func (r *Runtime) enqueue(ctx context.Context, event Event, wait bool) bool {
 	if ctx == nil {
 		ctx = context.Background()
@@ -126,7 +164,12 @@ func (r *Runtime) eventLoop() {
 				}
 			}
 		case env := <-r.inbox:
-			r.processEvent(env.ctx, env.event)
+			if !env.skip {
+				r.processEvent(env.ctx, env.event)
+			}
+			if env.snapshot != nil {
+				env.snapshot <- r.engine.Snapshot()
+			}
 			if env.done != nil {
 				close(env.done)
 			}
@@ -187,6 +230,8 @@ func (r *Runtime) Start(ctx context.Context) {
 
 	for {
 		select {
+		case <-r.stopCh:
+			return
 		case <-ctx.Done():
 			r.Step(context.Background(), Event{Type: EventStop})
 			return
@@ -280,7 +325,14 @@ func (r *Runtime) execCommand(ctx context.Context, cmd Command) []Event {
 		workerID := r.engine.WorkerID()
 		go func() {
 			if err := r.port.Heartbeat(ctx, workerID); err != nil {
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					return
+				}
 				r.handleError(err)
+				// Heartbeat failure means this worker can no longer reliably
+				// signal liveness. Stop runtime immediately.
+				r.Step(context.Background(), Event{Type: EventStop})
+				r.Close()
 			}
 		}()
 		return nil

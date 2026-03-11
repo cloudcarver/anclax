@@ -1639,8 +1639,8 @@ func runStepWorkerLabelInternalOnlyScopeS1(parent context.Context, actors Actors
 			cancel()
 			return
 		}
-		if err := actors.Runtime.StartWorker(ctx, "lb_internal", "capture", "dst-taskstore", []string{}, 20, 20, 200, 20, 1, 0, false, "11111111-1111-1111-1111-111111111111"); err != nil {
-			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"lb_internal\", \"capture\", \"dst-taskstore\", []string{}, 20, 20, 200, 20, 1, 0, false, \"11111111-1111-1111-1111-111111111111\")", err)
+		if err := actors.Runtime.StartWorker(ctx, "lb_internal", "capture", "dst-taskstore", []string{}, 20, 20, 200, 3600000, 1, 0, false, "11111111-1111-1111-1111-111111111111"); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"lb_internal\", \"capture\", \"dst-taskstore\", []string{}, 20, 20, 200, 3600000, 1, 0, false, \"11111111-1111-1111-1111-111111111111\")", err)
 			cancel()
 			return
 		}
@@ -1697,6 +1697,16 @@ func runStepWorkerLabelInternalOnlyScopeS2(parent context.Context, actors Actors
 		}
 		if err := actors.Runtime.AssertCapturedByWorkerContains(ctx, "lb_internal", []string{"LBI_UNLABELED", "LBI_OWN"}); err != nil {
 			errCh <- fmt.Errorf("actor runtime call %s: %w", "AssertCapturedByWorkerContains(ctx, \"lb_internal\", []string{\"LBI_UNLABELED\", \"LBI_OWN\"})", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.WaitTaskCompletion(ctx, "LBI_UNLABELED", 5000); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitTaskCompletion(ctx, \"LBI_UNLABELED\", 5000)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.WaitTaskCompletion(ctx, "LBI_OWN", 5000); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitTaskCompletion(ctx, \"LBI_OWN\", 5000)", err)
 			cancel()
 			return
 		}
@@ -1769,8 +1779,8 @@ func runStepWorkerLabelInternalOnlyScopeS4(parent context.Context, actors Actors
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := actors.Runtime.StartWorker(ctx, "lb_drain", "capture", "dst-taskstore", []string{"w1"}, 20, 20, 200, 20, 1, 0, false, "22222222-2222-2222-2222-222222222222"); err != nil {
-			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"lb_drain\", \"capture\", \"dst-taskstore\", []string{\"w1\"}, 20, 20, 200, 20, 1, 0, false, \"22222222-2222-2222-2222-222222222222\")", err)
+		if err := actors.Runtime.StartWorker(ctx, "lb_drain", "capture", "dst-taskstore", []string{"w1"}, 20, 20, 200, 3600000, 1, 0, false, "22222222-2222-2222-2222-222222222222"); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"lb_drain\", \"capture\", \"dst-taskstore\", []string{\"w1\"}, 20, 20, 200, 3600000, 1, 0, false, \"22222222-2222-2222-2222-222222222222\")", err)
 			cancel()
 			return
 		}
@@ -4830,24 +4840,15 @@ func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS3(parent context.Con
 	wg.Add(1)
 	go func() {
 	  defer wg.Done()
-	  require.NoError(t, actors.ControlPlane.PauseTask(ctx, "SCRACE_TASK"))
-	}()
-	
-	wg.Add(1)
-	go func() {
-	  defer wg.Done()
-	  require.NoError(t, actors.ControlPlane.CancelTask(ctx, "SCRACE_TASK"))
-	}()
-	
-	wg.Add(1)
-	go func() {
-	  defer wg.Done()
 	  require.NoError(t, actors.Runtime.StartWorker(ctx, "SCRACE_CHURN", "noop", "pause-e2e", []string{"control"}, 20, 20, 200, 20, 1, 0, true, "33333333-3333-3333-3333-333333333333"))
 	  time.Sleep(40 * time.Millisecond)
 	  require.NoError(t, actors.Runtime.StopWorker(ctx, "SCRACE_CHURN"))
 	  time.Sleep(20 * time.Millisecond)
 	  require.NoError(t, actors.Runtime.StartWorker(ctx, "SCRACE_CHURN", "noop", "pause-e2e", []string{"control"}, 20, 20, 200, 20, 1, 0, true, "33333333-3333-3333-3333-333333333333"))
 	}()
+	
+	require.NoError(t, actors.ControlPlane.PauseTask(ctx, "SCRACE_TASK"))
+	require.NoError(t, actors.ControlPlane.CancelTask(ctx, "SCRACE_TASK"))
 	
 	wg.Wait()
 	return err

@@ -2,10 +2,12 @@ package worker
 
 import (
 	"context"
+	stdErrors "errors"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/cloudcarver/anclax/pkg/globalctx"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/stretchr/testify/require"
 )
@@ -26,6 +28,7 @@ type scriptedPort struct {
 
 	refreshConfig *RuntimeConfig
 	callOrder     []string
+	heartbeatErr  error
 	lastAck       struct {
 		requestID string
 		version   int64
@@ -105,7 +108,7 @@ func (p *scriptedPort) Heartbeat(ctx context.Context, workerID string) error {
 	defer p.mu.Unlock()
 	p.heartbeats = append(p.heartbeats, workerID)
 	p.callOrder = append(p.callOrder, "heartbeat")
-	return nil
+	return p.heartbeatErr
 }
 
 func (p *scriptedPort) RefreshRuntimeConfig(ctx context.Context, workerID string, requestID string) (*RuntimeConfig, error) {
@@ -226,4 +229,70 @@ func TestRuntimeStartRegistersAndMarksOfflineOnStop(t *testing.T) {
 
 	require.Equal(t, []string{"w-start"}, port.registerCalls)
 	require.Equal(t, []string{"w-start"}, port.offlineCalls)
+}
+
+func TestRuntimeHeartbeatFailureStopsRuntimeAndMarksOffline(t *testing.T) {
+	eng := NewEngine(EngineConfig{WorkerID: "w-heart", Concurrency: 1})
+	port := &scriptedPort{heartbeatErr: stdErrors.New("heartbeat failed")}
+	var errCount int
+	rt := NewRuntime(eng, port, RuntimeOptions{
+		PollInterval:          0,
+		HeartbeatInterval:     0,
+		RuntimeConfigInterval: 0,
+		OnError: func(err error) {
+			errCount++
+		},
+	})
+	t.Cleanup(rt.Close)
+
+	rt.Step(context.Background(), Event{Type: EventHeartbeatTick})
+
+	require.Eventually(t, func() bool {
+		port.mu.Lock()
+		defer port.mu.Unlock()
+		return len(port.offlineCalls) == 1
+	}, time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return errCount == 1 }, time.Second, 10*time.Millisecond)
+}
+
+func TestWorkerShutsDownWhenHeartbeatFails(t *testing.T) {
+	eng := NewEngine(EngineConfig{WorkerID: "w-worker", Concurrency: 1})
+	port := &scriptedPort{heartbeatErr: stdErrors.New("heartbeat failed")}
+	rt := NewRuntime(eng, port, RuntimeOptions{
+		PollInterval:          0,
+		HeartbeatInterval:     5 * time.Millisecond,
+		RuntimeConfigInterval: 0,
+	})
+	gctx := globalctx.New()
+	worker := &Worker{
+		globalCtx: gctx,
+		runtime:   rt,
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		worker.Start()
+	}()
+
+	require.Eventually(t, func() bool {
+		select {
+		case <-gctx.Context().Done():
+			return true
+		default:
+			return false
+		}
+	}, time.Second, 10*time.Millisecond)
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("worker did not shutdown after heartbeat failure")
+	}
+
+	require.Eventually(t, func() bool {
+		port.mu.Lock()
+		defer port.mu.Unlock()
+		return len(port.offlineCalls) == 1
+	}, time.Second, 10*time.Millisecond)
 }

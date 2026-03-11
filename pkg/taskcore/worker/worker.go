@@ -217,6 +217,10 @@ func (w *Worker) Start() {
 		}()
 	}
 	w.runtime.Start(ctx)
+	if ctx.Err() == nil {
+		log.Error("worker runtime exited unexpectedly; shutting down worker")
+		w.globalCtx.Cancel()
+	}
 }
 
 func (w *Worker) RunTask(ctx context.Context, taskID int32) error {

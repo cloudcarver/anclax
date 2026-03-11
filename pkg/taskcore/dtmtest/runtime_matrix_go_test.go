@@ -130,15 +130,17 @@ func TestErrorPathMatrixGo(t *testing.T) {
 	require.NoError(t, h.WaitRuntimeErrorCount(context.Background(), 3, 3000))
 	require.NoError(t, h.SetPortError(context.Background(), "refresh_config", "", false))
 
-	require.NoError(t, h.SetPortError(context.Background(), "heartbeat", "", true))
-	require.NoError(t, h.EmitEvent(context.Background(), "heartbeat_tick", 0, "", 0))
-	require.NoError(t, h.WaitRuntimeErrorCount(context.Background(), 4, 3000))
-	require.NoError(t, h.SetPortError(context.Background(), "heartbeat", "", false))
-
 	require.NoError(t, h.SetPortError(context.Background(), "ack_config", "", true))
 	require.NoError(t, h.NotifyRuntimeConfig(context.Background(), "req-err"))
-	require.NoError(t, h.WaitRuntimeErrorCount(context.Background(), 5, 3000))
+	require.NoError(t, h.WaitRuntimeErrorCount(context.Background(), 4, 3000))
 	require.NoError(t, h.AssertRuntimeErrorContains(context.Background(), "ack_config"))
+	require.NoError(t, h.SetPortError(context.Background(), "ack_config", "", false))
+
+	require.NoError(t, h.SetPortError(context.Background(), "heartbeat", "", true))
+	require.NoError(t, h.EmitEvent(context.Background(), "heartbeat_tick", 0, "", 0))
+	require.NoError(t, h.WaitRuntimeErrorCount(context.Background(), 5, 3000))
+	require.NoError(t, h.WaitCallCount(context.Background(), "mark_offline", 1, 3000))
+	require.NoError(t, h.AssertStopped(context.Background(), true))
 	require.NoError(t, h.AssertInvariants(context.Background()))
 }
 

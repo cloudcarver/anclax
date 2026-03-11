@@ -152,6 +152,30 @@ scenarios:
             - AssertInvariants(ctx)
             - Stop(ctx)
 
+  - name: deterministic_heartbeat_failure_stops_runtime
+    description: heartbeat failure must stop runtime and mark worker offline.
+    steps:
+      - id: s1
+        parallel:
+          runtime:
+            - Start(ctx, 1, 100)
+            - SetPortError(ctx, "heartbeat", "", true)
+            - EmitEvent(ctx, "heartbeat_tick", 0, "", 0)
+
+      - id: s2
+        parallel:
+          runtime:
+            - WaitRuntimeErrorCount(ctx, 1, 3000)
+            - WaitCallCount(ctx, "mark_offline", 1, 3000)
+            - AssertStopped(ctx, true)
+            - QueueStrictTask(ctx, "HB_STOPPED", 9)
+            - Poll(ctx)
+            - WaitCallCount(ctx, "claim_strict", 0, 3000)
+            - WaitCallCount(ctx, "execute", 0, 3000)
+            - WaitCallCount(ctx, "finalize", 0, 3000)
+            - AssertInvariants(ctx)
+            - Stop(ctx)
+
   - name: stale_result_events_ignored
     description: stale events for unknown cycles must be ignored without mutating state.
     steps:
