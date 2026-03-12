@@ -70,6 +70,10 @@ func bindMount(src string, dst string) []string {
 	return []string{"-v", src + ":" + dst}
 }
 
+func hostGatewayAlias(hostname string) []string {
+	return []string{"--add-host", hostname + ":host-gateway"}
+}
+
 func containerBinaryCommand(mountDir string, binaryName string) []string {
 	return []string{filepath.Join(mountDir, binaryName)}
 }

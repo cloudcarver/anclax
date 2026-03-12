@@ -54,6 +54,9 @@ type ScenarioSummary struct {
 	ControlPlaneOutages  int `json:"controlPlaneOutages"`
 	RuntimeConfigUpdates int `json:"runtimeConfigUpdates"`
 	ReplacementWorkers   int `json:"replacementWorkers"`
+	UserPauses           int `json:"userPauses"`
+	UserResumes          int `json:"userResumes"`
+	UserCancels          int `json:"userCancels"`
 	ActiveWorkers        int `json:"activeWorkers"`
 	RetiredWorkers       int `json:"retiredWorkers"`
 }
@@ -175,6 +178,9 @@ func renderHumanSummary(r *Report) string {
 	fmt.Fprintf(&b, "  control_plane_outages: %d\n", r.Summary.Scenario.ControlPlaneOutages)
 	fmt.Fprintf(&b, "  runtime_config_updates: %d\n", r.Summary.Scenario.RuntimeConfigUpdates)
 	fmt.Fprintf(&b, "  replacement_workers: %d\n", r.Summary.Scenario.ReplacementWorkers)
+	fmt.Fprintf(&b, "  user_pauses: %d\n", r.Summary.Scenario.UserPauses)
+	fmt.Fprintf(&b, "  user_resumes: %d\n", r.Summary.Scenario.UserResumes)
+	fmt.Fprintf(&b, "  user_cancels: %d\n", r.Summary.Scenario.UserCancels)
 	fmt.Fprintf(&b, "  active_workers: %d\n", r.Summary.Scenario.ActiveWorkers)
 	fmt.Fprintf(&b, "  retired_workers: %d\n", r.Summary.Scenario.RetiredWorkers)
 

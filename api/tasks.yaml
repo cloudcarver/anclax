@@ -255,6 +255,13 @@ tasks:
         group:
           type: string
           description: Logical group name for test-side metrics and labels
+        signalBaseURL:
+          type: string
+          description: Optional signal service base URL used by running tasks to emit observable heartbeats
+        signalIntervalMs:
+          type: integer
+          format: int32
+          description: Optional interval in milliseconds between signal emissions while the task is running
     retryPolicy:
       interval: 1s
       maxAttempts: 1

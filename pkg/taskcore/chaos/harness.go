@@ -25,6 +25,8 @@ type Harness struct {
 	postgresHostDSN  string
 	postgresInnerDSN string
 	controlPlaneURL  string
+	signalService    *SignalService
+	signalClient     *SignalClient
 	inspector        *Inspector
 	controlClient    *ControlPlaneClient
 	mu               sync.Mutex
@@ -62,7 +64,7 @@ func NewHarness(cfg RunConfig) (*Harness, error) {
 func (h *Harness) ArtifactDir() string { return h.artifactDir }
 func (h *Harness) Report() *Report     { return h.report }
 func (h *Harness) User() *User {
-	return &User{Control: h.controlClient, DB: h.inspector, Report: h.report}
+	return &User{Control: h.controlClient, Signals: h.signalClient, SignalBaseURL: h.signalService.ContainerBaseURL(), DB: h.inspector, Report: h.report}
 }
 func (h *Harness) Inspector() *Inspector { return h.inspector }
 
@@ -97,6 +99,15 @@ func (h *Harness) Start(ctx context.Context) error {
 	h.postgresInnerDSN = fmt.Sprintf("postgres://%s:%s@%s:5432/%s?sslmode=disable", h.cfg.PostgresUser, h.cfg.PostgresPassword, h.postgresName, h.cfg.PostgresDatabase)
 	h.controlPlaneURL = fmt.Sprintf("http://127.0.0.1:%d", h.controlHostPort)
 	h.controlClient = NewControlPlaneClient(h.controlPlaneURL)
+	h.signalService = NewSignalService()
+	if err := h.signalService.Start(); err != nil {
+		return err
+	}
+	h.signalClient = NewSignalClient(h.signalService.HostURL())
+	if err := h.signalClient.Health(ctx); err != nil {
+		return err
+	}
+	h.report.AddEvent("harness.signal_service.start", "signals", "started signal service", map[string]any{"hostURL": h.signalService.HostURL(), "containerBaseURL": h.signalService.ContainerBaseURL()})
 
 	if _, err := dockerCommand(ctx, "network", "create", h.networkName); err != nil {
 		return err
@@ -120,6 +131,9 @@ func (h *Harness) Start(ctx context.Context) error {
 func (h *Harness) Close(ctx context.Context) error {
 	if h.inspector != nil {
 		h.inspector.Close()
+	}
+	if h.signalService != nil {
+		_ = h.signalService.Close(ctx)
 	}
 	if h.report != nil {
 		_ = h.report.Write()
@@ -159,6 +173,7 @@ func (h *Harness) startControlPlane(ctx context.Context) error {
 	args := []string{"run", "-d", "--name", h.controlPlaneName, "--network", h.networkName,
 		"-p", fmt.Sprintf("%d:%d", h.controlHostPort, h.cfg.ControlPlanePort),
 	}
+	args = append(args, hostGatewayAlias("host.docker.internal")...)
 	args = append(args, quotedEnv(map[string]string{
 		"CHAOS_DSN":       h.postgresInnerDSN,
 		"CHAOS_HTTP_ADDR": fmt.Sprintf(":%d", h.cfg.ControlPlanePort),
@@ -223,10 +238,12 @@ func (h *Harness) StartWorker(ctx context.Context, name string, labels []string)
 	workerLabels := append([]string(nil), labels...)
 	workerLabels = append(workerLabels, "chaos:"+name)
 	args := []string{"run", "-d", "--name", containerName, "--network", h.networkName}
+	args = append(args, hostGatewayAlias("host.docker.internal")...)
 	args = append(args, quotedEnv(map[string]string{
 		"CHAOS_DSN":                    h.postgresInnerDSN,
 		"CHAOS_WORKER_NAME":            name,
 		"CHAOS_WORKER_LABELS":          strings.Join(workerLabels, ","),
+		"CHAOS_SIGNAL_BASE_URL":        h.signalService.ContainerBaseURL(),
 		"CHAOS_WORKER_CONCURRENCY":     fmt.Sprintf("%d", h.cfg.WorkerConcurrency),
 		"CHAOS_POLL_INTERVAL_MS":       intToString(int(h.cfg.PollInterval / time.Millisecond)),
 		"CHAOS_HEARTBEAT_INTERVAL_MS":  intToString(int(h.cfg.HeartbeatInterval / time.Millisecond)),

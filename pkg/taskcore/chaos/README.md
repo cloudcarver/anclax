@@ -26,7 +26,7 @@ That makes it much better suited for:
 
 ## Current architecture
 
-The package currently has four main parts:
+The package currently has five main parts:
 
 ### 1. Harness / orchestrator
 Files:
@@ -43,7 +43,9 @@ Responsibilities:
 - assign a run ID
 - build helper binaries
 - start/stop/restart containers
+- start a host-side user signal service outside the chaos containers
 - expose a control-plane HTTP client
+- expose a user signal client
 - expose a DB inspector
 - collect artifacts and write `report.json`
 
@@ -61,6 +63,9 @@ It currently supports:
 
 - `GET /healthz`
 - `POST /tasks/stress-probe`
+- `POST /tasks/pause`
+- `POST /tasks/cancel`
+- `POST /tasks/resume`
 - `POST /runtime-config`
 
 It talks directly to the real taskcore model/task store/control plane code.
@@ -69,20 +74,37 @@ It talks directly to the real taskcore model/task store/control plane code.
 A dedicated worker process running in its own container.
 It uses the real worker implementation plus the async-task executor and worker control task handler.
 
-### 3. User-facing test API
+### 3. Host-side user signal service
+Files:
+
+- `signal_service.go`
+
+This is a tiny in-memory HTTP service started by the harness on the host, outside the chaos containers.
+Workers can emit task signals to it while executing, and the user/test runner can poll it to observe liveness.
+It currently supports:
+
+- `GET /healthz`
+- `POST /signals/emit`
+- `GET /signals/{taskID}`
+- `DELETE /signals/{taskID}`
+
+### 4. User-facing test API
 Files:
 
 - `controlplane_client.go`
 - `user.go`
 - `inspector.go`
+- `signal_service.go`
 
 The intent is to model tests as user expectations rather than only raw chaos events.
 Currently the `User` helper can:
 
 - submit stress-probe tasks via the control-plane container
-- wait for completion through DB inspection
+- pause, cancel, and resume tasks by unique tag through the control-plane container
+- wait for completed / cancelled / paused states through DB inspection
+- wait for running-task signals and verify they stop after cancellation
 
-### 4. First smoke scenario
+### 5. First smoke scenario
 File:
 
 - `chaos_smoke_test.go`
@@ -95,7 +117,8 @@ It is intentionally small, but already covers:
 - control-plane down / up
 - Postgres restart
 - runtime config update through control plane
-- eventual completion assertions through DB inspection
+- user pause / resume / cancel operations through the control plane
+- eventual completion / cancellation assertions through DB inspection
 
 ## Naming and run IDs
 
@@ -132,6 +155,7 @@ Each run writes artifacts into a unique directory, for example:
 Current contents:
 
 - `report.json`
+- `summary.txt`
 - `bin/`
   - built helper binaries used for the run
 - `docker/`
@@ -163,8 +187,10 @@ The summary is intended to give maintainers a quick health snapshot after the ch
 Important event kinds include:
 
 - harness/build events
+- signal-service lifecycle
 - docker network/container lifecycle
 - user task submissions
+- user signal assertions
 - chaos actions
 - runtime-config updates
 
@@ -179,6 +205,9 @@ The current smoke test is trying to verify these properties:
 - workers can be retired and replaced by new workers later
 - Postgres restarts do not permanently wedge the system once capacity returns
 - eventual convergence happens after the cluster is restored
+- paused tasks can be resumed and eventually complete
+- cancelled tasks remain cancelled
+- cancellation of a running task can be observed by user-visible signal emission stopping
 - when there has been disruption, at least some tasks should show takeover/retry evidence (`attempts >= 2`)
 
 ## Current limitations
@@ -205,8 +234,7 @@ That is useful for:
 But it does **not** yet validate richer semantics such as:
 
 - idempotent side effects
-- pause/cancel correctness in the long soak
-- parent/child descendant behavior
+- nested parent/child descendant behavior in the long soak
 - business-level task payload validation
 
 ### 4. Chaos actions are currently container lifecycle oriented
@@ -350,12 +378,15 @@ First version covers:
 - real Postgres container
 - real separate control-plane helper container
 - real separate worker helper containers
+- host-side in-memory user signal service
 - random worker down/rejoin
 - worker retirement + replacement worker join later
 - control-plane container down/up
 - Postgres restart
 - runtime config updates via control plane
-- user-style task submission with expected eventual completion
+- user-style task submission plus pause / resume / cancel operations
+- observable running-task signals for cancel verification
+- expected eventual completion / cancellation outcomes
 
 ## Quick file map
 
@@ -365,6 +396,7 @@ First version covers:
 - `binaries.go`: build helper binaries for containers
 - `harness.go`: orchestration API
 - `controlplane_client.go`: HTTP client for helper control plane
+- `signal_service.go`: host-side signal service and client
 - `inspector.go`: DB inspection and diagnostic dumps
 - `user.go`: user-facing submission/assertion helpers
 - `chaos_smoke_test.go`: first containerized chaos test

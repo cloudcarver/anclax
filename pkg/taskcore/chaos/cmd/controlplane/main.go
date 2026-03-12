@@ -17,13 +17,19 @@ import (
 )
 
 type stressProbeRequest struct {
-	TaskName  string   `json:"taskName"`
-	JobID     int64    `json:"jobID"`
-	SleepMs   int32    `json:"sleepMs"`
-	Group     string   `json:"group"`
-	Labels    []string `json:"labels,omitempty"`
-	DelayMs   int32    `json:"delayMs,omitempty"`
-	UniqueTag string   `json:"uniqueTag,omitempty"`
+	TaskName         string   `json:"taskName"`
+	JobID            int64    `json:"jobID"`
+	SleepMs          int32    `json:"sleepMs"`
+	Group            string   `json:"group"`
+	Labels           []string `json:"labels,omitempty"`
+	DelayMs          int32    `json:"delayMs,omitempty"`
+	UniqueTag        string   `json:"uniqueTag,omitempty"`
+	SignalBaseURL    string   `json:"signalBaseURL,omitempty"`
+	SignalIntervalMs int32    `json:"signalIntervalMs,omitempty"`
+}
+
+type taskControlRequest struct {
+	UniqueTag string `json:"uniqueTag"`
 }
 
 type runtimeConfigRequest struct {
@@ -31,6 +37,8 @@ type runtimeConfigRequest struct {
 	DefaultWeight       int32            `json:"defaultWeight"`
 	LabelWeights        map[string]int32 `json:"labelWeights,omitempty"`
 }
+
+const chaosControlRequestTimeout = 60 * time.Second
 
 type app struct {
 	store        taskcore.TaskStoreInterface
@@ -66,6 +74,9 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", a.handleHealth)
 	mux.HandleFunc("/tasks/stress-probe", a.handleStressProbe)
+	mux.HandleFunc("/tasks/pause", a.handlePauseTask)
+	mux.HandleFunc("/tasks/cancel", a.handleCancelTask)
+	mux.HandleFunc("/tasks/resume", a.handleResumeTask)
 	mux.HandleFunc("/runtime-config", a.handleRuntimeConfig)
 
 	server := &http.Server{Addr: addr, Handler: mux}
@@ -105,16 +116,64 @@ func (a *app) handleStressProbe(w http.ResponseWriter, r *http.Request) {
 	if req.DelayMs > 0 {
 		overrides = append(overrides, taskcore.WithStartedAt(time.Now().Add(time.Duration(req.DelayMs)*time.Millisecond)))
 	}
-	taskID, err := a.runner.RunStressProbe(r.Context(), &taskgen.StressProbeParameters{
+	params := &taskgen.StressProbeParameters{
 		JobID:   req.JobID,
 		SleepMs: req.SleepMs,
 		Group:   req.Group,
-	}, overrides...)
+	}
+	if req.SignalBaseURL != "" {
+		params.SignalBaseURL = &req.SignalBaseURL
+	}
+	if req.SignalIntervalMs > 0 {
+		params.SignalIntervalMs = &req.SignalIntervalMs
+	}
+	taskID, err := a.runner.RunStressProbe(r.Context(), params, overrides...)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"taskID": taskID})
+}
+
+func (a *app) handlePauseTask(w http.ResponseWriter, r *http.Request) {
+	a.handleTaskControl(w, r, func(ctx context.Context, uniqueTag string) error {
+		return a.controlPlane.PauseTaskByUniqueTag(ctx, uniqueTag)
+	})
+}
+
+func (a *app) handleCancelTask(w http.ResponseWriter, r *http.Request) {
+	a.handleTaskControl(w, r, func(ctx context.Context, uniqueTag string) error {
+		return a.controlPlane.CancelTaskByUniqueTag(ctx, uniqueTag)
+	})
+}
+
+func (a *app) handleResumeTask(w http.ResponseWriter, r *http.Request) {
+	a.handleTaskControl(w, r, func(ctx context.Context, uniqueTag string) error {
+		return a.controlPlane.ResumeTaskByUniqueTag(ctx, uniqueTag)
+	})
+}
+
+func (a *app) handleTaskControl(w http.ResponseWriter, r *http.Request, fn func(context.Context, string) error) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req taskControlRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if req.UniqueTag == "" {
+		http.Error(w, "uniqueTag is required", http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), chaosControlRequestTimeout)
+	defer cancel()
+	if err := fn(ctx, req.UniqueTag); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (a *app) handleRuntimeConfig(w http.ResponseWriter, r *http.Request) {
@@ -133,7 +192,7 @@ func (a *app) handleRuntimeConfig(w http.ResponseWriter, r *http.Request) {
 		labels = append(labels, label)
 		weights = append(weights, weight)
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), chaosControlRequestTimeout)
 	defer cancel()
 	err := a.controlPlane.UpdateWorkerRuntimeConfig(ctx, &ctrl.UpdateWorkerRuntimeConfigRequest{
 		MaxStrictPercentage: &req.MaxStrictPercentage,

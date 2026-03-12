@@ -608,6 +608,9 @@ type DeleteOpaqueKeyParameters struct {
 
 
 type UpdateWorkerRuntimeConfigParameters struct { 
+    // Default weight for unlabeled task group
+	DefaultWeight *int32 `json:"defaultWeight" yaml:"defaultWeight"`
+
     // Label names for weighted groups
 	Labels []string `json:"labels" yaml:"labels"`
 
@@ -625,16 +628,10 @@ type UpdateWorkerRuntimeConfigParameters struct {
 
     // Maximum percentage of strict-priority slots (0-100)
 	MaxStrictPercentage *int32 `json:"maxStrictPercentage" yaml:"maxStrictPercentage"`
-
-    // Default weight for unlabeled task group
-	DefaultWeight *int32 `json:"defaultWeight" yaml:"defaultWeight"`
 }
 
 
 type InterruptTaskParameters struct { 
-    // Ack listen timeout window for one iteration
-	ListenTimeout *string `json:"listenTimeout" yaml:"listenTimeout"`
-
     // Task IDs to interrupt
 	TaskIDs []int32 `json:"taskIDs" yaml:"taskIDs"`
 
@@ -643,6 +640,9 @@ type InterruptTaskParameters struct {
 
     // Fallback retry interval when ack listening is unavailable
 	NotifyInterval *string `json:"notifyInterval" yaml:"notifyInterval"`
+
+    // Ack listen timeout window for one iteration
+	ListenTimeout *string `json:"listenTimeout" yaml:"listenTimeout"`
 }
 
 
@@ -668,26 +668,26 @@ type BroadcastUpdateWorkerRuntimeConfigParameters struct {
 }
 
 type ApplyWorkerRuntimeConfigToWorkerParameters struct { 
-    // Runtime config version to apply
-	Version int64 `json:"version" yaml:"version"`
-
     // Correlation ID of the parent broadcast command
 	RequestID *string `json:"requestID" yaml:"requestID"`
 
     // Target worker ID
 	WorkerID string `json:"workerID" yaml:"workerID"`
+
+    // Runtime config version to apply
+	Version int64 `json:"version" yaml:"version"`
 }
 
 
 type BroadcastCancelTaskParameters struct { 
-    // Poll interval used while waiting worker ack tasks
-	AckPollInterval *string `json:"ackPollInterval" yaml:"ackPollInterval"`
-
     // Correlation ID for this broadcast command
 	RequestID *string `json:"requestID" yaml:"requestID"`
 
     // Task IDs to interrupt on each target worker
 	TaskIDs []int32 `json:"taskIDs" yaml:"taskIDs"`
+
+    // Poll interval used while waiting worker ack tasks
+	AckPollInterval *string `json:"ackPollInterval" yaml:"ackPollInterval"`
 }
 
 
@@ -735,6 +735,12 @@ type StressProbeParameters struct {
 
     // Logical group name for test-side metrics and labels
 	Group string `json:"group" yaml:"group"`
+
+    // Optional signal service base URL used by running tasks to emit observable heartbeats
+	SignalBaseURL *string `json:"signalBaseURL" yaml:"signalBaseURL"`
+
+    // Optional interval in milliseconds between signal emissions while the task is running
+	SignalIntervalMs *int32 `json:"signalIntervalMs" yaml:"signalIntervalMs"`
 }
 
 func (r *DeleteOpaqueKeyParameters) Parse(spec json.RawMessage) error {

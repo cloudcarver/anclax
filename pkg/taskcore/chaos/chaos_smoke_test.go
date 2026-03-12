@@ -24,18 +24,31 @@ type chaosWorkerSlot struct {
 	restartAt int
 }
 
+type chaosTaskSlot struct {
+	taskID          int32
+	uniqueTag       string
+	controlEligible bool
+	controlMode     string
+	finalStatus     string
+	controlState    string
+	resumeAt        int
+}
+
 type chaosState struct {
 	rng                   *rand.Rand
 	workers               []*chaosWorkerSlot
+	tasks                 map[string]*chaosTaskSlot
 	nextReplacement       int
 	controlPlaneDownUntil int
-	expected              map[string]struct{}
 	tasksSubmitted        int
 	workerDisruptions     int
 	postgresRestarts      int
 	controlPlaneOutages   int
 	runtimeConfigUpdates  int
 	replacementWorkers    int
+	userPauses            int
+	userResumes           int
+	userCancels           int
 	componentDowns        map[string]int
 	componentRestarts     map[string]int
 }
@@ -58,7 +71,7 @@ func TestContainerizedTaskcoreChaosSmoke(t *testing.T) {
 		if summary, err := buildSmokeSummary(ctx, h, state); err == nil {
 			h.Report().SetSummary(summary)
 			if summary != nil {
-				t.Logf("chaos summary: tasks submitted=%d completed=%d retried=%d downs=%v restarts=%v", summary.Tasks.Submitted, summary.Tasks.Completed, summary.Tasks.Retried, summary.Components.DownCounts, summary.Components.RestartCounts)
+				t.Logf("chaos summary: tasks submitted=%d completed=%d cancelled=%d retried=%d downs=%v restarts=%v", summary.Tasks.Submitted, summary.Tasks.Completed, summary.Tasks.Cancelled, summary.Tasks.Retried, summary.Components.DownCounts, summary.Components.RestartCounts)
 			}
 		} else {
 			h.Report().AddEvent("summary.error", "report", err.Error(), nil)
@@ -85,7 +98,7 @@ func TestContainerizedTaskcoreChaosSmoke(t *testing.T) {
 			{name: "worker-b", labels: []string{"w2"}},
 			{name: "worker-c", labels: []string{"w1", "w2"}},
 		},
-		expected:          map[string]struct{}{},
+		tasks:             map[string]*chaosTaskSlot{},
 		componentDowns:    map[string]int{},
 		componentRestarts: map[string]int{},
 	}
@@ -96,20 +109,29 @@ func TestContainerizedTaskcoreChaosSmoke(t *testing.T) {
 	}
 
 	user := h.User()
+	must(runInitialUserCancel(ctx, user, state))
+	must(runInitialUserPauseResume(ctx, user, state))
 	iterations := readChaosPositiveEnvInt(t, "ANCLAX_TASKCORE_CHAOS_ITERATIONS", 28)
 	interIterSleep := time.Duration(readChaosPositiveEnvInt(t, "ANCLAX_TASKCORE_CHAOS_INTER_ITER_SLEEP_MS", 300)) * time.Millisecond
 	for iter := 1; iter <= iterations; iter++ {
 		must(reconcileChaosState(ctx, h, state, iter))
 		if state.controlPlaneAvailable(iter) {
 			must(submitChaosBatch(ctx, user, state, iter))
+			must(runUserOperation(ctx, user, state, iter))
 		}
 		must(runRandomAction(ctx, h, state, iter))
 		time.Sleep(interIterSleep)
 	}
 
 	must(restoreCluster(ctx, h, state, iterations+1))
-	for uniqueTag := range state.expected {
-		must(user.ExpectCompleted(ctx, uniqueTag, 60*time.Second))
+	must(resumeRemainingPausedTasks(ctx, user, state, iterations+1))
+	for _, task := range state.tasks {
+		switch task.finalStatus {
+		case "cancelled":
+			must(user.ExpectCancelled(ctx, task.uniqueTag, 60*time.Second))
+		default:
+			must(user.ExpectCompleted(ctx, task.uniqueTag, 60*time.Second))
+		}
 	}
 
 	pending, err := h.Inspector().CountTasksByStatuses(ctx, []string{"pending", "running"}, "LONG-")
@@ -120,7 +142,10 @@ func TestContainerizedTaskcoreChaosSmoke(t *testing.T) {
 		must(err)
 		require.Greater(t, retried, int64(0))
 	}
-	require.Greater(t, len(state.expected), 0)
+	require.Greater(t, len(state.tasks), 0)
+	require.Greater(t, state.userPauses, 0)
+	require.Greater(t, state.userResumes, 0)
+	require.Greater(t, state.userCancels, 0)
 }
 
 func buildSmokeSummary(ctx context.Context, h *Harness, state *chaosState) (*ReportSummary, error) {
@@ -174,7 +199,7 @@ func buildSmokeSummary(ctx context.Context, h *Harness, state *chaosState) (*Rep
 		},
 		Tasks: TaskSummary{
 			Submitted: state.tasksSubmitted,
-			Expected:  len(state.expected),
+			Expected:  len(state.tasks),
 			Observed:  observed,
 			Processed: processed,
 			Completed: completed,
@@ -191,6 +216,9 @@ func buildSmokeSummary(ctx context.Context, h *Harness, state *chaosState) (*Rep
 			ControlPlaneOutages:  state.controlPlaneOutages,
 			RuntimeConfigUpdates: state.runtimeConfigUpdates,
 			ReplacementWorkers:   state.replacementWorkers,
+			UserPauses:           state.userPauses,
+			UserResumes:          state.userResumes,
+			UserCancels:          state.userCancels,
 			ActiveWorkers:        state.activeWorkers(),
 			RetiredWorkers:       retiredWorkers,
 		},
@@ -208,24 +236,157 @@ func cloneIntMap(in map[string]int) map[string]int {
 	return out
 }
 
+func runInitialUserCancel(ctx context.Context, user *User, state *chaosState) error {
+	if user == nil {
+		return fmt.Errorf("user is nil")
+	}
+	labels, group := taskLabelsAndGroup(0)
+	signalIntervalMs := int32(readChaosPositiveEnvInt(nil, "ANCLAX_TASKCORE_CHAOS_SIGNAL_INTERVAL_MS", 200))
+	cancelSleepMs := int32(readChaosPositiveEnvInt(nil, "ANCLAX_TASKCORE_CHAOS_CANCEL_SLEEP_MS", 4000))
+	uniqueTag := "LONG-000-cancel"
+	taskID, err := user.SubmitStressProbe(ctx, SubmitStressProbeRequest{
+		TaskName:         uniqueTag,
+		JobID:            92,
+		SleepMs:          cancelSleepMs,
+		Group:            group,
+		Labels:           labels,
+		SignalBaseURL:    user.SignalBaseURL,
+		SignalIntervalMs: signalIntervalMs,
+	})
+	if err != nil {
+		return err
+	}
+	task := &chaosTaskSlot{taskID: taskID, uniqueTag: uniqueTag, controlEligible: true, controlMode: "cancel", finalStatus: "completed"}
+	state.tasks[uniqueTag] = task
+	state.tasksSubmitted++
+	ready, snapshot, err := waitForRunningSignals(ctx, user, task, 10*time.Second)
+	if err != nil {
+		return err
+	}
+	if !ready {
+		return fmt.Errorf("initial cancel task %d did not start signaling", taskID)
+	}
+	if user.Report != nil {
+		user.Report.AddEvent("user.expectation", fmt.Sprintf("%d", task.taskID), "signal threshold reached", map[string]any{"taskID": task.taskID, "count": snapshot.Count})
+	}
+	if err := user.CancelTask(ctx, task.uniqueTag); err != nil {
+		return err
+	}
+	if err := user.ExpectCancelled(ctx, task.uniqueTag, 20*time.Second); err != nil {
+		return err
+	}
+	if err := user.ExpectSignalsStopped(ctx, task.taskID, 750*time.Millisecond); err != nil {
+		return err
+	}
+	task.finalStatus = "cancelled"
+	task.controlState = "cancelled"
+	state.userCancels++
+	return nil
+}
+
+func runInitialUserPauseResume(ctx context.Context, user *User, state *chaosState) error {
+	if user == nil || user.DB == nil {
+		return fmt.Errorf("user is not ready")
+	}
+	labels, group := taskLabelsAndGroup(1)
+	pauseDelayMs := int32(readChaosPositiveEnvInt(nil, "ANCLAX_TASKCORE_CHAOS_CONTROL_DELAY_MS", 1500))
+	pauseSleepMs := int32(readChaosPositiveEnvInt(nil, "ANCLAX_TASKCORE_CHAOS_CONTROL_SLEEP_MS", 800))
+	uniqueTag := "LONG-000-pause"
+	taskID, err := user.SubmitStressProbe(ctx, SubmitStressProbeRequest{
+		TaskName: uniqueTag,
+		JobID:    91,
+		SleepMs:  pauseSleepMs,
+		DelayMs:  pauseDelayMs,
+		Group:    group,
+		Labels:   labels,
+	})
+	if err != nil {
+		return err
+	}
+	task := &chaosTaskSlot{taskID: taskID, uniqueTag: uniqueTag, controlEligible: true, controlMode: "pause", finalStatus: "completed"}
+	state.tasks[uniqueTag] = task
+	state.tasksSubmitted++
+	status, err := user.DB.TaskStatus(ctx, task.uniqueTag)
+	if err != nil {
+		return err
+	}
+	if status != "pending" {
+		return fmt.Errorf("initial pause task %s status=%s want=pending", task.uniqueTag, status)
+	}
+	if err := user.PauseTask(ctx, task.uniqueTag); err != nil {
+		return err
+	}
+	if err := user.ExpectPaused(ctx, task.uniqueTag, 20*time.Second); err != nil {
+		return err
+	}
+	task.controlState = "paused"
+	state.userPauses++
+	if err := user.ResumeTask(ctx, task.uniqueTag); err != nil {
+		return err
+	}
+	if err := user.ExpectPending(ctx, task.uniqueTag, 20*time.Second); err != nil {
+		return err
+	}
+	task.controlState = "resumed"
+	state.userResumes++
+	return nil
+}
+
 func submitChaosBatch(ctx context.Context, user *User, state *chaosState, iter int) error {
 	batchSize := readChaosPositiveEnvInt(nil, "ANCLAX_TASKCORE_CHAOS_BATCH_SIZE", 3)
 	taskSleepMs := int32(readChaosPositiveEnvInt(nil, "ANCLAX_TASKCORE_CHAOS_TASK_SLEEP_MS", 400))
+	pauseDelayMs := int32(readChaosPositiveEnvInt(nil, "ANCLAX_TASKCORE_CHAOS_CONTROL_DELAY_MS", 1500))
+	pauseSleepMs := int32(readChaosPositiveEnvInt(nil, "ANCLAX_TASKCORE_CHAOS_CONTROL_SLEEP_MS", 800))
+	cancelSleepMs := int32(readChaosPositiveEnvInt(nil, "ANCLAX_TASKCORE_CHAOS_CANCEL_SLEEP_MS", 4000))
+	signalIntervalMs := int32(readChaosPositiveEnvInt(nil, "ANCLAX_TASKCORE_CHAOS_SIGNAL_INTERVAL_MS", 200))
 	for j := 0; j < batchSize; j++ {
 		taskName := fmt.Sprintf("LONG-%03d-%02d", iter, j)
 		labels, group := taskLabelsAndGroup(j)
-		if err := user.SubmitStressProbe(ctx, SubmitStressProbeRequest{
+		taskID, err := user.SubmitStressProbe(ctx, SubmitStressProbeRequest{
 			TaskName: taskName,
 			JobID:    int64(iter*100 + j),
 			SleepMs:  taskSleepMs,
 			Group:    group,
 			Labels:   labels,
-		}); err != nil {
+		})
+		if err != nil {
 			return err
 		}
-		state.expected[taskName] = struct{}{}
+		state.tasks[taskName] = &chaosTaskSlot{taskID: taskID, uniqueTag: taskName, finalStatus: "completed"}
 		state.tasksSubmitted++
 	}
+
+	pauseTaskName := fmt.Sprintf("LONG-%03d-pause", iter)
+	labels, group := taskLabelsAndGroup(iter)
+	pauseTaskID, err := user.SubmitStressProbe(ctx, SubmitStressProbeRequest{
+		TaskName: pauseTaskName,
+		JobID:    int64(iter*1000 + 91),
+		SleepMs:  pauseSleepMs,
+		DelayMs:  pauseDelayMs,
+		Group:    group,
+		Labels:   labels,
+	})
+	if err != nil {
+		return err
+	}
+	state.tasks[pauseTaskName] = &chaosTaskSlot{taskID: pauseTaskID, uniqueTag: pauseTaskName, controlEligible: true, controlMode: "pause", finalStatus: "completed"}
+	state.tasksSubmitted++
+
+	cancelTaskName := fmt.Sprintf("LONG-%03d-cancel", iter)
+	cancelTaskID, err := user.SubmitStressProbe(ctx, SubmitStressProbeRequest{
+		TaskName:         cancelTaskName,
+		JobID:            int64(iter*1000 + 92),
+		SleepMs:          cancelSleepMs,
+		Group:            group,
+		Labels:           labels,
+		SignalBaseURL:    user.SignalBaseURL,
+		SignalIntervalMs: signalIntervalMs,
+	})
+	if err != nil {
+		return err
+	}
+	state.tasks[cancelTaskName] = &chaosTaskSlot{taskID: cancelTaskID, uniqueTag: cancelTaskName, controlEligible: true, controlMode: "cancel", finalStatus: "completed"}
+	state.tasksSubmitted++
 	return nil
 }
 
@@ -237,6 +398,187 @@ func taskLabelsAndGroup(i int) ([]string, string) {
 		return []string{"w2"}, "w2"
 	default:
 		return nil, "default"
+	}
+}
+
+func runUserOperation(ctx context.Context, user *User, state *chaosState, iter int) error {
+	if applied, err := actionUserCancel(ctx, user, state); err != nil || applied {
+		return err
+	}
+	if applied, err := actionUserResume(ctx, user, state, iter); err != nil || applied {
+		return err
+	}
+	if iter%4 == 0 {
+		if applied, err := actionUserPause(ctx, user, state, iter); err != nil || applied {
+			return err
+		}
+	}
+	return nil
+}
+
+func actionUserPause(ctx context.Context, user *User, state *chaosState, iter int) (bool, error) {
+	if !state.controlPlaneAvailable(iter) || state.activeWorkers() < 3 {
+		return false, nil
+	}
+	taskName := fmt.Sprintf("LONG-%03d-pause", iter)
+	task := state.tasks[taskName]
+	if task == nil || !task.controlEligible || task.controlMode != "pause" || task.finalStatus != "completed" || task.controlState != "" {
+		return false, nil
+	}
+	status, err := user.DB.TaskStatus(ctx, task.uniqueTag)
+	if err != nil || status != "pending" {
+		return false, err
+	}
+	if err := user.PauseTask(ctx, task.uniqueTag); err != nil {
+		return false, err
+	}
+	if err := user.ExpectPaused(ctx, task.uniqueTag, 20*time.Second); err != nil {
+		return false, err
+	}
+	task.controlState = "paused"
+	task.resumeAt = iter + state.randBetween(2, 4)
+	state.userPauses++
+	return true, nil
+}
+
+func actionUserCancel(ctx context.Context, user *User, state *chaosState) (bool, error) {
+	if user == nil || user.DB == nil || user.Signals == nil || state.activeWorkers() < 3 {
+		return false, nil
+	}
+	candidates := make([]*chaosTaskSlot, 0)
+	for _, task := range state.tasks {
+		if task != nil && task.controlEligible && task.controlMode == "cancel" && task.finalStatus == "completed" && task.controlState == "" {
+			candidates = append(candidates, task)
+		}
+	}
+	if len(candidates) == 0 {
+		return false, nil
+	}
+	var chosen *chaosTaskSlot
+	var snapshot *SignalSnapshot
+	for _, task := range candidates {
+		status, err := user.DB.TaskStatus(ctx, task.uniqueTag)
+		if err != nil || status == "completed" || status == "cancelled" || status == "paused" || status == "failed" {
+			continue
+		}
+		snap, err := user.SignalSnapshot(ctx, task.taskID)
+		if err != nil || snap == nil || snap.Count == 0 {
+			continue
+		}
+		if chosen == nil || snap.Count < snapshot.Count || (snap.Count == snapshot.Count && task.taskID < chosen.taskID) {
+			chosen = task
+			snapshot = snap
+		}
+	}
+	if chosen == nil && state.activeWorkers() > 0 {
+		oldest := oldestChaosTask(candidates)
+		if oldest != nil {
+			ready, snap, err := waitForRunningSignals(ctx, user, oldest, 2*time.Second)
+			if err != nil {
+				return false, err
+			}
+			if ready {
+				chosen = oldest
+				snapshot = snap
+			}
+		}
+	}
+	if chosen == nil {
+		return false, nil
+	}
+	if user.Report != nil {
+		user.Report.AddEvent("user.expectation", fmt.Sprintf("%d", chosen.taskID), "signal threshold reached", map[string]any{"taskID": chosen.taskID, "count": snapshot.Count})
+	}
+	if err := user.CancelTask(ctx, chosen.uniqueTag); err != nil {
+		return false, err
+	}
+	if err := user.ExpectCancelled(ctx, chosen.uniqueTag, 20*time.Second); err != nil {
+		return false, err
+	}
+	if err := user.ExpectSignalsStopped(ctx, chosen.taskID, 750*time.Millisecond); err != nil {
+		return false, err
+	}
+	chosen.finalStatus = "cancelled"
+	chosen.controlState = "cancelled"
+	chosen.resumeAt = 0
+	state.userCancels++
+	return true, nil
+}
+
+func oldestChaosTask(tasks []*chaosTaskSlot) *chaosTaskSlot {
+	var oldest *chaosTaskSlot
+	for _, task := range tasks {
+		if task == nil {
+			continue
+		}
+		if oldest == nil || task.taskID < oldest.taskID {
+			oldest = task
+		}
+	}
+	return oldest
+}
+
+func waitForRunningSignals(ctx context.Context, user *User, task *chaosTaskSlot, timeout time.Duration) (bool, *SignalSnapshot, error) {
+	if user == nil || user.DB == nil || user.Signals == nil || task == nil {
+		return false, nil, nil
+	}
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		status, err := user.DB.TaskStatus(ctx, task.uniqueTag)
+		if err == nil && status != "completed" && status != "cancelled" && status != "paused" && status != "failed" {
+			snapshot, err := user.SignalSnapshot(ctx, task.taskID)
+			if err == nil && snapshot != nil && snapshot.Count > 0 {
+				return true, snapshot, nil
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return false, nil, ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	return false, nil, nil
+}
+
+func actionUserResume(ctx context.Context, user *User, state *chaosState, iter int) (bool, error) {
+	task, err := state.randomTaskByStatus(ctx, user.DB, []string{"paused"}, func(task *chaosTaskSlot) bool {
+		return task.controlMode == "pause" && task.controlState == "paused" && task.resumeAt > 0 && iter >= task.resumeAt
+	})
+	if err != nil || task == nil {
+		return false, err
+	}
+	if err := user.ResumeTask(ctx, task.uniqueTag); err != nil {
+		return false, err
+	}
+	if err := user.ExpectPending(ctx, task.uniqueTag, 20*time.Second); err != nil {
+		return false, err
+	}
+	task.controlState = "resumed"
+	task.resumeAt = 0
+	state.userResumes++
+	return true, nil
+}
+
+func resumeRemainingPausedTasks(ctx context.Context, user *User, state *chaosState, iter int) error {
+	for {
+		task, err := state.randomTaskByStatus(ctx, user.DB, []string{"paused"}, func(task *chaosTaskSlot) bool {
+			return task.controlMode == "pause" && task.controlState == "paused"
+		})
+		if err != nil {
+			return err
+		}
+		if task == nil {
+			return nil
+		}
+		if err := user.ResumeTask(ctx, task.uniqueTag); err != nil {
+			return err
+		}
+		if err := user.ExpectPending(ctx, task.uniqueTag, 20*time.Second); err != nil {
+			return err
+		}
+		task.controlState = "resumed"
+		task.resumeAt = iter
+		state.userResumes++
 	}
 }
 
@@ -266,13 +608,18 @@ func reconcileChaosState(ctx context.Context, h *Harness, state *chaosState, ite
 }
 
 func runRandomAction(ctx context.Context, h *Harness, state *chaosState, iter int) error {
+	disruptEvery := readChaosPositiveEnvInt(nil, "ANCLAX_TASKCORE_CHAOS_DISRUPT_EVERY", 3)
 	actions := []func(context.Context, *Harness, *chaosState, int) (bool, error){
-		actionWorkerDown,
-		actionWorkerRetireAndReplace,
-		actionControlPlaneDown,
-		actionRuntimeConfig,
-		actionPostgresRestart,
 		actionWorkerRejoinEarly,
+		actionRuntimeConfig,
+	}
+	if disruptEvery <= 1 || iter%disruptEvery == 0 {
+		actions = append(actions,
+			actionWorkerDown,
+			actionWorkerRetireAndReplace,
+			actionControlPlaneDown,
+			actionPostgresRestart,
+		)
 	}
 	start := state.rng.Intn(len(actions))
 	for i := 0; i < len(actions); i++ {
@@ -477,6 +824,36 @@ func (s *chaosState) activeWorkers() int {
 		}
 	}
 	return count
+}
+
+func (s *chaosState) randomTaskByStatus(ctx context.Context, inspector *Inspector, statuses []string, predicate func(*chaosTaskSlot) bool) (*chaosTaskSlot, error) {
+	if inspector == nil {
+		return nil, nil
+	}
+	allowed := make(map[string]struct{}, len(statuses))
+	for _, status := range statuses {
+		allowed[status] = struct{}{}
+	}
+	candidates := make([]*chaosTaskSlot, 0)
+	for _, task := range s.tasks {
+		if task != nil && predicate(task) {
+			candidates = append(candidates, task)
+		}
+	}
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+	for _, idx := range s.rng.Perm(len(candidates)) {
+		task := candidates[idx]
+		status, err := inspector.TaskStatus(ctx, task.uniqueTag)
+		if err != nil {
+			continue
+		}
+		if _, ok := allowed[status]; ok {
+			return task, nil
+		}
+	}
+	return nil, nil
 }
 
 func readChaosPositiveEnvInt(t *testing.T, key string, fallback int) int {

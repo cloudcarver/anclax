@@ -15,13 +15,15 @@ type ControlPlaneClient struct {
 }
 
 type SubmitStressProbeRequest struct {
-	TaskName  string   `json:"taskName"`
-	JobID     int64    `json:"jobID"`
-	SleepMs   int32    `json:"sleepMs"`
-	Group     string   `json:"group"`
-	Labels    []string `json:"labels,omitempty"`
-	DelayMs   int32    `json:"delayMs,omitempty"`
-	UniqueTag string   `json:"uniqueTag,omitempty"`
+	TaskName         string   `json:"taskName"`
+	JobID            int64    `json:"jobID"`
+	SleepMs          int32    `json:"sleepMs"`
+	Group            string   `json:"group"`
+	Labels           []string `json:"labels,omitempty"`
+	DelayMs          int32    `json:"delayMs,omitempty"`
+	UniqueTag        string   `json:"uniqueTag,omitempty"`
+	SignalBaseURL    string   `json:"signalBaseURL,omitempty"`
+	SignalIntervalMs int32    `json:"signalIntervalMs,omitempty"`
 }
 
 type SubmitStressProbeResponse struct {
@@ -34,10 +36,16 @@ type RuntimeConfigRequest struct {
 	LabelWeights        map[string]int32 `json:"labelWeights,omitempty"`
 }
 
+type TaskControlRequest struct {
+	UniqueTag string `json:"uniqueTag"`
+}
+
+const chaosControlClientTimeout = 60 * time.Second
+
 func NewControlPlaneClient(baseURL string) *ControlPlaneClient {
 	return &ControlPlaneClient{
 		baseURL: baseURL,
-		client:  &http.Client{Timeout: 15 * time.Second},
+		client:  &http.Client{Timeout: chaosControlClientTimeout},
 	}
 }
 
@@ -63,6 +71,18 @@ func (c *ControlPlaneClient) SubmitStressProbe(ctx context.Context, reqBody Subm
 		return 0, err
 	}
 	return out.TaskID, nil
+}
+
+func (c *ControlPlaneClient) PauseTask(ctx context.Context, uniqueTag string) error {
+	return c.doJSON(ctx, http.MethodPost, "/tasks/pause", TaskControlRequest{UniqueTag: uniqueTag}, nil)
+}
+
+func (c *ControlPlaneClient) CancelTask(ctx context.Context, uniqueTag string) error {
+	return c.doJSON(ctx, http.MethodPost, "/tasks/cancel", TaskControlRequest{UniqueTag: uniqueTag}, nil)
+}
+
+func (c *ControlPlaneClient) ResumeTask(ctx context.Context, uniqueTag string) error {
+	return c.doJSON(ctx, http.MethodPost, "/tasks/resume", TaskControlRequest{UniqueTag: uniqueTag}, nil)
 }
 
 func (c *ControlPlaneClient) UpdateRuntimeConfig(ctx context.Context, reqBody RuntimeConfigRequest) error {
