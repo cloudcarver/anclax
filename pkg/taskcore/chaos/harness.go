@@ -64,7 +64,8 @@ func NewHarness(cfg RunConfig) (*Harness, error) {
 func (h *Harness) ArtifactDir() string { return h.artifactDir }
 func (h *Harness) Report() *Report     { return h.report }
 func (h *Harness) User() *User {
-	return &User{Control: h.controlClient, Signals: h.signalClient, SignalBaseURL: h.signalService.ContainerBaseURL(), DB: h.inspector, Report: h.report}
+	signalBaseURL := fmt.Sprintf("http://%s:%d", h.controlPlaneName, h.cfg.ControlPlanePort)
+	return &User{Control: h.controlClient, Signals: NewSignalClient(h.controlPlaneURL), SignalBaseURL: signalBaseURL, DB: h.inspector, Report: h.report}
 }
 func (h *Harness) Inspector() *Inspector { return h.inspector }
 
@@ -239,11 +240,12 @@ func (h *Harness) StartWorker(ctx context.Context, name string, labels []string)
 	workerLabels = append(workerLabels, "chaos:"+name)
 	args := []string{"run", "-d", "--name", containerName, "--network", h.networkName}
 	args = append(args, hostGatewayAlias("host.docker.internal")...)
+	signalBaseURL := fmt.Sprintf("http://%s:%d", h.controlPlaneName, h.cfg.ControlPlanePort)
 	args = append(args, quotedEnv(map[string]string{
 		"CHAOS_DSN":                    h.postgresInnerDSN,
 		"CHAOS_WORKER_NAME":            name,
 		"CHAOS_WORKER_LABELS":          strings.Join(workerLabels, ","),
-		"CHAOS_SIGNAL_BASE_URL":        h.signalService.ContainerBaseURL(),
+		"CHAOS_SIGNAL_BASE_URL":        signalBaseURL,
 		"CHAOS_WORKER_CONCURRENCY":     fmt.Sprintf("%d", h.cfg.WorkerConcurrency),
 		"CHAOS_POLL_INTERVAL_MS":       intToString(int(h.cfg.PollInterval / time.Millisecond)),
 		"CHAOS_HEARTBEAT_INTERVAL_MS":  intToString(int(h.cfg.HeartbeatInterval / time.Millisecond)),

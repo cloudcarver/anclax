@@ -242,12 +242,9 @@ func runInitialUserCancel(ctx context.Context, user *User, state *chaosState) er
 	}
 	labels, group := taskLabelsAndGroup(0)
 	signalIntervalMs := int32(readChaosPositiveEnvInt(nil, "ANCLAX_TASKCORE_CHAOS_SIGNAL_INTERVAL_MS", 200))
-	cancelSleepMs := int32(readChaosPositiveEnvInt(nil, "ANCLAX_TASKCORE_CHAOS_CANCEL_SLEEP_MS", 4000))
 	uniqueTag := "LONG-000-cancel"
-	taskID, err := user.SubmitStressProbe(ctx, SubmitStressProbeRequest{
+	taskID, err := user.SubmitCancelObservableProbe(ctx, SubmitCancelObservableProbeRequest{
 		TaskName:         uniqueTag,
-		JobID:            92,
-		SleepMs:          cancelSleepMs,
 		Group:            group,
 		Labels:           labels,
 		SignalBaseURL:    user.SignalBaseURL,
@@ -337,8 +334,6 @@ func submitChaosBatch(ctx context.Context, user *User, state *chaosState, iter i
 	taskSleepMs := int32(readChaosPositiveEnvInt(nil, "ANCLAX_TASKCORE_CHAOS_TASK_SLEEP_MS", 400))
 	pauseDelayMs := int32(readChaosPositiveEnvInt(nil, "ANCLAX_TASKCORE_CHAOS_CONTROL_DELAY_MS", 1500))
 	pauseSleepMs := int32(readChaosPositiveEnvInt(nil, "ANCLAX_TASKCORE_CHAOS_CONTROL_SLEEP_MS", 800))
-	cancelSleepMs := int32(readChaosPositiveEnvInt(nil, "ANCLAX_TASKCORE_CHAOS_CANCEL_SLEEP_MS", 4000))
-	signalIntervalMs := int32(readChaosPositiveEnvInt(nil, "ANCLAX_TASKCORE_CHAOS_SIGNAL_INTERVAL_MS", 200))
 	for j := 0; j < batchSize; j++ {
 		taskName := fmt.Sprintf("LONG-%03d-%02d", iter, j)
 		labels, group := taskLabelsAndGroup(j)
@@ -372,21 +367,6 @@ func submitChaosBatch(ctx context.Context, user *User, state *chaosState, iter i
 	state.tasks[pauseTaskName] = &chaosTaskSlot{taskID: pauseTaskID, uniqueTag: pauseTaskName, controlEligible: true, controlMode: "pause", finalStatus: "completed"}
 	state.tasksSubmitted++
 
-	cancelTaskName := fmt.Sprintf("LONG-%03d-cancel", iter)
-	cancelTaskID, err := user.SubmitStressProbe(ctx, SubmitStressProbeRequest{
-		TaskName:         cancelTaskName,
-		JobID:            int64(iter*1000 + 92),
-		SleepMs:          cancelSleepMs,
-		Group:            group,
-		Labels:           labels,
-		SignalBaseURL:    user.SignalBaseURL,
-		SignalIntervalMs: signalIntervalMs,
-	})
-	if err != nil {
-		return err
-	}
-	state.tasks[cancelTaskName] = &chaosTaskSlot{taskID: cancelTaskID, uniqueTag: cancelTaskName, controlEligible: true, controlMode: "cancel", finalStatus: "completed"}
-	state.tasksSubmitted++
 	return nil
 }
 
@@ -402,9 +382,6 @@ func taskLabelsAndGroup(i int) ([]string, string) {
 }
 
 func runUserOperation(ctx context.Context, user *User, state *chaosState, iter int) error {
-	if applied, err := actionUserCancel(ctx, user, state); err != nil || applied {
-		return err
-	}
 	if applied, err := actionUserResume(ctx, user, state, iter); err != nil || applied {
 		return err
 	}
@@ -700,11 +677,19 @@ func actionRuntimeConfig(ctx context.Context, h *Harness, state *chaosState, ite
 			"w2": int32(state.randBetween(1, 4)),
 		},
 	}
-	if err := h.User().Control.UpdateRuntimeConfig(ctx, req); err != nil {
+	taskID, err := h.User().Control.StartUpdateRuntimeConfig(ctx, req)
+	if err != nil {
 		return false, err
 	}
+	status, err := h.User().WaitForTask(ctx, taskID, 0)
+	if err != nil {
+		return false, err
+	}
+	if status != "completed" {
+		return false, fmt.Errorf("runtime config task %d status=%s want=completed", taskID, status)
+	}
 	state.runtimeConfigUpdates++
-	h.Report().AddEvent("chaos.runtime_config", "control-plane", "runtime config updated", map[string]any{"iter": iter, "weights": req.LabelWeights})
+	h.Report().AddEvent("chaos.runtime_config", "control-plane", "runtime config updated", map[string]any{"iter": iter, "taskID": taskID, "weights": req.LabelWeights})
 	return true, nil
 }
 

@@ -3,9 +3,13 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/cloudcarver/anclax/pkg/app/closer"
@@ -28,6 +32,15 @@ type stressProbeRequest struct {
 	SignalIntervalMs int32    `json:"signalIntervalMs,omitempty"`
 }
 
+type cancelObservableProbeRequest struct {
+	TaskName         string   `json:"taskName"`
+	Group            string   `json:"group"`
+	Labels           []string `json:"labels,omitempty"`
+	UniqueTag        string   `json:"uniqueTag,omitempty"`
+	SignalBaseURL    string   `json:"signalBaseURL,omitempty"`
+	SignalIntervalMs int32    `json:"signalIntervalMs,omitempty"`
+}
+
 type taskControlRequest struct {
 	UniqueTag string `json:"uniqueTag"`
 }
@@ -38,13 +51,30 @@ type runtimeConfigRequest struct {
 	LabelWeights        map[string]int32 `json:"labelWeights,omitempty"`
 }
 
-const chaosControlRequestTimeout = 60 * time.Second
+type runtimeConfigResponse struct {
+	TaskID int32 `json:"taskID"`
+}
+
+const chaosControlRequestTimeout = 5 * time.Minute
+
+type signalSnapshot struct {
+	TaskID        int32      `json:"taskID"`
+	Count         int64      `json:"count"`
+	LastEmittedAt *time.Time `json:"lastEmittedAt,omitempty"`
+}
+
+type signalState struct {
+	Count         int64
+	LastEmittedAt time.Time
+}
 
 type app struct {
 	store        taskcore.TaskStoreInterface
 	runner       taskgen.TaskRunner
 	controlPlane *ctrl.WorkerControlPlane
 	model        model.ModelInterface
+	signalMu     sync.Mutex
+	signals      map[int32]signalState
 }
 
 func main() {
@@ -70,10 +100,13 @@ func main() {
 	runner := taskgen.NewTaskRunner(store)
 	controlPlane := ctrl.NewWorkerControlPlane(m, runner, store)
 
-	a := &app{store: store, runner: runner, controlPlane: controlPlane, model: m}
+	a := &app{store: store, runner: runner, controlPlane: controlPlane, model: m, signals: map[int32]signalState{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", a.handleHealth)
+	mux.HandleFunc("/signals/emit", a.handleSignalEmit)
+	mux.HandleFunc("/signals/", a.handleSignal)
 	mux.HandleFunc("/tasks/stress-probe", a.handleStressProbe)
+	mux.HandleFunc("/tasks/cancel-observable-probe", a.handleCancelObservableProbe)
 	mux.HandleFunc("/tasks/pause", a.handlePauseTask)
 	mux.HandleFunc("/tasks/cancel", a.handleCancelTask)
 	mux.HandleFunc("/tasks/resume", a.handleResumeTask)
@@ -89,6 +122,86 @@ func main() {
 func (a *app) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok"))
+}
+
+func (a *app) handleSignalEmit(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		TaskID int32 `json:"taskID"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if req.TaskID <= 0 {
+		http.Error(w, "taskID must be positive", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusOK, a.emitSignal(req.TaskID))
+}
+
+func (a *app) handleSignal(w http.ResponseWriter, r *http.Request) {
+	taskID, err := parseSignalTaskID(r.URL.Path)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, a.signalSnapshot(taskID))
+	case http.MethodDelete:
+		a.deleteSignal(taskID)
+		writeJSON(w, http.StatusOK, signalSnapshot{TaskID: taskID})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (a *app) emitSignal(taskID int32) signalSnapshot {
+	a.signalMu.Lock()
+	defer a.signalMu.Unlock()
+	state := a.signals[taskID]
+	state.Count++
+	state.LastEmittedAt = time.Now().UTC()
+	a.signals[taskID] = state
+	t := state.LastEmittedAt
+	return signalSnapshot{TaskID: taskID, Count: state.Count, LastEmittedAt: &t}
+}
+
+func (a *app) signalSnapshot(taskID int32) signalSnapshot {
+	a.signalMu.Lock()
+	defer a.signalMu.Unlock()
+	state, ok := a.signals[taskID]
+	if !ok {
+		return signalSnapshot{TaskID: taskID}
+	}
+	out := signalSnapshot{TaskID: taskID, Count: state.Count}
+	if !state.LastEmittedAt.IsZero() {
+		t := state.LastEmittedAt.UTC()
+		out.LastEmittedAt = &t
+	}
+	return out
+}
+
+func (a *app) deleteSignal(taskID int32) {
+	a.signalMu.Lock()
+	defer a.signalMu.Unlock()
+	delete(a.signals, taskID)
+}
+
+func parseSignalTaskID(path string) (int32, error) {
+	raw := strings.TrimPrefix(path, "/signals/")
+	if raw == "" || raw == path {
+		return 0, fmt.Errorf("taskID is required")
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil || v <= 0 {
+		return 0, fmt.Errorf("invalid taskID %q", raw)
+	}
+	return int32(v), nil
 }
 
 func (a *app) handleStressProbe(w http.ResponseWriter, r *http.Request) {
@@ -129,7 +242,48 @@ func (a *app) handleStressProbe(w http.ResponseWriter, r *http.Request) {
 	}
 	taskID, err := a.runner.RunStressProbe(r.Context(), params, overrides...)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, "RunStressProbe", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"taskID": taskID})
+}
+
+func (a *app) handleCancelObservableProbe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req cancelObservableProbeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if req.TaskName == "" {
+		http.Error(w, "taskName is required", http.StatusBadRequest)
+		return
+	}
+	if req.Group == "" {
+		http.Error(w, "group is required", http.StatusBadRequest)
+		return
+	}
+	uniqueTag := req.UniqueTag
+	if uniqueTag == "" {
+		uniqueTag = req.TaskName
+	}
+	overrides := []taskcore.TaskOverride{taskcore.WithUniqueTag(uniqueTag)}
+	if len(req.Labels) > 0 {
+		overrides = append(overrides, taskcore.WithLabels(req.Labels))
+	}
+	params := &taskgen.CancelObservableProbeParameters{Group: req.Group}
+	if req.SignalBaseURL != "" {
+		params.SignalBaseURL = &req.SignalBaseURL
+	}
+	if req.SignalIntervalMs > 0 {
+		params.SignalIntervalMs = &req.SignalIntervalMs
+	}
+	taskID, err := a.runner.RunCancelObservableProbe(r.Context(), params, overrides...)
+	if err != nil {
+		writeInternalError(w, "RunCancelObservableProbe", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"taskID": taskID})
@@ -170,7 +324,7 @@ func (a *app) handleTaskControl(w http.ResponseWriter, r *http.Request, fn func(
 	ctx, cancel := context.WithTimeout(r.Context(), chaosControlRequestTimeout)
 	defer cancel()
 	if err := fn(ctx, req.UniqueTag); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, "TaskControl", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -194,17 +348,26 @@ func (a *app) handleRuntimeConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), chaosControlRequestTimeout)
 	defer cancel()
-	err := a.controlPlane.UpdateWorkerRuntimeConfig(ctx, &ctrl.UpdateWorkerRuntimeConfigRequest{
+	taskID, err := a.controlPlane.StartUpdateWorkerRuntimeConfig(ctx, &ctrl.UpdateWorkerRuntimeConfigRequest{
 		MaxStrictPercentage: &req.MaxStrictPercentage,
 		DefaultWeight:       &req.DefaultWeight,
 		Labels:              labels,
 		Weights:             weights,
 	})
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeInternalError(w, "StartUpdateWorkerRuntimeConfig", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	writeJSON(w, http.StatusOK, runtimeConfigResponse{TaskID: taskID})
+}
+
+func writeInternalError(w http.ResponseWriter, op string, err error) {
+	if err == nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	log.Printf("control plane error op=%s err=%v", op, err)
+	http.Error(w, err.Error(), http.StatusInternalServerError)
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {

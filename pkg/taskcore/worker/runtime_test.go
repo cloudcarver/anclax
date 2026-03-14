@@ -15,10 +15,11 @@ import (
 type scriptedPort struct {
 	mu sync.Mutex
 
-	registerCalls []string
-	offlineCalls  []string
-	heartbeats    []string
-	refreshReqIDs []string
+	registerCalls          []string
+	registerAppliedVersion []int64
+	offlineCalls           []string
+	heartbeats             []string
+	refreshReqIDs          []string
 
 	strictResults []scriptedClaimResult
 	normalResults []scriptedClaimResult
@@ -44,6 +45,7 @@ func (p *scriptedPort) RegisterWorker(ctx context.Context, workerID string, labe
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.registerCalls = append(p.registerCalls, workerID)
+	p.registerAppliedVersion = append(p.registerAppliedVersion, appliedConfigVersion)
 	p.callOrder = append(p.callOrder, "register")
 	return nil
 }
@@ -229,6 +231,61 @@ func TestRuntimeStartRegistersAndMarksOfflineOnStop(t *testing.T) {
 
 	require.Equal(t, []string{"w-start"}, port.registerCalls)
 	require.Equal(t, []string{"w-start"}, port.offlineCalls)
+}
+
+func TestRuntimeStartAppliesRuntimeConfigBeforeRegister(t *testing.T) {
+	eng := NewEngine(EngineConfig{WorkerID: "w-start", Concurrency: 1})
+	port := &scriptedPort{
+		refreshConfig: &RuntimeConfig{
+			Version:             7,
+			MaxStrictPercentage: int32Ptr(25),
+			LabelWeights: map[string]int32{
+				DefaultWeightConfigKey: 1,
+				"w1":                   3,
+			},
+		},
+	}
+	rt := NewRuntime(eng, port, RuntimeOptions{
+		PollInterval:          0,
+		HeartbeatInterval:     0,
+		RuntimeConfigInterval: 0,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		rt.Start(ctx)
+	}()
+
+	require.Eventually(t, func() bool {
+		port.mu.Lock()
+		defer port.mu.Unlock()
+		return len(port.registerCalls) == 1
+	}, time.Second, 10*time.Millisecond)
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("runtime.Start did not stop")
+	}
+
+	port.mu.Lock()
+	defer port.mu.Unlock()
+	refreshIdx := -1
+	registerIdx := -1
+	for i, call := range port.callOrder {
+		if call == "refresh_config" && refreshIdx == -1 {
+			refreshIdx = i
+		}
+		if call == "register" && registerIdx == -1 {
+			registerIdx = i
+		}
+	}
+	require.NotEqual(t, -1, refreshIdx)
+	require.NotEqual(t, -1, registerIdx)
+	require.Less(t, refreshIdx, registerIdx)
+	require.Equal(t, []int64{7}, port.registerAppliedVersion)
 }
 
 func TestRuntimeHeartbeatFailureStopsRuntimeAndMarksOffline(t *testing.T) {

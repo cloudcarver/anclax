@@ -40,6 +40,33 @@ func (u *User) SubmitStressProbe(ctx context.Context, req SubmitStressProbeReque
 	return taskID, nil
 }
 
+func (u *User) SubmitCancelObservableProbe(ctx context.Context, req SubmitCancelObservableProbeRequest) (int32, error) {
+	if req.TaskName == "" {
+		return 0, fmt.Errorf("task name is required")
+	}
+	if req.Group == "" {
+		return 0, fmt.Errorf("group is required")
+	}
+	if req.UniqueTag == "" {
+		req.UniqueTag = req.TaskName
+	}
+	taskID, err := u.Control.SubmitCancelObservableProbe(ctx, req)
+	if err != nil {
+		return 0, err
+	}
+	if u.Report != nil {
+		u.Report.AddEvent("user.submit_task", req.TaskName, "cancel observable probe submitted", map[string]any{
+			"taskID":           taskID,
+			"group":            req.Group,
+			"labels":           req.Labels,
+			"uniqueTag":        req.UniqueTag,
+			"signalBaseURL":    req.SignalBaseURL,
+			"signalIntervalMs": req.SignalIntervalMs,
+		})
+	}
+	return taskID, nil
+}
+
 func (u *User) PauseTask(ctx context.Context, uniqueTag string) error {
 	if uniqueTag == "" {
 		return fmt.Errorf("unique tag is required")
@@ -84,6 +111,20 @@ func (u *User) SignalSnapshot(ctx context.Context, taskID int32) (*SignalSnapsho
 		return nil, fmt.Errorf("signal client is not configured")
 	}
 	return u.Signals.Snapshot(ctx, taskID)
+}
+
+func (u *User) WaitForTask(ctx context.Context, taskID int32, timeout time.Duration) (string, error) {
+	if u.DB == nil {
+		return "", fmt.Errorf("inspector is not configured")
+	}
+	status, err := u.DB.WaitForTaskByID(ctx, taskID, timeout)
+	if err != nil {
+		return "", err
+	}
+	if u.Report != nil {
+		u.Report.AddEvent("user.expectation", fmt.Sprintf("%d", taskID), fmt.Sprintf("task terminal status=%s", status), map[string]any{"taskID": taskID, "status": status})
+	}
+	return status, nil
 }
 
 func (u *User) WaitForSignals(ctx context.Context, taskID int32, minCount int64, timeout time.Duration) (*SignalSnapshot, error) {

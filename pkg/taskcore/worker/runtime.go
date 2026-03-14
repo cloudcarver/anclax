@@ -27,6 +27,7 @@ type runtimeEnvelope struct {
 	event    Event
 	done     chan struct{}
 	snapshot chan Snapshot
+	op       func()
 	skip     bool
 }
 
@@ -118,6 +119,45 @@ func (r *Runtime) Snapshot(ctx context.Context) (Snapshot, bool) {
 	}
 }
 
+func (r *Runtime) startupCatchUpRuntimeConfig(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	var opErr error
+	env := runtimeEnvelope{
+		ctx:  ctx,
+		done: make(chan struct{}),
+		skip: true,
+		op: func() {
+			cfg, err := r.port.RefreshRuntimeConfig(ctx, r.engine.WorkerID(), "")
+			if err != nil {
+				opErr = err
+				return
+			}
+			if cfg != nil && cfg.Version > r.engine.CurrentRuntimeConfigVersion() {
+				r.engine.applyRuntimeConfig(*cfg)
+			}
+		},
+	}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-r.loopDone:
+		return context.Canceled
+	case r.inbox <- env:
+	}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-r.loopDone:
+		return context.Canceled
+	case <-env.done:
+		return opErr
+	}
+}
+
 func (r *Runtime) enqueue(ctx context.Context, event Event, wait bool) bool {
 	if ctx == nil {
 		ctx = context.Background()
@@ -164,7 +204,9 @@ func (r *Runtime) eventLoop() {
 				}
 			}
 		case env := <-r.inbox:
-			if !env.skip {
+			if env.op != nil {
+				env.op()
+			} else if !env.skip {
 				r.processEvent(env.ctx, env.event)
 			}
 			if env.snapshot != nil {
@@ -194,13 +236,18 @@ func (r *Runtime) processEvent(ctx context.Context, event Event) {
 func (r *Runtime) Start(ctx context.Context) {
 	defer r.Close()
 
-	if err := r.port.RegisterWorker(ctx, r.engine.WorkerID(), r.engine.Labels(), r.engine.CurrentRuntimeConfigVersion()); err != nil {
+	// Startup catch-up for runtime config before the worker becomes online.
+	if err := r.startupCatchUpRuntimeConfig(ctx); err != nil {
 		r.handleError(err)
 		return
 	}
 
-	// Startup catch-up for runtime config.
-	r.Step(ctx, Event{Type: EventRuntimeConfigTick})
+	// Register after startup catch-up so the first online heartbeat already carries
+	// the latest applied runtime config version known at startup.
+	if err := r.port.RegisterWorker(ctx, r.engine.WorkerID(), r.engine.Labels(), r.engine.CurrentRuntimeConfigVersion()); err != nil {
+		r.handleError(err)
+		return
+	}
 
 	var (
 		pollTicker   *time.Ticker

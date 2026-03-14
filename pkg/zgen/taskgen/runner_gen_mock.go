@@ -203,6 +203,46 @@ func (mr *MockTaskRunnerMockRecorder) RunBroadcastUpdateWorkerRuntimeConfigWithT
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunBroadcastUpdateWorkerRuntimeConfigWithTx", reflect.TypeOf((*MockTaskRunner)(nil).RunBroadcastUpdateWorkerRuntimeConfigWithTx), varargs...)
 }
 
+// RunCancelObservableProbe mocks base method.
+func (m *MockTaskRunner) RunCancelObservableProbe(ctx context.Context, params *CancelObservableProbeParameters, overrides ...store.TaskOverride) (int32, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, params}
+	for _, a := range overrides {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "RunCancelObservableProbe", varargs...)
+	ret0, _ := ret[0].(int32)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RunCancelObservableProbe indicates an expected call of RunCancelObservableProbe.
+func (mr *MockTaskRunnerMockRecorder) RunCancelObservableProbe(ctx, params any, overrides ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, params}, overrides...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunCancelObservableProbe", reflect.TypeOf((*MockTaskRunner)(nil).RunCancelObservableProbe), varargs...)
+}
+
+// RunCancelObservableProbeWithTx mocks base method.
+func (m *MockTaskRunner) RunCancelObservableProbeWithTx(ctx context.Context, tx core.Tx, params *CancelObservableProbeParameters, overrides ...store.TaskOverride) (int32, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, tx, params}
+	for _, a := range overrides {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "RunCancelObservableProbeWithTx", varargs...)
+	ret0, _ := ret[0].(int32)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RunCancelObservableProbeWithTx indicates an expected call of RunCancelObservableProbeWithTx.
+func (mr *MockTaskRunnerMockRecorder) RunCancelObservableProbeWithTx(ctx, tx, params any, overrides ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, tx, params}, overrides...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunCancelObservableProbeWithTx", reflect.TypeOf((*MockTaskRunner)(nil).RunCancelObservableProbeWithTx), varargs...)
+}
+
 // RunCancelTaskOnWorker mocks base method.
 func (m *MockTaskRunner) RunCancelTaskOnWorker(ctx context.Context, params *CancelTaskOnWorkerParameters, overrides ...store.TaskOverride) (int32, error) {
 	m.ctrl.T.Helper()
@@ -521,6 +561,20 @@ func (m *MockExecutorInterface) ExecuteBroadcastUpdateWorkerRuntimeConfig(ctx co
 func (mr *MockExecutorInterfaceMockRecorder) ExecuteBroadcastUpdateWorkerRuntimeConfig(ctx, task, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteBroadcastUpdateWorkerRuntimeConfig", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteBroadcastUpdateWorkerRuntimeConfig), ctx, task, params)
+}
+
+// ExecuteCancelObservableProbe mocks base method.
+func (m *MockExecutorInterface) ExecuteCancelObservableProbe(ctx context.Context, task worker.Task, params *CancelObservableProbeParameters) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExecuteCancelObservableProbe", ctx, task, params)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ExecuteCancelObservableProbe indicates an expected call of ExecuteCancelObservableProbe.
+func (mr *MockExecutorInterfaceMockRecorder) ExecuteCancelObservableProbe(ctx, task, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteCancelObservableProbe", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteCancelObservableProbe), ctx, task, params)
 }
 
 // ExecuteCancelTaskOnWorker mocks base method.

@@ -52,7 +52,7 @@ tasks:
     retryPolicy:
       interval: 2s
       maxAttempts: -1
-    timeout: 20s
+    timeout: 5m
 
   - name: interruptTask
     description: Interrupt a task and stop any in-flight execution
@@ -79,7 +79,7 @@ tasks:
     retryPolicy:
       interval: 2s
       maxAttempts: -1
-    timeout: 20s
+    timeout: 5m
 
   - name: broadcastUpdateWorkerRuntimeConfig
     description: Broadcast a runtime config update command to all alive workers
@@ -112,10 +112,16 @@ tasks:
         ackPollInterval:
           type: string
           description: Poll interval used while waiting for worker convergence
+        workerIDs:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Fixed snapshot of worker IDs targeted by this broadcast request
     retryPolicy:
       interval: 2s
       maxAttempts: -1
-    timeout: 30s
+    timeout: 5m
 
   - name: applyWorkerRuntimeConfigToWorker
     description: Apply a runtime config version on one specific worker
@@ -138,7 +144,7 @@ tasks:
     retryPolicy:
       interval: 1s
       maxAttempts: -1
-    timeout: 20s
+    timeout: 5m
 
   - name: broadcastCancelTask
     description: Broadcast cancel-task command to alive workers
@@ -159,10 +165,16 @@ tasks:
         ackPollInterval:
           type: string
           description: Poll interval used while waiting worker ack tasks
+        workerIDs:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Fixed snapshot of worker IDs targeted by this broadcast request
     retryPolicy:
       interval: 2s
       maxAttempts: -1
-    timeout: 30s
+    timeout: 5m
 
   - name: cancelTaskOnWorker
     description: Cancel in-flight task execution on one specific worker
@@ -187,7 +199,7 @@ tasks:
     retryPolicy:
       interval: 1s
       maxAttempts: -1
-    timeout: 20s
+    timeout: 5m
 
   - name: broadcastPauseTask
     description: Broadcast pause-task command to alive workers
@@ -208,10 +220,16 @@ tasks:
         ackPollInterval:
           type: string
           description: Poll interval used while waiting worker ack tasks
+        workerIDs:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Fixed snapshot of worker IDs targeted by this broadcast request
     retryPolicy:
       interval: 2s
       maxAttempts: -1
-    timeout: 30s
+    timeout: 5m
 
   - name: pauseTaskOnWorker
     description: Pause in-flight task execution on one specific worker
@@ -236,7 +254,7 @@ tasks:
     retryPolicy:
       interval: 1s
       maxAttempts: -1
-    timeout: 20s
+    timeout: 5m
 
   - name: stressProbe
     description: No-op stress probe task for worker E2E benchmarking
@@ -266,3 +284,24 @@ tasks:
       interval: 1s
       maxAttempts: 1
     timeout: 30s
+
+  - name: cancelObservableProbe
+    description: Long-running observable task used to validate cancellation semantics under chaos
+    parameters:
+      type: object
+      required: [group]
+      properties:
+        group:
+          type: string
+          description: Logical group name for test-side metrics and labels
+        signalBaseURL:
+          type: string
+          description: Signal service base URL used by the task to emit observable heartbeats
+        signalIntervalMs:
+          type: integer
+          format: int32
+          description: Interval in milliseconds between signal emissions while the task is running
+    retryPolicy:
+      interval: 1s
+      maxAttempts: 1
+    timeout: 30m

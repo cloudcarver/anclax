@@ -52,7 +52,7 @@ func (s *SignalService) Start() error {
 	if err != nil {
 		return err
 	}
-	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	ln, err := net.Listen("tcp4", fmt.Sprintf("0.0.0.0:%d", port))
 	if err != nil {
 		return err
 	}

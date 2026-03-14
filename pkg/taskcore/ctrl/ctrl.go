@@ -9,6 +9,7 @@ import (
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 )
 
@@ -36,6 +37,20 @@ func NewWorkerControlPlane(model model.ModelInterface, runner taskgen.TaskRunner
 	}
 }
 
+func stringifyWorkerIDs(workerIDs []uuid.UUID) []string {
+	if len(workerIDs) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(workerIDs))
+	for _, workerID := range workerIDs {
+		if workerID == uuid.Nil {
+			continue
+		}
+		out = append(out, workerID.String())
+	}
+	return out
+}
+
 func collectTaskAndDescendantIDs(ctx context.Context, txm model.ModelInterface, rootTaskID int32) ([]int32, error) {
 	descendants, err := txm.ListTaskDescendantIDs(ctx, &rootTaskID)
 	if err != nil {
@@ -57,16 +72,42 @@ func collectTaskAndDescendantIDs(ctx context.Context, txm model.ModelInterface, 
 	return ids, nil
 }
 
-// UpdateWorkerRuntimeConfig enqueues a runtime config update task and waits for all workers to ack it.
-func (c *WorkerControlPlane) UpdateWorkerRuntimeConfig(ctx context.Context, req *UpdateWorkerRuntimeConfigRequest) error {
+// StartUpdateWorkerRuntimeConfig snapshots the current alive workers and enqueues a runtime config update task.
+func (c *WorkerControlPlane) StartUpdateWorkerRuntimeConfig(ctx context.Context, req *UpdateWorkerRuntimeConfigRequest) (int32, error) {
 	if req == nil {
-		return errors.New("update worker runtime config request cannot be nil")
+		return 0, errors.New("update worker runtime config request cannot be nil")
 	}
-	taskID, err := RunUpdateWorkerRuntimeConfigTask(ctx, c.runner, req)
+	aliveWorkerIDs, err := c.model.ListOnlineWorkerIDs(ctx, c.now().Add(-c.aliveWorkerTTL))
 	if err != nil {
-		return errors.Wrap(err, "run update worker runtime config task")
+		return 0, errors.Wrap(err, "list online worker ids")
+	}
+	reqCopy := *req
+	reqCopy.WorkerIDs = stringifyWorkerIDs(aliveWorkerIDs)
+	taskID, err := RunUpdateWorkerRuntimeConfigTask(ctx, c.runner, &reqCopy)
+	if err != nil {
+		return 0, errors.Wrap(err, "run update worker runtime config task")
+	}
+	return taskID, nil
+}
+
+// WaitForTask waits for the given task to finish.
+func (c *WorkerControlPlane) WaitForTask(ctx context.Context, taskID int32) error {
+	if taskID <= 0 {
+		return errors.New("wait for task requires a positive taskID")
 	}
 	if err := c.store.WaitForTask(ctx, taskID); err != nil {
+		return errors.Wrap(err, "wait for task")
+	}
+	return nil
+}
+
+// UpdateWorkerRuntimeConfig enqueues a runtime config update task and waits for all workers to ack it.
+func (c *WorkerControlPlane) UpdateWorkerRuntimeConfig(ctx context.Context, req *UpdateWorkerRuntimeConfigRequest) error {
+	taskID, err := c.StartUpdateWorkerRuntimeConfig(ctx, req)
+	if err != nil {
+		return err
+	}
+	if err := c.WaitForTask(ctx, taskID); err != nil {
 		return errors.Wrap(err, "wait for update worker runtime config task")
 	}
 	return nil
@@ -98,8 +139,8 @@ func (c *WorkerControlPlane) PauseTask(ctx context.Context, taskID int32) error 
 			return nil
 		}
 
-		params := &taskgen.BroadcastPauseTaskParameters{TaskIDs: taskIDs}
-		id, err := c.runner.RunBroadcastPauseTaskWithTx(ctx, tx, params)
+		params := &taskgen.BroadcastPauseTaskParameters{TaskIDs: taskIDs, WorkerIDs: stringifyWorkerIDs(aliveWorkerIDs)}
+		id, err := c.runner.RunBroadcastPauseTaskWithTx(ctx, tx, params, taskcore.WithPriority(WorkerControlTaskPriority))
 		if err != nil {
 			return errors.Wrap(err, "enqueue broadcast pause task")
 		}
@@ -144,8 +185,8 @@ func (c *WorkerControlPlane) CancelTask(ctx context.Context, taskID int32) error
 			return nil
 		}
 
-		params := &taskgen.BroadcastCancelTaskParameters{TaskIDs: taskIDs}
-		id, err := c.runner.RunBroadcastCancelTaskWithTx(ctx, tx, params)
+		params := &taskgen.BroadcastCancelTaskParameters{TaskIDs: taskIDs, WorkerIDs: stringifyWorkerIDs(aliveWorkerIDs)}
+		id, err := c.runner.RunBroadcastCancelTaskWithTx(ctx, tx, params, taskcore.WithPriority(WorkerControlTaskPriority))
 		if err != nil {
 			return errors.Wrap(err, "enqueue broadcast cancel task")
 		}

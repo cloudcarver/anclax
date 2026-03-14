@@ -53,7 +53,7 @@ func (e *Executor) ExecuteBroadcastUpdateWorkerRuntimeConfig(ctx context.Context
 	}
 	targetVersion := created.Version
 	localWorkerID := e.localWorkerID()
-	targetWorkers, err := e.listAliveWorkers(ctx)
+	targetWorkers, err := e.snapshotOrListAliveWorkers(ctx, params.WorkerIDs)
 	if err != nil {
 		return err
 	}
@@ -68,6 +68,10 @@ func (e *Executor) ExecuteBroadcastUpdateWorkerRuntimeConfig(ctx context.Context
 	}
 
 	heartbeatTTL := e.workerHeartbeatTTL()
+	targetSet := make(map[uuid.UUID]struct{}, len(targetWorkers))
+	for _, workerID := range targetWorkers {
+		targetSet[workerID] = struct{}{}
+	}
 	for {
 		latest, err := e.model.GetLatestWorkerRuntimeConfig(ctx)
 		if err != nil {
@@ -84,8 +88,30 @@ func (e *Executor) ExecuteBroadcastUpdateWorkerRuntimeConfig(ctx context.Context
 		if err != nil {
 			return errors.Wrap(err, "list lagging alive workers")
 		}
-		metrics.RuntimeConfigLaggingWorkers.Set(float64(len(laggingWorkers)))
-		if len(laggingWorkers) == 0 {
+		aliveWorkers, err := e.listAliveWorkers(ctx)
+		if err != nil {
+			return err
+		}
+		aliveSet := make(map[uuid.UUID]struct{}, len(aliveWorkers))
+		for _, workerID := range aliveWorkers {
+			aliveSet[workerID] = struct{}{}
+		}
+		for _, workerID := range targetWorkers {
+			if _, alive := aliveSet[workerID]; alive {
+				continue
+			}
+			if err := e.cancelObsoleteWorkerCommandTask(ctx, applyRuntimeConfigUniqueTag(requestID, workerID, targetVersion)); err != nil {
+				return err
+			}
+		}
+		remaining := 0
+		for _, workerID := range laggingWorkers {
+			if _, ok := targetSet[workerID]; ok {
+				remaining++
+			}
+		}
+		metrics.RuntimeConfigLaggingWorkers.Set(float64(remaining))
+		if remaining == 0 {
 			metrics.RuntimeConfigConvergenceSeconds.Observe(e.now().Sub(startAt).Seconds())
 			return nil
 		}
@@ -116,7 +142,7 @@ func (e *Executor) ExecuteBroadcastCancelTask(ctx context.Context, task taskwork
 		return errors.Wrap(taskcore.ErrFatalTask, err.Error())
 	}
 
-	targetWorkers, err := e.listAliveWorkers(ctx)
+	targetWorkers, err := e.aliveSubsetOfSnapshot(ctx, params.WorkerIDs)
 	if err != nil {
 		return err
 	}
@@ -166,7 +192,7 @@ func (e *Executor) ExecuteBroadcastPauseTask(ctx context.Context, task taskworke
 		return errors.Wrap(taskcore.ErrFatalTask, err.Error())
 	}
 
-	targetWorkers, err := e.listAliveWorkers(ctx)
+	targetWorkers, err := e.aliveSubsetOfSnapshot(ctx, params.WorkerIDs)
 	if err != nil {
 		return err
 	}
@@ -303,6 +329,83 @@ func (e *Executor) listAliveWorkers(ctx context.Context) ([]uuid.UUID, error) {
 	return workers, nil
 }
 
+func parseWorkerIDSnapshot(rawIDs []string) ([]uuid.UUID, error) {
+	if len(rawIDs) == 0 {
+		return nil, nil
+	}
+	out := make([]uuid.UUID, 0, len(rawIDs))
+	seen := make(map[uuid.UUID]struct{}, len(rawIDs))
+	for _, raw := range rawIDs {
+		if raw == "" {
+			continue
+		}
+		workerID, err := uuid.Parse(raw)
+		if err != nil {
+			return nil, errors.Wrapf(err, "invalid workerID %q", raw)
+		}
+		if _, ok := seen[workerID]; ok {
+			continue
+		}
+		seen[workerID] = struct{}{}
+		out = append(out, workerID)
+	}
+	return out, nil
+}
+
+func (e *Executor) snapshotOrListAliveWorkers(ctx context.Context, rawIDs []string) ([]uuid.UUID, error) {
+	workerIDs, err := parseWorkerIDSnapshot(rawIDs)
+	if err != nil {
+		return nil, errors.Wrap(taskcore.ErrFatalTask, err.Error())
+	}
+	if len(workerIDs) > 0 {
+		return workerIDs, nil
+	}
+	return e.listAliveWorkers(ctx)
+}
+
+func (e *Executor) aliveSubsetOfSnapshot(ctx context.Context, rawIDs []string) ([]uuid.UUID, error) {
+	snapshotIDs, err := parseWorkerIDSnapshot(rawIDs)
+	if err != nil {
+		return nil, errors.Wrap(taskcore.ErrFatalTask, err.Error())
+	}
+	if len(snapshotIDs) == 0 {
+		return e.listAliveWorkers(ctx)
+	}
+	aliveWorkers, err := e.listAliveWorkers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	aliveSet := make(map[uuid.UUID]struct{}, len(aliveWorkers))
+	for _, workerID := range aliveWorkers {
+		aliveSet[workerID] = struct{}{}
+	}
+	out := make([]uuid.UUID, 0, len(snapshotIDs))
+	for _, workerID := range snapshotIDs {
+		if _, ok := aliveSet[workerID]; ok {
+			out = append(out, workerID)
+		}
+	}
+	return out, nil
+}
+
+func (e *Executor) cancelObsoleteWorkerCommandTask(ctx context.Context, uniqueTag string) error {
+	task, err := e.model.GetTaskByUniqueTag(ctx, &uniqueTag)
+	if err != nil {
+		if stdErrors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		return errors.Wrapf(err, "get worker command task by unique tag %s", uniqueTag)
+	}
+
+	if apigen.TaskStatus(task.Status) != apigen.Pending {
+		return nil
+	}
+	if err := e.model.UpdateTaskStatus(ctx, querier.UpdateTaskStatusParams{ID: task.ID, Status: string(apigen.Cancelled)}); err != nil {
+		return errors.Wrapf(err, "cancel pending worker command task %s", uniqueTag)
+	}
+	return nil
+}
+
 func (e *Executor) waitForWorkerCommandTasks(ctx context.Context, targetWorkers []uuid.UUID, fanoutInterval time.Duration, uniqueTagFn func(workerID uuid.UUID) string) error {
 	targets := make(map[uuid.UUID]struct{}, len(targetWorkers))
 	for _, workerID := range targetWorkers {
@@ -320,10 +423,13 @@ func (e *Executor) waitForWorkerCommandTasks(ctx context.Context, targetWorkers 
 
 		allAckedOrDead := true
 		for workerID := range targets {
+			uniqueTag := uniqueTagFn(workerID)
 			if _, alive := aliveSet[workerID]; !alive {
+				if err := e.cancelObsoleteWorkerCommandTask(ctx, uniqueTag); err != nil {
+					return err
+				}
 				continue
 			}
-			uniqueTag := uniqueTagFn(workerID)
 			task, err := e.model.GetTaskByUniqueTag(ctx, &uniqueTag)
 			if err != nil {
 				if stdErrors.Is(err, pgx.ErrNoRows) {
@@ -389,6 +495,9 @@ func parseAckPollInterval(raw *string) (time.Duration, error) {
 
 func (e *Executor) broadcastChildTaskOverrides(parentTaskID int32, overrides ...taskcore.TaskOverride) []taskcore.TaskOverride {
 	out := append([]taskcore.TaskOverride{}, overrides...)
+	// Keep internal worker-command fanout tasks claimable even when workers are
+	// configured with maxStrictPercentage=0.
+	out = append(out, taskcore.WithPriority(0))
 	if parentTaskID > 0 {
 		out = append(out, taskcore.WithParentTaskID(parentTaskID))
 	}

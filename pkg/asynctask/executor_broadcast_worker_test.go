@@ -45,7 +45,7 @@ func TestExecuteBroadcastCancelTaskLocalAndRemoteWorker(t *testing.T) {
 
 	mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{w1, w2}, nil).AnyTimes()
 
-	mockRunner.EXPECT().RunCancelTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+	mockRunner.EXPECT().RunCancelTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, params *taskgen.CancelTaskOnWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 			require.Equal(t, w2.String(), params.WorkerID)
 			require.Equal(t, []int32{101, 102}, params.TaskIDs)
@@ -55,6 +55,8 @@ func TestExecuteBroadcastCancelTaskLocalAndRemoteWorker(t *testing.T) {
 			}
 			require.NotNil(t, task.Attributes.Labels)
 			require.Equal(t, []string{"worker:" + w2.String()}, *task.Attributes.Labels)
+			require.NotNil(t, task.Attributes.Priority)
+			require.Equal(t, int32(0), *task.Attributes.Priority)
 			require.NotNil(t, task.UniqueTag)
 			require.Equal(t, cancelOnWorkerUniqueTag(requestID, w2), *task.UniqueTag)
 			require.NotNil(t, task.ParentTaskId)
@@ -95,7 +97,7 @@ func TestExecuteBroadcastCancelTaskRemoteFailure(t *testing.T) {
 	}
 
 	mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{w1}, nil).AnyTimes()
-	mockRunner.EXPECT().RunCancelTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int32(2001), nil)
+	mockRunner.EXPECT().RunCancelTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int32(2001), nil)
 	mockModel.EXPECT().GetTaskByUniqueTag(gomock.Any(), gomock.Any()).Return(&querier.AnclaxTask{ID: 2001, Status: string(apigen.Failed)}, nil)
 
 	err := exec.ExecuteBroadcastCancelTask(context.Background(), worker.Task{}, &taskgen.BroadcastCancelTaskParameters{
@@ -132,7 +134,7 @@ func TestExecuteBroadcastPauseTaskLocalAndRemoteWorker(t *testing.T) {
 
 	mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{w1, w2}, nil).AnyTimes()
 
-	mockRunner.EXPECT().RunPauseTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+	mockRunner.EXPECT().RunPauseTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, params *taskgen.PauseTaskOnWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 			require.Equal(t, w2.String(), params.WorkerID)
 			require.Equal(t, []int32{201}, params.TaskIDs)
@@ -140,6 +142,8 @@ func TestExecuteBroadcastPauseTaskLocalAndRemoteWorker(t *testing.T) {
 			for _, override := range overrides {
 				require.NoError(t, override(task))
 			}
+			require.NotNil(t, task.Attributes.Priority)
+			require.Equal(t, int32(0), *task.Attributes.Priority)
 			require.NotNil(t, task.UniqueTag)
 			require.Equal(t, pauseOnWorkerUniqueTag(requestID, w2), *task.UniqueTag)
 			return int32(1111), nil
@@ -199,11 +203,13 @@ func TestExecuteBroadcastUpdateWorkerRuntimeConfigLocalAndRemote(t *testing.T) {
 		mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{w1, w2}, nil),
 		mockModel.EXPECT().GetLatestWorkerRuntimeConfig(gomock.Any()).Return(&querier.AnclaxWorkerRuntimeConfig{Version: 7}, nil),
 		mockModel.EXPECT().ListLaggingAliveWorkers(gomock.Any(), gomock.Any()).Return([]uuid.UUID{w1, w2}, nil),
+		mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{w1, w2}, nil),
 		mockModel.EXPECT().GetLatestWorkerRuntimeConfig(gomock.Any()).Return(&querier.AnclaxWorkerRuntimeConfig{Version: 7}, nil),
 		mockModel.EXPECT().ListLaggingAliveWorkers(gomock.Any(), gomock.Any()).Return([]uuid.UUID{}, nil),
+		mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{w1, w2}, nil),
 	)
 
-	mockRunner.EXPECT().RunApplyWorkerRuntimeConfigToWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+	mockRunner.EXPECT().RunApplyWorkerRuntimeConfigToWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, params *taskgen.ApplyWorkerRuntimeConfigToWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 			require.Equal(t, w2.String(), params.WorkerID)
 			require.Equal(t, int64(7), params.Version)
@@ -213,8 +219,59 @@ func TestExecuteBroadcastUpdateWorkerRuntimeConfigLocalAndRemote(t *testing.T) {
 			}
 			require.NotNil(t, task.Attributes.Labels)
 			require.Equal(t, []string{"worker:" + w2.String()}, *task.Attributes.Labels)
+			require.NotNil(t, task.Attributes.Priority)
+			require.Equal(t, int32(0), *task.Attributes.Priority)
 			require.NotNil(t, task.UniqueTag)
 			require.Equal(t, applyRuntimeConfigUniqueTag(requestID, w2, 7), *task.UniqueTag)
+			return int32(3001), nil
+		},
+	)
+
+	err := exec.ExecuteBroadcastUpdateWorkerRuntimeConfig(context.Background(), worker.Task{}, &taskgen.BroadcastUpdateWorkerRuntimeConfigParameters{
+		RequestID:       &requestID,
+		AckPollInterval: &fanout,
+	})
+	require.NoError(t, err)
+}
+
+func TestExecuteBroadcastUpdateWorkerRuntimeConfigWorkerDeadCleansUpPendingApplyTask(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockRunner := taskgen.NewMockTaskRunner(ctrl)
+	w1 := uuid.New()
+	requestID := "req-up-dead"
+	fanout := "1ms"
+	exec := &Executor{
+		model:                     mockModel,
+		runner:                    mockRunner,
+		now:                       time.Now,
+		runtimeConfigHeartbeatTTL: 9 * time.Second,
+	}
+
+	gomock.InOrder(
+		mockModel.EXPECT().CreateWorkerRuntimeConfig(gomock.Any(), gomock.Any()).Return(&querier.AnclaxWorkerRuntimeConfig{Version: 7}, nil),
+		mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{w1}, nil),
+		mockModel.EXPECT().GetLatestWorkerRuntimeConfig(gomock.Any()).Return(&querier.AnclaxWorkerRuntimeConfig{Version: 7}, nil),
+		mockModel.EXPECT().ListLaggingAliveWorkers(gomock.Any(), gomock.Any()).Return([]uuid.UUID{}, nil),
+		mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{}, nil),
+		mockModel.EXPECT().GetTaskByUniqueTag(gomock.Any(), gomock.Any()).Return(&querier.AnclaxTask{ID: 3001, Status: string(apigen.Pending)}, nil),
+		mockModel.EXPECT().UpdateTaskStatus(gomock.Any(), querier.UpdateTaskStatusParams{ID: 3001, Status: string(apigen.Cancelled)}).Return(nil),
+	)
+
+	mockRunner.EXPECT().RunApplyWorkerRuntimeConfigToWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, params *taskgen.ApplyWorkerRuntimeConfigToWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+			require.Equal(t, w1.String(), params.WorkerID)
+			require.Equal(t, int64(7), params.Version)
+			task := &apigen.Task{Attributes: apigen.TaskAttributes{}}
+			for _, override := range overrides {
+				require.NoError(t, override(task))
+			}
+			require.NotNil(t, task.Attributes.Priority)
+			require.Equal(t, int32(0), *task.Attributes.Priority)
+			require.NotNil(t, task.UniqueTag)
+			require.Equal(t, applyRuntimeConfigUniqueTag(requestID, w1, 7), *task.UniqueTag)
 			return int32(3001), nil
 		},
 	)
@@ -294,7 +351,7 @@ func TestExecuteBroadcastCancelTaskNoAliveWorkers(t *testing.T) {
 	exec := &Executor{model: mockModel, runner: mockRunner, now: time.Now, runtimeConfigHeartbeatTTL: 9 * time.Second}
 
 	mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{}, nil)
-	mockRunner.EXPECT().RunCancelTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+	mockRunner.EXPECT().RunCancelTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
 	err := exec.ExecuteBroadcastCancelTask(context.Background(), worker.Task{}, &taskgen.BroadcastCancelTaskParameters{TaskIDs: []int32{1}})
 	require.NoError(t, err)
@@ -434,6 +491,7 @@ func TestWaitForWorkerCommandTasksMissingThenDead(t *testing.T) {
 		mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{w1}, nil),
 		mockModel.EXPECT().GetTaskByUniqueTag(gomock.Any(), gomock.Any()).Return(nil, pgx.ErrNoRows),
 		mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{}, nil),
+		mockModel.EXPECT().GetTaskByUniqueTag(gomock.Any(), gomock.Any()).Return(nil, pgx.ErrNoRows),
 	)
 
 	err := exec.waitForWorkerCommandTasks(context.Background(), []uuid.UUID{w1}, time.Millisecond, func(workerID uuid.UUID) string {
@@ -493,6 +551,8 @@ func TestWaitForWorkerCommandTasksPendingThenWorkerDead(t *testing.T) {
 		mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{w1}, nil),
 		mockModel.EXPECT().GetTaskByUniqueTag(gomock.Any(), gomock.Any()).Return(&querier.AnclaxTask{ID: 1, Status: string(apigen.Pending)}, nil),
 		mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{}, nil),
+		mockModel.EXPECT().GetTaskByUniqueTag(gomock.Any(), gomock.Any()).Return(&querier.AnclaxTask{ID: 1, Status: string(apigen.Pending)}, nil),
+		mockModel.EXPECT().UpdateTaskStatus(gomock.Any(), querier.UpdateTaskStatusParams{ID: 1, Status: string(apigen.Cancelled)}).Return(nil),
 	)
 
 	err := exec.waitForWorkerCommandTasks(context.Background(), []uuid.UUID{w1}, time.Millisecond, func(workerID uuid.UUID) string {
@@ -512,7 +572,7 @@ func TestExecuteBroadcastCancelTaskTimeoutWhilePending(t *testing.T) {
 	ackPoll := "5ms"
 
 	mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{w1}, nil).AnyTimes()
-	mockRunner.EXPECT().RunCancelTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int32(1001), nil)
+	mockRunner.EXPECT().RunCancelTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int32(1001), nil)
 	mockModel.EXPECT().GetTaskByUniqueTag(gomock.Any(), gomock.Any()).Return(&querier.AnclaxTask{ID: 1001, Status: string(apigen.Pending)}, nil).AnyTimes()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
@@ -538,12 +598,14 @@ func TestEnqueueCancelTaskOnWorkerRetryUsesStableUniqueTagAndParent(t *testing.T
 
 	var uniqueTags []string
 	var parentIDs []int32
-	mockRunner.EXPECT().RunCancelTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+	mockRunner.EXPECT().RunCancelTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, params *taskgen.CancelTaskOnWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 			task := &apigen.Task{Attributes: apigen.TaskAttributes{}}
 			for _, override := range overrides {
 				require.NoError(t, override(task))
 			}
+			require.NotNil(t, task.Attributes.Priority)
+			require.Equal(t, int32(0), *task.Attributes.Priority)
 			require.NotNil(t, task.UniqueTag)
 			require.NotNil(t, task.ParentTaskId)
 			uniqueTags = append(uniqueTags, *task.UniqueTag)
@@ -572,15 +634,15 @@ func TestEnqueueHelpersRunnerError(t *testing.T) {
 	wid := uuid.New()
 	errBoom := stdErrors.New("enqueue")
 
-	mockRunner.EXPECT().RunApplyWorkerRuntimeConfigToWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int32(0), errBoom)
+	mockRunner.EXPECT().RunApplyWorkerRuntimeConfigToWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int32(0), errBoom)
 	err := exec.enqueueApplyRuntimeConfigToWorker(context.Background(), 0, "r", wid, 1)
 	require.Error(t, err)
 
-	mockRunner.EXPECT().RunCancelTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int32(0), errBoom)
+	mockRunner.EXPECT().RunCancelTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int32(0), errBoom)
 	err = exec.enqueueCancelTaskOnWorker(context.Background(), 0, "r", wid, []int32{1})
 	require.Error(t, err)
 
-	mockRunner.EXPECT().RunPauseTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int32(0), errBoom)
+	mockRunner.EXPECT().RunPauseTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int32(0), errBoom)
 	err = exec.enqueuePauseTaskOnWorker(context.Background(), 0, "r", wid, []int32{1})
 	require.Error(t, err)
 }
@@ -592,6 +654,8 @@ func TestBroadcastChildTaskOverridesUsesParentTaskID(t *testing.T) {
 	for _, override := range overrides {
 		require.NoError(t, override(task))
 	}
+	require.NotNil(t, task.Attributes.Priority)
+	require.Equal(t, int32(0), *task.Attributes.Priority)
 	require.NotNil(t, task.ParentTaskId)
 	require.Equal(t, int32(55), *task.ParentTaskId)
 	require.NotNil(t, task.UniqueTag)

@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -30,17 +32,30 @@ type SubmitStressProbeResponse struct {
 	TaskID int32 `json:"taskID"`
 }
 
+type SubmitCancelObservableProbeRequest struct {
+	TaskName         string   `json:"taskName"`
+	Group            string   `json:"group"`
+	Labels           []string `json:"labels,omitempty"`
+	UniqueTag        string   `json:"uniqueTag,omitempty"`
+	SignalBaseURL    string   `json:"signalBaseURL,omitempty"`
+	SignalIntervalMs int32    `json:"signalIntervalMs,omitempty"`
+}
+
 type RuntimeConfigRequest struct {
 	MaxStrictPercentage int32            `json:"maxStrictPercentage"`
 	DefaultWeight       int32            `json:"defaultWeight"`
 	LabelWeights        map[string]int32 `json:"labelWeights,omitempty"`
 }
 
+type RuntimeConfigResponse struct {
+	TaskID int32 `json:"taskID"`
+}
+
 type TaskControlRequest struct {
 	UniqueTag string `json:"uniqueTag"`
 }
 
-const chaosControlClientTimeout = 60 * time.Second
+const chaosControlClientTimeout = 5 * time.Minute
 
 func NewControlPlaneClient(baseURL string) *ControlPlaneClient {
 	return &ControlPlaneClient{
@@ -73,6 +88,14 @@ func (c *ControlPlaneClient) SubmitStressProbe(ctx context.Context, reqBody Subm
 	return out.TaskID, nil
 }
 
+func (c *ControlPlaneClient) SubmitCancelObservableProbe(ctx context.Context, reqBody SubmitCancelObservableProbeRequest) (int32, error) {
+	var out SubmitStressProbeResponse
+	if err := c.doJSON(ctx, http.MethodPost, "/tasks/cancel-observable-probe", reqBody, &out); err != nil {
+		return 0, err
+	}
+	return out.TaskID, nil
+}
+
 func (c *ControlPlaneClient) PauseTask(ctx context.Context, uniqueTag string) error {
 	return c.doJSON(ctx, http.MethodPost, "/tasks/pause", TaskControlRequest{UniqueTag: uniqueTag}, nil)
 }
@@ -85,8 +108,12 @@ func (c *ControlPlaneClient) ResumeTask(ctx context.Context, uniqueTag string) e
 	return c.doJSON(ctx, http.MethodPost, "/tasks/resume", TaskControlRequest{UniqueTag: uniqueTag}, nil)
 }
 
-func (c *ControlPlaneClient) UpdateRuntimeConfig(ctx context.Context, reqBody RuntimeConfigRequest) error {
-	return c.doJSON(ctx, http.MethodPost, "/runtime-config", reqBody, nil)
+func (c *ControlPlaneClient) StartUpdateRuntimeConfig(ctx context.Context, reqBody RuntimeConfigRequest) (int32, error) {
+	var out RuntimeConfigResponse
+	if err := c.doJSON(ctx, http.MethodPost, "/runtime-config", reqBody, &out); err != nil {
+		return 0, err
+	}
+	return out.TaskID, nil
 }
 
 func (c *ControlPlaneClient) doJSON(ctx context.Context, method string, path string, body any, out any) error {
@@ -105,7 +132,12 @@ func (c *ControlPlaneClient) doJSON(ctx context.Context, method string, path str
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("control plane %s %s status=%s", method, path, resp.Status)
+		bodyRaw, _ := io.ReadAll(io.LimitReader(resp.Body, 16*1024))
+		body := strings.TrimSpace(string(bodyRaw))
+		if body == "" {
+			return fmt.Errorf("control plane %s %s status=%s", method, path, resp.Status)
+		}
+		return fmt.Errorf("control plane %s %s status=%s body=%q", method, path, resp.Status, body)
 	}
 	if out == nil {
 		return nil

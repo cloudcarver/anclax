@@ -77,6 +77,45 @@ func (i *Inspector) TaskStatus(ctx context.Context, uniqueTag string) (string, e
 	return status, nil
 }
 
+func (i *Inspector) TaskStatusByID(ctx context.Context, taskID int32) (string, error) {
+	var status string
+	err := i.pool.QueryRow(ctx, `
+		select status
+		from anclax.tasks
+		where id = $1
+	`, taskID).Scan(&status)
+	if err != nil {
+		return "", err
+	}
+	return status, nil
+}
+
+func (i *Inspector) WaitForTaskByID(ctx context.Context, taskID int32, timeout time.Duration) (string, error) {
+	var deadline time.Time
+	if timeout > 0 {
+		deadline = time.Now().Add(timeout)
+	}
+	for deadline.IsZero() || time.Now().Before(deadline) {
+		status, err := i.TaskStatusByID(ctx, taskID)
+		if err == nil {
+			switch status {
+			case "completed", "failed", "cancelled", "paused":
+				return status, nil
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+	status, err := i.TaskStatusByID(ctx, taskID)
+	if err != nil {
+		return "", err
+	}
+	return status, fmt.Errorf("task %d status=%s not terminal", taskID, status)
+}
+
 func (i *Inspector) CountTasks(ctx context.Context, prefix string) (int64, error) {
 	var count int64
 	err := i.pool.QueryRow(ctx, `

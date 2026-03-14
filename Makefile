@@ -8,6 +8,8 @@ DST_TIMEOUT ?= 90s
 SMOKE_TIMEOUT ?= 90s
 SMOKE_STRESS_TIMEOUT ?= 220s
 
+.PHONY: dev
+
 
 ###################################################
 ### Dev 

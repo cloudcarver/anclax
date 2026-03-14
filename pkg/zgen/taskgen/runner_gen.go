@@ -39,6 +39,8 @@ const (
 	PauseTaskOnWorker = "pauseTaskOnWorker" 
 
 	StressProbe = "stressProbe" 
+
+	CancelObservableProbe = "cancelObservableProbe" 
 )
 
 
@@ -93,6 +95,11 @@ type TaskRunner interface {
 	RunStressProbe(ctx context.Context, params *StressProbeParameters, overrides ...taskcore.TaskOverride) (int32, error)
     // No-op stress probe task for worker E2E benchmarking
 	RunStressProbeWithTx(ctx context.Context, tx core.Tx, params *StressProbeParameters, overrides ...taskcore.TaskOverride) (int32, error)
+
+    // Long-running observable task used to validate cancellation semantics under chaos
+	RunCancelObservableProbe(ctx context.Context, params *CancelObservableProbeParameters, overrides ...taskcore.TaskOverride) (int32, error)
+    // Long-running observable task used to validate cancellation semantics under chaos
+	RunCancelObservableProbeWithTx(ctx context.Context, tx core.Tx, params *CancelObservableProbeParameters, overrides ...taskcore.TaskOverride) (int32, error)
 }
 
 type Client struct {
@@ -176,7 +183,7 @@ func (c *Client) runUpdateWorkerRuntimeConfig(ctx context.Context, taskstore tas
 		Payload: payload,
 	}
 	attributes := apigen.TaskAttributes{}
-	attributes.Timeout = utils.Ptr("20s")
+	attributes.Timeout = utils.Ptr("5m")
 	attributes.RetryPolicy = &apigen.TaskRetryPolicy{
 		Interval:    "2s",
 		MaxAttempts: -1,
@@ -225,7 +232,7 @@ func (c *Client) runInterruptTask(ctx context.Context, taskstore taskcore.TaskSt
 		Payload: payload,
 	}
 	attributes := apigen.TaskAttributes{}
-	attributes.Timeout = utils.Ptr("20s")
+	attributes.Timeout = utils.Ptr("5m")
 	attributes.RetryPolicy = &apigen.TaskRetryPolicy{
 		Interval:    "2s",
 		MaxAttempts: -1,
@@ -274,7 +281,7 @@ func (c *Client) runBroadcastUpdateWorkerRuntimeConfig(ctx context.Context, task
 		Payload: payload,
 	}
 	attributes := apigen.TaskAttributes{}
-	attributes.Timeout = utils.Ptr("30s")
+	attributes.Timeout = utils.Ptr("5m")
 	attributes.RetryPolicy = &apigen.TaskRetryPolicy{
 		Interval:    "2s",
 		MaxAttempts: -1,
@@ -323,7 +330,7 @@ func (c *Client) runApplyWorkerRuntimeConfigToWorker(ctx context.Context, taskst
 		Payload: payload,
 	}
 	attributes := apigen.TaskAttributes{}
-	attributes.Timeout = utils.Ptr("20s")
+	attributes.Timeout = utils.Ptr("5m")
 	attributes.RetryPolicy = &apigen.TaskRetryPolicy{
 		Interval:    "1s",
 		MaxAttempts: -1,
@@ -372,7 +379,7 @@ func (c *Client) runBroadcastCancelTask(ctx context.Context, taskstore taskcore.
 		Payload: payload,
 	}
 	attributes := apigen.TaskAttributes{}
-	attributes.Timeout = utils.Ptr("30s")
+	attributes.Timeout = utils.Ptr("5m")
 	attributes.RetryPolicy = &apigen.TaskRetryPolicy{
 		Interval:    "2s",
 		MaxAttempts: -1,
@@ -421,7 +428,7 @@ func (c *Client) runCancelTaskOnWorker(ctx context.Context, taskstore taskcore.T
 		Payload: payload,
 	}
 	attributes := apigen.TaskAttributes{}
-	attributes.Timeout = utils.Ptr("20s")
+	attributes.Timeout = utils.Ptr("5m")
 	attributes.RetryPolicy = &apigen.TaskRetryPolicy{
 		Interval:    "1s",
 		MaxAttempts: -1,
@@ -470,7 +477,7 @@ func (c *Client) runBroadcastPauseTask(ctx context.Context, taskstore taskcore.T
 		Payload: payload,
 	}
 	attributes := apigen.TaskAttributes{}
-	attributes.Timeout = utils.Ptr("30s")
+	attributes.Timeout = utils.Ptr("5m")
 	attributes.RetryPolicy = &apigen.TaskRetryPolicy{
 		Interval:    "2s",
 		MaxAttempts: -1,
@@ -519,7 +526,7 @@ func (c *Client) runPauseTaskOnWorker(ctx context.Context, taskstore taskcore.Ta
 		Payload: payload,
 	}
 	attributes := apigen.TaskAttributes{}
-	attributes.Timeout = utils.Ptr("20s")
+	attributes.Timeout = utils.Ptr("5m")
 	attributes.RetryPolicy = &apigen.TaskRetryPolicy{
 		Interval:    "1s",
 		MaxAttempts: -1,
@@ -598,6 +605,55 @@ func (c *Client) runStressProbe(ctx context.Context, taskstore taskcore.TaskStor
 	}
 	return taskID, nil
 }
+func (c *Client) RunCancelObservableProbe(ctx context.Context, params *CancelObservableProbeParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runCancelObservableProbe(ctx, c.taskStore, nil, params, overrides...)
+}
+
+func (c *Client) RunCancelObservableProbeWithTx(ctx context.Context, tx core.Tx, params *CancelObservableProbeParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runCancelObservableProbe(ctx, c.taskStore, tx, params, overrides...)
+}
+
+func (c *Client) runCancelObservableProbe(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *CancelObservableProbeParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	payload, err := params.Marshal()
+	if err != nil {
+		return 0, err
+	}
+
+	spec := apigen.TaskSpec{
+		Type:    CancelObservableProbe,
+		Payload: payload,
+	}
+	attributes := apigen.TaskAttributes{}
+	attributes.Timeout = utils.Ptr("30m")
+	attributes.RetryPolicy = &apigen.TaskRetryPolicy{
+		Interval:    "1s",
+		MaxAttempts: 1,
+	}
+	
+	
+	
+	task := &apigen.Task{
+		Attributes: attributes,
+		Spec:       spec,
+		Status:     apigen.Pending,
+	}
+	
+	for _, override := range overrides {
+		if err := override(task); err != nil {
+			return 0, errors.Wrap(err, "failed to apply task override")
+		}
+	}
+	var taskID int32
+	if tx == nil {
+		taskID, err = taskstore.PushTask(ctx, task)
+	} else {
+		taskID, err = taskstore.PushTaskWithTx(ctx, tx, task)
+	}
+	if err != nil {
+		return 0, err
+	}
+	return taskID, nil
+}
 
 
 type DeleteOpaqueKeyParameters struct { 
@@ -608,6 +664,9 @@ type DeleteOpaqueKeyParameters struct {
 
 
 type UpdateWorkerRuntimeConfigParameters struct { 
+    // Maximum percentage of strict-priority slots (0-100)
+	MaxStrictPercentage *int32 `json:"maxStrictPercentage" yaml:"maxStrictPercentage"`
+
     // Default weight for unlabeled task group
 	DefaultWeight *int32 `json:"defaultWeight" yaml:"defaultWeight"`
 
@@ -625,9 +684,6 @@ type UpdateWorkerRuntimeConfigParameters struct {
 
     // Correlation ID for notify and ack messages
 	RequestID *string `json:"requestID" yaml:"requestID"`
-
-    // Maximum percentage of strict-priority slots (0-100)
-	MaxStrictPercentage *int32 `json:"maxStrictPercentage" yaml:"maxStrictPercentage"`
 }
 
 
@@ -647,7 +703,17 @@ type InterruptTaskParameters struct {
 
 
 
+
 type BroadcastUpdateWorkerRuntimeConfigParameters struct { 
+    // Weights for labels by index
+	Weights []int32 `json:"weights" yaml:"weights"`
+
+    // Poll interval used while waiting for worker convergence
+	AckPollInterval *string `json:"ackPollInterval" yaml:"ackPollInterval"`
+
+    // Fixed snapshot of worker IDs targeted by this broadcast request
+	WorkerIDs []string `json:"workerIDs" yaml:"workerIDs"`
+
     // Correlation ID for this broadcast command
 	RequestID *string `json:"requestID" yaml:"requestID"`
 
@@ -659,24 +725,19 @@ type BroadcastUpdateWorkerRuntimeConfigParameters struct {
 
     // Label names for weighted groups
 	Labels []string `json:"labels" yaml:"labels"`
-
-    // Weights for labels by index
-	Weights []int32 `json:"weights" yaml:"weights"`
-
-    // Poll interval used while waiting for worker convergence
-	AckPollInterval *string `json:"ackPollInterval" yaml:"ackPollInterval"`
 }
 
 type ApplyWorkerRuntimeConfigToWorkerParameters struct { 
+    // Runtime config version to apply
+	Version int64 `json:"version" yaml:"version"`
+
     // Correlation ID of the parent broadcast command
 	RequestID *string `json:"requestID" yaml:"requestID"`
 
     // Target worker ID
 	WorkerID string `json:"workerID" yaml:"workerID"`
-
-    // Runtime config version to apply
-	Version int64 `json:"version" yaml:"version"`
 }
+
 
 
 type BroadcastCancelTaskParameters struct { 
@@ -688,22 +749,29 @@ type BroadcastCancelTaskParameters struct {
 
     // Poll interval used while waiting worker ack tasks
 	AckPollInterval *string `json:"ackPollInterval" yaml:"ackPollInterval"`
+
+    // Fixed snapshot of worker IDs targeted by this broadcast request
+	WorkerIDs []string `json:"workerIDs" yaml:"workerIDs"`
 }
 
 
 type CancelTaskOnWorkerParameters struct { 
+    // Task IDs to interrupt on the target worker
+	TaskIDs []int32 `json:"taskIDs" yaml:"taskIDs"`
+
     // Correlation ID of the parent broadcast command
 	RequestID *string `json:"requestID" yaml:"requestID"`
 
     // Target worker ID
 	WorkerID string `json:"workerID" yaml:"workerID"`
-
-    // Task IDs to interrupt on the target worker
-	TaskIDs []int32 `json:"taskIDs" yaml:"taskIDs"`
 }
 
 
+
 type BroadcastPauseTaskParameters struct { 
+    // Fixed snapshot of worker IDs targeted by this broadcast request
+	WorkerIDs []string `json:"workerIDs" yaml:"workerIDs"`
+
     // Correlation ID for this broadcast command
 	RequestID *string `json:"requestID" yaml:"requestID"`
 
@@ -727,12 +795,6 @@ type PauseTaskOnWorkerParameters struct {
 }
 
 type StressProbeParameters struct { 
-    // Logical task id for stress-run metrics correlation
-	JobID int64 `json:"jobID" yaml:"jobID"`
-
-    // Simulated task execution time in milliseconds
-	SleepMs int32 `json:"sleepMs" yaml:"sleepMs"`
-
     // Logical group name for test-side metrics and labels
 	Group string `json:"group" yaml:"group"`
 
@@ -741,6 +803,23 @@ type StressProbeParameters struct {
 
     // Optional interval in milliseconds between signal emissions while the task is running
 	SignalIntervalMs *int32 `json:"signalIntervalMs" yaml:"signalIntervalMs"`
+
+    // Logical task id for stress-run metrics correlation
+	JobID int64 `json:"jobID" yaml:"jobID"`
+
+    // Simulated task execution time in milliseconds
+	SleepMs int32 `json:"sleepMs" yaml:"sleepMs"`
+}
+
+type CancelObservableProbeParameters struct { 
+    // Signal service base URL used by the task to emit observable heartbeats
+	SignalBaseURL *string `json:"signalBaseURL" yaml:"signalBaseURL"`
+
+    // Interval in milliseconds between signal emissions while the task is running
+	SignalIntervalMs *int32 `json:"signalIntervalMs" yaml:"signalIntervalMs"`
+
+    // Logical group name for test-side metrics and labels
+	Group string `json:"group" yaml:"group"`
 }
 
 func (r *DeleteOpaqueKeyParameters) Parse(spec json.RawMessage) error {
@@ -813,6 +892,13 @@ func (r *StressProbeParameters) Parse(spec json.RawMessage) error {
 func (r *StressProbeParameters) Marshal() (json.RawMessage, error) {
 	return json.Marshal(r)
 }
+func (r *CancelObservableProbeParameters) Parse(spec json.RawMessage) error {
+	return json.Unmarshal(spec, r)
+}
+
+func (r *CancelObservableProbeParameters) Marshal() (json.RawMessage, error) {
+	return json.Marshal(r)
+}
 
 type ExecutorInterface interface { 
      // Delete an opaque key
@@ -855,6 +941,10 @@ type ExecutorInterface interface {
 
      // No-op stress probe task for worker E2E benchmarking
 	ExecuteStressProbe(ctx context.Context, task worker.Task, params *StressProbeParameters) error
+ 
+
+     // Long-running observable task used to validate cancellation semantics under chaos
+	ExecuteCancelObservableProbe(ctx context.Context, task worker.Task, params *CancelObservableProbeParameters) error
  
 }
 
@@ -955,6 +1045,13 @@ func (f *TaskHandler) HandleTask(ctx context.Context, task worker.Task) error {
 			return fmt.Errorf("failed to parse stressProbe parameters: %w", err)
 		}
 		return f.executor.ExecuteStressProbe(ctx, task, &params)
+		
+	case CancelObservableProbe:
+		var params CancelObservableProbeParameters
+		if err := params.Parse(task.GetPayload()); err != nil {
+			return fmt.Errorf("failed to parse cancelObservableProbe parameters: %w", err)
+		}
+		return f.executor.ExecuteCancelObservableProbe(ctx, task, &params)
 		
 	default:
 		return errors.Wrapf(worker.ErrUnknownTaskType, "unknown task type: %s", task.GetType())
