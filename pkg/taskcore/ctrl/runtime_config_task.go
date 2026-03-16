@@ -3,30 +3,34 @@ package ctrl
 import (
 	"context"
 	"errors"
-	"math"
 
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
 )
 
-const ConfigUpdateTaskPriority int32 = math.MaxInt32
+// WorkerControlTaskPriority keeps internal worker-control tasks claimable even
+// when runtime config sets maxStrictPercentage=0 and workers stop issuing
+// strict claims.
+const WorkerControlTaskPriority int32 = 0
 
 type UpdateWorkerRuntimeConfigRequest struct {
 	MaxStrictPercentage *int32
 	DefaultWeight       *int32
 	Labels              []string
 	Weights             []int32
+	WorkerIDs           []string
 }
 
-func (r *UpdateWorkerRuntimeConfigRequest) toTaskParams() *taskgen.UpdateWorkerRuntimeConfigParameters {
+func (r *UpdateWorkerRuntimeConfigRequest) toTaskParams() *taskgen.BroadcastUpdateWorkerRuntimeConfigParameters {
 	if r == nil {
 		return nil
 	}
-	return &taskgen.UpdateWorkerRuntimeConfigParameters{
+	return &taskgen.BroadcastUpdateWorkerRuntimeConfigParameters{
 		MaxStrictPercentage: r.MaxStrictPercentage,
 		DefaultWeight:       r.DefaultWeight,
 		Labels:              append([]string(nil), r.Labels...),
 		Weights:             append([]int32(nil), r.Weights...),
+		WorkerIDs:           append([]string(nil), r.WorkerIDs...),
 	}
 }
 
@@ -36,6 +40,6 @@ func RunUpdateWorkerRuntimeConfigTask(ctx context.Context, runner taskgen.TaskRu
 	}
 	params := req.toTaskParams()
 	allOverrides := append([]taskcore.TaskOverride{}, overrides...)
-	allOverrides = append(allOverrides, taskcore.WithPriority(ConfigUpdateTaskPriority))
-	return runner.RunUpdateWorkerRuntimeConfig(ctx, params, allOverrides...)
+	allOverrides = append(allOverrides, taskcore.WithPriority(WorkerControlTaskPriority))
+	return runner.RunBroadcastUpdateWorkerRuntimeConfig(ctx, params, allOverrides...)
 }

@@ -48,18 +48,24 @@ func NewEngine(cfg EngineConfig) *Engine {
 	return e
 }
 
+// WorkerID returns immutable worker identity configured at engine creation.
 func (e *Engine) WorkerID() string {
 	return e.workerID
 }
 
+// Labels returns immutable worker labels configured at engine creation.
 func (e *Engine) Labels() []string {
 	return append([]string(nil), e.labels...)
 }
 
+// CurrentRuntimeConfigVersion reads mutable engine state.
+// Caller must ensure single-owner access (same owner as Apply).
 func (e *Engine) CurrentRuntimeConfigVersion() int64 {
 	return e.runtimeConfigVersion
 }
 
+// Snapshot reads mutable engine state.
+// Caller must ensure single-owner access (same owner as Apply).
 func (e *Engine) Snapshot() Snapshot {
 	return Snapshot{
 		WorkerID:               e.workerID,
@@ -76,6 +82,8 @@ func (e *Engine) Snapshot() Snapshot {
 	}
 }
 
+// Apply mutates engine state and must be called by a single owner goroutine
+// (runtime event loop).
 func (e *Engine) Apply(event Event) []Command {
 	switch event.Type {
 	case EventPollTick:

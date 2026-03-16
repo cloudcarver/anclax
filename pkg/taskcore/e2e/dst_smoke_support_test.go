@@ -143,7 +143,7 @@ func newSmokeWorkerHandler() *smokeWorkerHandler {
 	}
 }
 
-func (h *smokeWorkerHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) error {
+func (h *smokeWorkerHandler) HandleTask(ctx context.Context, spec worker.Task) error {
 	if spec.GetType() != "smoke-worker" {
 		return worker.ErrUnknownTaskType
 	}
@@ -188,7 +188,7 @@ func newRetryWorkerHandler() *retryWorkerHandler {
 	}
 }
 
-func (h *retryWorkerHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) error {
+func (h *retryWorkerHandler) HandleTask(ctx context.Context, spec worker.Task) error {
 	if spec.GetType() != "smoke-retry" {
 		return worker.ErrUnknownTaskType
 	}
@@ -223,7 +223,7 @@ func newCronWorkerHandler() *cronWorkerHandler {
 	return &cronWorkerHandler{ranCh: make(chan struct{})}
 }
 
-func (h *cronWorkerHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) error {
+func (h *cronWorkerHandler) HandleTask(ctx context.Context, spec worker.Task) error {
 	if spec.GetType() != "smoke-cron" {
 		return worker.ErrUnknownTaskType
 	}
@@ -243,7 +243,7 @@ func (h *cronWorkerHandler) ran() <-chan struct{} {
 
 type noopWorkerHandler struct{}
 
-func (h *noopWorkerHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) error {
+func (h *noopWorkerHandler) HandleTask(ctx context.Context, spec worker.Task) error {
 	return worker.ErrUnknownTaskType
 }
 
@@ -269,7 +269,7 @@ func newBlockingWorkerHandler(taskType string) *blockingWorkerHandler {
 	}
 }
 
-func (h *blockingWorkerHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) error {
+func (h *blockingWorkerHandler) HandleTask(ctx context.Context, spec worker.Task) error {
 	if spec.GetType() != h.taskType {
 		return worker.ErrUnknownTaskType
 	}
@@ -311,7 +311,7 @@ func newSignalWorkerHandler(taskType string) *signalWorkerHandler {
 	return &signalWorkerHandler{taskType: taskType, doneCh: make(chan struct{})}
 }
 
-func (h *signalWorkerHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) error {
+func (h *signalWorkerHandler) HandleTask(ctx context.Context, spec worker.Task) error {
 	if spec.GetType() != h.taskType {
 		return worker.ErrUnknownTaskType
 	}
@@ -339,7 +339,7 @@ func newFailureWorkerHandler(taskType string, failErr error) *failureWorkerHandl
 	return &failureWorkerHandler{taskType: taskType, failErr: failErr, failedCh: make(chan struct{})}
 }
 
-func (h *failureWorkerHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) error {
+func (h *failureWorkerHandler) HandleTask(ctx context.Context, spec worker.Task) error {
 	if spec.GetType() != h.taskType {
 		return worker.ErrUnknownTaskType
 	}
@@ -401,6 +401,8 @@ type runtimeActor struct {
 }
 
 type controlPlaneActor struct {
+	mu           sync.Mutex
+	available    bool
 	controlPlane *ctrl.WorkerControlPlane
 	model        model.ModelInterface
 }
@@ -408,10 +410,57 @@ type controlPlaneActor struct {
 func newControlPlaneActor(model model.ModelInterface, store taskcore.TaskStoreInterface) *controlPlaneActor {
 	runner := taskgen.NewTaskRunner(store)
 	controlPlane := ctrl.NewWorkerControlPlane(model, runner, store)
-	return &controlPlaneActor{controlPlane: controlPlane, model: model}
+	return &controlPlaneActor{available: true, controlPlane: controlPlane, model: model}
 }
 
-func (a *controlPlaneActor) PauseTask(ctx context.Context, task string, notifyInterval string, listenTimeout string) error {
+func (a *controlPlaneActor) SetAvailable(available bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.available = available
+}
+
+func (a *controlPlaneActor) ensureAvailable() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.available {
+		return fmt.Errorf("control plane unavailable")
+	}
+	return nil
+}
+
+func (a *controlPlaneActor) UpdateRuntimeConfig(ctx context.Context, key string, maxStrictPercentage int32, defaultWeight int32, w1Weight int32, w2Weight int32) error {
+	if err := a.ensureAvailable(); err != nil {
+		return err
+	}
+	if key == "" {
+		return fmt.Errorf("runtime config key is required")
+	}
+	labels := make([]string, 0, 2)
+	weights := make([]int32, 0, 2)
+	if w1Weight > 0 {
+		labels = append(labels, "w1")
+		weights = append(weights, w1Weight)
+	}
+	if w2Weight > 0 {
+		labels = append(labels, "w2")
+		weights = append(weights, w2Weight)
+	}
+	req := &ctrl.UpdateWorkerRuntimeConfigRequest{
+		MaxStrictPercentage: int32Ptr(maxStrictPercentage),
+		DefaultWeight:       int32Ptr(defaultWeight),
+		Labels:              labels,
+		Weights:             weights,
+	}
+	if err := a.controlPlane.UpdateWorkerRuntimeConfig(ctx, req); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (a *controlPlaneActor) PauseTask(ctx context.Context, task string) error {
+	if err := a.ensureAvailable(); err != nil {
+		return err
+	}
 	if task == "" {
 		return fmt.Errorf("task name is required")
 	}
@@ -419,12 +468,13 @@ func (a *controlPlaneActor) PauseTask(ctx context.Context, task string, notifyIn
 	if err != nil {
 		return err
 	}
-	_ = notifyInterval
-	_ = listenTimeout
 	return a.controlPlane.PauseTask(ctx, taskID)
 }
 
-func (a *controlPlaneActor) CancelTask(ctx context.Context, task string, notifyInterval string, listenTimeout string) error {
+func (a *controlPlaneActor) CancelTask(ctx context.Context, task string) error {
+	if err := a.ensureAvailable(); err != nil {
+		return err
+	}
 	if task == "" {
 		return fmt.Errorf("task name is required")
 	}
@@ -432,8 +482,6 @@ func (a *controlPlaneActor) CancelTask(ctx context.Context, task string, notifyI
 	if err != nil {
 		return err
 	}
-	_ = notifyInterval
-	_ = listenTimeout
 	return a.controlPlane.CancelTask(ctx, taskID)
 }
 
@@ -527,14 +575,17 @@ func (a *runtimeActor) StartWorker(
 	if err != nil {
 		return err
 	}
-	compositeHandler := taskgen.NewTaskHandler(asynctask.NewExecutor(cfg, a.model))
+	executor := asynctask.NewExecutor(cfg, a.model, taskgen.NewTaskRunner(taskcore.NewTaskStore(a.model)))
+	compositeHandler := taskgen.NewTaskHandler(executor)
 	compositeHandler.RegisterTaskHandler(baseHandler)
 
 	gctx := globalctx.New()
-	workerInstance, err := worker.NewWorker(gctx, cfg, a.model, compositeHandler)
+	workerInstance, err := worker.NewWorkerFromConfig(gctx, cfg, a.model, compositeHandler)
 	if err != nil {
 		return err
 	}
+	workerInstance.RegisterTaskHandler(asynctask.NewWorkerControlTaskHandler(workerInstance))
+	executor.SetLocalWorker(workerInstance)
 
 	a.mu.Lock()
 	if prev, ok := a.workers[name]; ok && prev.gctx != nil {
@@ -548,7 +599,7 @@ func (a *runtimeActor) StartWorker(
 	a.mu.Unlock()
 
 	go workerInstance.Start()
-	return nil
+	return a.waitWorkerOnlineByID(ctx, workerID, true, 2*time.Second)
 }
 
 func (a *runtimeActor) StopWorker(ctx context.Context, name string) error {
@@ -561,7 +612,67 @@ func (a *runtimeActor) StopWorker(ctx context.Context, name string) error {
 	if w.gctx != nil {
 		w.gctx.Cancel()
 	}
+	if err := a.waitWorkerOnlineByID(ctx, w.workerID, false, 3*time.Second); err != nil {
+		return fmt.Errorf("worker %q did not go offline: %w", name, err)
+	}
 	return nil
+}
+
+func (a *runtimeActor) stopAllWorkers(ctx context.Context, timeout time.Duration) error {
+	a.mu.Lock()
+	workers := make([]*runtimeWorker, 0, len(a.workers))
+	for name, w := range a.workers {
+		workers = append(workers, w)
+		delete(a.workers, name)
+	}
+	a.mu.Unlock()
+
+	if len(workers) == 0 {
+		return nil
+	}
+
+	ids := make([]uuid.UUID, 0, len(workers))
+	for _, w := range workers {
+		if w == nil {
+			continue
+		}
+		if w.gctx != nil {
+			w.gctx.Cancel()
+		}
+		if w.workerID != uuid.Nil {
+			ids = append(ids, w.workerID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+
+	if timeout <= 0 {
+		timeout = 3 * time.Second
+	}
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		online, err := a.model.ListOnlineWorkerIDs(ctx, time.Now().Add(-1*time.Minute))
+		if err == nil {
+			anyOnline := false
+			for _, id := range ids {
+				if runtimeContainsUUID(online, id) {
+					anyOnline = true
+					break
+				}
+			}
+			if !anyOnline {
+				return nil
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	return fmt.Errorf("timeout waiting all workers offline")
 }
 
 func (a *runtimeActor) ReleaseWorker(ctx context.Context, name string) error {
@@ -727,7 +838,19 @@ func (a *runtimeActor) WaitNoPendingTasks(ctx context.Context, timeoutMs int32) 
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	return fmt.Errorf("pending tasks did not drain")
+	pending, err := a.model.ListAllPendingTasks(ctx)
+	if err != nil {
+		return fmt.Errorf("pending tasks did not drain and list failed: %w", err)
+	}
+	names := make([]string, 0, len(pending))
+	for _, t := range pending {
+		name := fmt.Sprintf("id=%d", t.ID)
+		if payloadName := taskPayloadName(t.Spec.Payload); payloadName != "" {
+			name = payloadName
+		}
+		names = append(names, name)
+	}
+	return fmt.Errorf("pending tasks did not drain: count=%d names=%v", len(pending), names)
 }
 
 func (a *runtimeActor) ResetCaptured(ctx context.Context) error {
@@ -815,6 +938,46 @@ func (a *runtimeActor) AssertCapturedByWorkerContains(ctx context.Context, worke
 		if !seen[task] {
 			return fmt.Errorf("worker %q did not capture task %q", workerName, task)
 		}
+	}
+	return nil
+}
+
+func (a *runtimeActor) AssertCapturedTaskCount(ctx context.Context, task string, expected int32) error {
+	if task == "" {
+		return fmt.Errorf("task name is required")
+	}
+	if expected < 0 {
+		return fmt.Errorf("expected must be non-negative")
+	}
+	count := int32(0)
+	for _, r := range a.captures.snapshot() {
+		if r.Task == task {
+			count++
+		}
+	}
+	if count != expected {
+		return fmt.Errorf("captured task count mismatch for %q: expected=%d got=%d", task, expected, count)
+	}
+	return nil
+}
+
+func (a *runtimeActor) AssertIdempotentStats(ctx context.Context, workerName string, task string, attempts int32, sideEffects int32) error {
+	if workerName == "" || task == "" {
+		return fmt.Errorf("workerName and task are required")
+	}
+	w, err := a.workerByName(workerName)
+	if err != nil {
+		return err
+	}
+	h, ok := w.handler.(*runtimeIdempotentFailOnceHandler)
+	if !ok {
+		return fmt.Errorf("worker %q is not using idempotent-fail-once handler", workerName)
+	}
+	if got := int32(h.AttemptCount(task)); got != attempts {
+		return fmt.Errorf("idempotent attempts mismatch for %q on %q: expected=%d got=%d", task, workerName, attempts, got)
+	}
+	if got := int32(h.SideEffectCount(task)); got != sideEffects {
+		return fmt.Errorf("idempotent side effects mismatch for %q on %q: expected=%d got=%d", task, workerName, sideEffects, got)
 	}
 	return nil
 }
@@ -938,6 +1101,39 @@ func (a *runtimeActor) WaitRuntimeConfigAck(ctx context.Context, key string, req
 	return fmt.Errorf("timeout waiting runtime config ack for request %q", requestID)
 }
 
+func (a *runtimeActor) CaptureLatestRuntimeConfigVersion(ctx context.Context, key string) error {
+	if key == "" {
+		return fmt.Errorf("runtime config key is required")
+	}
+	latest, err := a.model.GetLatestWorkerRuntimeConfig(ctx)
+	if err != nil {
+		return err
+	}
+	captured := latest
+
+	// In some smoke scenarios this method runs concurrently with control-plane update calls.
+	// Wait long enough for the update task to be claimed/executed so we don't capture a stale baseline.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		curr, err := a.model.GetLatestWorkerRuntimeConfig(ctx)
+		if err == nil && curr.Version > captured.Version {
+			captured = curr
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	a.mu.Lock()
+	a.configVersion[key] = captured.Version
+	a.mu.Unlock()
+	return nil
+}
+
 func (a *runtimeActor) WaitWorkerLagging(ctx context.Context, workerName string, key string, expected bool, timeoutMs int32) error {
 	version, err := a.configVersionByKey(key)
 	if err != nil {
@@ -949,6 +1145,7 @@ func (a *runtimeActor) WaitWorkerLagging(ctx context.Context, workerName string,
 	}
 
 	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
+	guardUntil := time.Now().Add(200 * time.Millisecond)
 	for time.Now().Before(deadline) {
 		select {
 		case <-ctx.Done():
@@ -961,8 +1158,17 @@ func (a *runtimeActor) WaitWorkerLagging(ctx context.Context, workerName string,
 			Version:         version,
 		})
 		if err == nil {
-			if runtimeContainsUUID(workers, workerID) == expected {
-				return nil
+			matched := runtimeContainsUUID(workers, workerID) == expected
+			if matched {
+				if expected || time.Now().Before(guardUntil) {
+					// For expected=false add a short guard window to let in-flight
+					// control-plane update tasks be enqueued/observed.
+				} else {
+					inflight, inflightErr := a.hasInFlightRuntimeConfigUpdateTask(ctx)
+					if inflightErr == nil && !inflight {
+						return nil
+					}
+				}
 			}
 		}
 		time.Sleep(20 * time.Millisecond)
@@ -970,12 +1176,41 @@ func (a *runtimeActor) WaitWorkerLagging(ctx context.Context, workerName string,
 	return fmt.Errorf("worker %q lagging expected=%v was not reached", workerName, expected)
 }
 
+func (a *runtimeActor) hasInFlightRuntimeConfigUpdateTask(ctx context.Context) (bool, error) {
+	var count int64
+	err := a.model.RunTransactionWithTx(ctx, func(tx core.Tx, _ model.ModelInterface) error {
+		return tx.QueryRow(ctx, `
+			select count(*)
+			from anclax.tasks
+			where spec->>'type' in ('updateWorkerRuntimeConfig', 'broadcastUpdateWorkerRuntimeConfig')
+			  and status = 'pending'
+		`).Scan(&count)
+	})
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 func (a *runtimeActor) WaitWorkerOnline(ctx context.Context, workerName string, expected bool, timeoutMs int32) error {
 	workerID, err := a.workerIDByName(workerName)
 	if err != nil {
 		return err
 	}
-	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
+	if timeoutMs <= 0 {
+		timeoutMs = 1000
+	}
+	if err := a.waitWorkerOnlineByID(ctx, workerID, expected, time.Duration(timeoutMs)*time.Millisecond); err != nil {
+		return fmt.Errorf("worker %q online expected=%v was not reached: %w", workerName, expected, err)
+	}
+	return nil
+}
+
+func (a *runtimeActor) waitWorkerOnlineByID(ctx context.Context, workerID uuid.UUID, expected bool, timeout time.Duration) error {
+	if timeout <= 0 {
+		timeout = time.Second
+	}
+	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		select {
 		case <-ctx.Done():
@@ -991,7 +1226,7 @@ func (a *runtimeActor) WaitWorkerOnline(ctx context.Context, workerName string, 
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	return fmt.Errorf("worker %q online expected=%v was not reached", workerName, expected)
+	return fmt.Errorf("timeout")
 }
 
 func (a *runtimeActor) MarkWorkerOffline(ctx context.Context, workerName string) error {
@@ -1028,6 +1263,12 @@ func (a *runtimeActor) newHandler(workerName string, mode string, taskType strin
 			return nil, fmt.Errorf("capture-fail-once requires task name")
 		}
 		return newRuntimeCaptureWorkerHandler(taskType, workerName, a.captures, task), nil
+	case strings.HasPrefix(mode, "idempotent-fail-once:"):
+		task := strings.TrimPrefix(mode, "idempotent-fail-once:")
+		if task == "" {
+			return nil, fmt.Errorf("idempotent-fail-once requires task name")
+		}
+		return newRuntimeIdempotentFailOnceHandler(taskType, task), nil
 	default:
 		return nil, fmt.Errorf("unknown runtime mode %q", mode)
 	}
@@ -1261,7 +1502,7 @@ func newRuntimeCaptureWorkerHandler(taskType string, workerName string, captures
 	return h
 }
 
-func (h *runtimeCaptureWorkerHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) error {
+func (h *runtimeCaptureWorkerHandler) HandleTask(ctx context.Context, spec worker.Task) error {
 	if spec.GetType() != h.taskType {
 		return worker.ErrUnknownTaskType
 	}
@@ -1283,6 +1524,70 @@ func (h *runtimeCaptureWorkerHandler) OnTaskFailed(ctx context.Context, tx core.
 	return nil
 }
 
+type runtimeIdempotentFailOnceHandler struct {
+	taskType string
+
+	mu          sync.Mutex
+	failOnce    map[string]struct{}
+	sideEffects map[string]int
+	attempts    map[string]int
+}
+
+func newRuntimeIdempotentFailOnceHandler(taskType string, failTask string) *runtimeIdempotentFailOnceHandler {
+	h := &runtimeIdempotentFailOnceHandler{
+		taskType:    taskType,
+		failOnce:    map[string]struct{}{},
+		sideEffects: map[string]int{},
+		attempts:    map[string]int{},
+	}
+	h.failOnce[failTask] = struct{}{}
+	return h
+}
+
+func (h *runtimeIdempotentFailOnceHandler) HandleTask(ctx context.Context, spec worker.Task) error {
+	if spec.GetType() != h.taskType {
+		return worker.ErrUnknownTaskType
+	}
+	taskName, err := runtimeTaskNameFromPayload(spec.GetPayload())
+	if err != nil {
+		return err
+	}
+
+	h.mu.Lock()
+	h.attempts[taskName]++
+	if h.sideEffects[taskName] == 0 {
+		h.sideEffects[taskName] = 1
+	}
+	_, shouldFail := h.failOnce[taskName]
+	if shouldFail {
+		delete(h.failOnce, taskName)
+	}
+	h.mu.Unlock()
+
+	if shouldFail {
+		return errors.New("intentional idempotent fail once")
+	}
+	return nil
+}
+
+func (h *runtimeIdempotentFailOnceHandler) RegisterTaskHandler(handler worker.TaskHandler) {}
+
+func (h *runtimeIdempotentFailOnceHandler) OnTaskFailed(ctx context.Context, tx core.Tx, failedTaskSpec worker.TaskSpec, taskID int32) error {
+	return nil
+}
+
+func (h *runtimeIdempotentFailOnceHandler) AttemptCount(task string) int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.attempts[task]
+}
+
+func (h *runtimeIdempotentFailOnceHandler) SideEffectCount(task string) int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.sideEffects[task]
+}
+
 func runtimeTaskNameFromPayload(payload []byte) (string, error) {
 	var decoded map[string]any
 	if err := json.Unmarshal(payload, &decoded); err != nil {
@@ -1297,6 +1602,14 @@ func runtimeTaskNameFromPayload(payload []byte) (string, error) {
 		return "", fmt.Errorf("payload name must be non-empty string")
 	}
 	return name, nil
+}
+
+func taskPayloadName(payload []byte) string {
+	name, err := runtimeTaskNameFromPayload(payload)
+	if err != nil {
+		return ""
+	}
+	return name
 }
 
 type runtimeContentionPayload struct {
@@ -1343,7 +1656,7 @@ func newRuntimeContentionWorkerHandler(taskType string, tracker *runtimeContenti
 	}
 }
 
-func (h *runtimeContentionWorkerHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) error {
+func (h *runtimeContentionWorkerHandler) HandleTask(ctx context.Context, spec worker.Task) error {
 	if spec.GetType() != h.taskType {
 		return worker.ErrUnknownTaskType
 	}

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
 	"github.com/stretchr/testify/require"
@@ -20,7 +21,7 @@ func TestExecuteDeleteOpaqueKeyCallsModel(t *testing.T) {
 	mockModel.EXPECT().DeleteOpaqueKey(ctx, int64(1)).Return(nil)
 
 	exec := &Executor{model: mockModel, now: time.Now}
-	err := exec.ExecuteDeleteOpaqueKey(ctx, &taskgen.DeleteOpaqueKeyParameters{KeyID: 1})
+	err := exec.ExecuteDeleteOpaqueKey(ctx, worker.Task{}, &taskgen.DeleteOpaqueKeyParameters{KeyID: 1})
 	require.NoError(t, err)
 }
 

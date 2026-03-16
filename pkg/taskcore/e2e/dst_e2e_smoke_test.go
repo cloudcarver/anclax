@@ -40,11 +40,21 @@ func TestDSTTaskStoreScenariosSmoke(t *testing.T) {
 // TestDSTTaskStoreScenariosStressSmoke repeats the same DST suite for stress checks.
 func TestDSTTaskStoreScenariosStressSmoke(t *testing.T) {
 	withSmokePostgres(t, func(ctx context.Context, m model.ModelInterface) {
+		var prevEnv *dstEnv
 		report, err := taskcoree2e.RunAllWithReport(ctx, func(ctx context.Context) (taskcoree2e.Actors, error) {
+			if prevEnv != nil {
+				if err := prevEnv.runtime.stopAllWorkers(ctx, 3*time.Second); err != nil {
+					return taskcoree2e.Actors{}, err
+				}
+			}
+			if err := resetDSTState(ctx, m); err != nil {
+				return taskcoree2e.Actors{}, err
+			}
 			env, err := newDSTEnv(m)
 			if err != nil {
 				return taskcoree2e.Actors{}, err
 			}
+			prevEnv = env
 			return taskcoree2e.Actors{
 				TaskStore:    env.taskStore,
 				Runtime:      env.runtime,
@@ -52,6 +62,12 @@ func TestDSTTaskStoreScenariosStressSmoke(t *testing.T) {
 				ControlPlane: env.controlPlane,
 			}, nil
 		}, taskcoree2e.RunOptions{Repeat: 3, ContinueOnError: true})
+		if prevEnv != nil {
+			require.NoError(t, prevEnv.runtime.stopAllWorkers(ctx, 3*time.Second))
+		}
+		for _, run := range report.Runs {
+			t.Logf("stress run %d duration=%s err=%v", run.Iteration, run.Duration, run.Err)
+		}
 		require.NoError(t, err)
 		require.Equal(t, 0, report.FailedRuns)
 	})
@@ -80,6 +96,20 @@ func newDSTEnv(m model.ModelInterface) (*dstEnv, error) {
 		validator:    newValidatorActor(m),
 		controlPlane: newControlPlaneActor(m, store),
 	}, nil
+}
+
+func resetDSTState(ctx context.Context, m model.ModelInterface) error {
+	return m.RunTransactionWithTx(ctx, func(tx core.Tx, _ model.ModelInterface) error {
+		_, err := tx.Exec(ctx, `
+			TRUNCATE TABLE
+				anclax.events,
+				anclax.tasks,
+				anclax.workers,
+				anclax.worker_runtime_configs
+			RESTART IDENTITY CASCADE
+		`)
+		return err
+	})
 }
 
 type taskStoreActor struct {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/cloudcarver/anclax/pkg/taskcore/pgnotify"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
+	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -26,7 +27,7 @@ var connectPgx = func(ctx context.Context, dsn string) (pgxConn, error) {
 	return pgx.Connect(ctx, dsn)
 }
 
-func (e *Executor) ExecuteInterruptTask(ctx context.Context, params *taskgen.InterruptTaskParameters) error {
+func (e *Executor) ExecuteInterruptTask(ctx context.Context, _ worker.Task, params *taskgen.InterruptTaskParameters) error {
 	if params == nil {
 		return errors.Wrap(taskcore.ErrFatalTask, "interrupt task params cannot be nil")
 	}

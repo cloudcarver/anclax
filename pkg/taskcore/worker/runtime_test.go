@@ -2,10 +2,12 @@ package worker
 
 import (
 	"context"
+	stdErrors "errors"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/cloudcarver/anclax/pkg/globalctx"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/stretchr/testify/require"
 )
@@ -13,10 +15,11 @@ import (
 type scriptedPort struct {
 	mu sync.Mutex
 
-	registerCalls []string
-	offlineCalls  []string
-	heartbeats    []string
-	refreshReqIDs []string
+	registerCalls          []string
+	registerAppliedVersion []int64
+	offlineCalls           []string
+	heartbeats             []string
+	refreshReqIDs          []string
 
 	strictResults []scriptedClaimResult
 	normalResults []scriptedClaimResult
@@ -26,6 +29,7 @@ type scriptedPort struct {
 
 	refreshConfig *RuntimeConfig
 	callOrder     []string
+	heartbeatErr  error
 	lastAck       struct {
 		requestID string
 		version   int64
@@ -41,6 +45,7 @@ func (p *scriptedPort) RegisterWorker(ctx context.Context, workerID string, labe
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.registerCalls = append(p.registerCalls, workerID)
+	p.registerAppliedVersion = append(p.registerAppliedVersion, appliedConfigVersion)
 	p.callOrder = append(p.callOrder, "register")
 	return nil
 }
@@ -105,7 +110,7 @@ func (p *scriptedPort) Heartbeat(ctx context.Context, workerID string) error {
 	defer p.mu.Unlock()
 	p.heartbeats = append(p.heartbeats, workerID)
 	p.callOrder = append(p.callOrder, "heartbeat")
-	return nil
+	return p.heartbeatErr
 }
 
 func (p *scriptedPort) RefreshRuntimeConfig(ctx context.Context, workerID string, requestID string) (*RuntimeConfig, error) {
@@ -167,7 +172,6 @@ func TestRuntimeStepRunsClaimExecuteFinalizeChain(t *testing.T) {
 	require.Equal(t, []int32{7}, port.executeCalls)
 	require.Equal(t, []int32{7}, port.finalizeCalls)
 	port.mu.Unlock()
-	require.Equal(t, 0, eng.Snapshot().ActiveCycles)
 }
 
 func TestRuntimeNotifyRuntimeConfig(t *testing.T) {
@@ -196,11 +200,7 @@ func TestRuntimeNotifyRuntimeConfig(t *testing.T) {
 		if port.refreshReqIDs[0] != "req-9" {
 			return false
 		}
-		if port.lastAck.requestID != "req-9" || port.lastAck.version != int64(9) {
-			return false
-		}
-		s := eng.Snapshot()
-		return s.RuntimeConfigVersion == int64(9) && s.MaxStrictPercentage == int32(25)
+		return port.lastAck.requestID == "req-9" && port.lastAck.version == int64(9)
 	}, time.Second, 10*time.Millisecond)
 }
 
@@ -231,4 +231,125 @@ func TestRuntimeStartRegistersAndMarksOfflineOnStop(t *testing.T) {
 
 	require.Equal(t, []string{"w-start"}, port.registerCalls)
 	require.Equal(t, []string{"w-start"}, port.offlineCalls)
+}
+
+func TestRuntimeStartAppliesRuntimeConfigBeforeRegister(t *testing.T) {
+	eng := NewEngine(EngineConfig{WorkerID: "w-start", Concurrency: 1})
+	port := &scriptedPort{
+		refreshConfig: &RuntimeConfig{
+			Version:             7,
+			MaxStrictPercentage: int32Ptr(25),
+			LabelWeights: map[string]int32{
+				DefaultWeightConfigKey: 1,
+				"w1":                   3,
+			},
+		},
+	}
+	rt := NewRuntime(eng, port, RuntimeOptions{
+		PollInterval:          0,
+		HeartbeatInterval:     0,
+		RuntimeConfigInterval: 0,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		rt.Start(ctx)
+	}()
+
+	require.Eventually(t, func() bool {
+		port.mu.Lock()
+		defer port.mu.Unlock()
+		return len(port.registerCalls) == 1
+	}, time.Second, 10*time.Millisecond)
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("runtime.Start did not stop")
+	}
+
+	port.mu.Lock()
+	defer port.mu.Unlock()
+	refreshIdx := -1
+	registerIdx := -1
+	for i, call := range port.callOrder {
+		if call == "refresh_config" && refreshIdx == -1 {
+			refreshIdx = i
+		}
+		if call == "register" && registerIdx == -1 {
+			registerIdx = i
+		}
+	}
+	require.NotEqual(t, -1, refreshIdx)
+	require.NotEqual(t, -1, registerIdx)
+	require.Less(t, refreshIdx, registerIdx)
+	require.Equal(t, []int64{7}, port.registerAppliedVersion)
+}
+
+func TestRuntimeHeartbeatFailureStopsRuntimeAndMarksOffline(t *testing.T) {
+	eng := NewEngine(EngineConfig{WorkerID: "w-heart", Concurrency: 1})
+	port := &scriptedPort{heartbeatErr: stdErrors.New("heartbeat failed")}
+	var errCount int
+	rt := NewRuntime(eng, port, RuntimeOptions{
+		PollInterval:          0,
+		HeartbeatInterval:     0,
+		RuntimeConfigInterval: 0,
+		OnError: func(err error) {
+			errCount++
+		},
+	})
+	t.Cleanup(rt.Close)
+
+	rt.Step(context.Background(), Event{Type: EventHeartbeatTick})
+
+	require.Eventually(t, func() bool {
+		port.mu.Lock()
+		defer port.mu.Unlock()
+		return len(port.offlineCalls) == 1
+	}, time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return errCount == 1 }, time.Second, 10*time.Millisecond)
+}
+
+func TestWorkerShutsDownWhenHeartbeatFails(t *testing.T) {
+	eng := NewEngine(EngineConfig{WorkerID: "w-worker", Concurrency: 1})
+	port := &scriptedPort{heartbeatErr: stdErrors.New("heartbeat failed")}
+	rt := NewRuntime(eng, port, RuntimeOptions{
+		PollInterval:          0,
+		HeartbeatInterval:     5 * time.Millisecond,
+		RuntimeConfigInterval: 0,
+	})
+	gctx := globalctx.New()
+	worker := &Worker{
+		globalCtx: gctx,
+		runtime:   rt,
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		worker.Start()
+	}()
+
+	require.Eventually(t, func() bool {
+		select {
+		case <-gctx.Context().Done():
+			return true
+		default:
+			return false
+		}
+	}, time.Second, 10*time.Millisecond)
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("worker did not shutdown after heartbeat failure")
+	}
+
+	require.Eventually(t, func() bool {
+		port.mu.Lock()
+		defer port.mu.Unlock()
+		return len(port.offlineCalls) == 1
+	}, time.Second, 10*time.Millisecond)
 }

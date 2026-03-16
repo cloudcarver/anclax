@@ -42,17 +42,17 @@ func (m *MockTaskHandler) EXPECT() *MockTaskHandlerMockRecorder {
 }
 
 // HandleTask mocks base method.
-func (m *MockTaskHandler) HandleTask(ctx context.Context, spec TaskSpec) error {
+func (m *MockTaskHandler) HandleTask(ctx context.Context, task Task) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HandleTask", ctx, spec)
+	ret := m.ctrl.Call(m, "HandleTask", ctx, task)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // HandleTask indicates an expected call of HandleTask.
-func (mr *MockTaskHandlerMockRecorder) HandleTask(ctx, spec any) *gomock.Call {
+func (mr *MockTaskHandlerMockRecorder) HandleTask(ctx, task any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleTask", reflect.TypeOf((*MockTaskHandler)(nil).HandleTask), ctx, spec)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleTask", reflect.TypeOf((*MockTaskHandler)(nil).HandleTask), ctx, task)
 }
 
 // OnTaskFailed mocks base method.
@@ -105,6 +105,30 @@ func (m *MockWorkerInterface) EXPECT() *MockWorkerInterfaceMockRecorder {
 	return m.recorder
 }
 
+// InterruptTasks mocks base method.
+func (m *MockWorkerInterface) InterruptTasks(taskIDs []int32, cause error) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "InterruptTasks", taskIDs, cause)
+}
+
+// InterruptTasks indicates an expected call of InterruptTasks.
+func (mr *MockWorkerInterfaceMockRecorder) InterruptTasks(taskIDs, cause any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InterruptTasks", reflect.TypeOf((*MockWorkerInterface)(nil).InterruptTasks), taskIDs, cause)
+}
+
+// NotifyRuntimeConfig mocks base method.
+func (m *MockWorkerInterface) NotifyRuntimeConfig(requestID string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "NotifyRuntimeConfig", requestID)
+}
+
+// NotifyRuntimeConfig indicates an expected call of NotifyRuntimeConfig.
+func (mr *MockWorkerInterfaceMockRecorder) NotifyRuntimeConfig(requestID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NotifyRuntimeConfig", reflect.TypeOf((*MockWorkerInterface)(nil).NotifyRuntimeConfig), requestID)
+}
+
 // RegisterTaskHandler mocks base method.
 func (m *MockWorkerInterface) RegisterTaskHandler(handler TaskHandler) {
 	m.ctrl.T.Helper()
@@ -141,4 +165,18 @@ func (m *MockWorkerInterface) Start() {
 func (mr *MockWorkerInterfaceMockRecorder) Start() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Start", reflect.TypeOf((*MockWorkerInterface)(nil).Start))
+}
+
+// WorkerID mocks base method.
+func (m *MockWorkerInterface) WorkerID() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "WorkerID")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// WorkerID indicates an expected call of WorkerID.
+func (mr *MockWorkerInterfaceMockRecorder) WorkerID() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WorkerID", reflect.TypeOf((*MockWorkerInterface)(nil).WorkerID))
 }

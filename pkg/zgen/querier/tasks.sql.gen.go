@@ -24,10 +24,20 @@ WITH
             AND (t.started_at IS NULL OR t.started_at < NOW())
             AND (t.locked_at IS NULL OR t.locked_at < $2)
             AND (
-                $3::bool = false
-                OR t.attributes->'labels' IS NULL
+                t.attributes->'labels' IS NULL
                 OR jsonb_array_length(t.attributes->'labels') = 0
-                OR (t.attributes->'labels' ?| $4::text[])
+                OR (
+                    COALESCE(array_length($3::text[], 1), 0) > 0
+                    AND (
+                        $4::bool = true
+                        OR $4::bool = false
+                    )
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM jsonb_array_elements_text(t.attributes->'labels') AS task_label(value)
+                        WHERE task_label.value <> ALL($3::text[])
+                    )
+                )
             )
             AND (
                 (
@@ -103,8 +113,8 @@ RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, upda
 type ClaimNormalTaskByGroupParams struct {
 	WorkerID       uuid.NullUUID
 	LockExpiry     *time.Time
-	HasLabels      bool
 	Labels         []string
+	HasLabels      bool
 	GroupName      string
 	WeightedLabels []string
 }
@@ -113,8 +123,8 @@ func (q *Queries) ClaimNormalTaskByGroup(ctx context.Context, arg ClaimNormalTas
 	row := q.db.QueryRow(ctx, claimNormalTaskByGroup,
 		arg.WorkerID,
 		arg.LockExpiry,
-		arg.HasLabels,
 		arg.Labels,
+		arg.HasLabels,
 		arg.GroupName,
 		arg.WeightedLabels,
 	)
@@ -151,10 +161,20 @@ WITH
             AND (t.started_at IS NULL OR t.started_at < NOW())
             AND (t.locked_at IS NULL OR t.locked_at < $2)
             AND (
-                $3::bool = false
-                OR t.attributes->'labels' IS NULL
+                t.attributes->'labels' IS NULL
                 OR jsonb_array_length(t.attributes->'labels') = 0
-                OR (t.attributes->'labels' ?| $4::text[])
+                OR (
+                    COALESCE(array_length($3::text[], 1), 0) > 0
+                    AND (
+                        $4::bool = true
+                        OR $4::bool = false
+                    )
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM jsonb_array_elements_text(t.attributes->'labels') AS task_label(value)
+                        WHERE task_label.value <> ALL($3::text[])
+                    )
+                )
             )
     ),
     locked_serial_keys AS (
@@ -214,16 +234,16 @@ RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, upda
 type ClaimStrictTaskParams struct {
 	WorkerID   uuid.NullUUID
 	LockExpiry *time.Time
-	HasLabels  bool
 	Labels     []string
+	HasLabels  bool
 }
 
 func (q *Queries) ClaimStrictTask(ctx context.Context, arg ClaimStrictTaskParams) (*AnclaxTask, error) {
 	row := q.db.QueryRow(ctx, claimStrictTask,
 		arg.WorkerID,
 		arg.LockExpiry,
-		arg.HasLabels,
 		arg.Labels,
+		arg.HasLabels,
 	)
 	var i AnclaxTask
 	err := row.Scan(
@@ -257,10 +277,20 @@ WITH
             AND (t.started_at IS NULL OR t.started_at < NOW())
             AND (t.locked_at IS NULL OR t.locked_at < $2)
             AND (
-                $3::bool = false
-                OR t.attributes->'labels' IS NULL
+                t.attributes->'labels' IS NULL
                 OR jsonb_array_length(t.attributes->'labels') = 0
-                OR (t.attributes->'labels' ?| $4::text[])
+                OR (
+                    COALESCE(array_length($3::text[], 1), 0) > 0
+                    AND (
+                        $4::bool = true
+                        OR $4::bool = false
+                    )
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM jsonb_array_elements_text(t.attributes->'labels') AS task_label(value)
+                        WHERE task_label.value <> ALL($3::text[])
+                    )
+                )
             )
     ),
     locked_serial_keys AS (
@@ -320,16 +350,16 @@ RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, upda
 type ClaimTaskParams struct {
 	WorkerID   uuid.NullUUID
 	LockExpiry *time.Time
-	HasLabels  bool
 	Labels     []string
+	HasLabels  bool
 }
 
 func (q *Queries) ClaimTask(ctx context.Context, arg ClaimTaskParams) (*AnclaxTask, error) {
 	row := q.db.QueryRow(ctx, claimTask,
 		arg.WorkerID,
 		arg.LockExpiry,
-		arg.HasLabels,
 		arg.Labels,
+		arg.HasLabels,
 	)
 	var i AnclaxTask
 	err := row.Scan(
@@ -364,10 +394,20 @@ WITH
             AND (t.started_at IS NULL OR t.started_at < NOW())
             AND (t.locked_at IS NULL OR t.locked_at < $2)
             AND (
-                $4::bool = false
-                OR t.attributes->'labels' IS NULL
+                t.attributes->'labels' IS NULL
                 OR jsonb_array_length(t.attributes->'labels') = 0
-                OR (t.attributes->'labels' ?| $5::text[])
+                OR (
+                    COALESCE(array_length($4::text[], 1), 0) > 0
+                    AND (
+                        $5::bool = true
+                        OR $5::bool = false
+                    )
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM jsonb_array_elements_text(t.attributes->'labels') AS task_label(value)
+                        WHERE task_label.value <> ALL($4::text[])
+                    )
+                )
             )
     ),
     locked_serial_keys AS (
@@ -427,8 +467,8 @@ type ClaimTaskByIDParams struct {
 	WorkerID   uuid.NullUUID
 	LockExpiry *time.Time
 	ID         int32
-	HasLabels  bool
 	Labels     []string
+	HasLabels  bool
 }
 
 func (q *Queries) ClaimTaskByID(ctx context.Context, arg ClaimTaskByIDParams) (*AnclaxTask, error) {
@@ -436,8 +476,8 @@ func (q *Queries) ClaimTaskByID(ctx context.Context, arg ClaimTaskByIDParams) (*
 		arg.WorkerID,
 		arg.LockExpiry,
 		arg.ID,
-		arg.HasLabels,
 		arg.Labels,
+		arg.HasLabels,
 	)
 	var i AnclaxTask
 	err := row.Scan(
@@ -693,7 +733,7 @@ func (q *Queries) ListTaskDescendantIDs(ctx context.Context, parentTaskID *int32
 const refreshTaskLock = `-- name: RefreshTaskLock :one
 UPDATE anclax.tasks
 SET locked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-WHERE id = $1 AND worker_id = $2
+WHERE id = $1 AND worker_id = $2 AND status IN ('pending', 'running')
 RETURNING id
 `
 

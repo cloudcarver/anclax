@@ -46,6 +46,7 @@ func InitializeApplication(cfg *config.Config, libCfg *config.LibConfig) (*app.A
 		taskgen.NewTaskHandler,
 		taskgen.NewTaskRunner,
 		asynctask.NewExecutor,
+		wire.Bind(new(taskgen.ExecutorInterface), new(*asynctask.Executor)),
 		hooks.NewBaseHook,
 	)
 	return nil, nil

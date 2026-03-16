@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -57,7 +58,7 @@ func NewModelPort(
 		workerID:            workerID,
 		workerIDParam:       uuid.NullUUID{UUID: workerID, Valid: true},
 		labels:              append([]string(nil), labels...),
-		hasLabels:           len(labels) > 0,
+		hasLabels:           hasUserClaimLabels(labels),
 		labelsJSON:          labelsJSON,
 		lockTTL:             lockTTL,
 		lockRefreshInterval: lockRefreshInterval,
@@ -211,7 +212,7 @@ func (p *ModelPort) ExecuteTask(ctx context.Context, task Task) error {
 		return nil
 	}
 
-	err = p.taskHandler.HandleTask(execCtx, NewTaskSpec(task.Spec))
+	err = p.taskHandler.HandleTask(execCtx, task)
 	if err != nil {
 		return err
 	}
@@ -384,6 +385,7 @@ func (p *ModelPort) startLockRefresh(ctx context.Context, taskID int32) context.
 					WorkerID: p.workerIDParam,
 				}); err != nil {
 					if errors.Is(err, pgx.ErrNoRows) {
+						p.InterruptTask(taskID, p.taskInterruptCauseFromStore(refreshCtx, taskID))
 						return
 					}
 				}
@@ -391,6 +393,30 @@ func (p *ModelPort) startLockRefresh(ctx context.Context, taskID int32) context.
 		}
 	}()
 	return cancel
+}
+
+func (p *ModelPort) taskInterruptCauseFromStore(ctx context.Context, taskID int32) error {
+	task, err := p.model.GetTaskByID(ctx, taskID)
+	if err != nil {
+		return taskcore.ErrTaskInterrupted
+	}
+	switch apigen.TaskStatus(task.Status) {
+	case apigen.Paused:
+		return taskcore.ErrTaskPaused
+	case apigen.Cancelled:
+		return taskcore.ErrTaskCancelled
+	default:
+		return taskcore.ErrTaskInterrupted
+	}
+}
+
+func hasUserClaimLabels(labels []string) bool {
+	for _, label := range labels {
+		if !strings.HasPrefix(label, "worker:") {
+			return true
+		}
+	}
+	return false
 }
 
 func decodeRuntimeConfigPayload(raw json.RawMessage) (pgnotify.RuntimeConfigPayload, error) {

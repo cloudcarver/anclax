@@ -2,7 +2,6 @@ package ctrl
 
 import (
 	"context"
-	"math"
 	"testing"
 
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
@@ -12,7 +11,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func TestRunUpdateWorkerRuntimeConfigTaskAddsMaxPriority(t *testing.T) {
+func TestRunUpdateWorkerRuntimeConfigTaskAddsNormalPriority(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -24,8 +23,8 @@ func TestRunUpdateWorkerRuntimeConfigTaskAddsMaxPriority(t *testing.T) {
 		Weights:             []int32{3},
 	}
 
-	mockRunner.EXPECT().RunUpdateWorkerRuntimeConfig(context.Background(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(ctx context.Context, params *taskgen.UpdateWorkerRuntimeConfigParameters, overrides ...func(*apigen.Task) error) (int32, error) {
+	mockRunner.EXPECT().RunBroadcastUpdateWorkerRuntimeConfig(context.Background(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, params *taskgen.BroadcastUpdateWorkerRuntimeConfigParameters, overrides ...func(*apigen.Task) error) (int32, error) {
 			require.Equal(t, req.MaxStrictPercentage, params.MaxStrictPercentage)
 			require.Equal(t, req.Labels, params.Labels)
 			require.Equal(t, req.Weights, params.Weights)
@@ -34,7 +33,7 @@ func TestRunUpdateWorkerRuntimeConfigTaskAddsMaxPriority(t *testing.T) {
 			err := overrides[0](task)
 			require.NoError(t, err)
 			require.NotNil(t, task.Attributes.Priority)
-			require.Equal(t, ConfigUpdateTaskPriority, *task.Attributes.Priority)
+			require.Equal(t, WorkerControlTaskPriority, *task.Attributes.Priority)
 			return int32(99), nil
 		},
 	)
@@ -44,7 +43,7 @@ func TestRunUpdateWorkerRuntimeConfigTaskAddsMaxPriority(t *testing.T) {
 	require.Equal(t, int32(99), taskID)
 }
 
-func TestRunUpdateWorkerRuntimeConfigTaskKeepsMaxPriorityWhenOverrideProvided(t *testing.T) {
+func TestRunUpdateWorkerRuntimeConfigTaskKeepsNormalPriorityWhenOverrideProvided(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -52,14 +51,14 @@ func TestRunUpdateWorkerRuntimeConfigTaskKeepsMaxPriorityWhenOverrideProvided(t 
 	req := &UpdateWorkerRuntimeConfigRequest{}
 	lowPriority := taskcore.WithPriority(1)
 
-	mockRunner.EXPECT().RunUpdateWorkerRuntimeConfig(context.Background(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(ctx context.Context, params *taskgen.UpdateWorkerRuntimeConfigParameters, overrides ...func(*apigen.Task) error) (int32, error) {
+	mockRunner.EXPECT().RunBroadcastUpdateWorkerRuntimeConfig(context.Background(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, params *taskgen.BroadcastUpdateWorkerRuntimeConfigParameters, overrides ...func(*apigen.Task) error) (int32, error) {
 			task := &apigen.Task{Attributes: apigen.TaskAttributes{}}
 			require.Len(t, overrides, 2)
 			require.NoError(t, overrides[0](task))
 			require.NoError(t, overrides[1](task))
 			require.NotNil(t, task.Attributes.Priority)
-			require.Equal(t, ConfigUpdateTaskPriority, *task.Attributes.Priority)
+			require.Equal(t, WorkerControlTaskPriority, *task.Attributes.Priority)
 			return int32(100), nil
 		},
 	)
@@ -69,6 +68,6 @@ func TestRunUpdateWorkerRuntimeConfigTaskKeepsMaxPriorityWhenOverrideProvided(t 
 	require.Equal(t, int32(100), taskID)
 }
 
-func TestRunUpdateWorkerRuntimeConfigTaskPriorityMaxInt32Sanity(t *testing.T) {
-	require.Equal(t, int32(math.MaxInt32), ConfigUpdateTaskPriority)
+func TestRunUpdateWorkerRuntimeConfigTaskPrioritySanity(t *testing.T) {
+	require.Equal(t, int32(0), WorkerControlTaskPriority)
 }

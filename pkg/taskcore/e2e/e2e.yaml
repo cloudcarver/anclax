@@ -31,12 +31,15 @@ interfaces:
       - AssertCapturedContains(ctx context.Context, tasks []string) error
       - AssertCapturedBefore(ctx context.Context, first string, second string) error
       - AssertCapturedByWorkerContains(ctx context.Context, workerName string, tasks []string) error
+      - AssertCapturedTaskCount(ctx context.Context, task string, expected int32) error
+      - AssertIdempotentStats(ctx context.Context, workerName string, task string, attempts int32, sideEffects int32) error
       - AssertContentionCounts(ctx context.Context, expected int32) error
       - AssertTaskErrorEvent(ctx context.Context, task string, expectedError string) error
       - SetTaskStatus(ctx context.Context, task string, status string) error
       - SleepMs(ctx context.Context, ms int32) error
       - CreateRuntimeConfig(ctx context.Context, key string, requestID string, maxStrictPercentage int32, defaultWeight int32, w1Weight int32, w2Weight int32, notify bool) error
       - WaitRuntimeConfigAck(ctx context.Context, key string, requestID string, timeoutMs int32) error
+      - CaptureLatestRuntimeConfigVersion(ctx context.Context, key string) error
       - WaitWorkerLagging(ctx context.Context, workerName string, key string, expected bool, timeoutMs int32) error
       - WaitWorkerOnline(ctx context.Context, workerName string, expected bool, timeoutMs int32) error
       - MarkWorkerOffline(ctx context.Context, workerName string) error
@@ -47,8 +50,9 @@ interfaces:
 
   ControlPlane:
     methods:
-      - PauseTask(ctx context.Context, task string, notifyInterval string, listenTimeout string) error
-      - CancelTask(ctx context.Context, task string, notifyInterval string, listenTimeout string) error
+      - UpdateRuntimeConfig(ctx context.Context, key string, maxStrictPercentage int32, defaultWeight int32, w1Weight int32, w2Weight int32) error
+      - PauseTask(ctx context.Context, task string) error
+      - CancelTask(ctx context.Context, task string) error
 
 instances:
   taskStore: TaskStore
@@ -65,7 +69,7 @@ scenarios:
           runtime:
             - ResetCaptured(ctx)
             - CreateRuntimeConfig(ctx, "SPWG_CFG", "req-spwg-1", 20, 1, 1, 3, false)
-            - StartWorker(ctx, "spwg_w1", "capture", "dst-taskstore", []string{}, 20, 20, 200, 20, 1, 50, false, "")
+            - StartWorker(ctx, "spwg_w1", "capture", "dst-taskstore", []string{"w1", "w2"}, 20, 20, 200, 20, 1, 50, false, "")
           taskStore:
             - Enqueue(ctx, "S_LOW", 1, 1, []string{})
             - Enqueue(ctx, "S_HIGH", 9, 1, []string{})
@@ -143,7 +147,7 @@ scenarios:
           runtime:
             - ResetCaptured(ctx)
             - CreateRuntimeConfig(ctx, "DGF_CFG", "req-dgf-1", 20, 1, 2, 1, false)
-            - StartWorker(ctx, "dgf_w1", "capture", "dst-taskstore", []string{}, 20, 20, 200, 20, 1, 50, false, "")
+            - StartWorker(ctx, "dgf_w1", "capture", "dst-taskstore", []string{"unknown-label"}, 20, 20, 200, 20, 1, 50, false, "")
           taskStore:
             - Enqueue(ctx, "D_UNKNOWN", 0, 5, []string{"unknown-label"})
             - Enqueue(ctx, "D_UNLABELED", 0, 1, []string{})
@@ -254,6 +258,108 @@ scenarios:
             - StopWorker(ctx, "lb_bill")
 
       - id: s6
+        script: |
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          require.NoError(t, err)
+          require.Equal(t, [][]any{{int64(0)}}, rows)
+
+  - name: worker_label_all_match_gpu_arm
+    description: task labels require all labels to match; gpu+arm requires both labels on worker.
+    steps:
+      - id: s1
+        parallel:
+          runtime:
+            - ResetCaptured(ctx)
+          taskStore:
+            - Enqueue(ctx, "LB_GPU_ARM", 0, 1, []string{"gpu", "arm"})
+
+      - id: s2
+        parallel:
+          runtime:
+            - StartWorker(ctx, "lb_gpu", "capture", "dst-taskstore", []string{"gpu"}, 20, 20, 200, 20, 1, 0, false, "")
+            - StartWorker(ctx, "lb_gpu_arm", "capture", "dst-taskstore", []string{"gpu", "arm"}, 20, 20, 200, 20, 1, 0, false, "")
+
+      - id: s3
+        parallel:
+          runtime:
+            - WaitCapturedCount(ctx, 1, 5000)
+            - AssertCapturedByWorkerContains(ctx, "lb_gpu_arm", []string{"LB_GPU_ARM"})
+            - StopWorker(ctx, "lb_gpu")
+            - StopWorker(ctx, "lb_gpu_arm")
+
+      - id: s4
+        script: |
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          require.NoError(t, err)
+          require.Equal(t, [][]any{{int64(0)}}, rows)
+
+  - name: worker_label_internal_only_scope
+    description: worker with only internal worker:<id> label claims unlabeled and own-worker-labeled tasks only.
+    steps:
+      - id: s1
+        parallel:
+          runtime:
+            - ResetCaptured(ctx)
+            - StartWorker(ctx, "lb_internal", "capture", "dst-taskstore", []string{}, 20, 20, 200, 3600000, 1, 0, false, "11111111-1111-1111-1111-111111111111")
+          taskStore:
+            - Enqueue(ctx, "LBI_UNLABELED", 0, 1, []string{})
+            - Enqueue(ctx, "LBI_OWN", 0, 1, []string{"worker:11111111-1111-1111-1111-111111111111"})
+            - Enqueue(ctx, "LBI_OTHER", 0, 1, []string{"worker:22222222-2222-2222-2222-222222222222"})
+            - Enqueue(ctx, "LBI_BIZ", 0, 1, []string{"w1"})
+
+      - id: s2
+        parallel:
+          runtime:
+            - WaitCapturedCount(ctx, 2, 5000)
+            - AssertCapturedByWorkerContains(ctx, "lb_internal", []string{"LBI_UNLABELED", "LBI_OWN"})
+            - WaitTaskCompletion(ctx, "LBI_UNLABELED", 5000)
+            - WaitTaskCompletion(ctx, "LBI_OWN", 5000)
+            - StopWorker(ctx, "lb_internal")
+
+      - id: s3
+        script: |
+          rows, err := actors.Validator.Query(ctx, "select spec->'payload'->>'name' from anclax.tasks where status = 'pending' and spec->'payload'->>'name' like 'LBI_%' order by 1", []any{})
+          require.NoError(t, err)
+          require.Equal(t, [][]any{{"LBI_BIZ"}, {"LBI_OTHER"}}, rows)
+
+      - id: s4
+        parallel:
+          runtime:
+            - StartWorker(ctx, "lb_drain", "capture", "dst-taskstore", []string{"w1"}, 20, 20, 200, 3600000, 1, 0, false, "22222222-2222-2222-2222-222222222222")
+            - WaitNoPendingTasks(ctx, 5000)
+            - StopWorker(ctx, "lb_drain")
+
+      - id: s5
+        script: |
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          require.NoError(t, err)
+          require.Equal(t, [][]any{{int64(0)}}, rows)
+
+  - name: worker_label_all_match_strict_priority
+    description: strict tasks also require all labels to match; gpu+arm strict task requires both labels.
+    steps:
+      - id: s1
+        parallel:
+          runtime:
+            - ResetCaptured(ctx)
+          taskStore:
+            - Enqueue(ctx, "LBS_GPU_ARM_STRICT", 9, 1, []string{"gpu", "arm"})
+
+      - id: s2
+        parallel:
+          runtime:
+            - StartWorker(ctx, "lbs_gpu", "capture", "dst-taskstore", []string{"gpu"}, 20, 20, 200, 20, 1, 0, false, "")
+            - StartWorker(ctx, "lbs_gpu_arm", "capture", "dst-taskstore", []string{"gpu", "arm"}, 20, 20, 200, 20, 1, 0, false, "")
+
+      - id: s3
+        parallel:
+          runtime:
+            - WaitCapturedCount(ctx, 1, 5000)
+            - AssertCapturedByWorkerContains(ctx, "lbs_gpu_arm", []string{"LBS_GPU_ARM_STRICT"})
+            - StopWorker(ctx, "lbs_gpu")
+            - StopWorker(ctx, "lbs_gpu_arm")
+
+      - id: s4
         script: |
           rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
           require.NoError(t, err)
@@ -433,7 +539,7 @@ scenarios:
           runtime:
             - ResetCaptured(ctx)
             - CreateRuntimeConfig(ctx, "SPW_CFG", "req-spw-1", 20, 1, 1, 3, false)
-            - StartWorker(ctx, "spw_w1", "capture", "dst-taskstore", []string{}, 20, 20, 200, 20, 1, 50, false, "")
+            - StartWorker(ctx, "spw_w1", "capture", "dst-taskstore", []string{"w1", "w2"}, 20, 20, 200, 20, 1, 50, false, "")
           taskStore:
             - Enqueue(ctx, "SPW_S_LOW", 1, 1, []string{})
             - Enqueue(ctx, "SPW_S_HIGH", 9, 1, []string{})
@@ -515,22 +621,129 @@ scenarios:
             - WaitWorkerLagging(ctx, "SRCP_W1", "SRCP_CFG", false, 7000)
             - StopWorker(ctx, "SRCP_W1")
 
-  - name: smoke_runtime_config_listen_ack
-    description: runtime config LISTEN path sends ack.
+  - name: smoke_runtime_config_control_plane_broadcast
+    description: runtime config update converges via control-plane broadcast tasks without LISTEN dependency.
     steps:
       - id: s1
         parallel:
           runtime:
-            - StartWorker(ctx, "SRCA_W1", "noop", "noop", []string{}, 20, 20, 200, 20, 1, 0, true, "")
+            - StartWorker(ctx, "SRCA_W1", "noop", "noop", []string{}, 20, 20, 200, 20, 1, 0, false, "")
             - WaitWorkerOnline(ctx, "SRCA_W1", true, 5000)
 
       - id: s2
         parallel:
+          controlPlane:
+            - UpdateRuntimeConfig(ctx, "SRCA_CFG", 15, 1, 0, 0)
           runtime:
-            - CreateRuntimeConfig(ctx, "SRCA_CFG", "req-ack-1", 15, 1, 0, 0, true)
-            - WaitRuntimeConfigAck(ctx, "SRCA_CFG", "req-ack-1", 8000)
+            - CaptureLatestRuntimeConfigVersion(ctx, "SRCA_CFG")
             - WaitWorkerLagging(ctx, "SRCA_W1", "SRCA_CFG", false, 7000)
             - StopWorker(ctx, "SRCA_W1")
+
+  - name: smoke_runtime_config_new_worker_joins_after_broadcast
+    description: worker started right after control-plane update should catch up to latest runtime config.
+    steps:
+      - id: s1
+        parallel:
+          runtime:
+            - StartWorker(ctx, "SRCJ_W1", "noop", "noop", []string{}, 20, 20, 200, 20, 1, 50, false, "")
+            - WaitWorkerOnline(ctx, "SRCJ_W1", true, 5000)
+
+      - id: s2
+        parallel:
+          controlPlane:
+            - UpdateRuntimeConfig(ctx, "SRCJ_CFG", 25, 1, 2, 0)
+          runtime:
+            - SleepMs(ctx, 100)
+            - StartWorker(ctx, "SRCJ_W2", "noop", "noop", []string{}, 20, 20, 200, 20, 1, 50, false, "")
+            - WaitWorkerOnline(ctx, "SRCJ_W2", true, 5000)
+
+      - id: s3
+        parallel:
+          runtime:
+            - CaptureLatestRuntimeConfigVersion(ctx, "SRCJ_CFG")
+            - WaitWorkerLagging(ctx, "SRCJ_W1", "SRCJ_CFG", false, 7000)
+            - WaitWorkerLagging(ctx, "SRCJ_W2", "SRCJ_CFG", false, 7000)
+            - StopWorker(ctx, "SRCJ_W1")
+            - StopWorker(ctx, "SRCJ_W2")
+
+  - name: smoke_runtime_config_worker_stops_during_broadcast
+    description: control-plane update should converge when one targeted worker stops during broadcast.
+    steps:
+      - id: s1
+        parallel:
+          runtime:
+            - StartWorker(ctx, "SRCO_W1", "noop", "noop", []string{}, 20, 20, 200, 20, 1, 50, false, "")
+            - StartWorker(ctx, "SRCO_W2", "noop", "noop", []string{}, 20, 20, 200, 20, 1, 50, false, "")
+            - WaitWorkerOnline(ctx, "SRCO_W1", true, 5000)
+            - WaitWorkerOnline(ctx, "SRCO_W2", true, 5000)
+
+      - id: s2
+        parallel:
+          controlPlane:
+            - UpdateRuntimeConfig(ctx, "SRCO_CFG", 30, 1, 0, 0)
+          runtime:
+            - SleepMs(ctx, 80)
+            - StopWorker(ctx, "SRCO_W2")
+
+      - id: s3
+        parallel:
+          runtime:
+            - CaptureLatestRuntimeConfigVersion(ctx, "SRCO_CFG")
+            - WaitWorkerLagging(ctx, "SRCO_W1", "SRCO_CFG", false, 7000)
+            - WaitWorkerOnline(ctx, "SRCO_W2", false, 5000)
+            - StopWorker(ctx, "SRCO_W1")
+
+  - name: smoke_pause_task_worker_joins_after_pause
+    description: worker joining after pause should never execute paused task.
+    steps:
+      - id: s1
+        parallel:
+          taskStore:
+            - EnqueueRaw(ctx, "SPJ_TASK", "pause-e2e", "{}", 0, 1, []string{"pause-label"}, "", 0, "", 2)
+
+      - id: s2
+        parallel:
+          controlPlane:
+            - PauseTask(ctx, "SPJ_TASK")
+
+      - id: s3
+        parallel:
+          runtime:
+            - StartWorker(ctx, "SPJ_W1", "signal", "pause-e2e", []string{"pause-label"}, 20, 20, 200, 20, 1, 0, false, "")
+            - SleepMs(ctx, 2500)
+            - StopWorker(ctx, "SPJ_W1")
+
+      - id: s4
+        script: |
+          rows, err := actors.Validator.Query(ctx, "select status, attempts from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"SPJ_TASK"})
+          require.NoError(t, err)
+          require.Equal(t, [][]any{{"paused", int32(0)}}, rows)
+
+  - name: smoke_cancel_task_worker_joins_after_cancel
+    description: worker joining after cancel should never execute cancelled task.
+    steps:
+      - id: s1
+        parallel:
+          taskStore:
+            - EnqueueRaw(ctx, "SCJ_TASK", "pause-e2e", "{}", 0, 1, []string{"cancel-label"}, "", 0, "", 2)
+
+      - id: s2
+        parallel:
+          controlPlane:
+            - CancelTask(ctx, "SCJ_TASK")
+
+      - id: s3
+        parallel:
+          runtime:
+            - StartWorker(ctx, "SCJ_W1", "signal", "pause-e2e", []string{"cancel-label"}, 20, 20, 200, 20, 1, 0, false, "")
+            - SleepMs(ctx, 2500)
+            - StopWorker(ctx, "SCJ_W1")
+
+      - id: s4
+        script: |
+          rows, err := actors.Validator.Query(ctx, "select status, attempts from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"SCJ_TASK"})
+          require.NoError(t, err)
+          require.Equal(t, [][]any{{"cancelled", int32(0)}}, rows)
 
   - name: smoke_pause_task_interrupt
     description: pausing a running task interrupts execution and marks it paused.
@@ -552,7 +765,7 @@ scenarios:
       - id: s3
         parallel:
           controlPlane:
-            - PauseTask(ctx, "SPC_TASK", "", "")
+            - PauseTask(ctx, "SPC_TASK")
 
       - id: s4
         parallel:
@@ -585,7 +798,7 @@ scenarios:
       - id: s2
         parallel:
           controlPlane:
-            - PauseTask(ctx, "SPB_TASK", "", "")
+            - PauseTask(ctx, "SPB_TASK")
 
       - id: s3
         parallel:
@@ -619,7 +832,7 @@ scenarios:
       - id: s3
         parallel:
           controlPlane:
-            - CancelTask(ctx, "SCI_TASK", "", "")
+            - CancelTask(ctx, "SCI_TASK")
 
       - id: s4
         parallel:
@@ -638,6 +851,66 @@ scenarios:
           runtime:
             - StopWorker(ctx, "SCI_W1")
             - StopWorker(ctx, "SCI_W2")
+
+  - name: smoke_control_plane_pause_cancel_race_with_worker_churn
+    description: concurrent pause/cancel calls during worker churn should converge with no pending broadcast/control tasks.
+    steps:
+      - id: s1
+        parallel:
+          taskStore:
+            - EnqueueRaw(ctx, "SCRACE_TASK", "pause-e2e", "{}", 0, 1, []string{"cancel-label"}, "", 0, "", 0)
+          runtime:
+            - StartWorker(ctx, "SCRACE_EXEC", "blocking", "pause-e2e", []string{"cancel-label"}, 20, 20, 200, 20, 1, 0, true, "11111111-1111-1111-1111-111111111111")
+            - StartWorker(ctx, "SCRACE_CTRL", "noop", "pause-e2e", []string{"control"}, 20, 20, 200, 20, 1, 0, true, "22222222-2222-2222-2222-222222222222")
+
+      - id: s2
+        parallel:
+          runtime:
+            - WaitSignal(ctx, "SCRACE_EXEC", "started", 5000)
+            - WaitTaskLock(ctx, "SCRACE_TASK", 5000)
+
+      - id: s3
+        script: |
+          var wg sync.WaitGroup
+
+          wg.Add(1)
+          go func() {
+            defer wg.Done()
+            require.NoError(t, actors.Runtime.StartWorker(ctx, "SCRACE_CHURN", "noop", "pause-e2e", []string{"control"}, 20, 20, 200, 20, 1, 0, true, "33333333-3333-3333-3333-333333333333"))
+            time.Sleep(40 * time.Millisecond)
+            require.NoError(t, actors.Runtime.StopWorker(ctx, "SCRACE_CHURN"))
+            time.Sleep(20 * time.Millisecond)
+            require.NoError(t, actors.Runtime.StartWorker(ctx, "SCRACE_CHURN", "noop", "pause-e2e", []string{"control"}, 20, 20, 200, 20, 1, 0, true, "33333333-3333-3333-3333-333333333333"))
+          }()
+
+          require.NoError(t, actors.ControlPlane.PauseTask(ctx, "SCRACE_TASK"))
+          require.NoError(t, actors.ControlPlane.CancelTask(ctx, "SCRACE_TASK"))
+
+          wg.Wait()
+
+      - id: s4
+        parallel:
+          runtime:
+            - WaitSignal(ctx, "SCRACE_EXEC", "done", 7000)
+            - WaitTaskUnlock(ctx, "SCRACE_TASK", 7000)
+            - WaitNoPendingTasks(ctx, 9000)
+
+      - id: s5
+        script: |
+          rows, err := actors.Validator.Query(ctx, "select status from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"SCRACE_TASK"})
+          require.NoError(t, err)
+          require.Equal(t, [][]any{{"cancelled"}}, rows)
+
+          rows, err = actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type' in ('broadcastPauseTask','broadcastCancelTask','pauseTaskOnWorker','cancelTaskOnWorker')", []any{})
+          require.NoError(t, err)
+          require.Equal(t, [][]any{{int64(0)}}, rows)
+
+      - id: s6
+        parallel:
+          runtime:
+            - StopWorker(ctx, "SCRACE_EXEC")
+            - StopWorker(ctx, "SCRACE_CTRL")
+            - StopWorker(ctx, "SCRACE_CHURN")
 
   - name: smoke_cancel_task_descendants
     description: cancelling a task cancels all descendants in the hierarchy.
@@ -667,7 +940,7 @@ scenarios:
       - id: s4
         parallel:
           controlPlane:
-            - CancelTask(ctx, "SCD_ROOT", "", "")
+            - CancelTask(ctx, "SCD_ROOT")
 
       - id: s5
         script: |
@@ -809,7 +1082,7 @@ scenarios:
         parallel:
           runtime:
             - ResetCaptured(ctx)
-            - StartWorker(ctx, "crrf_cap", "capture", "dst-taskstore", []string{}, 20, 20, 200, 20, 1, 0, true, "")
+            - StartWorker(ctx, "crrf_cap", "capture", "dst-taskstore", []string{"w1", "w2"}, 20, 20, 200, 20, 1, 0, true, "")
             - WaitWorkerOnline(ctx, "crrf_cap", true, 5000)
             - CreateRuntimeConfig(ctx, "CRRF_CFG1", "req-crrf-1", 20, 1, 1, 4, true)
             - WaitRuntimeConfigAck(ctx, "CRRF_CFG1", "req-crrf-1", 8000)
@@ -904,3 +1177,80 @@ scenarios:
           rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
+
+  - name: bounded_soak_no_backlog_with_worker_churn
+    description: bounded enqueue/churn run should drain pending and running tasks.
+    steps:
+      - id: s1
+        parallel:
+          runtime:
+            - ResetCaptured(ctx)
+            - StartWorker(ctx, "soak_w1", "capture", "dst-taskstore", []string{"w1"}, 20, 20, 200, 3600000, 1, 0, false, "")
+            - StartWorker(ctx, "soak_w2", "capture", "dst-taskstore", []string{"w2"}, 20, 20, 200, 3600000, 1, 0, false, "")
+
+      - id: s2
+        script: |
+          for i := 0; i < 60; i++ {
+            task := "SOAK_UNLABELED"
+            labels := []string{}
+            switch i % 3 {
+            case 1:
+              task = "SOAK_W1"
+              labels = []string{"w1"}
+            case 2:
+              task = "SOAK_W2"
+              labels = []string{"w2"}
+            }
+            require.NoError(t, actors.TaskStore.Enqueue(ctx, task, 0, 1, labels))
+            if i > 0 && i%20 == 0 {
+              require.NoError(t, actors.Runtime.StopWorker(ctx, "soak_w1"))
+              require.NoError(t, actors.Runtime.StartWorker(ctx, "soak_w1", "capture", "dst-taskstore", []string{"w1"}, 20, 20, 200, 3600000, 1, 0, false, ""))
+            }
+            require.NoError(t, actors.Runtime.SleepMs(ctx, 20))
+          }
+
+      - id: s3
+        parallel:
+          runtime:
+            - WaitNoPendingTasks(ctx, 20000)
+            - StopWorker(ctx, "soak_w1")
+            - StopWorker(ctx, "soak_w2")
+
+      - id: s4
+        script: |
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','running')", []any{})
+          require.NoError(t, err)
+          require.Equal(t, [][]any{{int64(0)}}, rows)
+
+  - name: at_least_once_retry_and_idempotent_side_effect_pattern
+    description: retries can execute a task more than once; idempotent handler should apply side effect only once.
+    steps:
+      - id: s1
+        parallel:
+          runtime:
+            - ResetCaptured(ctx)
+            - StartWorker(ctx, "ao_dup", "capture-fail-once:AO_DUP", "dst-taskstore", []string{}, 20, 20, 200, 3600000, 1, 0, false, "")
+          taskStore:
+            - EnqueueRaw(ctx, "AO_DUP", "dst-taskstore", "{}", 0, 1, []string{}, "100ms", 2, "", 0)
+
+      - id: s2
+        parallel:
+          runtime:
+            - WaitTaskCompletion(ctx, "AO_DUP", 10000)
+            - AssertCapturedTaskCount(ctx, "AO_DUP", 2)
+            - StopWorker(ctx, "ao_dup")
+
+      - id: s3
+        parallel:
+          runtime:
+            - StartWorker(ctx, "ao_idem", "idempotent-fail-once:AO_IDEM", "idem-task", []string{}, 20, 20, 200, 3600000, 1, 0, false, "")
+          taskStore:
+            - EnqueueRaw(ctx, "AO_IDEM", "idem-task", "{}", 0, 1, []string{}, "100ms", 2, "", 0)
+
+      - id: s4
+        parallel:
+          runtime:
+            - WaitTaskCompletion(ctx, "AO_IDEM", 10000)
+            - AssertIdempotentStats(ctx, "ao_idem", "AO_IDEM", 2, 1)
+            - StopWorker(ctx, "ao_idem")
+            - WaitNoPendingTasks(ctx, 5000)

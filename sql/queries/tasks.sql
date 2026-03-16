@@ -8,10 +8,20 @@ WITH
             AND (t.started_at IS NULL OR t.started_at < NOW())
             AND (t.locked_at IS NULL OR t.locked_at < sqlc.arg(lock_expiry))
             AND (
-                sqlc.arg(has_labels)::bool = false
-                OR t.attributes->'labels' IS NULL
+                t.attributes->'labels' IS NULL
                 OR jsonb_array_length(t.attributes->'labels') = 0
-                OR (t.attributes->'labels' ?| sqlc.arg(labels)::text[])
+                OR (
+                    COALESCE(array_length(sqlc.arg(labels)::text[], 1), 0) > 0
+                    AND (
+                        sqlc.arg(has_labels)::bool = true
+                        OR sqlc.arg(has_labels)::bool = false
+                    )
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM jsonb_array_elements_text(t.attributes->'labels') AS task_label(value)
+                        WHERE task_label.value <> ALL(sqlc.arg(labels)::text[])
+                    )
+                )
             )
     ),
     locked_serial_keys AS (
@@ -78,10 +88,20 @@ WITH
             AND (t.started_at IS NULL OR t.started_at < NOW())
             AND (t.locked_at IS NULL OR t.locked_at < sqlc.arg(lock_expiry))
             AND (
-                sqlc.arg(has_labels)::bool = false
-                OR t.attributes->'labels' IS NULL
+                t.attributes->'labels' IS NULL
                 OR jsonb_array_length(t.attributes->'labels') = 0
-                OR (t.attributes->'labels' ?| sqlc.arg(labels)::text[])
+                OR (
+                    COALESCE(array_length(sqlc.arg(labels)::text[], 1), 0) > 0
+                    AND (
+                        sqlc.arg(has_labels)::bool = true
+                        OR sqlc.arg(has_labels)::bool = false
+                    )
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM jsonb_array_elements_text(t.attributes->'labels') AS task_label(value)
+                        WHERE task_label.value <> ALL(sqlc.arg(labels)::text[])
+                    )
+                )
             )
     ),
     locked_serial_keys AS (
@@ -148,10 +168,20 @@ WITH
             AND (t.started_at IS NULL OR t.started_at < NOW())
             AND (t.locked_at IS NULL OR t.locked_at < sqlc.arg(lock_expiry))
             AND (
-                sqlc.arg(has_labels)::bool = false
-                OR t.attributes->'labels' IS NULL
+                t.attributes->'labels' IS NULL
                 OR jsonb_array_length(t.attributes->'labels') = 0
-                OR (t.attributes->'labels' ?| sqlc.arg(labels)::text[])
+                OR (
+                    COALESCE(array_length(sqlc.arg(labels)::text[], 1), 0) > 0
+                    AND (
+                        sqlc.arg(has_labels)::bool = true
+                        OR sqlc.arg(has_labels)::bool = false
+                    )
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM jsonb_array_elements_text(t.attributes->'labels') AS task_label(value)
+                        WHERE task_label.value <> ALL(sqlc.arg(labels)::text[])
+                    )
+                )
             )
             AND (
                 (
@@ -234,10 +264,20 @@ WITH
             AND (t.started_at IS NULL OR t.started_at < NOW())
             AND (t.locked_at IS NULL OR t.locked_at < sqlc.arg(lock_expiry))
             AND (
-                sqlc.arg(has_labels)::bool = false
-                OR t.attributes->'labels' IS NULL
+                t.attributes->'labels' IS NULL
                 OR jsonb_array_length(t.attributes->'labels') = 0
-                OR (t.attributes->'labels' ?| sqlc.arg(labels)::text[])
+                OR (
+                    COALESCE(array_length(sqlc.arg(labels)::text[], 1), 0) > 0
+                    AND (
+                        sqlc.arg(has_labels)::bool = true
+                        OR sqlc.arg(has_labels)::bool = false
+                    )
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM jsonb_array_elements_text(t.attributes->'labels') AS task_label(value)
+                        WHERE task_label.value <> ALL(sqlc.arg(labels)::text[])
+                    )
+                )
             )
     ),
     locked_serial_keys AS (
@@ -344,7 +384,7 @@ RETURNING id;
 -- name: RefreshTaskLock :one
 UPDATE anclax.tasks
 SET locked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-WHERE id = $1 AND worker_id = $2
+WHERE id = $1 AND worker_id = $2 AND status IN ('pending', 'running')
 RETURNING id;
 
 -- name: ReleaseTaskLockByWorker :one
