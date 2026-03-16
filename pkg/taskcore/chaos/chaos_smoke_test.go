@@ -32,6 +32,7 @@ type chaosTaskSlot struct {
 	finalStatus     string
 	controlState    string
 	resumeAt        int
+	cancelAt        time.Time
 }
 
 type chaosState struct {
@@ -334,6 +335,7 @@ func submitChaosBatch(ctx context.Context, user *User, state *chaosState, iter i
 	taskSleepMs := int32(readChaosPositiveEnvInt(nil, "ANCLAX_TASKCORE_CHAOS_TASK_SLEEP_MS", 400))
 	pauseDelayMs := int32(readChaosPositiveEnvInt(nil, "ANCLAX_TASKCORE_CHAOS_CONTROL_DELAY_MS", 1500))
 	pauseSleepMs := int32(readChaosPositiveEnvInt(nil, "ANCLAX_TASKCORE_CHAOS_CONTROL_SLEEP_MS", 800))
+	cancelMaxDelayMs := readChaosPositiveEnvInt(nil, "ANCLAX_TASKCORE_CHAOS_CANCEL_MAX_DELAY_MS", maxInt(1, int(taskSleepMs)*3))
 	for j := 0; j < batchSize; j++ {
 		taskName := fmt.Sprintf("LONG-%03d-%02d", iter, j)
 		labels, group := taskLabelsAndGroup(j)
@@ -351,8 +353,28 @@ func submitChaosBatch(ctx context.Context, user *User, state *chaosState, iter i
 		state.tasksSubmitted++
 	}
 
+	cancelTaskName := fmt.Sprintf("LONG-%03d-cancel", iter)
+	labels, group := taskLabelsAndGroup(iter + 1)
+	cancelDelayMs := state.randBetween(0, cancelMaxDelayMs)
+	cancelTaskID, err := user.SubmitStressProbe(ctx, SubmitStressProbeRequest{
+		TaskName: cancelTaskName,
+		JobID:    int64(iter*1000 + 81),
+		SleepMs:  taskSleepMs,
+		Group:    group,
+		Labels:   labels,
+	})
+	if err != nil {
+		return err
+	}
+	cancelAt := time.Now().Add(time.Duration(cancelDelayMs) * time.Millisecond)
+	state.tasks[cancelTaskName] = &chaosTaskSlot{taskID: cancelTaskID, uniqueTag: cancelTaskName, controlEligible: true, controlMode: "cancel", finalStatus: "completed", cancelAt: cancelAt}
+	state.tasksSubmitted++
+	if user.Report != nil {
+		user.Report.AddEvent("chaos.cancel_scheduled", cancelTaskName, "cancel scheduled", map[string]any{"taskID": cancelTaskID, "delayMs": cancelDelayMs, "cancelAt": cancelAt.UTC().Format(time.RFC3339Nano)})
+	}
+
 	pauseTaskName := fmt.Sprintf("LONG-%03d-pause", iter)
-	labels, group := taskLabelsAndGroup(iter)
+	labels, group = taskLabelsAndGroup(iter)
 	pauseTaskID, err := user.SubmitStressProbe(ctx, SubmitStressProbeRequest{
 		TaskName: pauseTaskName,
 		JobID:    int64(iter*1000 + 91),
@@ -382,6 +404,9 @@ func taskLabelsAndGroup(i int) ([]string, string) {
 }
 
 func runUserOperation(ctx context.Context, user *User, state *chaosState, iter int) error {
+	if applied, err := actionUserCancel(ctx, user, state); err != nil || applied {
+		return err
+	}
 	if applied, err := actionUserResume(ctx, user, state, iter); err != nil || applied {
 		return err
 	}
@@ -419,63 +444,55 @@ func actionUserPause(ctx context.Context, user *User, state *chaosState, iter in
 }
 
 func actionUserCancel(ctx context.Context, user *User, state *chaosState) (bool, error) {
-	if user == nil || user.DB == nil || user.Signals == nil || state.activeWorkers() < 3 {
+	if user == nil || user.DB == nil || state.activeWorkers() < 3 {
 		return false, nil
 	}
+	now := time.Now()
 	candidates := make([]*chaosTaskSlot, 0)
 	for _, task := range state.tasks {
-		if task != nil && task.controlEligible && task.controlMode == "cancel" && task.finalStatus == "completed" && task.controlState == "" {
-			candidates = append(candidates, task)
+		if task == nil || !task.controlEligible || task.controlMode != "cancel" || task.controlState != "" {
+			continue
 		}
+		if task.cancelAt.IsZero() || task.cancelAt.After(now) {
+			continue
+		}
+		candidates = append(candidates, task)
 	}
 	if len(candidates) == 0 {
 		return false, nil
 	}
-	var chosen *chaosTaskSlot
-	var snapshot *SignalSnapshot
-	for _, task := range candidates {
-		status, err := user.DB.TaskStatus(ctx, task.uniqueTag)
-		if err != nil || status == "completed" || status == "cancelled" || status == "paused" || status == "failed" {
-			continue
-		}
-		snap, err := user.SignalSnapshot(ctx, task.taskID)
-		if err != nil || snap == nil || snap.Count == 0 {
-			continue
-		}
-		if chosen == nil || snap.Count < snapshot.Count || (snap.Count == snapshot.Count && task.taskID < chosen.taskID) {
-			chosen = task
-			snapshot = snap
-		}
-	}
-	if chosen == nil && state.activeWorkers() > 0 {
-		oldest := oldestChaosTask(candidates)
-		if oldest != nil {
-			ready, snap, err := waitForRunningSignals(ctx, user, oldest, 2*time.Second)
-			if err != nil {
-				return false, err
-			}
-			if ready {
-				chosen = oldest
-				snapshot = snap
-			}
-		}
-	}
+	chosen := oldestDueCancelTask(candidates)
 	if chosen == nil {
 		return false, nil
 	}
+	statusBefore, err := user.DB.TaskStatus(ctx, chosen.uniqueTag)
+	if err != nil {
+		return false, err
+	}
+	var snapshot *SignalSnapshot
+	if user.Signals != nil {
+		snapshot, _ = user.SignalSnapshot(ctx, chosen.taskID)
+	}
 	if user.Report != nil {
-		user.Report.AddEvent("user.expectation", fmt.Sprintf("%d", chosen.taskID), "signal threshold reached", map[string]any{"taskID": chosen.taskID, "count": snapshot.Count})
+		details := map[string]any{"taskID": chosen.taskID, "statusBefore": statusBefore, "scheduledAt": chosen.cancelAt.UTC().Format(time.RFC3339Nano)}
+		if snapshot != nil {
+			details["signalCountBefore"] = snapshot.Count
+		}
+		user.Report.AddEvent("user.cancel_attempt", chosen.uniqueTag, "cancel requested", details)
 	}
 	if err := user.CancelTask(ctx, chosen.uniqueTag); err != nil {
 		return false, err
 	}
-	if err := user.ExpectCancelled(ctx, chosen.uniqueTag, 20*time.Second); err != nil {
+	statusAfter, err := user.WaitForTask(ctx, chosen.taskID, 20*time.Second)
+	if err != nil {
 		return false, err
 	}
-	if err := user.ExpectSignalsStopped(ctx, chosen.taskID, 750*time.Millisecond); err != nil {
-		return false, err
+	if statusAfter == "cancelled" && snapshot != nil && snapshot.Count > 0 && user.Signals != nil {
+		if err := user.ExpectSignalsStopped(ctx, chosen.taskID, 750*time.Millisecond); err != nil {
+			return false, err
+		}
 	}
-	chosen.finalStatus = "cancelled"
+	chosen.finalStatus = statusAfter
 	chosen.controlState = "cancelled"
 	chosen.resumeAt = 0
 	state.userCancels++
@@ -493,6 +510,19 @@ func oldestChaosTask(tasks []*chaosTaskSlot) *chaosTaskSlot {
 		}
 	}
 	return oldest
+}
+
+func oldestDueCancelTask(tasks []*chaosTaskSlot) *chaosTaskSlot {
+	var chosen *chaosTaskSlot
+	for _, task := range tasks {
+		if task == nil {
+			continue
+		}
+		if chosen == nil || task.cancelAt.Before(chosen.cancelAt) || (task.cancelAt.Equal(chosen.cancelAt) && task.taskID < chosen.taskID) {
+			chosen = task
+		}
+	}
+	return chosen
 }
 
 func waitForRunningSignals(ctx context.Context, user *User, task *chaosTaskSlot, timeout time.Duration) (bool, *SignalSnapshot, error) {
@@ -839,6 +869,13 @@ func (s *chaosState) randomTaskByStatus(ctx context.Context, inspector *Inspecto
 		}
 	}
 	return nil, nil
+}
+
+func maxInt(a int, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func readChaosPositiveEnvInt(t *testing.T, key string, fallback int) int {

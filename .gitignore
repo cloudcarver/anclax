@@ -4,3 +4,4 @@ bin/*
 coverage.out
 coverage.html
 CURRENT_TASK.md
+.chaos-debug

@@ -7,8 +7,11 @@ UT_TIMEOUT ?= 6m
 DST_TIMEOUT ?= 90s
 SMOKE_TIMEOUT ?= 90s
 SMOKE_STRESS_TIMEOUT ?= 220s
+CHAOS_TIMEOUT ?= 60m
 
-.PHONY: dev
+ANCLAX_TASKCORE_CHAOS_ITERATIONS ?= 200
+
+.PHONY: dev chaos
 
 
 ###################################################
@@ -44,6 +47,9 @@ smoke:
 	GOCACHE=/tmp/go-cache go test -tags=smoke ./pkg/taskcore/e2e -run TestDSTTaskStoreScenariosStressSmoke -count=1 -v -timeout $(SMOKE_STRESS_TIMEOUT)
 
 smoke-worker: smoke
+
+chaos:
+	GOCACHE=/tmp/go-cache ANCLAX_TASKCORE_CHAOS_ITERATIONS=$(ANCLAX_TASKCORE_CHAOS_ITERATIONS) go test -tags=smoke ./pkg/taskcore/chaos -run TestContainerizedTaskcoreChaosSmoke -count=1 -v -timeout $(CHAOS_TIMEOUT)
 
 test-deterministic:
 	GOCACHE=/tmp/go-cache go run ./cmd/anclax gen
