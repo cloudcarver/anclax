@@ -1,10 +1,11 @@
 package main
 
 type OapiCodegenConfig struct {
-	Path    string `yaml:"path"`
-	Out     string `yaml:"out"`
-	Package string `yaml:"package"`
-	Config  any    `yaml:"config,omitempty"`
+	Path          string `yaml:"path"`
+	Out           string `yaml:"out"`
+	MiddlewareOut string `yaml:"middleware-out,omitempty"`
+	Package       string `yaml:"package"`
+	Config        any    `yaml:"config,omitempty"`
 }
 
 type WireConfig struct {

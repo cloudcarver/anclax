@@ -9,11 +9,10 @@ import (
 )
 
 var installMap = map[string]string{
-	OapiCodegen: "github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen",
-	Wire:        "github.com/google/wire/cmd/wire",
-	Sqlc:        "github.com/sqlc-dev/sqlc/cmd/sqlc",
-	Mockgen:     "go.uber.org/mock/mockgen",
-	Anclax:      "github.com/cloudcarver/anclax/cmd/anclax",
+	Wire:    "github.com/google/wire/cmd/wire",
+	Sqlc:    "github.com/sqlc-dev/sqlc/cmd/sqlc",
+	Mockgen: "go.uber.org/mock/mockgen",
+	Anclax:  "github.com/cloudcarver/anclax/cmd/anclax",
 }
 
 var installCmd = &cli.Command{

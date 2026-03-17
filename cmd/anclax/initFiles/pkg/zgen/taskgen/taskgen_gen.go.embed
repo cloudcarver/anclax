@@ -181,11 +181,11 @@ func (r *IncrementCounterParameters) Marshal() (json.RawMessage, error) {
 
 type ExecutorInterface interface { 
      // Increment the counter
-	ExecuteAutoIncrementCounter(ctx context.Context, params *AutoIncrementCounterParameters) error
+	ExecuteAutoIncrementCounter(ctx context.Context, task worker.Task, params *AutoIncrementCounterParameters) error
  
 
      // Increment the counter
-	ExecuteIncrementCounter(ctx context.Context, params *IncrementCounterParameters) error
+	ExecuteIncrementCounter(ctx context.Context, task worker.Task, params *IncrementCounterParameters) error
  
 }
 
@@ -205,9 +205,9 @@ func (f *TaskHandler) RegisterTaskHandler(handler worker.TaskHandler) {
 	f.externalTaskHandler = append(f.externalTaskHandler, handler)
 }
 
-func (f *TaskHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) error {
+func (f *TaskHandler) HandleTask(ctx context.Context, task worker.Task) error {
 	for _, handler := range f.externalTaskHandler {
-		if err := handler.HandleTask(ctx, spec); err != nil {
+		if err := handler.HandleTask(ctx, task); err != nil {
 			if errors.Is(err, worker.ErrUnknownTaskType) {
 				continue
 			}
@@ -216,23 +216,23 @@ func (f *TaskHandler) HandleTask(ctx context.Context, spec worker.TaskSpec) erro
 		return nil
 	}
 
-	switch spec.GetType() { 
+	switch task.GetType() { 
 	case AutoIncrementCounter:
 		var params AutoIncrementCounterParameters
-		if err := params.Parse(spec.GetPayload()); err != nil {
+		if err := params.Parse(task.GetPayload()); err != nil {
 			return fmt.Errorf("failed to parse AutoIncrementCounter parameters: %w", err)
 		}
-		return f.executor.ExecuteAutoIncrementCounter(ctx, &params)
+		return f.executor.ExecuteAutoIncrementCounter(ctx, task, &params)
 		
 	case IncrementCounter:
 		var params IncrementCounterParameters
-		if err := params.Parse(spec.GetPayload()); err != nil {
+		if err := params.Parse(task.GetPayload()); err != nil {
 			return fmt.Errorf("failed to parse IncrementCounter parameters: %w", err)
 		}
-		return f.executor.ExecuteIncrementCounter(ctx, &params)
+		return f.executor.ExecuteIncrementCounter(ctx, task, &params)
 		
 	default:
-		return errors.Wrapf(worker.ErrUnknownTaskType, "unknown task type: %s", spec.GetType())
+		return errors.Wrapf(worker.ErrUnknownTaskType, "unknown task type: %s", task.GetType())
 	}
 }
 

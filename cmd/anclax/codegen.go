@@ -8,9 +8,8 @@ import (
 
 	"github.com/cloudcarver/anclax"
 	dst_codegen "github.com/cloudcarver/anclax/lib/dst"
+	oapi_codegen "github.com/cloudcarver/anclax/pkg/codegen/oapi"
 	task_codegen "github.com/cloudcarver/anclax/pkg/codegen/task"
-	xware_codegen "github.com/cloudcarver/anclax/pkg/codegen/xware"
-	"github.com/oasdiff/yaml"
 	"github.com/pkg/errors"
 	"github.com/urfave/cli/v2"
 )
@@ -116,13 +115,6 @@ func genTaskHandler(workdir string, config *TaskHandlerConfig) error {
 		return errors.Wrap(err, "failed to create output directory")
 	}
 	return task_codegen.Generate(workdir, config.Package, config.Path, config.Out)
-}
-
-func genXware(workdir string, config *XwareConfig) error {
-	if err := os.MkdirAll(filepath.Dir(filepath.Join(workdir, config.Out)), 0755); err != nil {
-		return errors.Wrap(err, "failed to create output directory")
-	}
-	return xware_codegen.Generate(workdir, config.Package, config.Path, config.Out)
 }
 
 func genDST(workdir string, config *DSTConfig) error {
@@ -272,6 +264,9 @@ func codegen(configPath string, workdir string) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to parse config")
 	}
+	if err := normalizeConfig(config); err != nil {
+		return errors.Wrap(err, "failed to normalize config")
+	}
 
 	// pre-codegen
 	if err := preCodegen(config); err != nil {
@@ -293,12 +288,6 @@ func _codegen(config *Config, workdir string) error {
 	if config.OapiCodegen != nil {
 		if err := genOapi(workdir, config.OapiCodegen); err != nil {
 			return errors.Wrap(err, "failed to generate oapi-codegen")
-		}
-	}
-
-	if config.Xware != nil {
-		if err := genXware(workdir, config.Xware); err != nil {
-			return errors.Wrap(err, "failed to generate xware")
 		}
 	}
 
@@ -351,30 +340,33 @@ func command(name string) string {
 	return filepath.Join(storePath, binDir, name)
 }
 
+func normalizeConfig(config *Config) error {
+	if config.OapiCodegen == nil {
+		if config.Xware != nil {
+			return errors.New("xware requires oapi-codegen; migrate to oapi-codegen.middleware-out")
+		}
+		return nil
+	}
+
+	if config.OapiCodegen.MiddlewareOut == "" {
+		if config.Xware != nil && config.Xware.Out != "" {
+			config.OapiCodegen.MiddlewareOut = config.Xware.Out
+		} else {
+			config.OapiCodegen.MiddlewareOut = filepath.Join(filepath.Dir(config.OapiCodegen.Out), "scopes_extend_gen.go")
+		}
+	}
+
+	return nil
+}
+
 func genOapi(workdir string, config *OapiCodegenConfig) error {
-	if err := os.MkdirAll(filepath.Dir(filepath.Join(workdir, config.Out)), 0755); err != nil {
-		return errors.Wrap(err, "failed to create output directory")
-	}
-
-	var args []string
-	if config.Config != nil {
-		configPath := filepath.Join(storePath, "oapi-config.yaml")
-		yamlData, err := yaml.Marshal(config.Config)
-		if err != nil {
-			return errors.Wrap(err, "failed to marshal config")
-		}
-		if err := os.WriteFile(configPath, yamlData, 0644); err != nil {
-			return errors.Wrap(err, "failed to write config file")
-		}
-		args = append(args, "-config", configPath)
-	}
-	args = append(args, "-generate", "types,fiber,client", "-package", config.Package, "-o", config.Out, config.Path)
-
-	cmd := exec.Command(command("oapi-codegen"), args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Dir = workdir
-	return cmd.Run()
+	return oapi_codegen.Generate(workdir, oapi_codegen.Config{
+		Path:          config.Path,
+		Out:           config.Out,
+		MiddlewareOut: config.MiddlewareOut,
+		Package:       config.Package,
+		RawConfig:     config.Config,
+	})
 }
 
 func genWire(workdir string, config *WireConfig) error {
