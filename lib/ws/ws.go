@@ -11,8 +11,8 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/cloudcarver/anclax/pkg/logger"
-	"github.com/gofiber/contrib/websocket"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/contrib/v3/websocket"
+	"github.com/gofiber/fiber/v3"
 	"go.uber.org/zap"
 )
 
@@ -227,7 +227,7 @@ func New(ctrlCtx context.Context, handler Handler, cfg *WsCfg) *WebsocketControl
 }
 
 func (w *WebsocketController) Mount(app *fiber.App) {
-	app.Use(w.wsPath, func(c *fiber.Ctx) error {
+	app.Use(w.wsPath, func(c fiber.Ctx) error {
 		if websocket.IsWebSocketUpgrade(c) {
 			c.Locals("allowed", true)
 			c.Locals("ws_request_id", uuid.New().String())

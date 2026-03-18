@@ -12,7 +12,7 @@ import (
 	"github.com/cloudcarver/anclax/pkg/macaroons"
 	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -100,7 +100,7 @@ func TestAuth_Authfunc(t *testing.T) {
 			})
 
 			// Add a test route with response body
-			app.Use(func(c *fiber.Ctx) error {
+			app.Use(func(c fiber.Ctx) error {
 				// Call auth.Authfunc
 				err := auth.Authfunc(c)
 				if err != nil {
@@ -442,13 +442,13 @@ func TestGetUserID(t *testing.T) {
 
 	testCases := []struct {
 		name           string
-		setupContext   func(*fiber.Ctx)
+		setupContext   func(fiber.Ctx)
 		expectedUserID int32
 		expectedError  error
 	}{
 		{
 			name: "successful user ID retrieval",
-			setupContext: func(c *fiber.Ctx) {
+			setupContext: func(c fiber.Ctx) {
 				c.Locals(ContextKeyUserID, userID)
 			},
 			expectedUserID: userID,
@@ -456,7 +456,7 @@ func TestGetUserID(t *testing.T) {
 		},
 		{
 			name: "user ID not in context",
-			setupContext: func(c *fiber.Ctx) {
+			setupContext: func(c fiber.Ctx) {
 				// Do not set user ID
 			},
 			expectedUserID: 0,
@@ -464,7 +464,7 @@ func TestGetUserID(t *testing.T) {
 		},
 		{
 			name: "user ID wrong type",
-			setupContext: func(c *fiber.Ctx) {
+			setupContext: func(c fiber.Ctx) {
 				c.Locals(ContextKeyUserID, "not an int32")
 			},
 			expectedUserID: 0,
@@ -478,7 +478,7 @@ func TestGetUserID(t *testing.T) {
 			app := fiber.New()
 
 			// Add a test route
-			app.Get("/test", func(c *fiber.Ctx) error {
+			app.Get("/test", func(c fiber.Ctx) error {
 				// Set up context
 				tc.setupContext(c)
 
@@ -512,13 +512,13 @@ func TestGetOrgID(t *testing.T) {
 
 	testCases := []struct {
 		name          string
-		setupContext  func(*fiber.Ctx)
+		setupContext  func(fiber.Ctx)
 		expectedOrgID int32
 		expectedError error
 	}{
 		{
 			name: "successful org ID retrieval",
-			setupContext: func(c *fiber.Ctx) {
+			setupContext: func(c fiber.Ctx) {
 				c.Locals(ContextKeyOrgID, orgID)
 			},
 			expectedOrgID: orgID,
@@ -526,7 +526,7 @@ func TestGetOrgID(t *testing.T) {
 		},
 		{
 			name: "org ID not in context",
-			setupContext: func(c *fiber.Ctx) {
+			setupContext: func(c fiber.Ctx) {
 				// Do not set organization ID
 			},
 			expectedOrgID: 0,
@@ -534,7 +534,7 @@ func TestGetOrgID(t *testing.T) {
 		},
 		{
 			name: "org ID wrong type",
-			setupContext: func(c *fiber.Ctx) {
+			setupContext: func(c fiber.Ctx) {
 				c.Locals(ContextKeyOrgID, "not an int32")
 			},
 			expectedOrgID: 0,
@@ -548,7 +548,7 @@ func TestGetOrgID(t *testing.T) {
 			app := fiber.New()
 
 			// Add a test route
-			app.Get("/test", func(c *fiber.Ctx) error {
+			app.Get("/test", func(c fiber.Ctx) error {
 				// Set up context
 				tc.setupContext(c)
 

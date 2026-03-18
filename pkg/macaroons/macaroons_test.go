@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/cloudcarver/anclax/pkg/macaroons/store"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	gomock "go.uber.org/mock/gomock"
@@ -20,7 +20,7 @@ func (c *TestCaveat) Type() string {
 	return "test"
 }
 
-func (c *TestCaveat) Validate(*fiber.Ctx) error {
+func (c *TestCaveat) Validate(fiber.Ctx) error {
 	return nil
 }
 

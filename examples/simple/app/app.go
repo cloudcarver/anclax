@@ -12,7 +12,7 @@ import (
 	anclax_config "github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	anclax_wire "github.com/cloudcarver/anclax/wire"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 // This will run before the application starts.

@@ -13,10 +13,10 @@ import (
 	"github.com/cloudcarver/anclax/pkg/logger"
 	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/cors"
-	"github.com/gofiber/fiber/v2/middleware/recover"
-	"github.com/gofiber/fiber/v2/middleware/requestid"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/cors"
+	"github.com/gofiber/fiber/v3/middleware/recover"
+	"github.com/gofiber/fiber/v3/middleware/requestid"
 	"go.uber.org/zap"
 )
 
@@ -24,7 +24,7 @@ var log = logger.NewLogAgent("server")
 
 const ContextKeyDisableBodyLog = "anclax_disable_body_log"
 
-func DisableBodyLog(c *fiber.Ctx) {
+func DisableBodyLog(c fiber.Ctx) {
 	c.Locals(ContextKeyDisableBodyLog, true)
 }
 
@@ -38,8 +38,8 @@ type Server struct {
 	validator       apigen.Validator
 	wsc             *ws.WebsocketController
 	libCfg          *config.LibConfig
-	skipLogRequest  func(c *fiber.Ctx) bool
-	skipLogResponse func(c *fiber.Ctx) bool
+	skipLogRequest  func(c fiber.Ctx) bool
+	skipLogResponse func(c fiber.Ctx) bool
 }
 
 func NewServer(
@@ -87,10 +87,10 @@ func NewServer(
 	if cfg.RequestTimeout != nil {
 		middlewares = append(
 			middlewares,
-			func(c *fiber.Ctx) error {
+			func(c fiber.Ctx) error {
 				ctx, cancel := context.WithTimeout(c.Context(), *cfg.RequestTimeout)
 				defer cancel()
-				c.SetUserContext(ctx)
+				c.SetContext(ctx)
 				return c.Next()
 			},
 		)
@@ -101,34 +101,34 @@ func NewServer(
 		Middlewares: middlewares,
 	})
 
-	s.skipLogRequest = func(c *fiber.Ctx) bool { return false }
-	s.skipLogResponse = func(c *fiber.Ctx) bool { return false }
+	s.skipLogRequest = func(c fiber.Ctx) bool { return false }
+	s.skipLogResponse = func(c fiber.Ctx) bool { return false }
 
 	if libCfg.Log.RequestPathPrefix != nil && libCfg.Log.HealthCheckPath != nil {
 		var (
 			prefix     = *libCfg.Log.RequestPathPrefix
 			healthPath = *libCfg.Log.HealthCheckPath
 		)
-		s.skipLogRequest = func(c *fiber.Ctx) bool {
+		s.skipLogRequest = func(c fiber.Ctx) bool {
 			return !strings.HasPrefix(c.Path(), prefix) || c.Path() == healthPath
 		}
-		s.skipLogResponse = func(c *fiber.Ctx) bool {
+		s.skipLogResponse = func(c fiber.Ctx) bool {
 			return !strings.HasPrefix(c.Path(), prefix) || (c.Path() == healthPath && c.Response().StatusCode() < 400)
 		}
 	} else if libCfg.Log.RequestPathPrefix != nil && libCfg.Log.HealthCheckPath == nil {
 		var prefix = *libCfg.Log.RequestPathPrefix
-		s.skipLogRequest = func(c *fiber.Ctx) bool {
+		s.skipLogRequest = func(c fiber.Ctx) bool {
 			return !strings.HasPrefix(c.Path(), prefix)
 		}
-		s.skipLogResponse = func(c *fiber.Ctx) bool {
+		s.skipLogResponse = func(c fiber.Ctx) bool {
 			return !strings.HasPrefix(c.Path(), prefix)
 		}
 	} else if libCfg.Log.RequestPathPrefix == nil && libCfg.Log.HealthCheckPath != nil {
 		var healthPath = *libCfg.Log.HealthCheckPath
-		s.skipLogRequest = func(c *fiber.Ctx) bool {
+		s.skipLogRequest = func(c fiber.Ctx) bool {
 			return c.Path() == healthPath
 		}
-		s.skipLogResponse = func(c *fiber.Ctx) bool {
+		s.skipLogResponse = func(c fiber.Ctx) bool {
 			return c.Path() == healthPath && c.Response().StatusCode() < 400
 		}
 	}
@@ -148,7 +148,7 @@ func (s *Server) registerMiddleware() {
 	}
 
 	s.app.Use(requestid.New())
-	s.app.Use(func(c *fiber.Ctx) error {
+	s.app.Use(func(c fiber.Ctx) error {
 		// log request
 		start := time.Now()
 		if !s.skipLogRequest(c) {
@@ -156,7 +156,7 @@ func (s *Server) registerMiddleware() {
 				"request",
 				zap.String("method", c.Method()),
 				zap.String("path", c.Path()),
-				zap.String("request-id", c.Locals(requestid.ConfigDefault.ContextKey).(string)),
+				zap.String("request-id", requestid.FromContext(c)),
 			)
 		}
 
@@ -170,12 +170,12 @@ func (s *Server) registerMiddleware() {
 				zap.String("method", c.Method()),
 				zap.String("path", c.Path()),
 				zap.String("token", fmt.Sprintf("%v", c.Get("Authorization"))),
-				zap.String("request-id", c.Locals(requestid.ConfigDefault.ContextKey).(string)),
+				zap.String("request-id", requestid.FromContext(c)),
 				zap.Float32("latency-ms", float32(end.Sub(start).Milliseconds())),
 				zap.Error(err),
 			}
 			ct := string(c.Response().Header.ContentType())
-			if ct != fiber.MIMEOctetStream && ct != "text/event-stream" && !c.Locals(ContextKeyDisableBodyLog, false).(bool) {
+			if ct != fiber.MIMEOctetStream && ct != "text/event-stream" && !fiber.Locals[bool](c, ContextKeyDisableBodyLog) {
 				fields = append(fields, zap.String("body", utils.TruncateString(string(c.Response().Body()), 512)))
 			}
 			log.Info(

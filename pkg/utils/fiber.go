@@ -4,15 +4,15 @@ import (
 	"fmt"
 
 	"github.com/cloudcarver/anclax/pkg/logger"
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/requestid"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/requestid"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
 var log = logger.NewLogAgent("fiber")
 
-func ErrorHandler(c *fiber.Ctx, err error) error {
+func ErrorHandler(c fiber.Ctx, err error) error {
 	// default 500
 	var code = fiber.StatusInternalServerError
 
@@ -25,7 +25,7 @@ func ErrorHandler(c *fiber.Ctx, err error) error {
 	// Set Content-Type: text/plain; charset=utf-8
 	c.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
 
-	rid := c.Locals(requestid.ConfigDefault.ContextKey)
+	rid := requestid.FromContext(c)
 
 	if code == fiber.StatusInternalServerError {
 		log.Info(fmt.Sprintf("unexpected error, request-id: %v, err: %v", rid, err), zap.Error(err), zap.String("path", c.Path()))

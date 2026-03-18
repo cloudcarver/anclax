@@ -4,7 +4,7 @@ import (
 	"myexampleapp/pkg/zgen/apigen"
 
 	"github.com/cloudcarver/anclax/pkg/auth"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 type Validator struct {
@@ -15,18 +15,18 @@ func NewValidator(auth auth.AuthInterface) apigen.Validator {
 	return &Validator{auth}
 }
 
-func (v *Validator) AuthFunc(c *fiber.Ctx) error {
+func (v *Validator) AuthFunc(c fiber.Ctx) error {
 	return v.auth.Authfunc(c)
 }
 
-func (v *Validator) PreValidate(c *fiber.Ctx) error {
+func (v *Validator) PreValidate(c fiber.Ctx) error {
 	return nil
 }
 
-func (v *Validator) PostValidate(c *fiber.Ctx) error {
+func (v *Validator) PostValidate(c fiber.Ctx) error {
 	return nil
 }
 
-func (v *Validator) OperationPermit(c *fiber.Ctx, operationID string) error {
+func (v *Validator) OperationPermit(c fiber.Ctx, operationID string) error {
 	return nil
 }
