@@ -3,7 +3,7 @@ package asynctask
 import (
 	"context"
 
-	"myexampleapp/pkg/zcore/model"
+	"myexampleapp/pkg/model"
 	counter "myexampleapp/pkg/zgen/schemas/counter"
 	"myexampleapp/pkg/zgen/taskgen"
 

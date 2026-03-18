@@ -2,6 +2,8 @@ module myexampleapp
 
 go 1.25.6
 
+replace github.com/cloudcarver/anclax => ../..
+
 require (
 	github.com/cloudcarver/anclax v0.9.1-0.20260316180959-f92f42ff3f4c
 	github.com/gofiber/fiber/v2 v2.52.12
@@ -14,7 +16,6 @@ require (
 
 require (
 	github.com/andybalholm/brotli v1.1.1 // indirect
-	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/fasthttp/websocket v1.5.8 // indirect
@@ -31,7 +32,6 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/oapi-codegen/runtime v1.1.1 // indirect
 	github.com/prometheus/client_golang v1.22.0 // indirect
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.62.0 // indirect

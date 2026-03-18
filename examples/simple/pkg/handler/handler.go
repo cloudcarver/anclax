@@ -1,7 +1,7 @@
 package handler
 
 import (
-	"myexampleapp/pkg/zcore/model"
+	"myexampleapp/pkg/model"
 	"myexampleapp/pkg/zgen/apigen"
 	counter "myexampleapp/pkg/zgen/schemas/counter"
 	"myexampleapp/pkg/zgen/taskgen"

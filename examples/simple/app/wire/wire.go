@@ -4,13 +4,11 @@
 package wire
 
 import (
-	"myexampleapp/pkg"
+	"myexampleapp/app"
 	"myexampleapp/pkg/asynctask"
 	"myexampleapp/pkg/config"
 	"myexampleapp/pkg/handler"
-	"myexampleapp/pkg/zcore/app"
-	"myexampleapp/pkg/zcore/injection"
-	"myexampleapp/pkg/zcore/model"
+	"myexampleapp/pkg/model"
 	"myexampleapp/pkg/zgen/taskgen"
 
 	"github.com/google/wire"
@@ -18,8 +16,8 @@ import (
 
 func InitApp() (*app.App, error) {
 	wire.Build(
-		injection.InjectAuth,
-		injection.InjectTaskStore,
+		app.InjectAuth,
+		app.InjectTaskStore,
 		handler.NewHandler,
 		handler.NewValidator,
 		taskgen.NewTaskHandler,
@@ -27,9 +25,8 @@ func InitApp() (*app.App, error) {
 		asynctask.NewExecutor,
 		model.NewModel,
 		config.NewConfig,
-		pkg.ProvidePluginMeta,
-		pkg.Init,
-		pkg.InitAnclaxApplication,
+		app.Init,
+		app.InitAnclaxApplication,
 		app.NewPlugin,
 	)
 	return nil, nil

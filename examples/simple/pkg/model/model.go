@@ -22,6 +22,8 @@ import (
 	"github.com/pkg/errors"
 )
 
+const migrationTable = "root_app_migrations"
+
 var log = logger.NewLogAgent("model")
 
 var (
@@ -87,7 +89,7 @@ func (m *Model) RunTransaction(ctx context.Context, f func(model ModelInterface)
 	})
 }
 
-func NewModel(cfg *config.Config, meta anclaxapp.PluginMeta, app *anclaxapp.Application) (ModelInterface, error) {
+func NewModel(cfg *config.Config, app *anclaxapp.Application) (ModelInterface, error) {
 	anclaxCfg := cfg.Anclax
 
 	var dsn string
@@ -162,7 +164,7 @@ func NewModel(cfg *config.Config, meta anclaxapp.PluginMeta, app *anclaxapp.Appl
 	}
 	dsnURL.Scheme = "pgx5"
 	dsnQuery := dsnURL.Query()
-	dsnQuery.Add("x-migrations-table", fmt.Sprintf("%s_migrations", meta.Namespace))
+	dsnQuery.Add("x-migrations-table", migrationTable)
 	dsnURL.RawQuery = dsnQuery.Encode()
 
 	m, err := migrate.NewWithSourceInstance("iofs", d, dsnURL.String())
