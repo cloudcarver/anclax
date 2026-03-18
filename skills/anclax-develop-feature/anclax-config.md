@@ -5,9 +5,7 @@ Use `anclax.yaml` as the source of truth for generator inputs and outputs. Check
 
 ## What to look for
 
-- `oapi-codegen.path`/`out`/`package`: OpenAPI input and generated types.
-- `oapi-codegen.middleware-out`: generated middleware extension output for `x-functions`/`x-check-rules`.
-- `oapi-codegen.config`: Uses upstream oapi-codegen configuration shape inside Anclax's built-in OpenAPI generator.
+- `oapi-codegen.path`/`out`/`package`: OpenAPI input and generated types plus generated middleware extensions in the same file.
 - `task-handler.path`/`out`/`package`: async task definitions and runner generation.
 - `sqlc.path`: database query generation config.
 - `wire.path`: DI graph location.

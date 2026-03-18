@@ -343,17 +343,9 @@ func command(name string) string {
 func normalizeConfig(config *Config) error {
 	if config.OapiCodegen == nil {
 		if config.Xware != nil {
-			return errors.New("xware requires oapi-codegen; migrate to oapi-codegen.middleware-out")
+			return errors.New("xware requires oapi-codegen; merge middleware into oapi-codegen.out")
 		}
 		return nil
-	}
-
-	if config.OapiCodegen.MiddlewareOut == "" {
-		if config.Xware != nil && config.Xware.Out != "" {
-			config.OapiCodegen.MiddlewareOut = config.Xware.Out
-		} else {
-			config.OapiCodegen.MiddlewareOut = filepath.Join(filepath.Dir(config.OapiCodegen.Out), "scopes_extend_gen.go")
-		}
 	}
 
 	return nil
@@ -361,11 +353,9 @@ func normalizeConfig(config *Config) error {
 
 func genOapi(workdir string, config *OapiCodegenConfig) error {
 	return oapi_codegen.Generate(workdir, oapi_codegen.Config{
-		Path:          config.Path,
-		Out:           config.Out,
-		MiddlewareOut: config.MiddlewareOut,
-		Package:       config.Package,
-		RawConfig:     config.Config,
+		Path:    config.Path,
+		Out:     config.Out,
+		Package: config.Package,
 	})
 }
 

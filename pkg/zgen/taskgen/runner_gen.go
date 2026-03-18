@@ -664,6 +664,9 @@ type DeleteOpaqueKeyParameters struct {
 
 
 type UpdateWorkerRuntimeConfigParameters struct { 
+    // Default weight for unlabeled task group
+	DefaultWeight *int32 `json:"defaultWeight" yaml:"defaultWeight"`
+
     // Label names for weighted groups
 	Labels []string `json:"labels" yaml:"labels"`
 
@@ -681,9 +684,6 @@ type UpdateWorkerRuntimeConfigParameters struct {
 
     // Maximum percentage of strict-priority slots (0-100)
 	MaxStrictPercentage *int32 `json:"maxStrictPercentage" yaml:"maxStrictPercentage"`
-
-    // Default weight for unlabeled task group
-	DefaultWeight *int32 `json:"defaultWeight" yaml:"defaultWeight"`
 }
 
 
@@ -705,9 +705,6 @@ type InterruptTaskParameters struct {
 
 
 type BroadcastUpdateWorkerRuntimeConfigParameters struct { 
-    // Default weight for unlabeled task group
-	DefaultWeight *int32 `json:"defaultWeight" yaml:"defaultWeight"`
-
     // Label names for weighted groups
 	Labels []string `json:"labels" yaml:"labels"`
 
@@ -725,6 +722,9 @@ type BroadcastUpdateWorkerRuntimeConfigParameters struct {
 
     // Maximum percentage of strict-priority slots (0-100)
 	MaxStrictPercentage *int32 `json:"maxStrictPercentage" yaml:"maxStrictPercentage"`
+
+    // Default weight for unlabeled task group
+	DefaultWeight *int32 `json:"defaultWeight" yaml:"defaultWeight"`
 }
 
 type ApplyWorkerRuntimeConfigToWorkerParameters struct { 
@@ -769,17 +769,17 @@ type CancelTaskOnWorkerParameters struct {
 
 
 type BroadcastPauseTaskParameters struct { 
-    // Correlation ID for this broadcast command
-	RequestID *string `json:"requestID" yaml:"requestID"`
-
-    // Task IDs to interrupt on each target worker
-	TaskIDs []int32 `json:"taskIDs" yaml:"taskIDs"`
-
     // Poll interval used while waiting worker ack tasks
 	AckPollInterval *string `json:"ackPollInterval" yaml:"ackPollInterval"`
 
     // Fixed snapshot of worker IDs targeted by this broadcast request
 	WorkerIDs []string `json:"workerIDs" yaml:"workerIDs"`
+
+    // Correlation ID for this broadcast command
+	RequestID *string `json:"requestID" yaml:"requestID"`
+
+    // Task IDs to interrupt on each target worker
+	TaskIDs []int32 `json:"taskIDs" yaml:"taskIDs"`
 }
 
 
@@ -795,6 +795,9 @@ type PauseTaskOnWorkerParameters struct {
 }
 
 type StressProbeParameters struct { 
+    // Optional interval in milliseconds between signal emissions while the task is running
+	SignalIntervalMs *int32 `json:"signalIntervalMs" yaml:"signalIntervalMs"`
+
     // Logical task id for stress-run metrics correlation
 	JobID int64 `json:"jobID" yaml:"jobID"`
 
@@ -806,9 +809,6 @@ type StressProbeParameters struct {
 
     // Optional signal service base URL used by running tasks to emit observable heartbeats
 	SignalBaseURL *string `json:"signalBaseURL" yaml:"signalBaseURL"`
-
-    // Optional interval in milliseconds between signal emissions while the task is running
-	SignalIntervalMs *int32 `json:"signalIntervalMs" yaml:"signalIntervalMs"`
 }
 
 type CancelObservableProbeParameters struct { 

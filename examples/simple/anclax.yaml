@@ -6,7 +6,6 @@ externals:
 oapi-codegen:
   path: api/v1.yaml
   out: pkg/zgen/apigen/spec_gen.go
-  middleware-out: pkg/zgen/apigen/scopes_extend_gen.go
   package: apigen
 
 wire:

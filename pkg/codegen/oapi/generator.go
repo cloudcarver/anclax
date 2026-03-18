@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"go/format"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -12,33 +13,13 @@ import (
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/oapi-codegen/oapi-codegen/v2/pkg/util"
 	"github.com/pkg/errors"
-	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
-	Path          string
-	Out           string
-	MiddlewareOut string
-	Package       string
-	RawConfig     any
-}
-
-type rawConfig struct {
-	OutputOptions struct {
-		InitialismOverrides bool `yaml:"initialism-overrides,omitempty"`
-		Overlay             struct {
-			Path   string `yaml:"path,omitempty"`
-			Strict *bool  `yaml:"strict,omitempty"`
-		} `yaml:"overlay,omitempty"`
-	} `yaml:"output-options,omitempty"`
-}
-
-type generatorOptions struct {
-	InitialismOverrides bool
-	OverlayPath         string
-	OverlayStrict       bool
+	Path    string
+	Out     string
+	Package string
 }
 
 type document struct {
@@ -186,20 +167,12 @@ func Generate(workdir string, config Config) error {
 	if config.Package == "" {
 		return errors.New("oapi-codegen package is required")
 	}
-	if config.MiddlewareOut == "" {
-		config.MiddlewareOut = defaultMiddlewareOut(config.Out)
-	}
-
-	opts, err := parseConfig(config.RawConfig)
-	if err != nil {
-		return errors.Wrap(err, "failed to parse oapi config")
-	}
 
 	specPath := config.Path
 	if !filepath.IsAbs(specPath) {
 		specPath = filepath.Join(workdir, specPath)
 	}
-	swagger, err := loadSwagger(workdir, specPath, opts)
+	swagger, err := loadSwagger(specPath)
 	if err != nil {
 		return errors.Wrap(err, "failed to load OpenAPI spec")
 	}
@@ -217,48 +190,21 @@ func Generate(workdir string, config Config) error {
 		return errors.Wrap(err, "failed to write OpenAPI output")
 	}
 
-	scopeCode, err := renderMiddleware(doc)
-	if err != nil {
-		return errors.Wrap(err, "failed to render middleware extensions")
-	}
-	if err := writeFile(workdir, config.MiddlewareOut, scopeCode); err != nil {
-		return errors.Wrap(err, "failed to write middleware extensions")
-	}
-
 	return nil
 }
 
-func parseConfig(raw any) (generatorOptions, error) {
-	opts := generatorOptions{OverlayStrict: true}
-	if raw == nil {
-		return opts, nil
-	}
+func loadSwagger(specPath string) (*openapi3.T, error) {
+	loader := openapi3.NewLoader()
+	loader.IsExternalRefsAllowed = true
 
-	var cfg rawConfig
-	buf, err := yaml.Marshal(raw)
+	doc, err := loader.LoadFromFile(specPath)
 	if err != nil {
-		return opts, err
+		return nil, err
 	}
-	if err := yaml.Unmarshal(buf, &cfg); err != nil {
-		return opts, err
+	if err := loader.ResolveRefsIn(doc, &url.URL{}); err != nil {
+		return nil, err
 	}
-	opts.InitialismOverrides = cfg.OutputOptions.InitialismOverrides
-	opts.OverlayPath = cfg.OutputOptions.Overlay.Path
-	if cfg.OutputOptions.Overlay.Strict != nil {
-		opts.OverlayStrict = *cfg.OutputOptions.Overlay.Strict
-	}
-	return opts, nil
-}
-
-func loadSwagger(workdir, specPath string, opts generatorOptions) (*openapi3.T, error) {
-	overlayPath := opts.OverlayPath
-	if overlayPath != "" && !filepath.IsAbs(overlayPath) {
-		overlayPath = filepath.Join(workdir, overlayPath)
-	}
-	return util.LoadSwaggerWithOverlay(specPath, util.LoadSwaggerWithOverlayOpts{
-		Path:   overlayPath,
-		Strict: opts.OverlayStrict,
-	})
+	return doc, nil
 }
 
 func buildDocument(spec *openapi3.T, packageName string) (*document, error) {
@@ -464,7 +410,7 @@ func buildOperation(path string, pathItem *openapi3.PathItem, method string, op 
 }
 
 func renderSpec(doc *document) (string, error) {
-	imports := specImports(doc)
+	imports := combinedImports(doc)
 	var b strings.Builder
 	b.WriteString("// Package ")
 	b.WriteString(doc.PackageName)
@@ -542,6 +488,7 @@ func renderSpec(doc *document) (string, error) {
 
 	renderClient(&b, doc)
 	renderServer(&b, doc)
+	renderMiddlewareDefinitions(&b, doc)
 
 	formatted, err := format.Source([]byte(b.String()))
 	if err != nil {
@@ -550,14 +497,7 @@ func renderSpec(doc *document) (string, error) {
 	return string(formatted), nil
 }
 
-func renderMiddleware(doc *document) (string, error) {
-	imports := scopeImports(doc)
-	var b strings.Builder
-	b.WriteString("package ")
-	b.WriteString(doc.PackageName)
-	b.WriteString("\n\n")
-	renderImports(&b, imports)
-
+func renderMiddlewareDefinitions(b *strings.Builder, doc *document) {
 	b.WriteString("type Validator interface {\n")
 	b.WriteString("\t// AuthFunc is called before the request is processed. The response will be 401 if the auth fails.\n")
 	b.WriteString("\tAuthFunc(*fiber.Ctx) error\n\n")
@@ -671,12 +611,6 @@ func renderMiddleware(doc *document) (string, error) {
 		b.WriteString(")\n")
 		b.WriteString("}\n\n")
 	}
-
-	formatted, err := format.Source([]byte(b.String()))
-	if err != nil {
-		return "", errors.Wrap(err, "failed to format generated middleware code")
-	}
-	return string(formatted), nil
 }
 
 func renderSchema(b *strings.Builder, schema schemaDef) {
@@ -1402,9 +1336,10 @@ func specImports(doc *document) []string {
 	return sortedImports(imports)
 }
 
-func scopeImports(doc *document) []string {
-	imports := map[string]struct{}{
-		"github.com/gofiber/fiber/v2": {},
+func combinedImports(doc *document) []string {
+	imports := map[string]struct{}{}
+	for _, imp := range specImports(doc) {
+		imports[imp] = struct{}{}
 	}
 	for imp := range doc.ScopeTypeImports {
 		imports[imp] = struct{}{}
@@ -1443,10 +1378,6 @@ func writeFile(workdir, path, content string) error {
 		return err
 	}
 	return os.WriteFile(fullPath, []byte(content), 0644)
-}
-
-func defaultMiddlewareOut(out string) string {
-	return filepath.Join(filepath.Dir(out), "scopes_extend_gen.go")
 }
 
 func parseXCheckRules(doc *document, spec *openapi3.T, enumMap map[string]*enumDef) error {
