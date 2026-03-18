@@ -78,9 +78,22 @@ Anclax helps you build quickly while staying scalable and production‑ready.
 - **Stateless application nodes**: HTTP servers are stateless and horizontally scalable; you can run multiple replicas without coordination concerns.
 - **Task queue as integration fabric**: Use async tasks to decouple modules. For example, when a payment completes, enqueue an `OrderFinished` task and do any factory‑module inserts in its handler—no factory logic inside the payment module.
 - **Built‑in worker, flexible deployment**: Anclax includes an async task worker. Run it in‑process, as separate long‑running workers, or disable it for serverless HTTP (e.g., AWS Lambda) while keeping workers on regular servers.
-- **Monolith, not microservices**: Anclax favors a pragmatic, scalable monolith and is not aimed at multi‑million QPS microservice fleets.
+- **Modular apps, flexible service boundaries**: Anclax works well for modular monoliths and multi-service repositories. You can share modules in one codebase and split apps, APIs, and data layers only where it improves ownership and clarity. It is not aimed at ultra-large microservice fleets with fully independent polyglot infrastructure.
 
 These choices maximize early velocity and give you a clear, reliable path to scale with confidence.
+
+## Organizing multiple apps/services 🗂️
+
+Anclax can host one app or multiple service entrypoints in the same repository.
+
+- **`app/` for app bootstrap**: Keep each app's startup logic in `app/<service>/app.go`, expose framework-managed dependencies in `app/<service>/injection.go`, and keep that app's Wire graph under `app/<service>/wire/`.
+- **`pkg/` for shared modules**: Put reusable modules in `pkg/` so multiple apps can share business logic, helpers, and integrations.
+- **Shared model by default**: Most repos can share one top-level `sql/` directory and one `pkg/model` package across apps.
+- **Service-specific model when needed**: If one app needs isolated queries, migrations, or stronger ownership boundaries, give it its own `sql/` folder and model package under `app/<service>/`. Use a unique migration table name so different migration sets never conflict.
+- **Per-app APIs and tasks**: Each app can own its own OpenAPI spec, task spec, handlers, and async task executor. Add matching `oapi-codegen`, `task-handler`, `wire`, and `sqlc` entries in `anclax.yaml`.
+- **Shared schemas**: Use the `schemas` feature in `anclax.yaml` to reuse schema definitions across multiple apps and specs.
+
+This lets you start simple, share code aggressively, and introduce service boundaries only where they are actually useful.
 
 ## Hands-on: try it now 🧑‍💻
 

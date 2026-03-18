@@ -89,4 +89,4 @@ Define queries in `sql/queries`; sqlc generates types and interfaces for these q
 SELECT * FROM helps WHERE content ILIKE '%' || $1 || '%';
 ```
 
-Check `sqlc.yaml` to see where generated code is located, then run `anclax gen` after spec/SQL changes.
+Check the matching `sqlc` entry in `anclax.yaml` (for example `- path: dev/sqlc.yaml`) to see which sqlc config drives generation, then run `anclax gen` after spec/SQL changes.

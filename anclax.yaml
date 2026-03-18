@@ -15,17 +15,17 @@ schemas:
   output: pkg/zgen/schemas
 
 oapi-codegen:
-  path: api/v1.yaml
-  out: pkg/zgen/apigen/spec_gen.go
-  package: apigen
+  - path: api/v1.yaml
+    out: pkg/zgen/apigen/spec_gen.go
+    package: apigen
 
 wire:
-  path: ./wire
+  - path: ./wire
 
 task-handler:
-  path: api/tasks.yaml
-  package: taskgen
-  out: pkg/zgen/taskgen/runner_gen.go
+  - path: api/tasks.yaml
+    package: taskgen
+    out: pkg/zgen/taskgen/runner_gen.go
 
 # DST generation is built into `anclax gen` (no separate external tool entry needed).
 dst:
@@ -37,7 +37,7 @@ dst:
     package: taskcoredtmtest
 
 sqlc:
-  path: dev/sqlc.yaml
+  - path: dev/sqlc.yaml
 
 mockgen:
   files:

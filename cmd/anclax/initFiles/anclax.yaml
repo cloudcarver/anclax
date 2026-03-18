@@ -8,25 +8,25 @@ schemas:
   output: pkg/zgen/schemas
 
 oapi-codegen:
-  path: api/v1.yaml
-  out: pkg/zgen/apigen/spec_gen.go
-  package: apigen
+  - path: api/v1.yaml
+    out: pkg/zgen/apigen/spec_gen.go
+    package: apigen
 
 wire:
-  path: ./wire
+  - path: ./app/wire
 
 task-handler:
-  path: api/tasks.yaml
-  package: taskgen
-  out: pkg/zgen/taskgen/taskgen_gen.go
+  - path: api/tasks.yaml
+    package: taskgen
+    out: pkg/zgen/taskgen/taskgen_gen.go
 
 sqlc:
-  path: sql/sqlc.yaml
+  - path: sql/sqlc.yaml
 
 mockgen:
   files:
-    - source: pkg/zcore/model/model.go
-      destination: pkg/zcore/model/mock_gen.go
+    - source: pkg/model/model.go
+      destination: pkg/model/mock_gen.go
       package: model
     - source: pkg/zgen/taskgen/taskgen_gen.go
       destination: pkg/zgen/taskgen/mock_gen.go

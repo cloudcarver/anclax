@@ -2,7 +2,7 @@
 
 ## Feature Development
 
-This the official repo of the anclax framework. The anclax framework is also built on top of the anclax framework. Check anclax-develop-feature skill for more details.
+This the official repo of the anclax framework. The anclax framework is also built on top of the anclax framework. Check `skills/anclax-develop-feature/` for feature work, including multi-app / service-oriented repo layouts.
 
 Internal docs can be found in the `docs` folder.
 

@@ -22,7 +22,7 @@ Check in this order when debugging or adding features:
 
 ## Define tasks
 
-`api/tasks.yaml` is the source of truth. Parameters follow JSON Schema.
+The task spec configured under `task-handler` in `anclax.yaml` is the source of truth (commonly `api/tasks.yaml`). Parameters follow JSON Schema.
 
 ```yaml
 tasks:
@@ -53,7 +53,7 @@ Notes:
 
 ## Generate code
 
-Run `anclax gen` after task changes. Generated code lives in `pkg/zgen/taskgen`.
+Run `anclax gen` after task changes. Generated code is written to the matching `task-handler` entry's `out` path, commonly under `pkg/zgen/taskgen`.
 
 ## Implement the executor
 
@@ -180,7 +180,7 @@ Worker config keys:
 - `worker.workerId`
 
 Task labels:
-- Add `labels` to `api/tasks.yaml` task definitions.
+- Add `labels` to task definitions in the task spec configured under `task-handler` (commonly `api/tasks.yaml`).
 - Claiming uses **all-match** semantics for business labels: every task label must exist on the worker.
 - Unlabeled tasks are eligible for all workers.
 - Each worker always includes an internal `worker:<workerId>` label.
@@ -195,7 +195,7 @@ Example:
 
 ## Wiring
 
-Wire already registers the async task components in `wire/wire.go`:
+Wire already registers the async task components in the configured Wire path (commonly `wire/wire.go`):
 - `taskgen.NewTaskHandler`
 - `taskgen.NewTaskRunner`
 - `asynctask.NewExecutor`

@@ -1,4 +1,4 @@
-package injection
+package app
 
 import (
 	anclax_app "github.com/cloudcarver/anclax/pkg/app"

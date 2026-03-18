@@ -16,20 +16,21 @@ Use Anclax generated types as the contract between layers and keep specs/SQL as 
 
 1. Inspect `anclax.yaml` to learn generation paths and enabled generators.
 2. Update sources first:
-   - OpenAPI: `api/v1.yaml`
-   - Tasks: `api/tasks.yaml`
+   - OpenAPI: the matching `oapi-codegen` entry `path` (commonly `api/v1.yaml`)
+   - Tasks: the matching `task-handler` entry `path` (commonly `api/tasks.yaml`)
    - DB schema: `sql/migrations`
    - Queries: `sql/queries`
 3. Run `anclax gen` after any spec/SQL/Wire changes.
-4. Implement code against generated interfaces and types.
-5. Add unit tests for service logic with mocks.
+4. If you modify `examples/`, run `make gen` to refresh `cmd/anclax/initFiles` and normalize template-specific `go.mod` content.
+5. Implement code against generated interfaces and types.
+6. Add unit tests for service logic with mocks.
 
 ## Layering rules
 
 - Handler: parse HTTP, call service, map errors to HTTP responses.
 - Service: implement business logic, accept and return `apigen` types.
 - Model: use `pkg/zcore/model` and sqlc-generated queries.
-- Async tasks: define in `api/tasks.yaml`, implement `taskgen.ExecutorInterface`, enqueue via `taskgen.TaskRunner`.
+- Async tasks: define in the task spec configured under `task-handler` (commonly `api/tasks.yaml`), implement `taskgen.ExecutorInterface`, enqueue via `taskgen.TaskRunner`.
 
 ## References and Examples
   - [Config](./anclax-config.md): How to use `anclax.yaml` for generator inputs/outputs.
@@ -39,3 +40,5 @@ Use Anclax generated types as the contract between layers and keep specs/SQL as 
   - [Database](./database.md): SQL/schema rules and transaction helpers.
   - [Dependency Injection](./dependency-injestion.md): Wire DI conventions.
   - [Async Tasks](./async-tasks.md): Task definitions, execution, retries, and hooks.
+  - [Example template generation](./template-generation.md): Updating `examples/` and regenerating `cmd/anclax/initFiles`, including `go.mod` normalization from `VERSION`.
+  - [Multi-service repos](./multi-service-repos.md): Organizing multiple apps under `app/` with shared or service-specific modules.

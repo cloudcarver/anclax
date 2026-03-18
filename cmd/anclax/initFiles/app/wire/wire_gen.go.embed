@@ -7,13 +7,11 @@
 package wire
 
 import (
-	"myexampleapp/pkg"
+	"myexampleapp/app"
 	"myexampleapp/pkg/asynctask"
 	"myexampleapp/pkg/config"
 	"myexampleapp/pkg/handler"
-	"myexampleapp/pkg/zcore/app"
-	"myexampleapp/pkg/zcore/injection"
-	"myexampleapp/pkg/zcore/model"
+	"myexampleapp/pkg/model"
 	"myexampleapp/pkg/zgen/taskgen"
 )
 
@@ -24,14 +22,13 @@ func InitApp() (*app.App, error) {
 	if err != nil {
 		return nil, err
 	}
-	application, err := pkg.InitAnclaxApplication(configConfig)
+	application, err := app.InitAnclaxApplication(configConfig)
 	if err != nil {
 		return nil, err
 	}
-	taskStoreInterface := injection.InjectTaskStore(application)
+	taskStoreInterface := app.InjectTaskStore(application)
 	taskRunner := taskgen.NewTaskRunner(taskStoreInterface)
-	pluginMeta := pkg.ProvidePluginMeta()
-	modelInterface, err := model.NewModel(configConfig, pluginMeta, application)
+	modelInterface, err := model.NewModel(configConfig, application)
 	if err != nil {
 		return nil, err
 	}
@@ -39,12 +36,12 @@ func InitApp() (*app.App, error) {
 	if err != nil {
 		return nil, err
 	}
-	authInterface := injection.InjectAuth(application)
+	authInterface := app.InjectAuth(application)
 	validator := handler.NewValidator(authInterface)
 	executorInterface := asynctask.NewExecutor(modelInterface)
 	taskHandler := taskgen.NewTaskHandler(executorInterface)
 	plugin := app.NewPlugin(serverInterface, validator, taskHandler)
-	appApp, err := pkg.Init(application, taskRunner, plugin, modelInterface)
+	appApp, err := app.Init(application, taskRunner, plugin, modelInterface)
 	if err != nil {
 		return nil, err
 	}

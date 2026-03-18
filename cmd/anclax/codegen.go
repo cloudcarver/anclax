@@ -307,15 +307,15 @@ func _codegen(config *Config, workdir string) error {
 		}
 	}
 
-	if config.OapiCodegen != nil {
-		if err := genOapi(workdir, config.OapiCodegen, config.Schemas); err != nil {
-			return errors.Wrap(err, "failed to generate oapi-codegen")
+	for i := range config.OapiCodegen {
+		if err := genOapi(workdir, &config.OapiCodegen[i], config.Schemas); err != nil {
+			return errors.Wrapf(err, "failed to generate oapi-codegen[%d]", i)
 		}
 	}
 
-	if config.TaskHandler != nil {
-		if err := genTaskHandler(workdir, config.TaskHandler, config.Schemas); err != nil {
-			return errors.Wrap(err, "failed to generate task handler")
+	for i := range config.TaskHandler {
+		if err := genTaskHandler(workdir, &config.TaskHandler[i], config.Schemas); err != nil {
+			return errors.Wrapf(err, "failed to generate task-handler[%d]", i)
 		}
 	}
 
@@ -325,9 +325,9 @@ func _codegen(config *Config, workdir string) error {
 		}
 	}
 
-	if config.Sqlc != nil {
-		if err := genSqlc(workdir, config.Sqlc); err != nil {
-			return errors.Wrap(err, "failed to generate sqlc")
+	for i := range config.Sqlc {
+		if err := genSqlc(workdir, &config.Sqlc[i]); err != nil {
+			return errors.Wrapf(err, "failed to generate sqlc[%d]", i)
 		}
 	}
 
@@ -337,9 +337,9 @@ func _codegen(config *Config, workdir string) error {
 		}
 	}
 
-	if config.Wire != nil {
-		if err := genWire(workdir, config.Wire); err != nil {
-			return errors.Wrap(err, "failed to generate wire")
+	for i := range config.Wire {
+		if err := genWire(workdir, &config.Wire[i]); err != nil {
+			return errors.Wrapf(err, "failed to generate wire[%d]", i)
 		}
 	}
 

@@ -11,7 +11,7 @@ func NewMyModule(config *config.Config) MyModuleInterface {
 }
 ```
 
-Register providers in `./wire/wire.go`. Ignore `./wire/wire_gen.go`.
+Register providers in the configured Wire path from `anclax.yaml` (commonly `./wire/wire.go`). Ignore generated `wire_gen.go` files.
 
 You can pass an object registered in the wire in another provider:
 ```go
