@@ -6,6 +6,11 @@ type OapiCodegenConfig struct {
 	Package string `yaml:"package"`
 }
 
+type SchemasConfig struct {
+	Path   string `yaml:"path"`
+	Output string `yaml:"output"`
+}
+
 type WireConfig struct {
 	Path string `yaml:"path"`
 }
@@ -24,12 +29,6 @@ type MockgenFileConfig struct {
 	Package     string `yaml:"package"`
 }
 
-type XwareConfig struct {
-	Path    string `yaml:"path"`
-	Out     string `yaml:"out"`
-	Package string `yaml:"package"`
-}
-
 type TaskHandlerConfig struct {
 	Package string `yaml:"package"`
 	Out     string `yaml:"out"`
@@ -44,10 +43,10 @@ type DSTConfig struct {
 
 type Config struct {
 	Externals   map[string]string  `yaml:"externals,omitempty"`
+	Schemas     *SchemasConfig     `yaml:"schemas,omitempty"`
 	OapiCodegen *OapiCodegenConfig `yaml:"oapi-codegen,omitempty"`
 	Wire        *WireConfig        `yaml:"wire,omitempty"`
 	Mockgen     *MockgenConfig     `yaml:"mockgen,omitempty"`
-	Xware       *XwareConfig       `yaml:"xware,omitempty"`
 	Sqlc        *SqlcConfig        `yaml:"sqlc,omitempty"`
 	TaskHandler *TaskHandlerConfig `yaml:"task-handler,omitempty"`
 	DST         []DSTConfig        `yaml:"dst,omitempty"`

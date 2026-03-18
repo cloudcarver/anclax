@@ -2,6 +2,7 @@ package asynctask
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/cloudcarver/anclax/core"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
@@ -21,7 +22,7 @@ func (h *WorkerControlTaskHandler) HandleTask(ctx context.Context, task worker.T
 	switch task.GetType() {
 	case taskgen.ApplyWorkerRuntimeConfigToWorker:
 		var params taskgen.ApplyWorkerRuntimeConfigToWorkerParameters
-		if err := params.Parse(task.GetPayload()); err != nil {
+		if err := json.Unmarshal(task.GetPayload(), &params); err != nil {
 			return err
 		}
 		if !h.isTargetWorker(params.WorkerID) {
@@ -35,7 +36,7 @@ func (h *WorkerControlTaskHandler) HandleTask(ctx context.Context, task worker.T
 		return nil
 	case taskgen.CancelTaskOnWorker:
 		var params taskgen.CancelTaskOnWorkerParameters
-		if err := params.Parse(task.GetPayload()); err != nil {
+		if err := json.Unmarshal(task.GetPayload(), &params); err != nil {
 			return err
 		}
 		if !h.isTargetWorker(params.WorkerID) {
@@ -45,7 +46,7 @@ func (h *WorkerControlTaskHandler) HandleTask(ctx context.Context, task worker.T
 		return nil
 	case taskgen.PauseTaskOnWorker:
 		var params taskgen.PauseTaskOnWorkerParameters
-		if err := params.Parse(task.GetPayload()); err != nil {
+		if err := json.Unmarshal(task.GetPayload(), &params); err != nil {
 			return err
 		}
 		if !h.isTargetWorker(params.WorkerID) {

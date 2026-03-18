@@ -7,21 +7,11 @@ tasks:
       interval: 30m
       maxAttempts: -1
     parameters:
-      type: object
-      required: [amount]
-      properties:
-        amount:
-          type: integer
-          format: int32
+      $ref: ./schemas/counter/counter.yaml#schemas/IncrementCounterParams
   - name: IncrementCounter
     description: Increment the counter
     retryPolicy:
       interval: 30m
       maxAttempts: -1
     parameters:
-      type: object
-      required: [amount]
-      properties:
-        amount:
-          type: integer
-          format: int32
+      $ref: ./schemas/counter/counter.yaml#schemas/IncrementCounterParams

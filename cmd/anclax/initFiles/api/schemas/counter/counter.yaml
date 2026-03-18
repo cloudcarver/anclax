@@ -1,0 +1,13 @@
+schemas:
+  Counter:
+    type: object
+    required: [count]
+    properties:
+      count:
+        $ref: ../common/common.yaml#schemas/Amount
+  IncrementCounterParams:
+    type: object
+    required: [amount]
+    properties:
+      amount:
+        $ref: ../common/common.yaml#schemas/Amount

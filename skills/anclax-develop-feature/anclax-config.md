@@ -5,6 +5,7 @@ Use `anclax.yaml` as the source of truth for generator inputs and outputs. Check
 
 ## What to look for
 
+- `schemas.path`/`output`: shared schema YAML directory and generated Go output root used by both OpenAPI and task generation.
 - `oapi-codegen.path`/`out`/`package`: OpenAPI input and generated types plus generated middleware extensions in the same file.
 - `task-handler.path`/`out`/`package`: async task definitions and runner generation.
 - `sqlc.path`: database query generation config.

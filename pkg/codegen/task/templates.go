@@ -13,7 +13,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
-
+{{range .Imports}}
+	{{printf "%q" .}}
+{{end}}
 	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
@@ -61,7 +63,7 @@ func (c *Client) Run{{upperFirst .Name}}WithTx(ctx context.Context, tx core.Tx, 
 }
 
 func (c *Client) run{{upperFirst .Name}}(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *{{.ParameterType}}, overrides ...taskcore.TaskOverride) (int32, error) {
-	payload, err := params.Marshal()
+	payload, err := json.Marshal(params)
 	if err != nil {
 		return 0, err
 	}
@@ -108,14 +110,15 @@ func (c *Client) run{{upperFirst .Name}}(ctx context.Context, taskstore taskcore
 	return taskID, nil
 }{{end}}
 
-{{.StructDefs}}{{range .Functions}}
+{{.StructDefs}}{{range .Functions}}{{if .HasLocalHelpers}}
 func (r *{{.ParameterType}}) Parse(spec json.RawMessage) error {
 	return json.Unmarshal(spec, r)
 }
 
 func (r *{{.ParameterType}}) Marshal() (json.RawMessage, error) {
 	return json.Marshal(r)
-}{{end}}
+}
+{{end}}{{end}}
 
 type ExecutorInterface interface { {{range .Functions}}
  {{.Description}}
@@ -155,7 +158,7 @@ func (f *TaskHandler) HandleTask(ctx context.Context, task worker.Task) error {
 	switch task.GetType() { {{range .Functions}}
 	case {{upperFirst .Name}}:
 		var params {{.ParameterType}}
-		if err := params.Parse(task.GetPayload()); err != nil {
+		if err := json.Unmarshal(task.GetPayload(), &params); err != nil {
 			return fmt.Errorf("failed to parse {{.Name}} parameters: %w", err)
 		}
 		return f.executor.Execute{{upperFirst .Name}}(ctx, task, &params)
@@ -180,7 +183,7 @@ func (f *TaskHandler) OnTaskFailed(ctx context.Context, tx core.Tx, failedTaskSp
 	switch failedTaskSpec.GetType() { {{range .Functions}}{{if .Events}}{{if .Events.OnFailed}}
 	case {{upperFirst .Name}}:
 		var params {{.ParameterType}}
-		if err := params.Parse(failedTaskSpec.GetPayload()); err != nil {
+		if err := json.Unmarshal(failedTaskSpec.GetPayload(), &params); err != nil {
 			return fmt.Errorf("failed to parse {{.Name}} parameters: %w", err)
 		}
 		return f.executor.On{{upperFirst .Name}}Failed(ctx, taskID, &params, tx){{end}}{{end}}{{end}}

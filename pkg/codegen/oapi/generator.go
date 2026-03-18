@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	schema_codegen "github.com/cloudcarver/anclax/pkg/codegen/schemas"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/pkg/errors"
 )
@@ -20,6 +21,7 @@ type Config struct {
 	Path    string
 	Out     string
 	Package string
+	Schemas *schema_codegen.Config
 }
 
 type document struct {
@@ -172,12 +174,16 @@ func Generate(workdir string, config Config) error {
 	if !filepath.IsAbs(specPath) {
 		specPath = filepath.Join(workdir, specPath)
 	}
-	swagger, err := loadSwagger(specPath)
+	schemaManager, err := schema_codegen.Load(workdir, derefSchemaConfig(config.Schemas))
+	if err != nil {
+		return errors.Wrap(err, "failed to load schemas config")
+	}
+	swagger, err := loadSwagger(workdir, specPath, config.Schemas)
 	if err != nil {
 		return errors.Wrap(err, "failed to load OpenAPI spec")
 	}
 
-	doc, err := buildDocument(swagger, config.Package)
+	doc, err := buildDocument(swagger, specPath, config.Package, schemaManager)
 	if err != nil {
 		return errors.Wrap(err, "failed to build OpenAPI document")
 	}
@@ -193,21 +199,107 @@ func Generate(workdir string, config Config) error {
 	return nil
 }
 
-func loadSwagger(specPath string) (*openapi3.T, error) {
+func loadSwagger(workdir, specPath string, schemaConfig *schema_codegen.Config) (*openapi3.T, error) {
+	loadPath := specPath
+	cleanup := func() {}
+	if schemaConfig != nil {
+		tempPath, tempCleanup, err := prepareNormalizedSpecTree(workdir, specPath, *schemaConfig)
+		if err != nil {
+			return nil, err
+		}
+		loadPath = tempPath
+		cleanup = tempCleanup
+	}
+	defer cleanup()
+
 	loader := openapi3.NewLoader()
 	loader.IsExternalRefsAllowed = true
-
-	doc, err := loader.LoadFromFile(specPath)
+	raw, err := os.ReadFile(loadPath)
 	if err != nil {
 		return nil, err
 	}
-	if err := loader.ResolveRefsIn(doc, &url.URL{}); err != nil {
+	raw = normalizeRefBytes(raw)
+	baseURL := &url.URL{Path: loadPath}
+	doc, err := loader.LoadFromDataWithPath(raw, baseURL)
+	if err != nil {
+		return nil, err
+	}
+	if err := loader.ResolveRefsIn(doc, baseURL); err != nil {
 		return nil, err
 	}
 	return doc, nil
 }
 
-func buildDocument(spec *openapi3.T, packageName string) (*document, error) {
+func prepareNormalizedSpecTree(workdir, specPath string, schemaConfig schema_codegen.Config) (string, func(), error) {
+	tempDir, err := os.MkdirTemp("", "anclax-oapi-")
+	if err != nil {
+		return "", nil, err
+	}
+	cleanup := func() { _ = os.RemoveAll(tempDir) }
+	copyFile := func(src string) (string, error) {
+		rel, err := filepath.Rel(workdir, src)
+		if err != nil {
+			return "", err
+		}
+		dst := filepath.Join(tempDir, rel)
+		if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+			return "", err
+		}
+		raw, err := os.ReadFile(src)
+		if err != nil {
+			return "", err
+		}
+		if err := os.WriteFile(dst, normalizeRefBytes(raw), 0644); err != nil {
+			return "", err
+		}
+		return dst, nil
+	}
+	normalizedSpec, err := copyFile(specPath)
+	if err != nil {
+		cleanup()
+		return "", nil, err
+	}
+	schemaRoot := schemaConfig.Path
+	if !filepath.IsAbs(schemaRoot) {
+		schemaRoot = filepath.Join(workdir, schemaRoot)
+	}
+	if _, err := os.Stat(schemaRoot); err == nil {
+		if err := filepath.Walk(schemaRoot, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if info.IsDir() {
+				return nil
+			}
+			ext := strings.ToLower(filepath.Ext(path))
+			if ext != ".yaml" && ext != ".yml" {
+				return nil
+			}
+			_, err = copyFile(path)
+			return err
+		}); err != nil {
+			cleanup()
+			return "", nil, err
+		}
+	} else if !os.IsNotExist(err) {
+		cleanup()
+		return "", nil, err
+	}
+	return normalizedSpec, cleanup, nil
+}
+
+func normalizeRefBytes(raw []byte) []byte {
+	return []byte(strings.ReplaceAll(string(raw), "#schemas/", "#/schemas/"))
+}
+
+func derefSchemaConfig(cfg *schema_codegen.Config) schema_codegen.Config {
+	if cfg == nil {
+		return schema_codegen.Config{}
+	}
+	return *cfg
+}
+
+func buildDocument(spec *openapi3.T, specPath string, packageName string, schemaManager *schema_codegen.Manager) (*document, error) {
 	doc := &document{
 		PackageName:      packageName,
 		SpecTypeImports:  map[string]struct{}{},
@@ -216,14 +308,14 @@ func buildDocument(spec *openapi3.T, packageName string) (*document, error) {
 	enumMap := map[string]*enumDef{}
 	securityMap := map[string]securityConst{}
 
-	if spec.Components.Schemas != nil {
+	if spec.Components != nil && spec.Components.Schemas != nil {
 		schemaNames := make([]string, 0, len(spec.Components.Schemas))
 		for name := range spec.Components.Schemas {
 			schemaNames = append(schemaNames, name)
 		}
 		sort.Strings(schemaNames)
 		for _, name := range schemaNames {
-			schema, err := buildSchemaDef(name, spec.Components.Schemas[name], enumMap, doc.SpecTypeImports)
+			schema, err := buildSchemaDef(specPath, name, spec.Components.Schemas[name], enumMap, doc.SpecTypeImports, schemaManager)
 			if err != nil {
 				return nil, errors.Wrapf(err, "failed to build schema %s", name)
 			}
@@ -238,7 +330,7 @@ func buildDocument(spec *openapi3.T, packageName string) (*document, error) {
 				continue
 			}
 			for _, opItem := range orderedOperations(pathItem) {
-				op, err := buildOperation(path, pathItem, opItem.method, opItem.operation, enumMap, doc.SpecTypeImports)
+				op, err := buildOperation(specPath, path, pathItem, opItem.method, opItem.operation, enumMap, doc.SpecTypeImports, schemaManager)
 				if err != nil {
 					return nil, errors.Wrapf(err, "failed to build operation %s %s", opItem.method, path)
 				}
@@ -250,10 +342,10 @@ func buildDocument(spec *openapi3.T, packageName string) (*document, error) {
 		}
 	}
 
-	if err := parseXCheckRules(doc, spec, enumMap); err != nil {
+	if err := parseXCheckRules(doc, specPath, spec, enumMap, schemaManager); err != nil {
 		return nil, errors.Wrap(err, "failed to parse x-check-rules")
 	}
-	if err := parseXFunctions(doc, spec, enumMap); err != nil {
+	if err := parseXFunctions(doc, specPath, spec, enumMap, schemaManager); err != nil {
 		return nil, errors.Wrap(err, "failed to parse x-functions")
 	}
 
@@ -273,7 +365,7 @@ func buildDocument(spec *openapi3.T, packageName string) (*document, error) {
 	return doc, nil
 }
 
-func buildSchemaDef(name string, ref *openapi3.SchemaRef, enumMap map[string]*enumDef, imports map[string]struct{}) (schemaDef, error) {
+func buildSchemaDef(currentFile, name string, ref *openapi3.SchemaRef, enumMap map[string]*enumDef, imports map[string]struct{}, schemaManager *schema_codegen.Manager) (schemaDef, error) {
 	schema := schemaDef{Name: exportName(name), Description: exportName(name)}
 	if ref == nil || ref.Value == nil {
 		return schema, nil
@@ -281,7 +373,7 @@ func buildSchemaDef(name string, ref *openapi3.SchemaRef, enumMap map[string]*en
 	value := ref.Value
 	schema.Description = firstNonEmpty(value.Description, schema.Name)
 
-	resolved, err := resolveType(ref, schema.Name, enumMap)
+	resolved, err := resolveType(currentFile, "", ref, schema.Name, enumMap, schemaManager)
 	if err != nil {
 		return schema, err
 	}
@@ -297,7 +389,7 @@ func buildSchemaDef(name string, ref *openapi3.SchemaRef, enumMap map[string]*en
 		sort.Strings(propNames)
 		for _, propName := range propNames {
 			propRef := value.Properties[propName]
-			fieldResolved, err := resolveType(propRef, schema.Name+exportName(propName), enumMap)
+			fieldResolved, err := resolveType(currentFile, "", propRef, schema.Name+exportName(propName), enumMap, schemaManager)
 			if err != nil {
 				return schema, err
 			}
@@ -307,11 +399,15 @@ func buildSchemaDef(name string, ref *openapi3.SchemaRef, enumMap map[string]*en
 			if optional {
 				fieldType = pointerType(fieldType)
 			}
+			description := ""
+			if propRef != nil && propRef.Value != nil {
+				description = propRef.Value.Description
+			}
 			field := fieldDef{
 				Name:        exportName(propName),
 				JSONName:    propName,
 				Type:        fieldType,
-				Description: firstNonEmpty(propRef.Value.Description, ""),
+				Description: firstNonEmpty(description, ""),
 				Optional:    optional,
 			}
 			schema.Fields = append(schema.Fields, field)
@@ -324,7 +420,7 @@ func buildSchemaDef(name string, ref *openapi3.SchemaRef, enumMap map[string]*en
 	return schema, nil
 }
 
-func buildOperation(path string, pathItem *openapi3.PathItem, method string, op *openapi3.Operation, enumMap map[string]*enumDef, imports map[string]struct{}) (operationDef, error) {
+func buildOperation(currentFile, path string, pathItem *openapi3.PathItem, method string, op *openapi3.Operation, enumMap map[string]*enumDef, imports map[string]struct{}, schemaManager *schema_codegen.Manager) (operationDef, error) {
 	name := exportName(op.OperationID)
 	if name == "" {
 		name = exportName(strings.Trim(path, "/")) + exportName(strings.ToLower(method))
@@ -346,7 +442,7 @@ func buildOperation(path string, pathItem *openapi3.PathItem, method string, op 
 
 	if op.RequestBody != nil && op.RequestBody.Value != nil {
 		if mediaType, schemaRef, ok := jsonBodySchema(op.RequestBody.Value.Content); ok {
-			resolved, err := resolveType(schemaRef, name+"RequestBody", enumMap)
+			resolved, err := resolveType(currentFile, "", schemaRef, name+"RequestBody", enumMap, schemaManager)
 			if err != nil {
 				return ret, err
 			}
@@ -380,7 +476,7 @@ func buildOperation(path string, pathItem *openapi3.PathItem, method string, op 
 			}
 			response := responseDef{StatusCode: statusCode}
 			if _, schemaRef, ok := jsonResponseSchema(responseRef.Value.Content); ok {
-				resolved, err := resolveType(schemaRef, name+"Response"+code, enumMap)
+				resolved, err := resolveType(currentFile, "", schemaRef, name+"Response"+code, enumMap, schemaManager)
 				if err != nil {
 					return ret, err
 				}
@@ -1380,7 +1476,7 @@ func writeFile(workdir, path, content string) error {
 	return os.WriteFile(fullPath, []byte(content), 0644)
 }
 
-func parseXCheckRules(doc *document, spec *openapi3.T, enumMap map[string]*enumDef) error {
+func parseXCheckRules(doc *document, currentFile string, spec *openapi3.T, enumMap map[string]*enumDef, schemaManager *schema_codegen.Manager) error {
 	if spec.Extensions == nil {
 		return nil
 	}
@@ -1399,7 +1495,7 @@ func parseXCheckRules(doc *document, spec *openapi3.T, enumMap map[string]*enumD
 	for name, rule := range parsed {
 		item := xCheckRule{Name: name, UseContext: rule.UseContext, Description: rule.Description}
 		for _, param := range rule.Parameters {
-			resolved, err := resolveType(param.Schema, name+exportName(param.Name), enumMap)
+			resolved, err := resolveType(currentFile, "", param.Schema, name+exportName(param.Name), enumMap, schemaManager)
 			if err != nil {
 				return err
 			}
@@ -1411,7 +1507,7 @@ func parseXCheckRules(doc *document, spec *openapi3.T, enumMap map[string]*enumD
 	return nil
 }
 
-func parseXFunctions(doc *document, spec *openapi3.T, enumMap map[string]*enumDef) error {
+func parseXFunctions(doc *document, currentFile string, spec *openapi3.T, enumMap map[string]*enumDef, schemaManager *schema_codegen.Manager) error {
 	if spec.Extensions == nil {
 		return nil
 	}
@@ -1430,14 +1526,14 @@ func parseXFunctions(doc *document, spec *openapi3.T, enumMap map[string]*enumDe
 	for name, fn := range parsed {
 		item := xFunction{Name: name, UseContext: fn.UseContext, Description: fn.Description}
 		for _, param := range fn.Params {
-			resolved, err := resolveType(param.Schema, name+exportName(param.Name), enumMap)
+			resolved, err := resolveType(currentFile, "", param.Schema, name+exportName(param.Name), enumMap, schemaManager)
 			if err != nil {
 				return err
 			}
 			mergeImports(doc.ScopeTypeImports, resolved.Imports...)
 			item.Params = append(item.Params, xParam{Name: lowerName(param.Name), Description: param.Description, Type: resolved.GoType})
 		}
-		resolved, err := resolveType(fn.Return.Schema, name+"Result", enumMap)
+		resolved, err := resolveType(currentFile, "", fn.Return.Schema, name+"Result", enumMap, schemaManager)
 		if err != nil {
 			return err
 		}
@@ -1448,14 +1544,24 @@ func parseXFunctions(doc *document, spec *openapi3.T, enumMap map[string]*enumDe
 	return nil
 }
 
-func resolveType(ref *openapi3.SchemaRef, hint string, enumMap map[string]*enumDef) (resolvedType, error) {
-	if ref == nil || ref.Value == nil {
+func resolveType(currentFile, currentPackage string, ref *openapi3.SchemaRef, hint string, enumMap map[string]*enumDef, schemaManager *schema_codegen.Manager) (resolvedType, error) {
+	if ref == nil {
 		return resolvedType{GoType: "interface{}"}, nil
 	}
 	if ref.Ref != "" {
 		if name, ok := componentNameFromRef(ref.Ref); ok {
 			return resolvedType{GoType: exportName(name)}, nil
 		}
+		if schemaManager != nil {
+			if goType, imports, ok, err := schemaManager.ResolveRef(currentFile, currentPackage, ref.Ref); err != nil {
+				return resolvedType{}, err
+			} else if ok {
+				return resolvedType{GoType: goType, Imports: imports}, nil
+			}
+		}
+	}
+	if ref.Value == nil {
+		return resolvedType{GoType: "interface{}"}, nil
 	}
 
 	schema := ref.Value
@@ -1501,7 +1607,7 @@ func resolveType(ref *openapi3.SchemaRef, hint string, enumMap map[string]*enumD
 	case schema.Type.Is("boolean"):
 		return resolvedType{GoType: "bool"}, nil
 	case schema.Type.Is("array"):
-		item, err := resolveType(schema.Items, hint, enumMap)
+		item, err := resolveType(currentFile, currentPackage, schema.Items, hint, enumMap, schemaManager)
 		if err != nil {
 			return resolvedType{}, err
 		}
@@ -1631,7 +1737,7 @@ func collectPathParams(path string, pathItem *openapi3.PathItem, op *openapi3.Op
 		if param == nil {
 			return nil, errors.Errorf("missing path parameter %s", name)
 		}
-		resolved, err := resolveType(param.Schema, exportName(name), map[string]*enumDef{})
+		resolved, err := resolveType(path, "", param.Schema, exportName(name), map[string]*enumDef{}, nil)
 		if err != nil {
 			return nil, err
 		}

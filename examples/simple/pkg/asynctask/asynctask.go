@@ -4,7 +4,10 @@ import (
 	"context"
 
 	"myexampleapp/pkg/zcore/model"
+	counter "myexampleapp/pkg/zgen/schemas/counter"
 	"myexampleapp/pkg/zgen/taskgen"
+
+	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
 )
 
 type Executor struct {
@@ -17,10 +20,12 @@ func NewExecutor(model model.ModelInterface) taskgen.ExecutorInterface {
 	}
 }
 
-func (e *Executor) ExecuteIncrementCounter(ctx context.Context, params *taskgen.IncrementCounterParameters) error {
+func (e *Executor) ExecuteIncrementCounter(ctx context.Context, _ worker.Task, params *counter.IncrementCounterParams) error {
+	_ = params
 	return e.model.IncrementCounter(ctx)
 }
 
-func (e *Executor) ExecuteAutoIncrementCounter(ctx context.Context, params *taskgen.AutoIncrementCounterParameters) error {
+func (e *Executor) ExecuteAutoIncrementCounter(ctx context.Context, _ worker.Task, params *counter.IncrementCounterParams) error {
+	_ = params
 	return e.model.IncrementCounter(ctx)
 }

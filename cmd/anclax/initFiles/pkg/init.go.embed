@@ -39,7 +39,7 @@ func Init(anclaxApp *anclax_app.Application, taskrunner taskgen.TaskRunner, myap
 	if _, err := anclaxApp.GetService().CreateNewUser(ctx, "test", "test"); err != nil {
 		return nil, err
 	}
-	// if _, err := taskrunner.RunAutoIncrementCounter(ctx, &taskgen.AutoIncrementCounterParameters{
+	// if _, err := taskrunner.RunAutoIncrementCounter(ctx, &counter.IncrementCounterParams{
 	// 	Amount: 1,
 	// }, taskcore.WithUniqueTag("auto-increment-counter")); err != nil {
 	// 	return nil, err

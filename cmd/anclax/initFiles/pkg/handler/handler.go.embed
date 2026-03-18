@@ -3,6 +3,7 @@ package handler
 import (
 	"myexampleapp/pkg/zcore/model"
 	"myexampleapp/pkg/zgen/apigen"
+	counter "myexampleapp/pkg/zgen/schemas/counter"
 	"myexampleapp/pkg/zgen/taskgen"
 
 	"github.com/gofiber/fiber/v2"
@@ -22,11 +23,11 @@ func (h *Handler) GetCounter(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
 	}
-	return c.JSON(apigen.Counter{Count: count.Value})
+	return c.JSON(counter.Counter{Count: count.Value})
 }
 
 func (h *Handler) IncrementCounter(c *fiber.Ctx) error {
-	_, err := h.taskrunner.RunIncrementCounter(c.Context(), &taskgen.IncrementCounterParameters{
+	_, err := h.taskrunner.RunIncrementCounter(c.Context(), &counter.IncrementCounterParams{
 		Amount: 1,
 	})
 	if err != nil {

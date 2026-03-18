@@ -10,6 +10,10 @@ clean:
   - pkg/taskcore/e2e/gen/*
   - pkg/taskcore/dtmtest/gen/*
 
+schemas:
+  path: api/schemas
+  output: pkg/zgen/schemas
+
 oapi-codegen:
   path: api/v1.yaml
   out: pkg/zgen/apigen/spec_gen.go

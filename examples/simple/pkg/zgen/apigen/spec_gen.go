@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/gofiber/fiber/v2"
 	"io"
+	"myexampleapp/pkg/zgen/schemas/counter"
 	"net/http"
 	"net/url"
 	"strings"
@@ -17,11 +18,6 @@ import (
 const (
 	BearerAuthScopes = "BearerAuth.Scopes"
 )
-
-// Counter defines model for Counter.
-type Counter struct {
-	Count int32 `json:"count"`
-}
 
 // RequestEditorFn is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -222,7 +218,7 @@ type ClientWithResponsesInterface interface {
 type GetCounterResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *[]Counter
+	JSON200      *[]counter.Counter
 }
 
 // Status returns HTTPResponse.Status
@@ -292,7 +288,7 @@ func ParseGetCounterResponse(rsp *http.Response) (*GetCounterResponse, error) {
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest []Counter
+		var dest []counter.Counter
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

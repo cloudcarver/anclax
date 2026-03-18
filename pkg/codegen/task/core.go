@@ -8,22 +8,31 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"text/template"
 	"time"
 
+	schema_codegen "github.com/cloudcarver/anclax/pkg/codegen/schemas"
 	"github.com/cloudcarver/anclax/pkg/utils"
+	"github.com/getkin/kin-openapi/openapi3"
 	"gopkg.in/yaml.v3"
 )
 
 var globalTypeNameCounter = map[string]int{}
 
+type paramSpec struct {
+	Type      string
+	StructDef string
+	Imports   []string
+}
+
 func resetGlobalTypeNameCounter() {
 	globalTypeNameCounter = map[string]int{}
 }
 
-func process(data map[string]any, onFunc func(f Function) error, onParam func(name string, params map[string]any) error) error {
+func process(data map[string]any, onFunc func(f Function) error, onParam func(name string, params map[string]any) (paramSpec, error)) error {
 	for k := range data {
 		if k != "tasks" {
 			log.Default().Printf("[WARN] tool type %s is not supported. Skipped.", k)
@@ -162,20 +171,21 @@ func process(data map[string]any, onFunc func(f Function) error, onParam func(na
 		}
 
 		// parse parameters (optional)
-		var structName string
+		structName := addGlobalType(fmt.Sprintf("%sParameters", utils.UpperFirst(fnName)))
+		var (
+			parameterInfo paramSpec
+			err           error
+		)
 		if _, ok := fnData["parameters"]; ok {
 			parameters, ok := fnData["parameters"].(map[string]any)
 			if !ok {
 				return errors.New("parameters cannot be parsed to a map")
 			}
-
-			structName = addGlobalType(fmt.Sprintf("%sParameters", utils.UpperFirst(fnName)))
-			if err := onParam(structName, parameters); err != nil {
+			parameterInfo, err = onParam(structName, parameters)
+			if err != nil {
 				return err
 			}
 		} else {
-			// For tasks without parameters, create a default parameter with taskID
-			structName = addGlobalType(fmt.Sprintf("%sParameters", utils.UpperFirst(fnName)))
 			defaultParams := map[string]any{
 				"type":     "object",
 				"required": []any{"taskID"},
@@ -187,22 +197,24 @@ func process(data map[string]any, onFunc func(f Function) error, onParam func(na
 					},
 				},
 			}
-			if err := onParam(structName, defaultParams); err != nil {
+			parameterInfo, err = onParam(structName, defaultParams)
+			if err != nil {
 				return err
 			}
 		}
 
 		if err := onFunc(Function{
-			Name:          fnName,
-			Description:   description,
-			ParameterType: structName,
-			Timeout:       timeout,
-			Cronjob:       cronjob,
-			RetryPolicy:   retryPolicy,
-			Delay:         delay,
-			Events:        events,
-			Labels:        labels,
-			Priority:      priority,
+			Name:            fnName,
+			Description:     description,
+			ParameterType:   parameterInfo.Type,
+			Timeout:         timeout,
+			Cronjob:         cronjob,
+			RetryPolicy:     retryPolicy,
+			Delay:           delay,
+			Events:          events,
+			Labels:          labels,
+			Priority:        priority,
+			HasLocalHelpers: parameterInfo.StructDef != "",
 		}); err != nil {
 			return err
 		}
@@ -280,11 +292,12 @@ func indent(s string, spaces int) string {
 	return indent + strings.ReplaceAll(s, "\n", "\n"+indent)
 }
 
-func Generate(workdir, packageName, taskDefPath, outPath string) error {
+func Generate(workdir, packageName, taskDefPath, outPath string, schemaConfig *schema_codegen.Config) error {
 	raw, err := os.ReadFile(filepath.Join(workdir, taskDefPath))
 	if err != nil {
 		return err
 	}
+	raw = schema_codegen.NormalizeRefBytes(raw)
 	var data map[string]any
 	if err := yaml.Unmarshal(raw, &data); err != nil {
 		return err
@@ -292,7 +305,12 @@ func Generate(workdir, packageName, taskDefPath, outPath string) error {
 
 	resetGlobalTypeNameCounter()
 
-	result, err := generateToolInterfaces(packageName, data)
+	schemaManager, err := schema_codegen.Load(workdir, derefSchemaConfig(schemaConfig))
+	if err != nil {
+		return err
+	}
+
+	result, err := generateToolInterfaces(workdir, packageName, filepath.Join(workdir, taskDefPath), data, schemaManager)
 	if err != nil {
 		return err
 	}
@@ -304,22 +322,32 @@ func Generate(workdir, packageName, taskDefPath, outPath string) error {
 	return nil
 }
 
-func generateToolInterfaces(packageName string, data map[string]any) (string, error) {
+func generateToolInterfaces(workdir, packageName, taskDefFile string, data map[string]any, schemaManager *schema_codegen.Manager) (string, error) {
 	var structDef string
 	functions := []Function{}
+	importSet := map[string]struct{}{}
 
 	onFunc := func(f Function) error {
 		functions = append(functions, f)
 		return nil
 	}
 
-	onParam := func(name string, params map[string]any) error {
-		def, err := parseObjectToStruct(name, params)
+	onParam := func(name string, params map[string]any) (paramSpec, error) {
+		ref, err := schema_codegen.UnmarshalSchemaRef(params)
 		if err != nil {
-			return err
+			return paramSpec{}, err
 		}
-		structDef += def + "\n"
-		return nil
+		spec, err := resolveParamSpec(taskDefFile, name, ref, schemaManager)
+		if err != nil {
+			return paramSpec{}, err
+		}
+		if spec.StructDef != "" {
+			structDef += spec.StructDef + "\n"
+		}
+		for _, imp := range spec.Imports {
+			importSet[imp] = struct{}{}
+		}
+		return spec, nil
 	}
 
 	tcTemplate, err := template.New("file").Funcs(template.FuncMap{
@@ -348,6 +376,7 @@ func generateToolInterfaces(packageName string, data map[string]any) (string, er
 		PackageName: packageName,
 		StructDefs:  structDef,
 		Functions:   functions,
+		Imports:     sortedImportSlice(importSet),
 	}); err != nil {
 		return "", err
 	}
@@ -365,39 +394,115 @@ func addGlobalType(name string) string {
 	}
 }
 
-func parseArrayToStruct(name string, data map[string]any) (string, string, error) {
-	items, ok := data["items"].(map[string]any)
-	if !ok {
-		return "", "", errors.New("items cannot be parsed to a map")
+func resolveParamSpec(currentFile, name string, ref *openapi3.SchemaRef, schemaManager *schema_codegen.Manager) (paramSpec, error) {
+	imports := map[string]struct{}{}
+	goType, structDef, err := parseSchemaToType(currentFile, name, ref, schemaManager, imports)
+	if err != nil {
+		return paramSpec{}, err
 	}
-	itemsType, ok := items["type"].(string)
-	if !ok {
-		return "", "", errors.New("items type cannot be parsed to a string")
-	}
-	itemsFormat, ok := items["format"].(string)
-	if !ok {
-		itemsFormat = ""
-	}
+	return paramSpec{Type: goType, StructDef: structDef, Imports: sortedImportSlice(imports)}, nil
+}
 
-	if itemsType == "object" {
-		if _, ok := items["properties"]; !ok {
-			return "[]any", "", nil
-		}
-		propStructName := utils.UpperFirst(name) + "Item"
-		propStructDef, err := parseObjectToStruct(propStructName, items)
-		if err != nil {
-			return "", "", err
-		}
-		return "[]" + propStructName, propStructDef, nil
-	} else if itemsType == "array" {
-		propStructName, propStructDef, err := parseArrayToStruct(name, items)
-		if err != nil {
-			return "", "", err
-		}
-		return "[]" + propStructName, propStructDef, nil
-	} else {
-		return "[]" + typeMap(itemsType, itemsFormat), "", nil
+func parseSchemaToType(currentFile, typeName string, ref *openapi3.SchemaRef, schemaManager *schema_codegen.Manager, imports map[string]struct{}) (string, string, error) {
+	if ref == nil {
+		return "any", "", nil
 	}
+	if ref.Ref != "" && schemaManager != nil {
+		if goType, imps, ok, err := schemaManager.ResolveRef(currentFile, "", ref.Ref); err != nil {
+			return "", "", err
+		} else if ok {
+			for _, imp := range imps {
+				imports[imp] = struct{}{}
+			}
+			return goType, "", nil
+		}
+	}
+	if ref.Value == nil {
+		return "any", "", nil
+	}
+	if customType, customImports := customGoType(ref.Value); customType != "" {
+		for _, imp := range customImports {
+			imports[imp] = struct{}{}
+		}
+		return customType, "", nil
+	}
+	if ref.Value.Type == nil {
+		return "any", "", nil
+	}
+	switch {
+	case ref.Value.Type.Is("string"):
+		if ref.Value.Format == "date-time" {
+			imports["time"] = struct{}{}
+			return "time.Time", "", nil
+		}
+		return "string", "", nil
+	case ref.Value.Type.Is("integer"):
+		return typeMap("integer", ref.Value.Format), "", nil
+	case ref.Value.Type.Is("number"):
+		return "float64", "", nil
+	case ref.Value.Type.Is("boolean"):
+		return "bool", "", nil
+	case ref.Value.Type.Is("array"):
+		itemType, itemDef, err := parseSchemaToType(currentFile, addGlobalType(typeName+"Item"), ref.Value.Items, schemaManager, imports)
+		if err != nil {
+			return "", "", err
+		}
+		return "[]" + itemType, itemDef, nil
+	case ref.Value.Type.Is("object"):
+		if len(ref.Value.Properties) == 0 {
+			return "map[string]any", "", nil
+		}
+		return parseObjectSchema(currentFile, typeName, ref.Value, schemaManager, imports)
+	default:
+		return "any", "", nil
+	}
+}
+
+func parseObjectSchema(currentFile, structName string, schema *openapi3.Schema, schemaManager *schema_codegen.Manager, imports map[string]struct{}) (string, string, error) {
+	requiredFields := map[string]struct{}{}
+	for _, r := range schema.Required {
+		requiredFields[r] = struct{}{}
+	}
+	tmpl, err := template.New("struct").Parse(structTemplate)
+	if err != nil {
+		return "", "", err
+	}
+	propNames := make([]string, 0, len(schema.Properties))
+	for name := range schema.Properties {
+		propNames = append(propNames, name)
+	}
+	sort.Strings(propNames)
+	fields := []Field{}
+	var nestedDefs string
+	for _, propName := range propNames {
+		propRef := schema.Properties[propName]
+		propType, propDef, err := parseSchemaToType(currentFile, addGlobalType(utils.UpperFirst(propName)), propRef, schemaManager, imports)
+		if err != nil {
+			return "", "", err
+		}
+		if propDef != "" {
+			nestedDefs += propDef + "\n"
+		}
+		_, isRequired := requiredFields[propName]
+		if !isRequired && !strings.HasPrefix(propType, "[]") && !strings.HasPrefix(propType, "map[") {
+			propType = "*" + propType
+		}
+		description := ""
+		if propRef != nil && propRef.Value != nil {
+			description = propRef.Value.Description
+		}
+		fields = append(fields, Field{
+			Name:        utils.UpperFirst(propName),
+			Type:        propType,
+			Description: descriptionToComment(description),
+			Tag:         "`json:\"" + propName + "\" yaml:\"" + propName + "\"`",
+		})
+	}
+	buf := bytes.NewBuffer(nil)
+	if err := tmpl.Execute(buf, StructTemplateVars{StructName: structName, Fields: fields}); err != nil {
+		return "", "", err
+	}
+	return structName, nestedDefs + "\n" + buf.String(), nil
 }
 
 func typeMap(typeName string, format string) string {
@@ -420,106 +525,44 @@ func typeMap(typeName string, format string) string {
 	}
 }
 
-// return struct name, struct definition, error
-func parseObjectToStruct(structName string, object map[string]any) (string, error) {
-	var ok bool
-	var requiredFields = map[string]struct{}{}
-	var properties map[string]any
-	var structDef string
-
-	if _, ok := object["properties"]; !ok {
+func customGoType(schema *openapi3.Schema) (string, []string) {
+	if schema == nil || schema.Extensions == nil {
 		return "", nil
 	}
-
-	properties, ok = object["properties"].(map[string]any)
+	value, ok := schema.Extensions["x-go-type"]
 	if !ok {
-		return "", fmt.Errorf("properties %v cannot be parsed to map[string]map[string]any", object["properties"])
+		return "", nil
 	}
-
-	if _, ok := object["required"]; ok {
-		required, ok := object["required"].([]any)
-		if !ok {
-			return "", fmt.Errorf("required %v cannot be parsed to a string array", object["required"])
-		}
-		for _, r := range required {
-			if _, ok := properties[r.(string)]; !ok {
-				return "", fmt.Errorf("required field %s is not in properties", r)
-			}
-			requiredFields[r.(string)] = struct{}{}
-		}
+	goType, ok := value.(string)
+	if !ok {
+		return "", nil
 	}
-
-	tmpl, err := template.New("struct").Parse(structTemplate)
-	if err != nil {
-		return "", err
-	}
-
-	fields := []Field{}
-
-	for propName, propRaw := range properties {
-		prop, ok := propRaw.(map[string]any)
-		if !ok {
-			return "", fmt.Errorf("property %s cannot be parsed to a map", propName)
-		}
-		propType, ok := prop["type"].(string)
-		if !ok {
-			return "", errors.New("property type cannot be parsed to a string")
-		}
-		propFormat, ok := prop["format"].(string)
-		if !ok {
-			propFormat = ""
-		}
-
-		var propDescription string
-		if _, ok := prop["description"]; ok {
-			propDescription, ok = prop["description"].(string)
-			if !ok {
-				return "", errors.New("property description cannot be parsed to a string")
-			}
-		}
-
-		_, isRequired := requiredFields[propName]
-
-		if propType == "object" {
-			if _, ok := prop["properties"]; !ok {
-				propType = "any"
-			} else {
-				propStructName := addGlobalType(utils.UpperFirst(propName))
-				propStructDef, err := parseObjectToStruct(propStructName, prop)
-				if err != nil {
-					return "", err
+	var imports []string
+	if rawImports, ok := schema.Extensions["x-go-type-imports"]; ok {
+		switch typed := rawImports.(type) {
+		case []any:
+			for _, item := range typed {
+				if str, ok := item.(string); ok {
+					imports = append(imports, str)
 				}
-				propType = propStructName
-				structDef += propStructDef + "\n"
 			}
-		} else if propType == "array" {
-			propStructName, propStructDef, err := parseArrayToStruct(propName, prop)
-			if err != nil {
-				return "", err
-			}
-			propType = propStructName
-			structDef += propStructDef + "\n"
-		} else {
-			propType = typeMap(propType, propFormat)
 		}
-
-		fields = append(fields, Field{
-			Name:        utils.UpperFirst(propName),
-			Type:        utils.IfElse(isRequired || strings.HasPrefix(propType, "[]"), "", "*") + propType,
-			Description: descriptionToComment(propDescription),
-			Tag:         "`json:\"" + propName + "\" yaml:\"" + propName + "\"`",
-		})
 	}
+	return goType, imports
+}
 
-	templateVars := StructTemplateVars{
-		StructName: structName,
-		Fields:     fields,
+func derefSchemaConfig(cfg *schema_codegen.Config) schema_codegen.Config {
+	if cfg == nil {
+		return schema_codegen.Config{}
 	}
-	buf := bytes.NewBuffer([]byte{})
+	return *cfg
+}
 
-	if err := tmpl.Execute(buf, templateVars); err != nil {
-		return "", err
+func sortedImportSlice(imports map[string]struct{}) []string {
+	ret := make([]string, 0, len(imports))
+	for imp := range imports {
+		ret = append(ret, imp)
 	}
-
-	return structDef + "\n" + buf.String(), nil
+	sort.Strings(ret)
+	return ret
 }

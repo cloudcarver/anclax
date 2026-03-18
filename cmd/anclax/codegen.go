@@ -9,6 +9,7 @@ import (
 	"github.com/cloudcarver/anclax"
 	dst_codegen "github.com/cloudcarver/anclax/lib/dst"
 	oapi_codegen "github.com/cloudcarver/anclax/pkg/codegen/oapi"
+	schema_codegen "github.com/cloudcarver/anclax/pkg/codegen/schemas"
 	task_codegen "github.com/cloudcarver/anclax/pkg/codegen/task"
 	"github.com/pkg/errors"
 	"github.com/urfave/cli/v2"
@@ -110,11 +111,29 @@ func runClean(c *cli.Context) error {
 	return clean(tempDir, config, workdir)
 }
 
-func genTaskHandler(workdir string, config *TaskHandlerConfig) error {
+func genTaskHandler(workdir string, config *TaskHandlerConfig, schemasConfig *SchemasConfig) error {
 	if err := os.MkdirAll(filepath.Dir(filepath.Join(workdir, config.Out)), 0755); err != nil {
 		return errors.Wrap(err, "failed to create output directory")
 	}
-	return task_codegen.Generate(workdir, config.Package, config.Path, config.Out)
+	var schemaCfg *schema_codegen.Config
+	if schemasConfig != nil {
+		schemaCfg = &schema_codegen.Config{Path: schemasConfig.Path, Output: schemasConfig.Output}
+	}
+	return task_codegen.Generate(workdir, config.Package, config.Path, config.Out, schemaCfg)
+}
+
+func genSchemas(workdir string, config *SchemasConfig) error {
+	if config == nil {
+		return nil
+	}
+	manager, err := schema_codegen.Load(workdir, schema_codegen.Config{Path: config.Path, Output: config.Output})
+	if err != nil {
+		return err
+	}
+	if manager == nil {
+		return nil
+	}
+	return manager.Generate()
 }
 
 func genDST(workdir string, config *DSTConfig) error {
@@ -264,9 +283,6 @@ func codegen(configPath string, workdir string) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to parse config")
 	}
-	if err := normalizeConfig(config); err != nil {
-		return errors.Wrap(err, "failed to normalize config")
-	}
 
 	// pre-codegen
 	if err := preCodegen(config); err != nil {
@@ -285,14 +301,20 @@ func codegen(configPath string, workdir string) error {
 }
 
 func _codegen(config *Config, workdir string) error {
+	if config.Schemas != nil {
+		if err := genSchemas(workdir, config.Schemas); err != nil {
+			return errors.Wrap(err, "failed to generate schemas")
+		}
+	}
+
 	if config.OapiCodegen != nil {
-		if err := genOapi(workdir, config.OapiCodegen); err != nil {
+		if err := genOapi(workdir, config.OapiCodegen, config.Schemas); err != nil {
 			return errors.Wrap(err, "failed to generate oapi-codegen")
 		}
 	}
 
 	if config.TaskHandler != nil {
-		if err := genTaskHandler(workdir, config.TaskHandler); err != nil {
+		if err := genTaskHandler(workdir, config.TaskHandler, config.Schemas); err != nil {
 			return errors.Wrap(err, "failed to generate task handler")
 		}
 	}
@@ -340,22 +362,16 @@ func command(name string) string {
 	return filepath.Join(storePath, binDir, name)
 }
 
-func normalizeConfig(config *Config) error {
-	if config.OapiCodegen == nil {
-		if config.Xware != nil {
-			return errors.New("xware requires oapi-codegen; merge middleware into oapi-codegen.out")
-		}
-		return nil
+func genOapi(workdir string, config *OapiCodegenConfig, schemasConfig *SchemasConfig) error {
+	var schemaCfg *schema_codegen.Config
+	if schemasConfig != nil {
+		schemaCfg = &schema_codegen.Config{Path: schemasConfig.Path, Output: schemasConfig.Output}
 	}
-
-	return nil
-}
-
-func genOapi(workdir string, config *OapiCodegenConfig) error {
 	return oapi_codegen.Generate(workdir, oapi_codegen.Config{
 		Path:    config.Path,
 		Out:     config.Out,
 		Package: config.Package,
+		Schemas: schemaCfg,
 	})
 }
 
