@@ -8,7 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"io"
 	"net/http"
 	"net/url"
@@ -1136,28 +1136,28 @@ func ParseTryExecuteTaskResponse(rsp *http.Response) (*TryExecuteTaskResponse, e
 type ServerInterface interface {
 	// Get all tasks
 	// (GET /tasks)
-	ListTasks(c *fiber.Ctx) error
+	ListTasks(c fiber.Ctx) error
 	// Get all organizations of which the user is a member
 	// (GET /orgs)
-	ListOrgs(c *fiber.Ctx) error
+	ListOrgs(c fiber.Ctx) error
 	// Get all events
 	// (GET /events)
-	ListEvents(c *fiber.Ctx) error
+	ListEvents(c fiber.Ctx) error
 	// Sign up user
 	// (POST /auth/sign-up)
-	SignUp(c *fiber.Ctx) error
+	SignUp(c fiber.Ctx) error
 	// Sign out user
 	// (POST /auth/sign-out)
-	SignOut(c *fiber.Ctx) error
+	SignOut(c fiber.Ctx) error
 	// Sign in user
 	// (POST /auth/sign-in)
-	SignIn(c *fiber.Ctx) error
+	SignIn(c fiber.Ctx) error
 	// Refresh access token
 	// (POST /auth/refresh)
-	RefreshToken(c *fiber.Ctx) error
+	RefreshToken(c fiber.Ctx) error
 	// Try to execute a task
 	// (POST /tasks/{taskID}/try-execute)
-	TryExecuteTask(c *fiber.Ctx, taskID int32) error
+	TryExecuteTask(c fiber.Ctx, taskID int32) error
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -1168,50 +1168,50 @@ type ServerInterfaceWrapper struct {
 type MiddlewareFunc fiber.Handler
 
 // ListTasks operation middleware
-func (siw *ServerInterfaceWrapper) ListTasks(c *fiber.Ctx) error {
-	c.Context().SetUserValue(BearerAuthScopes, []string{})
+func (siw *ServerInterfaceWrapper) ListTasks(c fiber.Ctx) error {
+	fiber.StoreInContext(c, BearerAuthScopes, []string{})
 
 	return siw.Handler.ListTasks(c)
 }
 
 // ListOrgs operation middleware
-func (siw *ServerInterfaceWrapper) ListOrgs(c *fiber.Ctx) error {
-	c.Context().SetUserValue(BearerAuthScopes, []string{})
+func (siw *ServerInterfaceWrapper) ListOrgs(c fiber.Ctx) error {
+	fiber.StoreInContext(c, BearerAuthScopes, []string{})
 
 	return siw.Handler.ListOrgs(c)
 }
 
 // ListEvents operation middleware
-func (siw *ServerInterfaceWrapper) ListEvents(c *fiber.Ctx) error {
-	c.Context().SetUserValue(BearerAuthScopes, []string{})
+func (siw *ServerInterfaceWrapper) ListEvents(c fiber.Ctx) error {
+	fiber.StoreInContext(c, BearerAuthScopes, []string{})
 
 	return siw.Handler.ListEvents(c)
 }
 
 // SignUp operation middleware
-func (siw *ServerInterfaceWrapper) SignUp(c *fiber.Ctx) error {
+func (siw *ServerInterfaceWrapper) SignUp(c fiber.Ctx) error {
 	return siw.Handler.SignUp(c)
 }
 
 // SignOut operation middleware
-func (siw *ServerInterfaceWrapper) SignOut(c *fiber.Ctx) error {
-	c.Context().SetUserValue(BearerAuthScopes, []string{})
+func (siw *ServerInterfaceWrapper) SignOut(c fiber.Ctx) error {
+	fiber.StoreInContext(c, BearerAuthScopes, []string{})
 
 	return siw.Handler.SignOut(c)
 }
 
 // SignIn operation middleware
-func (siw *ServerInterfaceWrapper) SignIn(c *fiber.Ctx) error {
+func (siw *ServerInterfaceWrapper) SignIn(c fiber.Ctx) error {
 	return siw.Handler.SignIn(c)
 }
 
 // RefreshToken operation middleware
-func (siw *ServerInterfaceWrapper) RefreshToken(c *fiber.Ctx) error {
+func (siw *ServerInterfaceWrapper) RefreshToken(c fiber.Ctx) error {
 	return siw.Handler.RefreshToken(c)
 }
 
 // TryExecuteTask operation middleware
-func (siw *ServerInterfaceWrapper) TryExecuteTask(c *fiber.Ctx) error {
+func (siw *ServerInterfaceWrapper) TryExecuteTask(c fiber.Ctx) error {
 	var taskID int32
 	parsedTaskID, err := strconv.ParseInt(c.Params("taskID"), 10, 32)
 	if err != nil {
@@ -1219,7 +1219,7 @@ func (siw *ServerInterfaceWrapper) TryExecuteTask(c *fiber.Ctx) error {
 	}
 	taskID = int32(parsedTaskID)
 
-	c.Context().SetUserValue(BearerAuthScopes, []string{})
+	fiber.StoreInContext(c, BearerAuthScopes, []string{})
 
 	return siw.Handler.TryExecuteTask(c, taskID)
 }
@@ -1263,15 +1263,15 @@ func RegisterHandlersWithOptions(router fiber.Router, si ServerInterface, option
 
 type Validator interface {
 	// AuthFunc is called before the request is processed. The response will be 401 if the auth fails.
-	AuthFunc(*fiber.Ctx) error
+	AuthFunc(fiber.Ctx) error
 
 	// PreValidate is called before the request is processed. The response will be 403 if the validation fails.
-	PreValidate(*fiber.Ctx) error
+	PreValidate(fiber.Ctx) error
 
 	// PostValidate is called after the request is processed. The response will be 403 if the validation fails.
-	PostValidate(*fiber.Ctx) error
+	PostValidate(fiber.Ctx) error
 
-	GetOrgID(c *fiber.Ctx) int32
+	GetOrgID(c fiber.Ctx) int32
 }
 
 type XMiddleware struct {
@@ -1285,7 +1285,7 @@ func NewXMiddleware(handler ServerInterface, validator Validator) ServerInterfac
 
 // Get all tasks
 // (GET /tasks)
-func (x *XMiddleware) ListTasks(c *fiber.Ctx) error {
+func (x *XMiddleware) ListTasks(c fiber.Ctx) error {
 	if err := x.AuthFunc(c); err != nil {
 		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
 	}
@@ -1300,7 +1300,7 @@ func (x *XMiddleware) ListTasks(c *fiber.Ctx) error {
 
 // Get all organizations of which the user is a member
 // (GET /orgs)
-func (x *XMiddleware) ListOrgs(c *fiber.Ctx) error {
+func (x *XMiddleware) ListOrgs(c fiber.Ctx) error {
 	if err := x.AuthFunc(c); err != nil {
 		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
 	}
@@ -1315,7 +1315,7 @@ func (x *XMiddleware) ListOrgs(c *fiber.Ctx) error {
 
 // Get all events
 // (GET /events)
-func (x *XMiddleware) ListEvents(c *fiber.Ctx) error {
+func (x *XMiddleware) ListEvents(c fiber.Ctx) error {
 	if err := x.AuthFunc(c); err != nil {
 		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
 	}
@@ -1330,7 +1330,7 @@ func (x *XMiddleware) ListEvents(c *fiber.Ctx) error {
 
 // Sign out user
 // (POST /auth/sign-out)
-func (x *XMiddleware) SignOut(c *fiber.Ctx) error {
+func (x *XMiddleware) SignOut(c fiber.Ctx) error {
 	if err := x.AuthFunc(c); err != nil {
 		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
 	}
@@ -1345,7 +1345,7 @@ func (x *XMiddleware) SignOut(c *fiber.Ctx) error {
 
 // Try to execute a task
 // (POST /tasks/{taskID}/try-execute)
-func (x *XMiddleware) TryExecuteTask(c *fiber.Ctx, taskID int32) error {
+func (x *XMiddleware) TryExecuteTask(c fiber.Ctx, taskID int32) error {
 	if err := x.AuthFunc(c); err != nil {
 		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
 	}

@@ -7,7 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"io"
 	"myexampleapp/pkg/zgen/schemas/counter"
 	"net/http"
@@ -315,10 +315,10 @@ func ParseIncrementCounterResponse(rsp *http.Response) (*IncrementCounterRespons
 type ServerInterface interface {
 	// Get Counter
 	// (GET /counter)
-	GetCounter(c *fiber.Ctx) error
+	GetCounter(c fiber.Ctx) error
 	// Increment Counter
 	// (POST /counter)
-	IncrementCounter(c *fiber.Ctx) error
+	IncrementCounter(c fiber.Ctx) error
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -329,13 +329,13 @@ type ServerInterfaceWrapper struct {
 type MiddlewareFunc fiber.Handler
 
 // GetCounter operation middleware
-func (siw *ServerInterfaceWrapper) GetCounter(c *fiber.Ctx) error {
+func (siw *ServerInterfaceWrapper) GetCounter(c fiber.Ctx) error {
 	return siw.Handler.GetCounter(c)
 }
 
 // IncrementCounter operation middleware
-func (siw *ServerInterfaceWrapper) IncrementCounter(c *fiber.Ctx) error {
-	c.Context().SetUserValue(BearerAuthScopes, []string{"x.OperationPermit(c, operationID)"})
+func (siw *ServerInterfaceWrapper) IncrementCounter(c fiber.Ctx) error {
+	fiber.StoreInContext(c, BearerAuthScopes, []string{"x.OperationPermit(c, operationID)"})
 
 	return siw.Handler.IncrementCounter(c)
 }
@@ -367,15 +367,15 @@ func RegisterHandlersWithOptions(router fiber.Router, si ServerInterface, option
 
 type Validator interface {
 	// AuthFunc is called before the request is processed. The response will be 401 if the auth fails.
-	AuthFunc(*fiber.Ctx) error
+	AuthFunc(fiber.Ctx) error
 
 	// PreValidate is called before the request is processed. The response will be 403 if the validation fails.
-	PreValidate(*fiber.Ctx) error
+	PreValidate(fiber.Ctx) error
 
 	// PostValidate is called after the request is processed. The response will be 403 if the validation fails.
-	PostValidate(*fiber.Ctx) error
+	PostValidate(fiber.Ctx) error
 
-	OperationPermit(c *fiber.Ctx, operationID string) error
+	OperationPermit(c fiber.Ctx, operationID string) error
 }
 
 type XMiddleware struct {
@@ -389,7 +389,7 @@ func NewXMiddleware(handler ServerInterface, validator Validator) ServerInterfac
 
 // Increment Counter
 // (POST /counter)
-func (x *XMiddleware) IncrementCounter(c *fiber.Ctx) error {
+func (x *XMiddleware) IncrementCounter(c fiber.Ctx) error {
 	if err := x.AuthFunc(c); err != nil {
 		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
 	}

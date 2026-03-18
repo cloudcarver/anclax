@@ -14,7 +14,7 @@ import (
 	reflect "reflect"
 	time "time"
 
-	fiber "github.com/gofiber/fiber/v2"
+	fiber "github.com/gofiber/fiber/v3"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -110,7 +110,7 @@ func (mr *MockCaveatMockRecorder) Type() *gomock.Call {
 }
 
 // Validate mocks base method.
-func (m *MockCaveat) Validate(arg0 *fiber.Ctx) error {
+func (m *MockCaveat) Validate(arg0 fiber.Ctx) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Validate", arg0)
 	ret0, _ := ret[0].(error)

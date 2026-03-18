@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 type CaveatParserInterface interface {
@@ -18,7 +18,7 @@ type CaveatParserInterface interface {
 type Caveat interface {
 	Type() string
 
-	Validate(*fiber.Ctx) error
+	Validate(fiber.Ctx) error
 }
 
 type MacaroonManagerInterface interface {

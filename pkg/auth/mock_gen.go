@@ -14,7 +14,7 @@ import (
 	reflect "reflect"
 
 	macaroons "github.com/cloudcarver/anclax/pkg/macaroons"
-	fiber "github.com/gofiber/fiber/v2"
+	fiber "github.com/gofiber/fiber/v3"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -43,7 +43,7 @@ func (m *MockAuthInterface) EXPECT() *MockAuthInterfaceMockRecorder {
 }
 
 // Authfunc mocks base method.
-func (m *MockAuthInterface) Authfunc(c *fiber.Ctx) error {
+func (m *MockAuthInterface) Authfunc(c fiber.Ctx) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Authfunc", c)
 	ret0, _ := ret[0].(error)

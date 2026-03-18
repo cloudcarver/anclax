@@ -7,7 +7,7 @@ import (
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/service"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 type Controller struct {
@@ -31,9 +31,9 @@ func NewController(
 	}
 }
 
-func (controller *Controller) SignIn(c *fiber.Ctx) error {
+func (controller *Controller) SignIn(c fiber.Ctx) error {
 	var params apigen.SignInRequest
-	if err := c.BodyParser(&params); err != nil {
+	if err := c.Bind().Body(&params); err != nil {
 		return c.SendStatus(fiber.StatusBadRequest)
 	}
 
@@ -48,7 +48,7 @@ func (controller *Controller) SignIn(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(credentials)
 }
 
-func (controller *Controller) SignOut(c *fiber.Ctx) error {
+func (controller *Controller) SignOut(c fiber.Ctx) error {
 	userID, err := auth.GetUserID(c)
 	if err != nil {
 		return c.SendStatus(fiber.StatusUnauthorized)
@@ -56,9 +56,9 @@ func (controller *Controller) SignOut(c *fiber.Ctx) error {
 	return controller.auth.InvalidateUserTokens(c.Context(), userID)
 }
 
-func (controller *Controller) RefreshToken(c *fiber.Ctx) error {
+func (controller *Controller) RefreshToken(c fiber.Ctx) error {
 	var params apigen.RefreshTokenRequest
-	if err := c.BodyParser(&params); err != nil {
+	if err := c.Bind().Body(&params); err != nil {
 		return c.SendStatus(fiber.StatusBadRequest)
 	}
 
@@ -73,13 +73,13 @@ func (controller *Controller) RefreshToken(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(credentials)
 }
 
-func (controller *Controller) SignUp(c *fiber.Ctx) error {
+func (controller *Controller) SignUp(c fiber.Ctx) error {
 	if controller.disableDefaultSignUp {
 		return c.Status(fiber.StatusNotFound).SendString("Cannot POST /api/v1/auth/sign-up")
 	}
 
 	var params apigen.SignUpRequest
-	if err := c.BodyParser(&params); err != nil {
+	if err := c.Bind().Body(&params); err != nil {
 		return c.SendStatus(fiber.StatusBadRequest)
 	}
 
@@ -104,7 +104,7 @@ func (controller *Controller) SignUp(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(credentials)
 }
 
-func (controller *Controller) ListTasks(c *fiber.Ctx) error {
+func (controller *Controller) ListTasks(c fiber.Ctx) error {
 	ret, err := controller.svc.ListTasks(c.Context())
 	if err != nil {
 		return err
@@ -112,7 +112,7 @@ func (controller *Controller) ListTasks(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(ret)
 }
 
-func (controller *Controller) ListEvents(c *fiber.Ctx) error {
+func (controller *Controller) ListEvents(c fiber.Ctx) error {
 	ret, err := controller.svc.ListEvents(c.Context())
 	if err != nil {
 		return err
@@ -120,7 +120,7 @@ func (controller *Controller) ListEvents(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(ret)
 }
 
-func (controller *Controller) ListOrgs(c *fiber.Ctx) error {
+func (controller *Controller) ListOrgs(c fiber.Ctx) error {
 	userID, err := auth.GetUserID(c)
 	if err != nil {
 		return c.SendStatus(fiber.StatusUnauthorized)
@@ -134,7 +134,7 @@ func (controller *Controller) ListOrgs(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(ret)
 }
 
-func (controller *Controller) TryExecuteTask(c *fiber.Ctx, taskID int32) error {
+func (controller *Controller) TryExecuteTask(c fiber.Ctx, taskID int32) error {
 	if !controller.enableWorkerHTTPTrigger {
 		return c.Status(fiber.StatusNotFound).SendString("Cannot GET /api/v1/tasks/try-execute")
 	}

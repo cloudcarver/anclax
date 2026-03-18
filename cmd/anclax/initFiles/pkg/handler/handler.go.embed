@@ -6,7 +6,7 @@ import (
 	counter "myexampleapp/pkg/zgen/schemas/counter"
 	"myexampleapp/pkg/zgen/taskgen"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 type Handler struct {
@@ -18,7 +18,7 @@ func NewHandler(model model.ModelInterface, taskrunner taskgen.TaskRunner) (apig
 	return &Handler{model, taskrunner}, nil
 }
 
-func (h *Handler) GetCounter(c *fiber.Ctx) error {
+func (h *Handler) GetCounter(c fiber.Ctx) error {
 	count, err := h.model.GetCounter(c.Context())
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
@@ -26,7 +26,7 @@ func (h *Handler) GetCounter(c *fiber.Ctx) error {
 	return c.JSON(counter.Counter{Count: count.Value})
 }
 
-func (h *Handler) IncrementCounter(c *fiber.Ctx) error {
+func (h *Handler) IncrementCounter(c fiber.Ctx) error {
 	_, err := h.taskrunner.RunIncrementCounter(c.Context(), &counter.IncrementCounterParams{
 		Amount: 1,
 	})

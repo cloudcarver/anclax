@@ -8,7 +8,7 @@ import (
 	"github.com/cloudcarver/anclax/pkg/hooks"
 	"github.com/cloudcarver/anclax/pkg/macaroons"
 	"github.com/cloudcarver/anclax/pkg/utils"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/pkg/errors"
 )
 
@@ -35,7 +35,7 @@ type User struct {
 }
 
 type AuthInterface interface {
-	Authfunc(c *fiber.Ctx) error
+	Authfunc(c fiber.Ctx) error
 
 	// CreateTokenWithRefreshToken creates both access token and refresh token
 	CreateUserTokens(ctx context.Context, userID int32, orgID int32, caveats ...macaroons.Caveat) (*macaroons.Macaroon, *macaroons.Macaroon, error)
@@ -86,7 +86,7 @@ func NewAuth(cfg *config.Config, macaroonManager macaroons.MacaroonManagerInterf
 	}, nil
 }
 
-func (a *Auth) Authfunc(c *fiber.Ctx) error {
+func (a *Auth) Authfunc(c fiber.Ctx) error {
 	authHeader := c.Get("Authorization")
 	if authHeader == "" {
 		return errors.Wrap(fiber.ErrUnauthorized, "missing authorization header")
@@ -176,7 +176,7 @@ func (a *Auth) InvalidateToken(ctx context.Context, keyID int64) error {
 	return a.macaroonManager.InvalidateToken(ctx, keyID)
 }
 
-func GetUserID(c *fiber.Ctx) (int32, error) {
+func GetUserID(c fiber.Ctx) (int32, error) {
 	userID, ok := c.Locals(ContextKeyUserID).(int32)
 	if !ok {
 		return 0, ErrUserIdentityNotExist
@@ -184,7 +184,7 @@ func GetUserID(c *fiber.Ctx) (int32, error) {
 	return userID, nil
 }
 
-func GetOrgID(c *fiber.Ctx) (int32, error) {
+func GetOrgID(c fiber.Ctx) (int32, error) {
 	orgID, ok := c.Locals(ContextKeyOrgID).(int32)
 	if !ok {
 		return 0, ErrUserIdentityNotExist
@@ -192,7 +192,7 @@ func GetOrgID(c *fiber.Ctx) (int32, error) {
 	return orgID, nil
 }
 
-func GetToken(c *fiber.Ctx) (*macaroons.Macaroon, error) {
+func GetToken(c fiber.Ctx) (*macaroons.Macaroon, error) {
 	token, ok := c.Locals(ContextKeyMacaroon).(*macaroons.Macaroon)
 	if !ok {
 		return nil, ErrUserIdentityNotExist

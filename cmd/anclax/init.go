@@ -55,7 +55,7 @@ func parseConfig(configPath string) (*Config, error) {
 
 var goModules = []string{
 	"github.com/jackc/pgx/v5",
-	"github.com/gofiber/fiber/v2",
+	"github.com/gofiber/fiber/v3",
 	"github.com/google/wire",
 	"github.com/cloudcarver/anclax",
 }

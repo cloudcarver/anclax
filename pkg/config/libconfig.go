@@ -2,7 +2,7 @@ package config
 
 import (
 	"github.com/cloudcarver/anclax/lib/ws"
-	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v3/middleware/cors"
 )
 
 type PgCfg struct {

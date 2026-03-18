@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	macaroons "github.com/cloudcarver/anclax/pkg/macaroons"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/pkg/errors"
 )
 
@@ -31,7 +31,7 @@ func (uc *UserContextCaveat) Type() string {
 	return uc.Typ
 }
 
-func (uc *UserContextCaveat) Validate(ctx *fiber.Ctx) error {
+func (uc *UserContextCaveat) Validate(ctx fiber.Ctx) error {
 	ctx.Locals(ContextKeyUserID, uc.UserID)
 	ctx.Locals(ContextKeyOrgID, uc.OrgID)
 	return nil
@@ -55,7 +55,7 @@ func (rc *RefreshOnlyCaveat) Type() string {
 	return rc.Typ
 }
 
-func (rc *RefreshOnlyCaveat) Validate(ctx *fiber.Ctx) error {
+func (rc *RefreshOnlyCaveat) Validate(ctx fiber.Ctx) error {
 	if ctx.Method() == "POST" && strings.HasSuffix(ctx.Path(), "/auth/refresh") {
 		return nil
 	}

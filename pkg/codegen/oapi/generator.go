@@ -596,11 +596,11 @@ func renderSpec(doc *document) (string, error) {
 func renderMiddlewareDefinitions(b *strings.Builder, doc *document) {
 	b.WriteString("type Validator interface {\n")
 	b.WriteString("\t// AuthFunc is called before the request is processed. The response will be 401 if the auth fails.\n")
-	b.WriteString("\tAuthFunc(*fiber.Ctx) error\n\n")
+	b.WriteString("\tAuthFunc(fiber.Ctx) error\n\n")
 	b.WriteString("\t// PreValidate is called before the request is processed. The response will be 403 if the validation fails.\n")
-	b.WriteString("\tPreValidate(*fiber.Ctx) error\n\n")
+	b.WriteString("\tPreValidate(fiber.Ctx) error\n\n")
 	b.WriteString("\t// PostValidate is called after the request is processed. The response will be 403 if the validation fails.\n")
-	b.WriteString("\tPostValidate(*fiber.Ctx) error\n")
+	b.WriteString("\tPostValidate(fiber.Ctx) error\n")
 	if len(doc.CheckRules) > 0 || len(doc.Functions) > 0 {
 		b.WriteString("\n")
 	}
@@ -666,7 +666,7 @@ func renderMiddlewareDefinitions(b *strings.Builder, doc *document) {
 		b.WriteString(")\n")
 		b.WriteString("func (x *XMiddleware) ")
 		b.WriteString(op.Name)
-		b.WriteString("(c *fiber.Ctx")
+		b.WriteString("(c fiber.Ctx")
 		for _, param := range op.PathParams {
 			b.WriteString(", ")
 			b.WriteString(param.VarName)
@@ -949,7 +949,7 @@ func renderServer(b *strings.Builder, doc *document) {
 		b.WriteString(")\n")
 		b.WriteString("\t")
 		b.WriteString(op.Name)
-		b.WriteString("(c *fiber.Ctx")
+		b.WriteString("(c fiber.Ctx")
 		for _, param := range op.PathParams {
 			b.WriteString(", ")
 			b.WriteString(param.VarName)
@@ -968,12 +968,12 @@ func renderServer(b *strings.Builder, doc *document) {
 		b.WriteString(" operation middleware\n")
 		b.WriteString("func (siw *ServerInterfaceWrapper) ")
 		b.WriteString(op.Name)
-		b.WriteString("(c *fiber.Ctx) error {\n")
+		b.WriteString("(c fiber.Ctx) error {\n")
 		for _, param := range op.PathParams {
 			renderPathParamParse(b, param)
 		}
 		for _, sec := range op.Securities {
-			b.WriteString("\tc.Context().SetUserValue(")
+			b.WriteString("\tfiber.StoreInContext(c, ")
 			b.WriteString(sec.ConstName)
 			b.WriteString(", []string{")
 			for i, scope := range sec.Scopes {
@@ -1415,7 +1415,7 @@ func specImports(doc *document) []string {
 		"net/http":                    {},
 		"net/url":                     {},
 		"strings":                     {},
-		"github.com/gofiber/fiber/v2": {},
+		"github.com/gofiber/fiber/v3": {},
 	}
 	for imp := range doc.SpecTypeImports {
 		imports[imp] = struct{}{}
@@ -1854,7 +1854,7 @@ func scopeNeedsContext(doc *document) bool {
 
 func scopeReceiver(useContext bool) string {
 	if useContext {
-		return "c *fiber.Ctx"
+		return "c fiber.Ctx"
 	}
 	return "ctx context.Context"
 }
