@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
@@ -718,7 +720,7 @@ type BroadcastUpdateWorkerRuntimeConfigParameters struct {
 	Weights []int32 `json:"weights" yaml:"weights"`
 
     // Fixed snapshot of worker IDs targeted by this broadcast request
-	WorkerIDs []string `json:"workerIDs" yaml:"workerIDs"`
+	WorkerIDs []uuid.UUID `json:"workerIDs" yaml:"workerIDs"`
 }
 
 type ApplyWorkerRuntimeConfigToWorkerParameters struct { 
@@ -729,7 +731,7 @@ type ApplyWorkerRuntimeConfigToWorkerParameters struct {
 	Version int64 `json:"version" yaml:"version"`
 
     // Target worker ID
-	WorkerID string `json:"workerID" yaml:"workerID"`
+	WorkerID uuid.UUID `json:"workerID" yaml:"workerID"`
 }
 
 type BroadcastCancelTaskParameters struct { 
@@ -743,7 +745,7 @@ type BroadcastCancelTaskParameters struct {
 	TaskIDs []int32 `json:"taskIDs" yaml:"taskIDs"`
 
     // Fixed snapshot of worker IDs targeted by this broadcast request
-	WorkerIDs []string `json:"workerIDs" yaml:"workerIDs"`
+	WorkerIDs []uuid.UUID `json:"workerIDs" yaml:"workerIDs"`
 }
 
 type CancelTaskOnWorkerParameters struct { 
@@ -754,7 +756,7 @@ type CancelTaskOnWorkerParameters struct {
 	TaskIDs []int32 `json:"taskIDs" yaml:"taskIDs"`
 
     // Target worker ID
-	WorkerID string `json:"workerID" yaml:"workerID"`
+	WorkerID uuid.UUID `json:"workerID" yaml:"workerID"`
 }
 
 type BroadcastPauseTaskParameters struct { 
@@ -768,7 +770,7 @@ type BroadcastPauseTaskParameters struct {
 	TaskIDs []int32 `json:"taskIDs" yaml:"taskIDs"`
 
     // Fixed snapshot of worker IDs targeted by this broadcast request
-	WorkerIDs []string `json:"workerIDs" yaml:"workerIDs"`
+	WorkerIDs []uuid.UUID `json:"workerIDs" yaml:"workerIDs"`
 }
 
 type PauseTaskOnWorkerParameters struct { 
@@ -779,7 +781,7 @@ type PauseTaskOnWorkerParameters struct {
 	TaskIDs []int32 `json:"taskIDs" yaml:"taskIDs"`
 
     // Target worker ID
-	WorkerID string `json:"workerID" yaml:"workerID"`
+	WorkerID uuid.UUID `json:"workerID" yaml:"workerID"`
 }
 
 type StressProbeParameters struct { 

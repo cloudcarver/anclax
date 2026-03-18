@@ -8,6 +8,7 @@ import (
 	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -20,15 +21,16 @@ func TestWorkerControlTaskHandlerApplyRuntimeConfigToTargetWorker(t *testing.T) 
 	handler := NewWorkerControlTaskHandler(mockWorker)
 
 	requestID := "req-1"
+	workerID := uuid.New()
 	params := &taskgen.ApplyWorkerRuntimeConfigToWorkerParameters{
 		RequestID: &requestID,
-		WorkerID:  "w-1",
+		WorkerID:  workerID,
 		Version:   10,
 	}
 	payload, err := params.Marshal()
 	require.NoError(t, err)
 
-	mockWorker.EXPECT().WorkerID().Return("w-1")
+	mockWorker.EXPECT().WorkerID().Return(workerID.String())
 	mockWorker.EXPECT().NotifyRuntimeConfig(requestID)
 
 	err = handler.HandleTask(context.Background(), worker.Task{Spec: apigen.TaskSpec{
@@ -46,13 +48,13 @@ func TestWorkerControlTaskHandlerApplyRuntimeConfigToDifferentWorkerNoop(t *test
 	handler := NewWorkerControlTaskHandler(mockWorker)
 
 	params := &taskgen.ApplyWorkerRuntimeConfigToWorkerParameters{
-		WorkerID: "w-2",
+		WorkerID: uuid.New(),
 		Version:  10,
 	}
 	payload, err := params.Marshal()
 	require.NoError(t, err)
 
-	mockWorker.EXPECT().WorkerID().Return("w-1")
+	mockWorker.EXPECT().WorkerID().Return(uuid.NewString())
 	mockWorker.EXPECT().NotifyRuntimeConfig(gomock.Any()).Times(0)
 
 	err = handler.HandleTask(context.Background(), worker.Task{Spec: apigen.TaskSpec{
@@ -94,7 +96,7 @@ func TestWorkerControlTaskHandlerEmptyTargetWorkerIDAppliesToLocal(t *testing.T)
 	mockWorker := worker.NewMockWorkerInterface(ctrl)
 	handler := NewWorkerControlTaskHandler(mockWorker)
 
-	params := &taskgen.CancelTaskOnWorkerParameters{WorkerID: "", TaskIDs: []int32{9}}
+	params := &taskgen.CancelTaskOnWorkerParameters{WorkerID: uuid.Nil, TaskIDs: []int32{9}}
 	payload, err := params.Marshal()
 	require.NoError(t, err)
 
@@ -130,17 +132,18 @@ func TestWorkerControlTaskHandlerCancelAndPause(t *testing.T) {
 	handler := NewWorkerControlTaskHandler(mockWorker)
 
 	taskIDs := []int32{11, 22}
-	cancelParams := &taskgen.CancelTaskOnWorkerParameters{WorkerID: "w-1", TaskIDs: taskIDs}
+	workerID := uuid.New()
+	cancelParams := &taskgen.CancelTaskOnWorkerParameters{WorkerID: workerID, TaskIDs: taskIDs}
 	cancelPayload, err := cancelParams.Marshal()
 	require.NoError(t, err)
 
-	pauseParams := &taskgen.PauseTaskOnWorkerParameters{WorkerID: "w-1", TaskIDs: taskIDs}
+	pauseParams := &taskgen.PauseTaskOnWorkerParameters{WorkerID: workerID, TaskIDs: taskIDs}
 	pausePayload, err := pauseParams.Marshal()
 	require.NoError(t, err)
 
-	mockWorker.EXPECT().WorkerID().Return("w-1")
+	mockWorker.EXPECT().WorkerID().Return(workerID.String())
 	mockWorker.EXPECT().InterruptTasks(taskIDs, taskcore.ErrTaskCancelled)
-	mockWorker.EXPECT().WorkerID().Return("w-1")
+	mockWorker.EXPECT().WorkerID().Return(workerID.String())
 	mockWorker.EXPECT().InterruptTasks(taskIDs, taskcore.ErrTaskPaused)
 
 	err = handler.HandleTask(context.Background(), worker.Task{Spec: apigen.TaskSpec{

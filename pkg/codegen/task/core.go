@@ -14,6 +14,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/cloudcarver/anclax/pkg/codegen/gotypes"
 	schema_codegen "github.com/cloudcarver/anclax/pkg/codegen/schemas"
 	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/getkin/kin-openapi/openapi3"
@@ -429,19 +430,13 @@ func parseSchemaToType(currentFile, typeName string, ref *openapi3.SchemaRef, sc
 	if ref.Value.Type == nil {
 		return "any", "", nil
 	}
-	switch {
-	case ref.Value.Type.Is("string"):
-		if ref.Value.Format == "date-time" {
-			imports["time"] = struct{}{}
-			return "time.Time", "", nil
+	if goType, typeImports, ok := gotypes.ResolvePrimitive(ref.Value); ok {
+		for _, imp := range typeImports {
+			imports[imp] = struct{}{}
 		}
-		return "string", "", nil
-	case ref.Value.Type.Is("integer"):
-		return typeMap("integer", ref.Value.Format), "", nil
-	case ref.Value.Type.Is("number"):
-		return "float64", "", nil
-	case ref.Value.Type.Is("boolean"):
-		return "bool", "", nil
+		return goType, "", nil
+	}
+	switch {
 	case ref.Value.Type.Is("array"):
 		itemType, itemDef, err := parseSchemaToType(currentFile, addGlobalType(typeName+"Item"), ref.Value.Items, schemaManager, imports)
 		if err != nil {
@@ -503,26 +498,6 @@ func parseObjectSchema(currentFile, structName string, schema *openapi3.Schema, 
 		return "", "", err
 	}
 	return structName, nestedDefs + "\n" + buf.String(), nil
-}
-
-func typeMap(typeName string, format string) string {
-	switch typeName {
-	case "string":
-		return "string"
-	case "integer":
-		if format == "int64" {
-			return "int64"
-		} else if format == "int32" {
-			return "int32"
-		}
-		return "int"
-	case "number":
-		return "float64"
-	case "boolean":
-		return "bool"
-	default:
-		return typeName
-	}
 }
 
 func customGoType(schema *openapi3.Schema) (string, []string) {

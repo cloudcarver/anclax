@@ -47,7 +47,7 @@ func TestExecuteBroadcastCancelTaskLocalAndRemoteWorker(t *testing.T) {
 
 	mockRunner.EXPECT().RunCancelTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, params *taskgen.CancelTaskOnWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-			require.Equal(t, w2.String(), params.WorkerID)
+			require.Equal(t, w2, params.WorkerID)
 			require.Equal(t, []int32{101, 102}, params.TaskIDs)
 			task := &apigen.Task{Attributes: apigen.TaskAttributes{}}
 			for _, override := range overrides {
@@ -136,7 +136,7 @@ func TestExecuteBroadcastPauseTaskLocalAndRemoteWorker(t *testing.T) {
 
 	mockRunner.EXPECT().RunPauseTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, params *taskgen.PauseTaskOnWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-			require.Equal(t, w2.String(), params.WorkerID)
+			require.Equal(t, w2, params.WorkerID)
 			require.Equal(t, []int32{201}, params.TaskIDs)
 			task := &apigen.Task{Attributes: apigen.TaskAttributes{}}
 			for _, override := range overrides {
@@ -211,7 +211,7 @@ func TestExecuteBroadcastUpdateWorkerRuntimeConfigLocalAndRemote(t *testing.T) {
 
 	mockRunner.EXPECT().RunApplyWorkerRuntimeConfigToWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, params *taskgen.ApplyWorkerRuntimeConfigToWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-			require.Equal(t, w2.String(), params.WorkerID)
+			require.Equal(t, w2, params.WorkerID)
 			require.Equal(t, int64(7), params.Version)
 			task := &apigen.Task{Attributes: apigen.TaskAttributes{}}
 			for _, override := range overrides {
@@ -262,7 +262,7 @@ func TestExecuteBroadcastUpdateWorkerRuntimeConfigWorkerDeadCleansUpPendingApply
 
 	mockRunner.EXPECT().RunApplyWorkerRuntimeConfigToWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, params *taskgen.ApplyWorkerRuntimeConfigToWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-			require.Equal(t, w1.String(), params.WorkerID)
+			require.Equal(t, w1, params.WorkerID)
 			require.Equal(t, int64(7), params.Version)
 			task := &apigen.Task{Attributes: apigen.TaskAttributes{}}
 			for _, override := range overrides {

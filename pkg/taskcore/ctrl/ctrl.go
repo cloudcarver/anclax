@@ -139,7 +139,7 @@ func (c *WorkerControlPlane) PauseTask(ctx context.Context, taskID int32) error 
 			return nil
 		}
 
-		params := &taskgen.BroadcastPauseTaskParameters{TaskIDs: taskIDs, WorkerIDs: stringifyWorkerIDs(aliveWorkerIDs)}
+		params := &taskgen.BroadcastPauseTaskParameters{TaskIDs: taskIDs, WorkerIDs: append([]uuid.UUID(nil), aliveWorkerIDs...)}
 		id, err := c.runner.RunBroadcastPauseTaskWithTx(ctx, tx, params, taskcore.WithPriority(WorkerControlTaskPriority))
 		if err != nil {
 			return errors.Wrap(err, "enqueue broadcast pause task")
@@ -185,7 +185,7 @@ func (c *WorkerControlPlane) CancelTask(ctx context.Context, taskID int32) error
 			return nil
 		}
 
-		params := &taskgen.BroadcastCancelTaskParameters{TaskIDs: taskIDs, WorkerIDs: stringifyWorkerIDs(aliveWorkerIDs)}
+		params := &taskgen.BroadcastCancelTaskParameters{TaskIDs: taskIDs, WorkerIDs: append([]uuid.UUID(nil), aliveWorkerIDs...)}
 		id, err := c.runner.RunBroadcastCancelTaskWithTx(ctx, tx, params, taskcore.WithPriority(WorkerControlTaskPriority))
 		if err != nil {
 			return errors.Wrap(err, "enqueue broadcast cancel task")

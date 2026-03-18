@@ -7,6 +7,7 @@ import (
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
@@ -17,10 +18,12 @@ func TestRunUpdateWorkerRuntimeConfigTaskAddsNormalPriority(t *testing.T) {
 
 	mockRunner := taskgen.NewMockTaskRunner(ctrl)
 	maxStrict := int32(80)
+	workerID := uuid.New()
 	req := &UpdateWorkerRuntimeConfigRequest{
 		MaxStrictPercentage: &maxStrict,
 		Labels:              []string{"billing"},
 		Weights:             []int32{3},
+		WorkerIDs:           []string{workerID.String()},
 	}
 
 	mockRunner.EXPECT().RunBroadcastUpdateWorkerRuntimeConfig(context.Background(), gomock.Any(), gomock.Any()).DoAndReturn(
@@ -28,6 +31,7 @@ func TestRunUpdateWorkerRuntimeConfigTaskAddsNormalPriority(t *testing.T) {
 			require.Equal(t, req.MaxStrictPercentage, params.MaxStrictPercentage)
 			require.Equal(t, req.Labels, params.Labels)
 			require.Equal(t, req.Weights, params.Weights)
+			require.Equal(t, []uuid.UUID{workerID}, params.WorkerIDs)
 			require.NotEmpty(t, overrides)
 			task := &apigen.Task{Attributes: apigen.TaskAttributes{}}
 			err := overrides[0](task)
@@ -66,6 +70,18 @@ func TestRunUpdateWorkerRuntimeConfigTaskKeepsNormalPriorityWhenOverrideProvided
 	taskID, err := RunUpdateWorkerRuntimeConfigTask(context.Background(), mockRunner, req, lowPriority)
 	require.NoError(t, err)
 	require.Equal(t, int32(100), taskID)
+}
+
+func TestRunUpdateWorkerRuntimeConfigTaskRejectsInvalidWorkerID(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRunner := taskgen.NewMockTaskRunner(ctrl)
+	mockRunner.EXPECT().RunBroadcastUpdateWorkerRuntimeConfig(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+	_, err := RunUpdateWorkerRuntimeConfigTask(context.Background(), mockRunner, &UpdateWorkerRuntimeConfigRequest{WorkerIDs: []string{"not-a-uuid"}})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "invalid workerID")
 }
 
 func TestRunUpdateWorkerRuntimeConfigTaskPrioritySanity(t *testing.T) {

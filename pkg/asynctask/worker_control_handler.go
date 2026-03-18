@@ -8,6 +8,7 @@ import (
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
+	"github.com/google/uuid"
 )
 
 type WorkerControlTaskHandler struct {
@@ -66,9 +67,13 @@ func (h *WorkerControlTaskHandler) OnTaskFailed(ctx context.Context, tx core.Tx,
 func (h *WorkerControlTaskHandler) RegisterTaskHandler(handler worker.TaskHandler) {
 }
 
-func (h *WorkerControlTaskHandler) isTargetWorker(targetWorkerID string) bool {
-	if targetWorkerID == "" {
+func (h *WorkerControlTaskHandler) isTargetWorker(targetWorkerID uuid.UUID) bool {
+	if targetWorkerID == uuid.Nil {
 		return true
 	}
-	return h.worker.WorkerID() == targetWorkerID
+	workerID, err := uuid.Parse(h.worker.WorkerID())
+	if err != nil {
+		return false
+	}
+	return workerID == targetWorkerID
 }

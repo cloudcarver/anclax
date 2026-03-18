@@ -260,7 +260,7 @@ func (e *Executor) enqueueApplyRuntimeConfigToWorker(ctx context.Context, parent
 		return errors.New("task runner is required for broadcast runtime config")
 	}
 	params := &taskgen.ApplyWorkerRuntimeConfigToWorkerParameters{
-		WorkerID: workerID.String(),
+		WorkerID: workerID,
 		Version:  version,
 	}
 	if requestID != "" {
@@ -282,7 +282,7 @@ func (e *Executor) enqueueCancelTaskOnWorker(ctx context.Context, parentTaskID i
 		return errors.New("task runner is required for broadcast cancel task")
 	}
 	params := &taskgen.CancelTaskOnWorkerParameters{
-		WorkerID: workerID.String(),
+		WorkerID: workerID,
 		TaskIDs:  append([]int32(nil), taskIDs...),
 	}
 	if requestID != "" {
@@ -304,7 +304,7 @@ func (e *Executor) enqueuePauseTaskOnWorker(ctx context.Context, parentTaskID in
 		return errors.New("task runner is required for broadcast pause task")
 	}
 	params := &taskgen.PauseTaskOnWorkerParameters{
-		WorkerID: workerID.String(),
+		WorkerID: workerID,
 		TaskIDs:  append([]int32(nil), taskIDs...),
 	}
 	if requestID != "" {
@@ -329,19 +329,15 @@ func (e *Executor) listAliveWorkers(ctx context.Context) ([]uuid.UUID, error) {
 	return workers, nil
 }
 
-func parseWorkerIDSnapshot(rawIDs []string) ([]uuid.UUID, error) {
-	if len(rawIDs) == 0 {
-		return nil, nil
+func normalizeWorkerIDSnapshot(workerIDs []uuid.UUID) []uuid.UUID {
+	if len(workerIDs) == 0 {
+		return nil
 	}
-	out := make([]uuid.UUID, 0, len(rawIDs))
-	seen := make(map[uuid.UUID]struct{}, len(rawIDs))
-	for _, raw := range rawIDs {
-		if raw == "" {
+	out := make([]uuid.UUID, 0, len(workerIDs))
+	seen := make(map[uuid.UUID]struct{}, len(workerIDs))
+	for _, workerID := range workerIDs {
+		if workerID == uuid.Nil {
 			continue
-		}
-		workerID, err := uuid.Parse(raw)
-		if err != nil {
-			return nil, errors.Wrapf(err, "invalid workerID %q", raw)
 		}
 		if _, ok := seen[workerID]; ok {
 			continue
@@ -349,25 +345,19 @@ func parseWorkerIDSnapshot(rawIDs []string) ([]uuid.UUID, error) {
 		seen[workerID] = struct{}{}
 		out = append(out, workerID)
 	}
-	return out, nil
+	return out
 }
 
-func (e *Executor) snapshotOrListAliveWorkers(ctx context.Context, rawIDs []string) ([]uuid.UUID, error) {
-	workerIDs, err := parseWorkerIDSnapshot(rawIDs)
-	if err != nil {
-		return nil, errors.Wrap(taskcore.ErrFatalTask, err.Error())
-	}
+func (e *Executor) snapshotOrListAliveWorkers(ctx context.Context, workerIDs []uuid.UUID) ([]uuid.UUID, error) {
+	workerIDs = normalizeWorkerIDSnapshot(workerIDs)
 	if len(workerIDs) > 0 {
 		return workerIDs, nil
 	}
 	return e.listAliveWorkers(ctx)
 }
 
-func (e *Executor) aliveSubsetOfSnapshot(ctx context.Context, rawIDs []string) ([]uuid.UUID, error) {
-	snapshotIDs, err := parseWorkerIDSnapshot(rawIDs)
-	if err != nil {
-		return nil, errors.Wrap(taskcore.ErrFatalTask, err.Error())
-	}
+func (e *Executor) aliveSubsetOfSnapshot(ctx context.Context, workerIDs []uuid.UUID) ([]uuid.UUID, error) {
+	snapshotIDs := normalizeWorkerIDSnapshot(workerIDs)
 	if len(snapshotIDs) == 0 {
 		return e.listAliveWorkers(ctx)
 	}

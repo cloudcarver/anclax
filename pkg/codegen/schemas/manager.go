@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cloudcarver/anclax/pkg/codegen/gotypes"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v3"
@@ -377,24 +378,10 @@ func (m *Manager) resolveType(file *File, ref *openapi3.SchemaRef, hint string, 
 	if ref.Value.Type == nil {
 		return resolvedType{GoType: "interface{}"}, nil
 	}
+	if goType, imports, ok := gotypes.ResolvePrimitive(ref.Value); ok {
+		return resolvedType{GoType: goType, Imports: imports}, nil
+	}
 	switch {
-	case ref.Value.Type.Is("string"):
-		if ref.Value.Format == "date-time" {
-			return resolvedType{GoType: "time.Time", Imports: []string{"time"}}, nil
-		}
-		return resolvedType{GoType: "string"}, nil
-	case ref.Value.Type.Is("integer"):
-		if ref.Value.Format == "int32" {
-			return resolvedType{GoType: "int32"}, nil
-		}
-		if ref.Value.Format == "int64" {
-			return resolvedType{GoType: "int64"}, nil
-		}
-		return resolvedType{GoType: "int"}, nil
-	case ref.Value.Type.Is("number"):
-		return resolvedType{GoType: "float64"}, nil
-	case ref.Value.Type.Is("boolean"):
-		return resolvedType{GoType: "bool"}, nil
 	case ref.Value.Type.Is("array"):
 		item, err := m.resolveType(file, ref.Value.Items, hint+"Item", enumMap)
 		if err != nil {
@@ -532,27 +519,7 @@ func customGoType(schema *openapi3.Schema) (string, []string) {
 }
 
 func primitiveType(schema *openapi3.Schema) string {
-	if schema == nil || schema.Type == nil {
-		return "interface{}"
-	}
-	switch {
-	case schema.Type.Is("string"):
-		return "string"
-	case schema.Type.Is("integer"):
-		if schema.Format == "int32" {
-			return "int32"
-		}
-		if schema.Format == "int64" {
-			return "int64"
-		}
-		return "int"
-	case schema.Type.Is("number"):
-		return "float64"
-	case schema.Type.Is("boolean"):
-		return "bool"
-	default:
-		return "string"
-	}
+	return gotypes.Primitive(schema)
 }
 
 func renderImports(b *strings.Builder, imports []string) {
