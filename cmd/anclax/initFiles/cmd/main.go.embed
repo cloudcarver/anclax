@@ -4,7 +4,7 @@ import (
 	"flag"
 	"log"
 
-	"myexampleapp/wire"
+	"myexampleapp/app/wire"
 
 	"github.com/cloudcarver/anclax/pkg/utils"
 )

@@ -1,5 +1,4 @@
 externals:
-  oapi-codegen: v2.5.1
   wire: v0.7.0
   sqlc: v1.30.0
   mockgen: v0.6.0
@@ -11,26 +10,22 @@ clean:
   - pkg/taskcore/e2e/gen/*
   - pkg/taskcore/dtmtest/gen/*
 
+schemas:
+  path: api/schemas
+  output: pkg/zgen/schemas
+
 oapi-codegen:
-  path: api/v1.yaml
-  out: pkg/zgen/apigen/spec_gen.go
-  package: apigen
-  config:
-    output-options:
-      skip-prune: true
+  - path: api/v1.yaml
+    out: pkg/zgen/apigen/spec_gen.go
+    package: apigen
 
 wire:
-  path: ./wire
-
-xware:
-  path: api/v1.yaml
-  out: pkg/zgen/apigen/scopes_extend_gen.go
-  package: apigen
+  - path: ./wire
 
 task-handler:
-  path: api/tasks.yaml
-  package: taskgen
-  out: pkg/zgen/taskgen/runner_gen.go
+  - path: api/tasks.yaml
+    package: taskgen
+    out: pkg/zgen/taskgen/runner_gen.go
 
 # DST generation is built into `anclax gen` (no separate external tool entry needed).
 dst:
@@ -42,7 +37,7 @@ dst:
     package: taskcoredtmtest
 
 sqlc:
-  path: dev/sqlc.yaml
+  - path: dev/sqlc.yaml
 
 mockgen:
   files:

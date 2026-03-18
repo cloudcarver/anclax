@@ -1,0 +1,5 @@
+schemas:
+  Amount:
+    type: integer
+    format: int32
+    description: Amount used to change the counter

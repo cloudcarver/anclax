@@ -1,34 +1,32 @@
 externals:
-  oapi-codegen: v2.5.1
   wire: v0.7.0
   sqlc: v1.30.0
   mockgen: v0.6.0
 
+schemas:
+  path: api/schemas
+  output: pkg/zgen/schemas
+
 oapi-codegen:
-  path: api/v1.yaml
-  out: pkg/zgen/apigen/spec_gen.go
-  package: apigen
+  - path: api/v1.yaml
+    out: pkg/zgen/apigen/spec_gen.go
+    package: apigen
 
 wire:
-  path: ./wire
-
-xware:
-  path: api/v1.yaml
-  out: pkg/zgen/apigen/scopes_extend_gen.go
-  package: apigen
+  - path: ./app/wire
 
 task-handler:
-  path: api/tasks.yaml
-  package: taskgen
-  out: pkg/zgen/taskgen/taskgen_gen.go
+  - path: api/tasks.yaml
+    package: taskgen
+    out: pkg/zgen/taskgen/taskgen_gen.go
 
 sqlc:
-  path: sql/sqlc.yaml
+  - path: sql/sqlc.yaml
 
 mockgen:
   files:
-    - source: pkg/zcore/model/model.go
-      destination: pkg/zcore/model/mock_gen.go
+    - source: pkg/model/model.go
+      destination: pkg/model/mock_gen.go
       package: model
     - source: pkg/zgen/taskgen/taskgen_gen.go
       destination: pkg/zgen/taskgen/mock_gen.go

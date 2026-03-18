@@ -23,7 +23,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Counter"
+                  $ref: "./schemas/counter/counter.yaml#schemas/Counter"
       security: []
     post:
       summary: Increment Counter
@@ -35,16 +35,6 @@ paths:
       security: 
         - BearerAuth: 
             - x.OperationPermit(c, operationID)
-
-components:
-  schemas:
-    Counter:
-      type: object
-      required: [count]
-      properties:
-        count:
-          type: integer
-          format: int32
 
 x-check-rules:
   OperationPermit:

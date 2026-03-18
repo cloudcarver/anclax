@@ -1,6 +1,6 @@
 # OpenAPI Spec
 
-`anclax gen` generates code from the OpenAPI spec in `api/v1.yaml`. Generated code lives in `pkg/zgen/apigen`.
+`anclax gen` generates code from the OpenAPI specs configured under `oapi-codegen` in `anclax.yaml` (commonly `api/v1.yaml`). Generated code goes to each configured entry's `out` path, often under `pkg/zgen/apigen`.
 
 Follow these rules when writing OpenAPI spec:
 1. Use `required` for required fields. Non-required fields become pointer types in Go.
