@@ -10,6 +10,8 @@ Anclax is a definition‑first framework for small–medium apps (single Postgre
 
 Join our [Discord server](https://discord.gg/XxXXbyF59H).
 
+Contact: mike@anclax.com
+
 ### Recommended setup
 
 1. Install the Anclax CLI:
