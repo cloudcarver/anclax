@@ -1785,7 +1785,8 @@ func specNeedsBytes(doc *document) bool {
 func specNeedsStrconv(doc *document) bool {
 	for _, op := range doc.Operations {
 		for _, param := range op.PathParams {
-			if param.Type != "string" {
+			switch param.Type {
+			case "int32", "int64":
 				return true
 			}
 		}
