@@ -79,6 +79,7 @@ type operationDef struct {
 	PathFormat    string
 	PathArgs      string
 	PathParams    []paramDef
+	QueryParams   []paramDef
 	RequestBody   *requestBodyDef
 	Responses     []responseDef
 	Securities    []operationSecurity
@@ -113,6 +114,7 @@ type paramDef struct {
 	GoName     string
 	Type       string
 	SourceName string
+	Required   bool
 }
 
 type resolvedType struct {
@@ -373,6 +375,15 @@ func buildSchemaDef(currentFile, name string, ref *openapi3.SchemaRef, enumMap m
 	}
 	value := ref.Value
 	schema.Description = firstNonEmpty(value.Description, schema.Name)
+	if len(value.Enum) > 0 {
+		resolved, err := resolveType(currentFile, "", ref, schema.Name, enumMap, schemaManager)
+		if err != nil {
+			return schema, err
+		}
+		mergeImports(imports, resolved.Imports...)
+		schema.Kind = "enum"
+		return schema, nil
+	}
 
 	resolved, err := resolveType(currentFile, "", ref, schema.Name, enumMap, schemaManager)
 	if err != nil {
@@ -434,12 +445,17 @@ func buildOperation(currentFile, path string, pathItem *openapi3.PathItem, metho
 		FiberPath: fiberPath(path),
 	}
 
-	params, err := collectPathParams(path, pathItem, op)
+	params, err := collectPathParams(currentFile, path, pathItem, op, enumMap, imports, schemaManager)
 	if err != nil {
 		return ret, err
 	}
 	ret.PathParams = params
 	ret.PathFormat, ret.PathArgs = buildPathFormatter(path, params)
+	queryParams, err := collectQueryParams(currentFile, pathItem, op, enumMap, imports, schemaManager)
+	if err != nil {
+		return ret, err
+	}
+	ret.QueryParams = queryParams
 
 	if op.RequestBody != nil && op.RequestBody.Value != nil {
 		if mediaType, schemaRef, ok := jsonBodySchema(op.RequestBody.Value.Content); ok {
@@ -568,6 +584,8 @@ func renderSpec(doc *document) (string, error) {
 		b.WriteString("\n\n")
 	}
 
+	renderOperationParamStructs(&b, doc)
+
 	for _, op := range doc.Operations {
 		if op.RequestBody != nil && op.RequestBody.HasJSONAlias {
 			b.WriteString("// ")
@@ -674,6 +692,10 @@ func renderMiddlewareDefinitions(b *strings.Builder, doc *document) {
 			b.WriteString(" ")
 			b.WriteString(param.Type)
 		}
+		if len(op.QueryParams) > 0 {
+			b.WriteString(", params ")
+			b.WriteString(operationParamsTypeName(op))
+		}
 		b.WriteString(") error {\n")
 		b.WriteString("\tif err := x.AuthFunc(c); err != nil {\n")
 		b.WriteString("\t\treturn c.Status(fiber.StatusUnauthorized).SendString(err.Error())\n")
@@ -705,12 +727,18 @@ func renderMiddlewareDefinitions(b *strings.Builder, doc *document) {
 			b.WriteString(", ")
 			b.WriteString(param.VarName)
 		}
+		if len(op.QueryParams) > 0 {
+			b.WriteString(", params")
+		}
 		b.WriteString(")\n")
 		b.WriteString("}\n\n")
 	}
 }
 
 func renderSchema(b *strings.Builder, schema schemaDef) {
+	if schema.Kind == "enum" {
+		return
+	}
 	if schema.Kind == "alias" {
 		b.WriteString("// ")
 		b.WriteString(schema.Name)
@@ -744,6 +772,53 @@ func renderSchema(b *strings.Builder, schema schemaDef) {
 		b.WriteString("`\n")
 	}
 	b.WriteString("}\n\n")
+}
+
+func renderOperationParamStructs(b *strings.Builder, doc *document) {
+	for _, op := range doc.Operations {
+		if len(op.QueryParams) == 0 {
+			continue
+		}
+		typeName := operationParamsTypeName(op)
+		b.WriteString("// ")
+		b.WriteString(typeName)
+		b.WriteString(" defines parameters for ")
+		b.WriteString(op.Name)
+		b.WriteString(".\n")
+		b.WriteString("type ")
+		b.WriteString(typeName)
+		b.WriteString(" struct {\n")
+		for _, param := range op.QueryParams {
+			b.WriteString("\t")
+			b.WriteString(param.Name)
+			b.WriteString(" ")
+			b.WriteString(paramStructFieldType(param))
+			b.WriteString(" `query:")
+			b.WriteString(strconv.Quote(queryTag(param)))
+			b.WriteString(" json:")
+			b.WriteString(strconv.Quote(jsonTag(param.SourceName, !param.Required)))
+			b.WriteString("`\n")
+		}
+		b.WriteString("}\n\n")
+	}
+}
+
+func operationParamsTypeName(op operationDef) string {
+	return op.Name + "Params"
+}
+
+func paramStructFieldType(param paramDef) string {
+	if param.Required {
+		return param.Type
+	}
+	return pointerType(param.Type)
+}
+
+func queryTag(param paramDef) string {
+	if param.Required {
+		return param.SourceName + ",required"
+	}
+	return param.SourceName
 }
 
 func renderClient(b *strings.Builder, doc *document) {
@@ -804,6 +879,10 @@ func renderClient(b *strings.Builder, doc *document) {
 				b.WriteString(" ")
 				b.WriteString(param.Type)
 			}
+			if len(op.QueryParams) > 0 {
+				b.WriteString(", params *")
+				b.WriteString(operationParamsTypeName(op))
+			}
 			b.WriteString(", contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)\n\n")
 			b.WriteString("\t")
 			b.WriteString(op.Name)
@@ -813,6 +892,10 @@ func renderClient(b *strings.Builder, doc *document) {
 				b.WriteString(param.VarName)
 				b.WriteString(" ")
 				b.WriteString(param.Type)
+			}
+			if len(op.QueryParams) > 0 {
+				b.WriteString(", params *")
+				b.WriteString(operationParamsTypeName(op))
 			}
 			b.WriteString(", body ")
 			b.WriteString(op.RequestBody.AliasName)
@@ -829,6 +912,10 @@ func renderClient(b *strings.Builder, doc *document) {
 				b.WriteString(param.VarName)
 				b.WriteString(" ")
 				b.WriteString(param.Type)
+			}
+			if len(op.QueryParams) > 0 {
+				b.WriteString(", params *")
+				b.WriteString(operationParamsTypeName(op))
 			}
 			b.WriteString(", reqEditors ...RequestEditorFn) (*http.Response, error)\n\n")
 		}
@@ -888,6 +975,10 @@ func renderClient(b *strings.Builder, doc *document) {
 				b.WriteString(" ")
 				b.WriteString(param.Type)
 			}
+			if len(op.QueryParams) > 0 {
+				b.WriteString(", params *")
+				b.WriteString(operationParamsTypeName(op))
+			}
 			b.WriteString(", contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*")
 			b.WriteString(op.Name)
 			b.WriteString("Response, error)\n\n")
@@ -899,6 +990,10 @@ func renderClient(b *strings.Builder, doc *document) {
 				b.WriteString(param.VarName)
 				b.WriteString(" ")
 				b.WriteString(param.Type)
+			}
+			if len(op.QueryParams) > 0 {
+				b.WriteString(", params *")
+				b.WriteString(operationParamsTypeName(op))
 			}
 			b.WriteString(", body ")
 			b.WriteString(op.RequestBody.AliasName)
@@ -917,6 +1012,10 @@ func renderClient(b *strings.Builder, doc *document) {
 				b.WriteString(param.VarName)
 				b.WriteString(" ")
 				b.WriteString(param.Type)
+			}
+			if len(op.QueryParams) > 0 {
+				b.WriteString(", params *")
+				b.WriteString(operationParamsTypeName(op))
 			}
 			b.WriteString(", reqEditors ...RequestEditorFn) (*")
 			b.WriteString(op.Name)
@@ -957,6 +1056,10 @@ func renderServer(b *strings.Builder, doc *document) {
 			b.WriteString(" ")
 			b.WriteString(param.Type)
 		}
+		if len(op.QueryParams) > 0 {
+			b.WriteString(", params ")
+			b.WriteString(operationParamsTypeName(op))
+		}
 		b.WriteString(") error\n")
 	}
 	b.WriteString("}\n\n")
@@ -972,6 +1075,14 @@ func renderServer(b *strings.Builder, doc *document) {
 		b.WriteString("(c fiber.Ctx) error {\n")
 		for _, param := range op.PathParams {
 			renderPathParamParse(b, param)
+		}
+		if len(op.QueryParams) > 0 {
+			b.WriteString("\tvar params ")
+			b.WriteString(operationParamsTypeName(op))
+			b.WriteString("\n")
+			b.WriteString("\tif err := c.Bind().Query(&params); err != nil {\n")
+			b.WriteString("\t\treturn fiber.NewError(fiber.StatusBadRequest, err.Error())\n")
+			b.WriteString("\t}\n\n")
 		}
 		for _, sec := range op.Securities {
 			b.WriteString("\tfiber.StoreInContext(c, ")
@@ -991,6 +1102,9 @@ func renderServer(b *strings.Builder, doc *document) {
 		for _, param := range op.PathParams {
 			b.WriteString(", ")
 			b.WriteString(param.VarName)
+		}
+		if len(op.QueryParams) > 0 {
+			b.WriteString(", params")
 		}
 		b.WriteString(")\n")
 		b.WriteString("}\n\n")
@@ -1027,6 +1141,10 @@ func renderClientBodyMethod(b *strings.Builder, op operationDef) {
 		b.WriteString(" ")
 		b.WriteString(param.Type)
 	}
+	if len(op.QueryParams) > 0 {
+		b.WriteString(", params *")
+		b.WriteString(operationParamsTypeName(op))
+	}
 	b.WriteString(", contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {\n")
 	b.WriteString("\treq, err := New")
 	b.WriteString(op.Name)
@@ -1034,6 +1152,9 @@ func renderClientBodyMethod(b *strings.Builder, op operationDef) {
 	for _, param := range op.PathParams {
 		b.WriteString(", ")
 		b.WriteString(param.VarName)
+	}
+	if len(op.QueryParams) > 0 {
+		b.WriteString(", params")
 	}
 	b.WriteString(", contentType, body)\n")
 	b.WriteString("\tif err != nil {\n\t\treturn nil, err\n\t}\n")
@@ -1053,6 +1174,10 @@ func renderClientJSONMethod(b *strings.Builder, op operationDef) {
 		b.WriteString(" ")
 		b.WriteString(param.Type)
 	}
+	if len(op.QueryParams) > 0 {
+		b.WriteString(", params *")
+		b.WriteString(operationParamsTypeName(op))
+	}
 	b.WriteString(", body ")
 	b.WriteString(op.RequestBody.AliasName)
 	b.WriteString(", reqEditors ...RequestEditorFn) (*http.Response, error) {\n")
@@ -1064,6 +1189,9 @@ func renderClientJSONMethod(b *strings.Builder, op operationDef) {
 	for _, param := range op.PathParams {
 		b.WriteString(", ")
 		b.WriteString(param.VarName)
+	}
+	if len(op.QueryParams) > 0 {
+		b.WriteString(", params")
 	}
 	b.WriteString(", \"application/json\", bytes.NewReader(bodyBytes), reqEditors...)\n")
 	b.WriteString("}\n\n")
@@ -1079,6 +1207,10 @@ func renderClientNoBodyMethod(b *strings.Builder, op operationDef) {
 		b.WriteString(" ")
 		b.WriteString(param.Type)
 	}
+	if len(op.QueryParams) > 0 {
+		b.WriteString(", params *")
+		b.WriteString(operationParamsTypeName(op))
+	}
 	b.WriteString(", reqEditors ...RequestEditorFn) (*http.Response, error) {\n")
 	b.WriteString("\treq, err := New")
 	b.WriteString(op.Name)
@@ -1086,6 +1218,9 @@ func renderClientNoBodyMethod(b *strings.Builder, op operationDef) {
 	for _, param := range op.PathParams {
 		b.WriteString(", ")
 		b.WriteString(param.VarName)
+	}
+	if len(op.QueryParams) > 0 {
+		b.WriteString(", params")
 	}
 	b.WriteString(")\n")
 	b.WriteString("\tif err != nil {\n\t\treturn nil, err\n\t}\n")
@@ -1110,6 +1245,10 @@ func renderNewRequestWithBody(b *strings.Builder, op operationDef) {
 		b.WriteString(" ")
 		b.WriteString(param.Type)
 	}
+	if len(op.QueryParams) > 0 {
+		b.WriteString(", params *")
+		b.WriteString(operationParamsTypeName(op))
+	}
 	b.WriteString(", contentType string, body io.Reader) (*http.Request, error) {\n")
 	renderRequestBuilderBody(b, op, true)
 	b.WriteString("}\n\n")
@@ -1130,6 +1269,10 @@ func renderNewRequestJSON(b *strings.Builder, op operationDef) {
 		b.WriteString(" ")
 		b.WriteString(param.Type)
 	}
+	if len(op.QueryParams) > 0 {
+		b.WriteString(", params *")
+		b.WriteString(operationParamsTypeName(op))
+	}
 	b.WriteString(", body ")
 	b.WriteString(op.RequestBody.AliasName)
 	b.WriteString(") (*http.Request, error) {\n")
@@ -1141,6 +1284,9 @@ func renderNewRequestJSON(b *strings.Builder, op operationDef) {
 	for _, param := range op.PathParams {
 		b.WriteString(", ")
 		b.WriteString(param.VarName)
+	}
+	if len(op.QueryParams) > 0 {
+		b.WriteString(", params")
 	}
 	b.WriteString(", \"application/json\", bytes.NewReader(bodyBytes))\n")
 	b.WriteString("}\n\n")
@@ -1161,6 +1307,10 @@ func renderNewRequestNoBody(b *strings.Builder, op operationDef) {
 		b.WriteString(" ")
 		b.WriteString(param.Type)
 	}
+	if len(op.QueryParams) > 0 {
+		b.WriteString(", params *")
+		b.WriteString(operationParamsTypeName(op))
+	}
 	b.WriteString(") (*http.Request, error) {\n")
 	renderRequestBuilderBody(b, op, false)
 	b.WriteString("}\n\n")
@@ -1179,6 +1329,33 @@ func renderRequestBuilderBody(b *strings.Builder, op operationDef, hasBody bool)
 	b.WriteString("\tif operationPath[0] == '/' {\n\t\toperationPath = \".\" + operationPath\n\t}\n\n")
 	b.WriteString("\tqueryURL, err := serverURL.Parse(operationPath)\n")
 	b.WriteString("\tif err != nil {\n\t\treturn nil, err\n\t}\n\n")
+	if len(op.QueryParams) > 0 {
+		b.WriteString("\tif params != nil {\n")
+		b.WriteString("\t\tqueryValues := queryURL.Query()\n")
+		for _, param := range op.QueryParams {
+			fieldType := paramStructFieldType(param)
+			_ = fieldType
+			if param.Required {
+				b.WriteString("\t\tqueryValues.Set(")
+				b.WriteString(strconv.Quote(param.SourceName))
+				b.WriteString(", fmt.Sprintf(\"%v\", params.")
+				b.WriteString(param.Name)
+				b.WriteString("))\n")
+			} else {
+				b.WriteString("\t\tif params.")
+				b.WriteString(param.Name)
+				b.WriteString(" != nil {\n")
+				b.WriteString("\t\t\tqueryValues.Set(")
+				b.WriteString(strconv.Quote(param.SourceName))
+				b.WriteString(", fmt.Sprintf(\"%v\", *params.")
+				b.WriteString(param.Name)
+				b.WriteString("))\n")
+				b.WriteString("\t\t}\n")
+			}
+		}
+		b.WriteString("\t\tqueryURL.RawQuery = queryValues.Encode()\n")
+		b.WriteString("\t}\n\n")
+	}
 	if hasBody {
 		b.WriteString("\treq, err := http.NewRequest(")
 		b.WriteString(strconv.Quote(op.Method))
@@ -1241,6 +1418,10 @@ func renderClientWithResponseMethod(b *strings.Builder, op operationDef) {
 			b.WriteString(" ")
 			b.WriteString(param.Type)
 		}
+		if len(op.QueryParams) > 0 {
+			b.WriteString(", params *")
+			b.WriteString(operationParamsTypeName(op))
+		}
 		b.WriteString(", contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*")
 		b.WriteString(op.Name)
 		b.WriteString("Response, error) {\n")
@@ -1250,6 +1431,9 @@ func renderClientWithResponseMethod(b *strings.Builder, op operationDef) {
 		for _, param := range op.PathParams {
 			b.WriteString(", ")
 			b.WriteString(param.VarName)
+		}
+		if len(op.QueryParams) > 0 {
+			b.WriteString(", params")
 		}
 		b.WriteString(", contentType, body, reqEditors...)\n")
 		b.WriteString("\tif err != nil {\n\t\treturn nil, err\n\t}\n")
@@ -1267,6 +1451,10 @@ func renderClientWithResponseMethod(b *strings.Builder, op operationDef) {
 			b.WriteString(" ")
 			b.WriteString(param.Type)
 		}
+		if len(op.QueryParams) > 0 {
+			b.WriteString(", params *")
+			b.WriteString(operationParamsTypeName(op))
+		}
 		b.WriteString(", body ")
 		b.WriteString(op.RequestBody.AliasName)
 		b.WriteString(", reqEditors ...RequestEditorFn) (*")
@@ -1278,6 +1466,9 @@ func renderClientWithResponseMethod(b *strings.Builder, op operationDef) {
 		for _, param := range op.PathParams {
 			b.WriteString(", ")
 			b.WriteString(param.VarName)
+		}
+		if len(op.QueryParams) > 0 {
+			b.WriteString(", params")
 		}
 		b.WriteString(", body, reqEditors...)\n")
 		b.WriteString("\tif err != nil {\n\t\treturn nil, err\n\t}\n")
@@ -1302,6 +1493,10 @@ func renderClientWithResponseMethod(b *strings.Builder, op operationDef) {
 		b.WriteString(" ")
 		b.WriteString(param.Type)
 	}
+	if len(op.QueryParams) > 0 {
+		b.WriteString(", params *")
+		b.WriteString(operationParamsTypeName(op))
+	}
 	b.WriteString(", reqEditors ...RequestEditorFn) (*")
 	b.WriteString(op.Name)
 	b.WriteString("Response, error) {\n")
@@ -1311,6 +1506,9 @@ func renderClientWithResponseMethod(b *strings.Builder, op operationDef) {
 	for _, param := range op.PathParams {
 		b.WriteString(", ")
 		b.WriteString(param.VarName)
+	}
+	if len(op.QueryParams) > 0 {
+		b.WriteString(", params")
 	}
 	b.WriteString(", reqEditors...)\n")
 	b.WriteString("\tif err != nil {\n\t\treturn nil, err\n\t}\n")
@@ -1396,6 +1594,25 @@ func renderPathParamParse(b *strings.Builder, param paramDef) {
 		b.WriteString("\tif err != nil {\n\t\treturn fiber.NewError(fiber.StatusBadRequest, fmt.Errorf(\"Invalid format for parameter ")
 		b.WriteString(param.SourceName)
 		b.WriteString(": %w\", err).Error())\n\t}\n\n")
+	case "uuid.UUID":
+		b.WriteString("\t")
+		b.WriteString(param.VarName)
+		b.WriteString("Value := c.Params(")
+		b.WriteString(strconv.Quote(param.SourceName))
+		b.WriteString(")\n")
+		b.WriteString("\tparsed")
+		b.WriteString(param.GoName)
+		b.WriteString(", err := uuid.Parse(")
+		b.WriteString(param.VarName)
+		b.WriteString("Value)\n")
+		b.WriteString("\tif err != nil {\n\t\treturn fiber.NewError(fiber.StatusBadRequest, fmt.Errorf(\"Invalid format for parameter ")
+		b.WriteString(param.SourceName)
+		b.WriteString(": %w\", err).Error())\n\t}\n")
+		b.WriteString("\t")
+		b.WriteString(param.VarName)
+		b.WriteString(" = parsed")
+		b.WriteString(param.GoName)
+		b.WriteString("\n\n")
 	default:
 		b.WriteString("\t")
 		b.WriteString(param.VarName)
@@ -1606,7 +1823,7 @@ func ensureEnum(enumMap map[string]*enumDef, name, baseType, description string,
 	}
 	enum := &enumDef{Name: name, Type: baseType, Description: description}
 	for _, value := range values {
-		enum.Values = append(enum.Values, enumValue{Name: exportName(fmt.Sprint(value)), Literal: enumLiteral(baseType, value)})
+		enum.Values = append(enum.Values, enumValue{Name: name + exportName(fmt.Sprint(value)), Literal: enumLiteral(baseType, value)})
 	}
 	enumMap[name] = enum
 }
@@ -1670,7 +1887,7 @@ func orderedOperations(pathItem *openapi3.PathItem) []struct {
 	return ret
 }
 
-func collectPathParams(path string, pathItem *openapi3.PathItem, op *openapi3.Operation) ([]paramDef, error) {
+func collectPathParams(currentFile string, path string, pathItem *openapi3.PathItem, op *openapi3.Operation, enumMap map[string]*enumDef, imports map[string]struct{}, schemaManager *schema_codegen.Manager) ([]paramDef, error) {
 	names := pathParamNames(path)
 	if len(names) == 0 {
 		return nil, nil
@@ -1692,16 +1909,59 @@ func collectPathParams(path string, pathItem *openapi3.PathItem, op *openapi3.Op
 		if param == nil {
 			return nil, errors.Errorf("missing path parameter %s", name)
 		}
-		resolved, err := resolveType(path, "", param.Schema, exportName(name), map[string]*enumDef{}, nil)
+		resolved, err := resolveType(currentFile, "", param.Schema, exportName(name), enumMap, schemaManager)
 		if err != nil {
 			return nil, err
 		}
+		mergeImports(imports, resolved.Imports...)
 		ret = append(ret, paramDef{
 			Name:       exportName(name),
 			VarName:    lowerName(name),
 			GoName:     exportName(name),
 			Type:       resolved.GoType,
 			SourceName: name,
+			Required:   true,
+		})
+	}
+	return ret, nil
+}
+
+func collectQueryParams(currentFile string, pathItem *openapi3.PathItem, op *openapi3.Operation, enumMap map[string]*enumDef, imports map[string]struct{}, schemaManager *schema_codegen.Manager) ([]paramDef, error) {
+	var orderedNames []string
+	paramMap := map[string]*openapi3.Parameter{}
+	appendParam := func(ref *openapi3.ParameterRef) {
+		if ref == nil || ref.Value == nil || ref.Value.In != "query" {
+			return
+		}
+		if _, ok := paramMap[ref.Value.Name]; !ok {
+			orderedNames = append(orderedNames, ref.Value.Name)
+		}
+		paramMap[ref.Value.Name] = ref.Value
+	}
+	for _, paramRef := range pathItem.Parameters {
+		appendParam(paramRef)
+	}
+	for _, paramRef := range op.Parameters {
+		appendParam(paramRef)
+	}
+	if len(orderedNames) == 0 {
+		return nil, nil
+	}
+	ret := make([]paramDef, 0, len(orderedNames))
+	for _, name := range orderedNames {
+		param := paramMap[name]
+		resolved, err := resolveType(currentFile, "", param.Schema, exportName(name), enumMap, schemaManager)
+		if err != nil {
+			return nil, err
+		}
+		mergeImports(imports, resolved.Imports...)
+		ret = append(ret, paramDef{
+			Name:       exportName(name),
+			VarName:    lowerName(name),
+			GoName:     exportName(name),
+			Type:       resolved.GoType,
+			SourceName: name,
+			Required:   param.Required,
 		})
 	}
 	return ret, nil
