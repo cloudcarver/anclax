@@ -320,7 +320,14 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 	accessToken, err := macaroons.CreateMacaroon(0, []byte("key"), accessTokenCaveats)
 	require.NoError(t, err)
 
-	refreshCaveat := NewRefreshOnlyCaveat(&userID, accessToken)
+	encodedAccessCaveats := make([]string, len(accessToken.Caveats))
+	for i, caveat := range accessToken.Caveats {
+		encoded, err := macaroons.EncodeCaveat(caveat)
+		require.NoError(t, err)
+		encodedAccessCaveats[i] = encoded
+	}
+
+	refreshCaveat := NewRefreshOnlyCaveat(&userID, encodedAccessCaveats)
 	macaroon, err := macaroons.CreateMacaroon(0, []byte("key"), []macaroons.Caveat{refreshCaveat})
 	require.NoError(t, err)
 
@@ -340,6 +347,9 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 			refreshToken: macaroon.StringToken(),
 			setupMock: func() {
 				mockMacaroons.EXPECT().Parse(gomock.Any(), macaroon.StringToken()).Return(macaroon, nil)
+				for i, encoded := range encodedAccessCaveats {
+					mockCaveatParser.EXPECT().Parse(encoded).Return(accessTokenCaveats[i], nil)
+				}
 			},
 			expectedUserID: userID,
 			expectedError:  nil,
@@ -376,10 +386,38 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, macaroon, token)
-				require.ElementsMatch(t, accessTokenCaveats, roc.AccessToken.Caveats)
+				require.ElementsMatch(t, accessTokenCaveats, roc.AccessTokenCaveats)
 			}
 		})
 	}
+}
+
+func TestRefreshOnlyCaveat_JSONRoundTrip(t *testing.T) {
+	parser := macaroons.NewCaveatParser()
+	require.NoError(t, parser.Register(CaveatUserContext, func() macaroons.Caveat {
+		return &UserContextCaveat{}
+	}))
+
+	userID := int32(42)
+	accessCaveat := NewUserContextCaveat(101, 202)
+	encodedAccessCaveat, err := macaroons.EncodeCaveat(accessCaveat)
+	require.NoError(t, err)
+
+	refreshCaveat := NewRefreshOnlyCaveat(&userID, []string{encodedAccessCaveat})
+	encodedRefreshCaveat, err := macaroons.EncodeCaveat(refreshCaveat)
+	require.NoError(t, err)
+
+	var decoded RefreshOnlyCaveat
+	require.NoError(t, macaroons.DecodeCaveat(encodedRefreshCaveat, &decoded))
+	require.Equal(t, refreshCaveat.UserID, decoded.UserID)
+	require.ElementsMatch(t, refreshCaveat.AccessCaveats, decoded.AccessCaveats)
+
+	parsed, err := parser.Parse(decoded.AccessCaveats[0])
+	require.NoError(t, err)
+	uc, ok := parsed.(*UserContextCaveat)
+	require.True(t, ok)
+	require.Equal(t, accessCaveat.UserID, uc.UserID)
+	require.Equal(t, accessCaveat.OrgID, uc.OrgID)
 }
 
 func TestAuth_InvalidateUserTokens(t *testing.T) {

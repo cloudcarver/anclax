@@ -38,16 +38,17 @@ func (uc *UserContextCaveat) Validate(ctx fiber.Ctx) error {
 }
 
 type RefreshOnlyCaveat struct {
-	Typ         string              `json:"type"`
-	UserID      *int32              `json:"user_id,omitempty"`
-	AccessToken *macaroons.Macaroon `json:"access_token"`
+	Typ                string             `json:"type"`
+	UserID             *int32             `json:"user_id,omitempty"`
+	AccessCaveats      []string           `json:"access_caveats"`
+	AccessTokenCaveats []macaroons.Caveat `json:"-"`
 }
 
-func NewRefreshOnlyCaveat(userID *int32, accessToken *macaroons.Macaroon) *RefreshOnlyCaveat {
+func NewRefreshOnlyCaveat(userID *int32, accessCaveats []string) *RefreshOnlyCaveat {
 	return &RefreshOnlyCaveat{
-		Typ:         CaveatRefreshOnly,
-		UserID:      userID,
-		AccessToken: accessToken,
+		Typ:           CaveatRefreshOnly,
+		UserID:        userID,
+		AccessCaveats: accessCaveats,
 	}
 }
 
