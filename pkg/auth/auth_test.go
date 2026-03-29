@@ -320,7 +320,14 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 	accessToken, err := macaroons.CreateMacaroon(0, []byte("key"), accessTokenCaveats)
 	require.NoError(t, err)
 
-	refreshCaveat := NewRefreshOnlyCaveat(&userID, accessToken)
+	encodedAccessCaveats := make([]string, len(accessToken.Caveats))
+	for i, caveat := range accessToken.Caveats {
+		encoded, err := macaroons.EncodeCaveat(caveat)
+		require.NoError(t, err)
+		encodedAccessCaveats[i] = encoded
+	}
+
+	refreshCaveat := NewRefreshOnlyCaveat(&userID, encodedAccessCaveats)
 	macaroon, err := macaroons.CreateMacaroon(0, []byte("key"), []macaroons.Caveat{refreshCaveat})
 	require.NoError(t, err)
 
@@ -340,6 +347,9 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 			refreshToken: macaroon.StringToken(),
 			setupMock: func() {
 				mockMacaroons.EXPECT().Parse(gomock.Any(), macaroon.StringToken()).Return(macaroon, nil)
+				for i, encoded := range encodedAccessCaveats {
+					mockCaveatParser.EXPECT().Parse(encoded).Return(accessTokenCaveats[i], nil)
+				}
 			},
 			expectedUserID: userID,
 			expectedError:  nil,
@@ -376,7 +386,7 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, macaroon, token)
-				require.ElementsMatch(t, accessTokenCaveats, roc.AccessToken.Caveats)
+				require.ElementsMatch(t, accessTokenCaveats, roc.AccessTokenCaveats)
 			}
 		})
 	}

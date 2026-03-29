@@ -58,6 +58,7 @@ type AuthInterface interface {
 
 type Auth struct {
 	macaroonManager     macaroons.MacaroonManagerInterface
+	caveatParser        macaroons.CaveatParserInterface
 	hooks               hooks.AnclaxHookInterface
 	timeoutAccessToken  time.Duration
 	timeoutRefreshToken time.Duration
@@ -80,6 +81,7 @@ func NewAuth(cfg *config.Config, macaroonManager macaroons.MacaroonManagerInterf
 
 	return &Auth{
 		macaroonManager:     macaroonManager,
+		caveatParser:        caveatParser,
 		hooks:               hooks,
 		timeoutAccessToken:  utils.UnwrapOrDefault(cfg.Auth.AccessExpiry, DefaultTimeoutAccessToken),
 		timeoutRefreshToken: utils.UnwrapOrDefault(cfg.Auth.RefreshExpiry, DefaultTimeoutRefreshToken),
@@ -141,8 +143,21 @@ func (a *Auth) CreateToken(ctx context.Context, userID *int32, caveats ...macaro
 }
 
 func (a *Auth) CreateRefreshToken(ctx context.Context, userID *int32, accessToken *macaroons.Macaroon) (*macaroons.Macaroon, error) {
+	if accessToken == nil {
+		return nil, errors.New("access token is nil")
+	}
+
+	accessCaveats := make([]string, len(accessToken.Caveats))
+	for i, caveat := range accessToken.Caveats {
+		encoded, err := macaroons.EncodeCaveat(caveat)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to encode access token caveat")
+		}
+		accessCaveats[i] = encoded
+	}
+
 	token, err := a.macaroonManager.CreateToken(ctx, []macaroons.Caveat{
-		NewRefreshOnlyCaveat(userID, accessToken),
+		NewRefreshOnlyCaveat(userID, accessCaveats),
 	}, a.timeoutRefreshToken, userID)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create macaroon token")
@@ -164,6 +179,16 @@ func (a *Auth) ParseRefreshToken(ctx context.Context, refreshToken string) (*mac
 	if !ok {
 		return nil, nil, errors.Wrapf(ErrInvalidRefreshToken, "caveat is not a RefreshOnlyCaveat even though it has type %s", CaveatRefreshOnly)
 	}
+
+	parsedCaveats := make([]macaroons.Caveat, len(roc.AccessCaveats))
+	for i, encoded := range roc.AccessCaveats {
+		caveat, err := a.caveatParser.Parse(encoded)
+		if err != nil {
+			return nil, nil, errors.Wrap(ErrInvalidRefreshToken, "failed to parse access token caveat")
+		}
+		parsedCaveats[i] = caveat
+	}
+	roc.AccessTokenCaveats = parsedCaveats
 
 	return token, roc, nil
 }
