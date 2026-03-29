@@ -392,6 +392,34 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 	}
 }
 
+func TestRefreshOnlyCaveat_JSONRoundTrip(t *testing.T) {
+	parser := macaroons.NewCaveatParser()
+	require.NoError(t, parser.Register(CaveatUserContext, func() macaroons.Caveat {
+		return &UserContextCaveat{}
+	}))
+
+	userID := int32(42)
+	accessCaveat := NewUserContextCaveat(101, 202)
+	encodedAccessCaveat, err := macaroons.EncodeCaveat(accessCaveat)
+	require.NoError(t, err)
+
+	refreshCaveat := NewRefreshOnlyCaveat(&userID, []string{encodedAccessCaveat})
+	encodedRefreshCaveat, err := macaroons.EncodeCaveat(refreshCaveat)
+	require.NoError(t, err)
+
+	var decoded RefreshOnlyCaveat
+	require.NoError(t, macaroons.DecodeCaveat(encodedRefreshCaveat, &decoded))
+	require.Equal(t, refreshCaveat.UserID, decoded.UserID)
+	require.ElementsMatch(t, refreshCaveat.AccessCaveats, decoded.AccessCaveats)
+
+	parsed, err := parser.Parse(decoded.AccessCaveats[0])
+	require.NoError(t, err)
+	uc, ok := parsed.(*UserContextCaveat)
+	require.True(t, ok)
+	require.Equal(t, accessCaveat.UserID, uc.UserID)
+	require.Equal(t, accessCaveat.OrgID, uc.OrgID)
+}
+
 func TestAuth_InvalidateUserTokens(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
