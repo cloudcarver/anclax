@@ -1,4 +1,5 @@
 # ⚓ Anclax
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/cloudcarver/anclax)
 
 English | [中文](README.zh.md)
 
