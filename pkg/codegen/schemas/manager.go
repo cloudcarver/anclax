@@ -487,7 +487,7 @@ func ensureEnum(enumMap map[string]*enumDef, name, goType string, values []any) 
 	}
 	e := &enumDef{Name: name, Type: goType}
 	for _, value := range values {
-		e.Values = append(e.Values, enumValue{Name: exportName(fmt.Sprint(value)), Literal: enumLiteral(goType, value)})
+		e.Values = append(e.Values, enumValue{Name: name + exportName(fmt.Sprint(value)), Literal: enumLiteral(goType, value)})
 	}
 	enumMap[name] = e
 }
