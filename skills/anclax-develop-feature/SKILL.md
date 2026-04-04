@@ -37,6 +37,7 @@ Use Anclax generated types as the contract between layers and keep specs/SQL as 
   - [CRUD operations](./crud.md): End-to-end CRUD flow and mapping examples.
   - [OpenAPI Spec](./openapi-spec.md): Conventions for OpenAPI specs in Anclax.
   - [Business Logic](./business-logic.md): Service-layer rules and error handling.
+  - [Authentication](./authentication.md): Simple auth config, macaroon tokens, and custom auth API patterns.
   - [Database](./database.md): SQL/schema rules and transaction helpers.
   - [Dependency Injection](./dependency-injestion.md): Wire DI conventions.
   - [Async Tasks](./async-tasks.md): Task definitions, execution, retries, and hooks.

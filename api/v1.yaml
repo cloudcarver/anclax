@@ -13,7 +13,7 @@ paths:
   /auth/sign-in:
     post:
       summary: Sign in user
-      description: Authenticate user and return access token
+      description: Authenticate user and return access token. Available only when `enableSimpleAuth` is true.
       operationId: signIn
       requestBody:
         required: true
@@ -31,12 +31,12 @@ paths:
         "401":
           description: Invalid credentials
         "404":
-          description: User not found
+          description: User not found, or simple auth is disabled
 
   /auth/sign-up:
     post:
       summary: Sign up user
-      description: Create a new user and return credentials
+      description: Create a new user and return credentials. Available only when `enableSimpleAuth` is true.
       operationId: signUp
       requestBody:
         required: true
@@ -51,6 +51,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Credentials"
+        "404":
+          description: Simple auth is disabled
         "409":
           description: Username already exists
 

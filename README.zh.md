@@ -101,7 +101,13 @@ anclax init demo github.com/you/demo
 cd demo
 anclax gen
 
-# 3）启动（DB + API + worker）
+# 3）可选：开启内置的 sign-in / sign-up 接口
+cat > app.yaml <<'EOF'
+anclax:
+  enableSimpleAuth: true
+EOF
+
+# 4）启动整套服务（DB + API + worker）
 docker compose up
 ```
 
@@ -109,7 +115,7 @@ docker compose up
 
 ```bash
 curl http://localhost:2910/api/v1/counter
-# 如果模板包含 auth，可选登录
+# 如果模板包含 auth，且 enableSimpleAuth=true，则可以登录
 curl -X POST http://localhost:2910/api/v1/auth/sign-in -H "Content-Type: application/json" -d '{"name":"test","password":"test"}'
 ```
 
@@ -345,6 +351,7 @@ func InitAnclaxApplication(cfg *config.Config) (*anclax_app.Application, error) 
 ## 文档 📚
 
 - **事务管理**：[docs/transaction.zh.md](docs/transaction.zh.md)（[English](docs/transaction.md)）
+- **认证与 Macaroon**：[docs/authentication.md](docs/authentication.md)
 - **中间件（x-functions & x-check-rules）**：[docs/middleware.zh.md](docs/middleware.zh.md)（[English](docs/middleware.md)）
 - **异步任务**：教程 [docs/async-tasks-tutorial.zh.md](docs/async-tasks-tutorial.zh.md) · 技术参考 [docs/async-tasks-technical.zh.md](docs/async-tasks-technical.zh.md) · 调度/运行时配置指南 [docs/async-task-scheduling-runtime-config.zh.md](docs/async-task-scheduling-runtime-config.zh.md)（[English](docs/async-tasks-tutorial.md), [English](docs/async-tasks-technical.md), [English](docs/async-task-scheduling-runtime-config.md)）
 - **DST 端到端测试**：[docs/dst-e2e.md](docs/dst-e2e.md)

@@ -20,6 +20,11 @@ npx skills add cloudcarver/anclax
 ## Quick test
 
 ```bash
+cat > app.yaml <<'EOF'
+anclax:
+  enableSimpleAuth: true
+EOF
+
 docker compose up
 curl http://localhost:2910/api/v1/counter
 curl -X POST http://localhost:2910/api/v1/auth/sign-in -H "Content-Type: application/json" -d '{"name": "test", "password": "test"}'

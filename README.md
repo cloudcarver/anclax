@@ -108,7 +108,13 @@ anclax init demo github.com/you/demo
 cd demo
 anclax gen
 
-# 3) Start the stack (DB + API + worker)
+# 3) Optional: enable the built-in sign-in/sign-up endpoints
+cat > app.yaml <<'EOF'
+anclax:
+  enableSimpleAuth: true
+EOF
+
+# 4) Start the stack (DB + API + worker)
 docker compose up
 ```
 
@@ -116,7 +122,7 @@ In another terminal:
 
 ```bash
 curl http://localhost:2910/api/v1/counter
-# Optional sign-in if your template includes auth
+# Optional sign-in if your template includes auth and enableSimpleAuth is true
 curl -X POST http://localhost:2910/api/v1/auth/sign-in -H "Content-Type: application/json" -d '{"name":"test","password":"test"}'
 ```
 
@@ -340,6 +346,7 @@ Need more dependencies inside `Init`? Add them as parameters (e.g., `model.Model
 ## Documentation 📚
 
 - **Transaction Management**: [docs/transaction.md](docs/transaction.md) ([中文](docs/transaction.zh.md))
+- **Authentication & Macaroons**: [docs/authentication.md](docs/authentication.md)
 - **Middleware (x-functions & x-check-rules)**: [docs/middleware.md](docs/middleware.md) ([中文](docs/middleware.zh.md))
 - **Async Tasks**: Tutorial [docs/async-tasks-tutorial.md](docs/async-tasks-tutorial.md) · Tech reference [docs/async-tasks-technical.md](docs/async-tasks-technical.md) · Scheduling/runtime-config guide [docs/async-task-scheduling-runtime-config.md](docs/async-task-scheduling-runtime-config.md) ([中文](docs/async-tasks-tutorial.zh.md), [中文](docs/async-tasks-technical.zh.md), [中文](docs/async-task-scheduling-runtime-config.zh.md))
 - **DST E2E Testing**: [docs/dst-e2e.md](docs/dst-e2e.md)

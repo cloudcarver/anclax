@@ -9,6 +9,7 @@ services:
     - run
     - cmd/main.go
     environment:
+      MYAPP_ENABLESIMPLEAUTH: true
       MYAPP_ANCLAX_PORT: 2910
       MYAPP_ANCLAX_PG_DSN: postgres://postgres:postgres@db:5432/postgres
     volumes:

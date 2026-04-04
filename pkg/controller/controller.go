@@ -15,6 +15,7 @@ type Controller struct {
 	auth auth.AuthInterface
 
 	enableWorkerHTTPTrigger bool
+	enableSimpleAuth        bool
 	disableDefaultSignUp    bool
 }
 
@@ -27,11 +28,20 @@ func NewController(
 		svc:                     s,
 		auth:                    auth,
 		enableWorkerHTTPTrigger: cfg.Worker.EnableHTTPTrigger,
+		enableSimpleAuth:        cfg.EnableSimpleAuth,
 		disableDefaultSignUp:    cfg.DisableDefaultSignUp,
 	}
 }
 
+func simpleAuthNotFound(c fiber.Ctx, path string) error {
+	return c.Status(fiber.StatusNotFound).SendString("Cannot POST " + path)
+}
+
 func (controller *Controller) SignIn(c fiber.Ctx) error {
+	if !controller.enableSimpleAuth {
+		return simpleAuthNotFound(c, "/api/v1/auth/sign-in")
+	}
+
 	var params apigen.SignInRequest
 	if err := c.Bind().Body(&params); err != nil {
 		return c.SendStatus(fiber.StatusBadRequest)
@@ -77,8 +87,8 @@ func (controller *Controller) RefreshToken(c fiber.Ctx) error {
 }
 
 func (controller *Controller) SignUp(c fiber.Ctx) error {
-	if controller.disableDefaultSignUp {
-		return c.Status(fiber.StatusNotFound).SendString("Cannot POST /api/v1/auth/sign-up")
+	if !controller.enableSimpleAuth || controller.disableDefaultSignUp {
+		return simpleAuthNotFound(c, "/api/v1/auth/sign-up")
 	}
 
 	var params apigen.SignUpRequest
