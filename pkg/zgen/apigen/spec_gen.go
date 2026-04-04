@@ -23,27 +23,27 @@ const (
 
 // Defines values for CredentialsTokenType.
 const (
-	Bearer CredentialsTokenType = "Bearer"
+	CredentialsTokenTypeBearer CredentialsTokenType = "Bearer"
 )
 
 // Defines values for EventSpecType.
 const (
-	TaskError     EventSpecType = "TaskError"
-	TaskCompleted EventSpecType = "TaskCompleted"
+	EventSpecTypeTaskError     EventSpecType = "TaskError"
+	EventSpecTypeTaskCompleted EventSpecType = "TaskCompleted"
 )
 
 // Defines values for TaskEvents.
 const (
-	OnFailed TaskEvents = "onFailed"
+	TaskEventsOnFailed TaskEvents = "onFailed"
 )
 
 // Defines values for TaskStatus.
 const (
-	Pending   TaskStatus = "pending"
-	Completed TaskStatus = "completed"
-	Failed    TaskStatus = "failed"
-	Paused    TaskStatus = "paused"
-	Cancelled TaskStatus = "cancelled"
+	TaskStatusPending   TaskStatus = "pending"
+	TaskStatusCompleted TaskStatus = "completed"
+	TaskStatusFailed    TaskStatus = "failed"
+	TaskStatusPaused    TaskStatus = "paused"
+	TaskStatusCancelled TaskStatus = "cancelled"
 )
 
 // Credentials defines model for Credentials.

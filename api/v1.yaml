@@ -30,6 +30,8 @@ paths:
                 $ref: "#/components/schemas/Credentials"
         "401":
           description: Invalid credentials
+        "404":
+          description: User not found
 
   /auth/sign-up:
     post:

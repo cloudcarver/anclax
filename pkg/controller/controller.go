@@ -39,6 +39,9 @@ func (controller *Controller) SignIn(c fiber.Ctx) error {
 
 	credentials, err := controller.svc.SignInWithPassword(c.Context(), params)
 	if err != nil {
+		if errors.Is(err, service.ErrUserNotFound) {
+			return c.SendStatus(fiber.StatusNotFound)
+		}
 		if errors.Is(err, service.ErrInvalidPassword) {
 			return c.SendStatus(fiber.StatusUnauthorized)
 		}
