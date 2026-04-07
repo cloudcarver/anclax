@@ -149,6 +149,17 @@ tasks:
 anclax gen
 ```
 
+默认脚手架布局：
+- OpenAPI 片段：`api/openapi/`
+- 任务定义：`api/tasks/tasks.yaml`
+- 共享 schema：`api/schemas/`
+
+`oapi-codegen.path` 既可以指向单个文件，也可以指向目录。需要导出单个打包后的 OpenAPI 文件时，可运行：
+
+```bash
+anclax bundle-openapi-spec --input api/openapi --output openapi-bundle.yaml
+```
+
 ```go
 func (h *Handler) GetCounter(c *fiber.Ctx) error {
   return c.JSON(apigen.Counter{Count: 0})
@@ -200,10 +211,10 @@ components:
 - **之前的痛点**：在数据库事务内入队需要自定义胶水代码。
 - **之前的痛点**：任务参数与 handler 签名容易不同步。
 
-**重构方案**：在 `api/tasks.yaml` 定义任务，运行 `anclax gen`，使用生成的 `taskgen.TaskRunner`（`RunX` / `RunXWithTx`），必要时用 `taskcore` 选项覆写。
+**重构方案**：在 `api/tasks/tasks.yaml` 定义任务，运行 `anclax gen`，使用生成的 `taskgen.TaskRunner`（`RunX` / `RunXWithTx`），必要时用 `taskcore` 选项覆写。
 
 ```yaml
-# api/tasks.yaml
+# api/tasks/tasks.yaml
 tasks:
   - name: SendWelcomeEmail
     description: Send welcome email to new users
@@ -308,7 +319,7 @@ if err != nil {
 }
 ```
 
-任务具有至少一次交付保证，并会按重试策略自动重试。你也可以在 `api/tasks.yaml` 里通过 `cronjob.cronExpression` 配置定时调度。
+任务具有至少一次交付保证，并会按重试策略自动重试。你也可以在 `api/tasks/tasks.yaml` 里通过 `cronjob.cronExpression` 配置定时调度。
 
 ## 高级：自定义初始化 🧩
 

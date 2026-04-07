@@ -6,7 +6,7 @@ Queries live in `sql/queries`.
 These two directories are the source of truth. Run `anclax gen` after modifications to regenerate the outputs of the configured `sqlc` entries, commonly `pkg/zgen/querier`.
 
 Follow these rules when defining database schema and queries:
-1. Define JSONB column schema in the OpenAPI spec configured under `oapi-codegen` (commonly `api/v1.yaml`) and let `anclax gen` generate Go types, often in `pkg/zgen/apigen`. Then map the type in the matching sqlc config file referenced by `anclax.yaml`.
+1. Define JSONB column schema in the OpenAPI spec configured under `oapi-codegen` (commonly `api/openapi`) and let `anclax gen` generate Go types, often in `pkg/zgen/apigen`. Then map the type in the matching sqlc config file referenced by `anclax.yaml`.
 2. For required fields, use `NOT NULL`. Nullable columns become pointer types in Go.
 3. If an ID is publicly exposed, use UUID.
 4. Add indexes based on query patterns.

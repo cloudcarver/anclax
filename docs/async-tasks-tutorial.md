@@ -37,7 +37,7 @@ Common examples:
 
 ## Task Definition
 
-Tasks are defined in `api/tasks.yaml` using a structured YAML format:
+Tasks are defined in `api/tasks/tasks.yaml` using a structured YAML format:
 
 ```yaml
 tasks:
@@ -640,7 +640,7 @@ func (e *Executor) OnSendNotificationFailed(ctx context.Context, taskID int32, p
 
 This example from the Anclax codebase shows how to implement a task that deletes sensitive data with proper failure handling:
 
-**Task Definition (api/tasks.yaml):**
+**Task Definition (api/tasks/tasks.yaml):**
 ```yaml
 tasks:
   - name: deleteOpaqueKey

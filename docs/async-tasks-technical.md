@@ -59,7 +59,7 @@ This prevents chasing scattered code paths and assumptions.
 
 ### 1. Task Definition Phase
 
-Users start by defining tasks in `api/tasks.yaml` using a declarative YAML format:
+Users start by defining tasks in `api/tasks/tasks.yaml` using a declarative YAML format:
 
 ```yaml
 tasks:

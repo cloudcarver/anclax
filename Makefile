@@ -29,7 +29,8 @@ db:
 
 prepare-test:
 	cd test && uv sync
-	cd test && uv run openapi-python-client generate --path ../api/v1.yaml --output-path oapi --overwrite 
+	GOCACHE=/tmp/go-cache go run ./cmd/anclax bundle-openapi-spec --input api/openapi --output /tmp/anclax-openapi-bundle.yaml
+	cd test && uv run openapi-python-client generate --path /tmp/anclax-openapi-bundle.yaml --output-path oapi --overwrite 
 
 python-test: prepare-test
 	cd test && uv run main.py

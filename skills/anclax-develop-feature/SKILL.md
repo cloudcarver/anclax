@@ -16,8 +16,8 @@ Use Anclax generated types as the contract between layers and keep specs/SQL as 
 
 1. Inspect `anclax.yaml` to learn generation paths and enabled generators.
 2. Update sources first:
-   - OpenAPI: the matching `oapi-codegen` entry `path` (commonly `api/v1.yaml`)
-   - Tasks: the matching `task-handler` entry `path` (commonly `api/tasks.yaml`)
+   - OpenAPI: the matching `oapi-codegen` entry `path` (commonly `api/openapi`, which may be a single file or a directory of merged fragments)
+   - Tasks: the matching `task-handler` entry `path` (commonly `api/tasks/tasks.yaml`)
    - DB schema: `sql/migrations`
    - Queries: `sql/queries`
 3. Run `anclax gen` after any spec/SQL/Wire changes.
@@ -30,7 +30,7 @@ Use Anclax generated types as the contract between layers and keep specs/SQL as 
 - Handler: parse HTTP, call service, map errors to HTTP responses.
 - Service: implement business logic, accept and return `apigen` types.
 - Model: use `pkg/zcore/model` and sqlc-generated queries.
-- Async tasks: define in the task spec configured under `task-handler` (commonly `api/tasks.yaml`), implement `taskgen.ExecutorInterface`, enqueue via `taskgen.TaskRunner`.
+- Async tasks: define in the task spec configured under `task-handler` (commonly `api/tasks/tasks.yaml`), implement `taskgen.ExecutorInterface`, enqueue via `taskgen.TaskRunner`.
 
 ## References and Examples
   - [Config](./anclax-config.md): How to use `anclax.yaml` for generator inputs/outputs.

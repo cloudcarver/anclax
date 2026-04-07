@@ -8,7 +8,7 @@ schemas:
   output: pkg/zgen/schemas
 
 oapi-codegen:
-  - path: api/v1.yaml
+  - path: api/openapi
     out: pkg/zgen/apigen/spec_gen.go
     package: apigen
 
@@ -16,7 +16,7 @@ wire:
   - path: ./app/wire
 
 task-handler:
-  - path: api/tasks.yaml
+  - path: api/tasks/tasks.yaml
     package: taskgen
     out: pkg/zgen/taskgen/taskgen_gen.go
 

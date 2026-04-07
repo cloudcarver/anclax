@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"go/format"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/cloudcarver/anclax/pkg/codegen/gotypes"
 	schema_codegen "github.com/cloudcarver/anclax/pkg/codegen/schemas"
+	openapi_bundle "github.com/cloudcarver/anclax/pkg/openapi/bundle"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/pkg/errors"
 )
@@ -181,12 +181,12 @@ func Generate(workdir string, config Config) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to load schemas config")
 	}
-	swagger, err := loadSwagger(workdir, specPath, config.Schemas)
+	swagger, sourcePath, err := loadSwagger(workdir, specPath)
 	if err != nil {
 		return errors.Wrap(err, "failed to load OpenAPI spec")
 	}
 
-	doc, err := buildDocument(swagger, specPath, config.Package, schemaManager)
+	doc, err := buildDocument(swagger, sourcePath, config.Package, schemaManager)
 	if err != nil {
 		return errors.Wrap(err, "failed to build OpenAPI document")
 	}
@@ -202,97 +202,12 @@ func Generate(workdir string, config Config) error {
 	return nil
 }
 
-func loadSwagger(workdir, specPath string, schemaConfig *schema_codegen.Config) (*openapi3.T, error) {
-	loadPath := specPath
-	cleanup := func() {}
-	if schemaConfig != nil {
-		tempPath, tempCleanup, err := prepareNormalizedSpecTree(workdir, specPath, *schemaConfig)
-		if err != nil {
-			return nil, err
-		}
-		loadPath = tempPath
-		cleanup = tempCleanup
-	}
-	defer cleanup()
-
-	loader := openapi3.NewLoader()
-	loader.IsExternalRefsAllowed = true
-	raw, err := os.ReadFile(loadPath)
+func loadSwagger(workdir, specPath string) (*openapi3.T, string, error) {
+	doc, sourcePath, err := openapi_bundle.Load(workdir, specPath)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	raw = normalizeRefBytes(raw)
-	baseURL := &url.URL{Path: loadPath}
-	doc, err := loader.LoadFromDataWithPath(raw, baseURL)
-	if err != nil {
-		return nil, err
-	}
-	if err := loader.ResolveRefsIn(doc, baseURL); err != nil {
-		return nil, err
-	}
-	return doc, nil
-}
-
-func prepareNormalizedSpecTree(workdir, specPath string, schemaConfig schema_codegen.Config) (string, func(), error) {
-	tempDir, err := os.MkdirTemp("", "anclax-oapi-")
-	if err != nil {
-		return "", nil, err
-	}
-	cleanup := func() { _ = os.RemoveAll(tempDir) }
-	copyFile := func(src string) (string, error) {
-		rel, err := filepath.Rel(workdir, src)
-		if err != nil {
-			return "", err
-		}
-		dst := filepath.Join(tempDir, rel)
-		if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
-			return "", err
-		}
-		raw, err := os.ReadFile(src)
-		if err != nil {
-			return "", err
-		}
-		if err := os.WriteFile(dst, normalizeRefBytes(raw), 0644); err != nil {
-			return "", err
-		}
-		return dst, nil
-	}
-	normalizedSpec, err := copyFile(specPath)
-	if err != nil {
-		cleanup()
-		return "", nil, err
-	}
-	schemaRoot := schemaConfig.Path
-	if !filepath.IsAbs(schemaRoot) {
-		schemaRoot = filepath.Join(workdir, schemaRoot)
-	}
-	if _, err := os.Stat(schemaRoot); err == nil {
-		if err := filepath.Walk(schemaRoot, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-			if info.IsDir() {
-				return nil
-			}
-			ext := strings.ToLower(filepath.Ext(path))
-			if ext != ".yaml" && ext != ".yml" {
-				return nil
-			}
-			_, err = copyFile(path)
-			return err
-		}); err != nil {
-			cleanup()
-			return "", nil, err
-		}
-	} else if !os.IsNotExist(err) {
-		cleanup()
-		return "", nil, err
-	}
-	return normalizedSpec, cleanup, nil
-}
-
-func normalizeRefBytes(raw []byte) []byte {
-	return []byte(strings.ReplaceAll(string(raw), "#schemas/", "#/schemas/"))
+	return doc, sourcePath, nil
 }
 
 func derefSchemaConfig(cfg *schema_codegen.Config) schema_codegen.Config {

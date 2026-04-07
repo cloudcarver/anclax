@@ -34,6 +34,7 @@ func main() {
 		Usage: "Anclax is a tool for quickly building production-ready web applications with confidence",
 		Commands: []*cli.Command{
 			genCmd,
+			bundleOpenAPISpecCmd,
 			initCmd,
 			docsCmd,
 			installCmd,
