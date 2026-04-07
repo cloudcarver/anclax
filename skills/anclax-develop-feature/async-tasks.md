@@ -22,7 +22,7 @@ Check in this order when debugging or adding features:
 
 ## Define tasks
 
-The task spec configured under `task-handler` in `anclax.yaml` is the source of truth (commonly `api/tasks.yaml`). Parameters follow JSON Schema.
+The task spec configured under `task-handler` in `anclax.yaml` is the source of truth (commonly `api/tasks/tasks.yaml`). Parameters follow JSON Schema.
 
 ```yaml
 tasks:
@@ -180,7 +180,7 @@ Worker config keys:
 - `worker.workerId`
 
 Task labels:
-- Add `labels` to task definitions in the task spec configured under `task-handler` (commonly `api/tasks.yaml`).
+- Add `labels` to task definitions in the task spec configured under `task-handler` (commonly `api/tasks/tasks.yaml`).
 - Claiming uses **all-match** semantics for business labels: every task label must exist on the worker.
 - Unlabeled tasks are eligible for all workers.
 - Each worker always includes an internal `worker:<workerId>` label.

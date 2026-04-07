@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	schema_codegen "github.com/cloudcarver/anclax/pkg/codegen/schemas"
 )
 
 func TestGenerateHandlesQueryParamsEnumsAndUUIDPaths(t *testing.T) {
@@ -124,5 +126,91 @@ components:
 		if strings.Contains(out, needle) {
 			t.Fatalf("generated output unexpectedly contains %q", needle)
 		}
+	}
+}
+
+func TestGenerateSupportsDirectoryInput(t *testing.T) {
+	t.Parallel()
+
+	workdir := t.TempDir()
+	mustWriteFile(t, filepath.Join(workdir, "go.mod"), "module example.com/test\n\ngo 1.24\n")
+	mustWriteFile(t, filepath.Join(workdir, "api", "openapi", "root.yaml"), `openapi: 3.0.3
+info:
+  title: test
+  version: 1.0.0
+servers:
+  - url: /api/v1
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+`)
+	mustWriteFile(t, filepath.Join(workdir, "api", "openapi", "counter.yaml"), `paths:
+  /counter:
+    get:
+      summary: Get Counter
+      operationId: getCounter
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: ../schemas/counter/counter.yaml#schemas/Counter
+x-check-rules:
+  OperationPermit:
+    useContext: true
+    parameters:
+      - name: operationID
+        schema:
+          type: string
+`)
+	mustWriteFile(t, filepath.Join(workdir, "api", "schemas", "counter", "counter.yaml"), `schemas:
+  Counter:
+    type: object
+    required: [count]
+    properties:
+      count:
+        type: integer
+        format: int32
+`)
+
+	outPath := filepath.Join(workdir, "spec_gen.go")
+	if err := Generate(workdir, Config{
+		Path:    filepath.Join("api", "openapi"),
+		Out:     outPath,
+		Package: "apigen",
+		Schemas: &schema_codegen.Config{Path: filepath.Join("api", "schemas"), Output: filepath.Join("pkg", "zgen", "schemas")},
+	}); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	raw, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("read output: %v", err)
+	}
+	out := string(raw)
+	for _, needle := range []string{
+		`"example.com/test/pkg/zgen/schemas/counter"`,
+		"JSON200      *[]counter.Counter",
+		"OperationPermit(c fiber.Ctx, operationID string) error",
+		"router.Get(options.BaseURL+\"/counter\", wrapper.GetCounter)",
+	} {
+		if !strings.Contains(out, needle) {
+			t.Fatalf("generated output missing %q", needle)
+		}
+	}
+}
+
+func mustWriteFile(t *testing.T, path string, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatalf("mkdir %s: %v", path, err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
 	}
 }

@@ -5,7 +5,7 @@ Use Anclax service/auth primitives instead of reimplementing password hashing, t
 ## What Anclax provides
 
 - Macaroon-based bearer tokens via `pkg/auth` and `pkg/macaroons`
-- Optional built-in username/password endpoints in `api/v1.yaml`
+- Optional built-in username/password endpoints in `api/openapi`
 - Service-layer helpers for user creation, sign-in, refresh, and password updates in `pkg/service`
 - Validator integration for protected routes via `AuthFunc` / `PreValidate`
 

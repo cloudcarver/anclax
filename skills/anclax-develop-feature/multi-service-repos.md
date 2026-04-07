@@ -30,15 +30,15 @@ schemas:
   output: pkg/zgen/schemas
 
 oapi-codegen:
-  - path: app/service_a/api/v1.yaml
+  - path: app/service_a/api/openapi
     out: app/service_a/zgen/apigen/spec_gen.go
     package: serviceaapigen
-  - path: app/service_b/api/v1.yaml
+  - path: app/service_b/api/openapi
     out: app/service_b/zgen/apigen/spec_gen.go
     package: servicebapigen
 
 task-handler:
-  - path: app/service_a/api/tasks.yaml
+  - path: app/service_a/api/tasks/tasks.yaml
     out: app/service_a/zgen/taskgen/runner_gen.go
     package: serviceataskgen
 

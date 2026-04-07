@@ -82,7 +82,7 @@ taskID, err := taskRunner.RunSendWelcomeEmail(ctx, params,
 
 ## 运行时 Worker 配置任务
 
-Anclax 提供 `updateWorkerRuntimeConfig` 任务（定义见 `api/tasks.yaml`），用于在线更新调度配置。
+Anclax 提供 `updateWorkerRuntimeConfig` 任务（定义见 `api/tasks/tasks.yaml`），用于在线更新调度配置。
 
 生成参数（`taskgen.UpdateWorkerRuntimeConfigParameters`）：
 

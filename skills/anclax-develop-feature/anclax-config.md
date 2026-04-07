@@ -8,7 +8,7 @@ Use `anclax.yaml` as the source of truth for generator inputs and outputs. Check
 ## What to look for
 
 - `schemas.path`/`output`: shared schema YAML directory and generated Go output root used by both OpenAPI and task generation.
-- `oapi-codegen` item `path`/`out`/`package`: OpenAPI input and generated types plus generated middleware extensions in the same file.
+- `oapi-codegen` item `path`/`out`/`package`: OpenAPI input and generated types plus generated middleware extensions in the same file. `path` may point to a single spec file or a directory of recursively merged OpenAPI fragments.
 - `task-handler` item `path`/`out`/`package`: async task definitions and runner generation.
 - `sqlc` item `path`: database query generation config.
 - `wire` item `path`: DI graph location.
@@ -26,7 +26,7 @@ Example:
 
 ```yaml
 oapi-codegen:
-  - path: api/v1.yaml
+  - path: api/openapi
     out: pkg/zgen/apigen/spec_gen.go
     package: apigen
 
@@ -37,7 +37,7 @@ wire:
   - path: ./wire
 
 task-handler:
-  - path: api/tasks.yaml
+  - path: api/tasks/tasks.yaml
     out: pkg/zgen/taskgen/runner_gen.go
     package: taskgen
 ```

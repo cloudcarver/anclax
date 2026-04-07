@@ -11,7 +11,7 @@ npx skills add cloudcarver/anclax
 ## File structure
 
 - `app/`: application bootstrap. The default template keeps one app here. In a larger repo, you can grow this into `app/service_a`, `app/service_b`, and so on. Each service can have its own `app.go`, `injection.go`, and `wire/`.
-- `api/`: API and task definitions for the default app.
+- `api/`: OpenAPI fragments under `api/openapi/`, task definitions under `api/tasks/`, and shared schemas under `api/schemas/`.
 - `pkg/`: reusable modules shared by apps and services.
 - `sql/`: shared queries and migrations for the default shared model.
 - `pkg/zgen/`: generated code. Do not edit by hand.

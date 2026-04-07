@@ -82,7 +82,7 @@ Suggested usage:
 
 ## Runtime Worker Config Task
 
-Anclax includes task `updateWorkerRuntimeConfig` (`api/tasks.yaml`) to update scheduling config at runtime.
+Anclax includes task `updateWorkerRuntimeConfig` (`api/tasks/tasks.yaml`) to update scheduling config at runtime.
 
 Generated params (`taskgen.UpdateWorkerRuntimeConfigParameters`):
 

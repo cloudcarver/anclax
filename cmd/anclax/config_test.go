@@ -9,13 +9,13 @@ import (
 func TestParseConfigSupportsSingleGeneratorConfig(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "anclax.yaml")
 	configYAML := `oapi-codegen:
-  path: api/v1.yaml
+  path: api/openapi
   out: pkg/zgen/apigen/spec_gen.go
   package: apigen
 wire:
   path: ./wire
 task-handler:
-  path: api/tasks.yaml
+  path: api/tasks/tasks.yaml
   package: taskgen
   out: pkg/zgen/taskgen/runner_gen.go
 sqlc:
@@ -33,8 +33,8 @@ sqlc:
 	if got := len(config.OapiCodegen); got != 1 {
 		t.Fatalf("oapi-codegen len = %d, want 1", got)
 	}
-	if got := config.OapiCodegen[0].Path; got != "api/v1.yaml" {
-		t.Fatalf("oapi-codegen[0].path = %q, want %q", got, "api/v1.yaml")
+	if got := config.OapiCodegen[0].Path; got != "api/openapi" {
+		t.Fatalf("oapi-codegen[0].path = %q, want %q", got, "api/openapi")
 	}
 
 	if got := len(config.Wire); got != 1 {
@@ -47,8 +47,8 @@ sqlc:
 	if got := len(config.TaskHandler); got != 1 {
 		t.Fatalf("task-handler len = %d, want 1", got)
 	}
-	if got := config.TaskHandler[0].Path; got != "api/tasks.yaml" {
-		t.Fatalf("task-handler[0].path = %q, want %q", got, "api/tasks.yaml")
+	if got := config.TaskHandler[0].Path; got != "api/tasks/tasks.yaml" {
+		t.Fatalf("task-handler[0].path = %q, want %q", got, "api/tasks/tasks.yaml")
 	}
 
 	if got := len(config.Sqlc); got != 1 {
@@ -62,7 +62,7 @@ sqlc:
 func TestParseConfigSupportsGeneratorConfigArrays(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "anclax.yaml")
 	configYAML := `oapi-codegen:
-  - path: api/v1.yaml
+  - path: api/openapi
     out: pkg/zgen/apigen/spec_gen.go
     package: apigen
   - path: api/admin.yaml
@@ -72,7 +72,7 @@ wire:
   - path: ./wire
   - path: ./internal/wire
 task-handler:
-  - path: api/tasks.yaml
+  - path: api/tasks/tasks.yaml
     package: taskgen
     out: pkg/zgen/taskgen/runner_gen.go
   - path: api/tasks-admin.yaml

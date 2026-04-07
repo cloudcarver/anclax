@@ -50,7 +50,7 @@ Implementation references:
 
 ## Built-in simple auth APIs
 
-Anclax provides a small default auth surface in `api/v1.yaml` and `pkg/controller/controller.go`.
+Anclax provides a small default auth surface in `api/openapi` and `pkg/controller/controller.go`.
 
 | Endpoint | Default | Notes | Main implementation |
 |---|---|---|---|
@@ -152,7 +152,7 @@ References:
 If your app needs custom auth endpoints, keep the built-in simple auth APIs disabled and expose your own operations in your app's OpenAPI spec.
 
 Typical workflow:
-1. Add your auth endpoints to `api/v1.yaml`.
+1. Add your auth endpoints to `api/openapi`.
 2. Run `anclax gen`.
 3. Implement handlers/controllers against generated `apigen` request/response types.
 4. Reuse `service.ServiceInterface` and/or `auth.AuthInterface` instead of reimplementing password hashing or token creation in handlers.

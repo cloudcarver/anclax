@@ -5,7 +5,7 @@ import "embed"
 //go:embed sql/*
 var Migrations embed.FS
 
-//go:embed api/*
+//go:embed api
 var API embed.FS
 
 //go:embed VERSION

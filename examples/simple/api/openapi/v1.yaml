@@ -23,7 +23,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "./schemas/counter/counter.yaml#schemas/Counter"
+                  $ref: "../schemas/counter/counter.yaml#schemas/Counter"
       security: []
     post:
       summary: Increment Counter

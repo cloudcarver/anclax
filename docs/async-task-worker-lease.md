@@ -49,7 +49,7 @@ Heartbeat is for monitoring only; task claims use `locked_at` TTL only.
 
 ## Labels
 
-- Task labels come from `api/tasks.yaml` and runtime overrides.
+- Task labels come from `api/tasks/tasks.yaml` and runtime overrides.
 - Worker labels come from config.
 - Claiming uses **all-match** semantics:
   - unlabeled task (`[]`) can be claimed by any worker.

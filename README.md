@@ -156,6 +156,17 @@ tasks:
 anclax gen
 ```
 
+Default scaffold layout:
+- OpenAPI fragments: `api/openapi/`
+- Task definitions: `api/tasks/tasks.yaml`
+- Shared schemas: `api/schemas/`
+
+`oapi-codegen.path` can point to either a single file or a directory. When you need one bundled OpenAPI file, run:
+
+```bash
+anclax bundle-openapi-spec --input api/openapi --output openapi-bundle.yaml
+```
+
 ```go
 func (h *Handler) GetCounter(c *fiber.Ctx) error {
   return c.JSON(apigen.Counter{Count: 0})
@@ -207,10 +218,10 @@ components:
 - **Pain points before**: enqueueing inside a DB transaction required custom glue code.
 - **Pain points before**: task params and handler signatures could fall out of sync.
 
-**Refactor solution**: define tasks in `api/tasks.yaml`, run `anclax gen`, and use the generated `taskgen.TaskRunner` (`RunX` / `RunXWithTx`) with `taskcore` overrides when needed.
+**Refactor solution**: define tasks in `api/tasks/tasks.yaml`, run `anclax gen`, and use the generated `taskgen.TaskRunner` (`RunX` / `RunXWithTx`) with `taskcore` overrides when needed.
 
 ```yaml
-# api/tasks.yaml
+# api/tasks/tasks.yaml
 tasks:
   - name: SendWelcomeEmail
     description: Send welcome email to new users
