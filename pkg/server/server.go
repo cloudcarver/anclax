@@ -101,6 +101,12 @@ func NewServer(
 		Middlewares: middlewares,
 	})
 
+	if libCfg.Ws != nil {
+		s.wsc = ws.New(globalCtx.Context(), libCfg.Ws)
+		s.wsc.Mount(s.app)
+		log.Infof("WebSocket enabled at path: %s", s.wsc.Path())
+	}
+
 	s.skipLogRequest = func(c fiber.Ctx) bool { return false }
 	s.skipLogResponse = func(c fiber.Ctx) bool { return false }
 

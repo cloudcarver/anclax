@@ -154,6 +154,16 @@ type Handler interface {
 	Handle(ctx *Ctx, data []byte) error
 }
 
+type defaultHandler struct{}
+
+func (h *defaultHandler) OnSessionCreated(*Session) error {
+	return nil
+}
+
+func (h *defaultHandler) Handle(*Ctx, []byte) error {
+	return ErrHandlerNotRegistered
+}
+
 type WebsocketController struct {
 	ctx context.Context
 	hub *Hub
@@ -186,9 +196,19 @@ type WsCfg struct {
 
 	// (optional) Default is ws_session_id, the key to store the session ID in the websocket connection locals.
 	SessionIDKey string
+
+	// (optional, runtime only) Handler used by the websocket controller.
+	Handler Handler `json:"-" yaml:"-"`
 }
 
-func New(ctrlCtx context.Context, handler Handler, cfg *WsCfg) *WebsocketController {
+func normalizeHandler(handler Handler) Handler {
+	if handler != nil {
+		return handler
+	}
+	return &defaultHandler{}
+}
+
+func New(ctrlCtx context.Context, cfg *WsCfg) *WebsocketController {
 	var readLimit int64 = 1024 * 1024 // 1MB
 	if cfg != nil && cfg.ReadLimit > 0 {
 		readLimit = cfg.ReadLimit
@@ -223,7 +243,12 @@ func New(ctrlCtx context.Context, handler Handler, cfg *WsCfg) *WebsocketControl
 		writeWait:      writeWait,
 		wsSessionIDKey: wsSessionIDKey,
 		wsPath:         wsPath,
+		handler:        normalizeHandler(cfg.Handler),
 	}
+}
+
+func (w *WebsocketController) Path() string {
+	return w.wsPath
 }
 
 func (w *WebsocketController) Mount(app *fiber.App) {

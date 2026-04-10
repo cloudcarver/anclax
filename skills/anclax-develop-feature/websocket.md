@@ -205,7 +205,7 @@ func (s *RealtimeService) PublishOrderCreated(evt *OrderCreatedEvent) {
 }
 ```
 
-### Mounting the controller
+### Mounting the controller directly
 
 ```go
 handler := NewMessageHandler(realtimeService)
@@ -214,6 +214,20 @@ wsc := ws.New(globalCtx.Context(), handler, &ws.WsCfg{
 })
 wsc.Mount(anclaxApp.GetServer().GetApp())
 ```
+
+### Server-managed initialization through `libCfg.Ws`
+
+If you want the framework server to own the websocket controller, put the handler on `libCfg.Ws` before constructing the server/application.
+
+```go
+handler := NewMessageHandler(realtimeService)
+libCfg.Ws = &ws.WsCfg{
+    WebSocketPath: "/ws",
+    Handler:       handler,
+}
+```
+
+`server.NewServer(...)` will initialize and mount the controller automatically, and `pkg/server.Server.Websocket()` returns that controller.
 
 Keep the controller or hub reachable from DI if other parts of the app need to publish websocket events.
 
@@ -238,12 +252,10 @@ Avoid putting these directly in low-level frame parsing code:
 - Use `RegisterOnClose` cleanup aggressively so disconnects do not leak subscriptions.
 - Expect backpressure errors when clients cannot keep up.
 
-## Current repo caveats
+## Current repo notes
 
-Verify framework plumbing before implementation in this repo version:
-
-- `pkg/server.Server` exposes `Websocket()`, but `server.NewServer` does not initialize `s.wsc`.
-- `lib/ws.New(ctx, handler, cfg)` currently does not assign the provided handler to the returned controller.
+- `lib/ws.New(ctx, handler, cfg)` is the supported websocket entry point.
+- Handlers are fixed at controller construction time; there is no post-construction registration API.
+- `libCfg.Ws.Handler` is the server-managed integration point when you want `server.NewServer(...)` to initialize and mount websocket support automatically.
+- `pkg/server.Server.Websocket()` is non-nil when `libCfg.Ws != nil`.
 - `ws.Ctx.SendError` writes a generic error frame, so apps with typed websocket responses usually need custom error writing.
-
-If you build websocket support in this repo, fix or verify those integration points first.
