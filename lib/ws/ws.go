@@ -175,7 +175,8 @@ type WebsocketController struct {
 	wsSessionIDKey string
 	wsPath         string
 
-	handler Handler
+	handler     Handler
+	middlewares []fiber.Handler
 }
 
 type WsCfg struct {
@@ -199,6 +200,10 @@ type WsCfg struct {
 
 	// (optional, runtime only) Handler used by the websocket controller.
 	Handler Handler `json:"-" yaml:"-"`
+
+	// (optional, runtime only) Middlewares executed on the websocket upgrade request
+	// before Anclax applies its internal upgrade guard and websocket handler.
+	Middlewares []fiber.Handler `json:"-" yaml:"-"`
 }
 
 func normalizeHandler(handler Handler) Handler {
@@ -206,6 +211,23 @@ func normalizeHandler(handler Handler) Handler {
 		return handler
 	}
 	return &defaultHandler{}
+}
+
+func normalizeMiddlewares(middlewares []fiber.Handler) []fiber.Handler {
+	if len(middlewares) == 0 {
+		return nil
+	}
+
+	normalized := make([]fiber.Handler, 0, len(middlewares))
+	for _, middleware := range middlewares {
+		if middleware != nil {
+			normalized = append(normalized, middleware)
+		}
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
 }
 
 func New(ctrlCtx context.Context, cfg *WsCfg) *WebsocketController {
@@ -234,6 +256,13 @@ func New(ctrlCtx context.Context, cfg *WsCfg) *WebsocketController {
 		wsPath = "/" + strings.Trim(cfg.WebSocketPath, "/")
 	}
 
+	var handler Handler
+	var middlewares []fiber.Handler
+	if cfg != nil {
+		handler = cfg.Handler
+		middlewares = normalizeMiddlewares(cfg.Middlewares)
+	}
+
 	return &WebsocketController{
 		ctx:            ctrlCtx,
 		hub:            NewHub(),
@@ -243,7 +272,8 @@ func New(ctrlCtx context.Context, cfg *WsCfg) *WebsocketController {
 		writeWait:      writeWait,
 		wsSessionIDKey: wsSessionIDKey,
 		wsPath:         wsPath,
-		handler:        normalizeHandler(cfg.Handler),
+		handler:        normalizeHandler(handler),
+		middlewares:    middlewares,
 	}
 }
 
@@ -252,6 +282,10 @@ func (w *WebsocketController) Path() string {
 }
 
 func (w *WebsocketController) Mount(app *fiber.App) {
+	for _, middleware := range w.middlewares {
+		app.Use(w.wsPath, middleware)
+	}
+
 	app.Use(w.wsPath, func(c fiber.Ctx) error {
 		if websocket.IsWebSocketUpgrade(c) {
 			c.Locals("allowed", true)
