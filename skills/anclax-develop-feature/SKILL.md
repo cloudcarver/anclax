@@ -1,6 +1,6 @@
 ---
 name: anclax-develop-feature
-description: Develop, review, or refactor Go services built with Anclax, including OpenAPI specs, handlers, service/business logic, database/sqlc changes, async tasks, and Wire dependency injection.
+description: Develop, review, or refactor Go services built with Anclax, including OpenAPI specs, HTTP handlers, websocket/realtime features, service/business logic, database/sqlc changes, async tasks, and Wire dependency injection.
 ---
 
 # Anclax Development Workflow
@@ -27,8 +27,9 @@ Use Anclax generated types as the contract between layers and keep specs/SQL as 
 
 ## Layering rules
 
-- Handler: parse HTTP, call service, map errors to HTTP responses.
-- Service: implement business logic, accept and return `apigen` types.
+- HTTP handler: parse HTTP, call service, map errors to HTTP responses.
+- Websocket handler: parse frames, manage session state, call service logic, and write websocket responses.
+- Service: implement business logic, topic/subscription policy, and event publication.
 - Model: use `pkg/zcore/model` and sqlc-generated queries.
 - Async tasks: define in the task spec configured under `task-handler` (commonly `api/tasks/tasks.yaml`), implement `taskgen.ExecutorInterface`, enqueue via `taskgen.TaskRunner`.
 
@@ -39,6 +40,7 @@ Use Anclax generated types as the contract between layers and keep specs/SQL as 
   - [Business Logic](./business-logic.md): Service-layer rules and error handling.
   - [Authentication](./authentication.md): Simple auth config, macaroon tokens, and custom auth API patterns.
   - [Database](./database.md): SQL/schema rules and transaction helpers.
+  - [Websocket / Realtime](./websocket.md): `lib/ws` handlers, hubs, session lifecycle, subscriptions, and broadcasts.
   - [Dependency Injection](./dependency-injestion.md): Wire DI conventions.
   - [Async Tasks](./async-tasks.md): Task definitions, execution, retries, and hooks.
   - [Example template generation](./template-generation.md): Updating `examples/` and regenerating `cmd/anclax/initFiles`, including `go.mod` normalization from `VERSION`.
