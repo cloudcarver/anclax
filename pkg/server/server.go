@@ -42,6 +42,60 @@ type Server struct {
 	skipLogResponse func(c fiber.Ctx) bool
 }
 
+type logRules struct {
+	hasRequestPathPrefix bool
+	requestPathPrefix    string
+	hasHealthCheckPath   bool
+	healthCheckPath      string
+	errorOnlyPrefixes    []string
+}
+
+func newLogRules(logCfg config.LogCfg) logRules {
+	rules := logRules{}
+	if logCfg.RequestPathPrefix != nil {
+		rules.hasRequestPathPrefix = true
+		rules.requestPathPrefix = *logCfg.RequestPathPrefix
+	}
+	if logCfg.HealthCheckPath != nil {
+		rules.hasHealthCheckPath = true
+		rules.healthCheckPath = *logCfg.HealthCheckPath
+	}
+	for _, prefix := range logCfg.ErrorOnlyPathPrefixes {
+		if prefix == "" {
+			continue
+		}
+		rules.errorOnlyPrefixes = append(rules.errorOnlyPrefixes, prefix)
+	}
+	return rules
+}
+
+func (r logRules) shouldSkipRequest(path string) bool {
+	return !r.matchesRequestPathPrefix(path) || r.isErrorOnlyPath(path)
+}
+
+func (r logRules) shouldSkipResponse(path string, status int) bool {
+	return !r.matchesRequestPathPrefix(path) || (r.isErrorOnlyPath(path) && status < 400)
+}
+
+func (r logRules) matchesRequestPathPrefix(path string) bool {
+	if !r.hasRequestPathPrefix {
+		return true
+	}
+	return strings.HasPrefix(path, r.requestPathPrefix)
+}
+
+func (r logRules) isErrorOnlyPath(path string) bool {
+	if r.hasHealthCheckPath && path == r.healthCheckPath {
+		return true
+	}
+	for _, prefix := range r.errorOnlyPrefixes {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 func NewServer(
 	cfg *config.Config,
 	libCfg *config.LibConfig,
@@ -81,6 +135,14 @@ func NewServer(
 		libCfg:          libCfg,
 	}
 
+	logRules := newLogRules(libCfg.Log)
+	s.skipLogRequest = func(c fiber.Ctx) bool {
+		return logRules.shouldSkipRequest(c.Path())
+	}
+	s.skipLogResponse = func(c fiber.Ctx) bool {
+		return logRules.shouldSkipResponse(c.Path(), c.Response().StatusCode())
+	}
+
 	s.registerMiddleware()
 
 	middlewares := []apigen.MiddlewareFunc{}
@@ -105,38 +167,6 @@ func NewServer(
 		s.wsc = ws.New(globalCtx.Context(), libCfg.Ws)
 		s.wsc.Mount(s.app)
 		log.Infof("WebSocket enabled at path: %s", s.wsc.Path())
-	}
-
-	s.skipLogRequest = func(c fiber.Ctx) bool { return false }
-	s.skipLogResponse = func(c fiber.Ctx) bool { return false }
-
-	if libCfg.Log.RequestPathPrefix != nil && libCfg.Log.HealthCheckPath != nil {
-		var (
-			prefix     = *libCfg.Log.RequestPathPrefix
-			healthPath = *libCfg.Log.HealthCheckPath
-		)
-		s.skipLogRequest = func(c fiber.Ctx) bool {
-			return !strings.HasPrefix(c.Path(), prefix) || c.Path() == healthPath
-		}
-		s.skipLogResponse = func(c fiber.Ctx) bool {
-			return !strings.HasPrefix(c.Path(), prefix) || (c.Path() == healthPath && c.Response().StatusCode() < 400)
-		}
-	} else if libCfg.Log.RequestPathPrefix != nil && libCfg.Log.HealthCheckPath == nil {
-		var prefix = *libCfg.Log.RequestPathPrefix
-		s.skipLogRequest = func(c fiber.Ctx) bool {
-			return !strings.HasPrefix(c.Path(), prefix)
-		}
-		s.skipLogResponse = func(c fiber.Ctx) bool {
-			return !strings.HasPrefix(c.Path(), prefix)
-		}
-	} else if libCfg.Log.RequestPathPrefix == nil && libCfg.Log.HealthCheckPath != nil {
-		var healthPath = *libCfg.Log.HealthCheckPath
-		s.skipLogRequest = func(c fiber.Ctx) bool {
-			return c.Path() == healthPath
-		}
-		s.skipLogResponse = func(c fiber.Ctx) bool {
-			return c.Path() == healthPath && c.Response().StatusCode() < 400
-		}
 	}
 
 	return s, nil

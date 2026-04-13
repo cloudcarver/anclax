@@ -14,7 +14,12 @@ type LogCfg struct {
 	// (optional) If set, only log entries where the request path starts with this prefix will be logged.
 	RequestPathPrefix *string
 
-	// (optional) If set, only error will be logged for the health check path.
+	// (optional) If set, request logs will be skipped and only error responses will be logged for paths
+	// whose request path starts with any of these prefixes.
+	ErrorOnlyPathPrefixes []string
+
+	// Deprecated: use ErrorOnlyPathPrefixes.
+	// (optional) If set, only error will be logged for this exact health check path.
 	HealthCheckPath *string
 }
 
