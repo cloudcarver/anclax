@@ -483,15 +483,11 @@ func renderSpec(doc *document) (string, error) {
 	}
 
 	for _, enum := range doc.Enums {
-		b.WriteString("// ")
-		b.WriteString(enum.Name)
 		if enum.Description != "" {
-			b.WriteString(" ")
-			b.WriteString(enum.Description)
+			writeComment(&b, enum.Name+" "+enum.Description, "")
 		} else {
-			b.WriteString(" defines enum values")
+			writeComment(&b, enum.Name+" defines enum values", "")
 		}
-		b.WriteString("\n")
 		b.WriteString("type ")
 		b.WriteString(enum.Name)
 		b.WriteString(" ")

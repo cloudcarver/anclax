@@ -205,6 +205,70 @@ x-check-rules:
 	}
 }
 
+func TestGenerateSupportsMultilineEnumDescriptions(t *testing.T) {
+	t.Parallel()
+
+	workdir := t.TempDir()
+	specPath := filepath.Join(workdir, "spec.yaml")
+	outPath := filepath.Join(workdir, "spec_gen.go")
+
+	spec := `openapi: 3.0.3
+info:
+  title: test
+  version: 1.0.0
+paths:
+  /nodes:
+    get:
+      operationId: ListNodes
+      summary: List nodes
+      responses:
+        '200':
+          description: ok
+components:
+  schemas:
+    NodeStatus:
+      type: string
+      description: |
+        Status of the node.
+        - draining: node is shutting down.
+        - standby: node can return to service later.
+      enum:
+        - ready
+        - draining
+        - standby
+`
+
+	if err := os.WriteFile(specPath, []byte(spec), 0644); err != nil {
+		t.Fatalf("write spec: %v", err)
+	}
+
+	if err := Generate(workdir, Config{
+		Path:    specPath,
+		Out:     outPath,
+		Package: "apigen",
+	}); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	raw, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("read output: %v", err)
+	}
+	out := string(raw)
+
+	required := []string{
+		"// NodeStatus Status of the node.",
+		"// - draining: node is shutting down.",
+		"// - standby: node can return to service later.",
+		"type NodeStatus string",
+	}
+	for _, needle := range required {
+		if !strings.Contains(out, needle) {
+			t.Fatalf("generated output missing %q", needle)
+		}
+	}
+}
+
 func mustWriteFile(t *testing.T, path string, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
