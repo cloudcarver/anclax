@@ -1,0 +1,27 @@
+openapi: 3.0.3
+info:
+  title: x-check-rules status test
+  version: 1.0.0
+paths:
+  /widgets:
+    get:
+      operationId: ListWidgets
+      summary: List widgets
+      security:
+        - BearerAuth:
+            - x.OperationPermit(c, operationID)
+      responses:
+        "200":
+          description: ok
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+x-check-rules:
+  OperationPermit:
+    useContext: true
+    parameters:
+      - name: operationID
+        schema:
+          type: string

@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/gofiber/fiber/v3"
 	"io"
@@ -1265,13 +1266,21 @@ type Validator interface {
 	// AuthFunc is called before the request is processed. The response will be 401 if the auth fails.
 	AuthFunc(fiber.Ctx) error
 
-	// PreValidate is called before the request is processed. The response will be 403 if the validation fails.
+	// PreValidate is called before the request is processed. The response will use a wrapped *fiber.Error status code, or 403 otherwise.
 	PreValidate(fiber.Ctx) error
 
-	// PostValidate is called after the request is processed. The response will be 403 if the validation fails.
+	// PostValidate is called after the request is processed. The response will use a wrapped *fiber.Error status code, or 403 otherwise.
 	PostValidate(fiber.Ctx) error
 
 	GetOrgID(c fiber.Ctx) int32
+}
+
+func xCheckRuleStatusCode(err error) int {
+	var fiberErr *fiber.Error
+	if errors.As(err, &fiberErr) {
+		return fiberErr.Code
+	}
+	return fiber.StatusForbidden
 }
 
 type XMiddleware struct {
@@ -1290,10 +1299,10 @@ func (x *XMiddleware) ListTasks(c fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
 	}
 	if err := x.PreValidate(c); err != nil {
-		return c.Status(fiber.StatusForbidden).SendString(err.Error())
+		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
 	}
 	if err := x.PostValidate(c); err != nil {
-		return c.Status(fiber.StatusForbidden).SendString(err.Error())
+		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
 	}
 	return x.ServerInterface.ListTasks(c)
 }
@@ -1305,10 +1314,10 @@ func (x *XMiddleware) ListOrgs(c fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
 	}
 	if err := x.PreValidate(c); err != nil {
-		return c.Status(fiber.StatusForbidden).SendString(err.Error())
+		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
 	}
 	if err := x.PostValidate(c); err != nil {
-		return c.Status(fiber.StatusForbidden).SendString(err.Error())
+		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
 	}
 	return x.ServerInterface.ListOrgs(c)
 }
@@ -1320,10 +1329,10 @@ func (x *XMiddleware) ListEvents(c fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
 	}
 	if err := x.PreValidate(c); err != nil {
-		return c.Status(fiber.StatusForbidden).SendString(err.Error())
+		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
 	}
 	if err := x.PostValidate(c); err != nil {
-		return c.Status(fiber.StatusForbidden).SendString(err.Error())
+		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
 	}
 	return x.ServerInterface.ListEvents(c)
 }
@@ -1335,10 +1344,10 @@ func (x *XMiddleware) SignOut(c fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
 	}
 	if err := x.PreValidate(c); err != nil {
-		return c.Status(fiber.StatusForbidden).SendString(err.Error())
+		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
 	}
 	if err := x.PostValidate(c); err != nil {
-		return c.Status(fiber.StatusForbidden).SendString(err.Error())
+		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
 	}
 	return x.ServerInterface.SignOut(c)
 }
@@ -1350,10 +1359,10 @@ func (x *XMiddleware) TryExecuteTask(c fiber.Ctx, taskID int32) error {
 		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
 	}
 	if err := x.PreValidate(c); err != nil {
-		return c.Status(fiber.StatusForbidden).SendString(err.Error())
+		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
 	}
 	if err := x.PostValidate(c); err != nil {
-		return c.Status(fiber.StatusForbidden).SendString(err.Error())
+		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
 	}
 	return x.ServerInterface.TryExecuteTask(c, taskID)
 }

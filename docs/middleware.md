@@ -49,27 +49,37 @@ paths:
 
 **Generated Middleware:**
 ```go
+func xCheckRuleStatusCode(err error) int {
+    var fiberErr *fiber.Error
+    if errors.As(err, &fiberErr) {
+        return fiberErr.Code
+    }
+    return fiber.StatusForbidden
+}
+
 func (x *XMiddleware) IncrementCounter(c *fiber.Ctx) error {
     if err := x.AuthFunc(c); err != nil {
         return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
     }
     if err := x.PreValidate(c); err != nil {
-        return c.Status(fiber.StatusForbidden).SendString(err.Error())
+        return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
     }
     
     operationID := "IncrementCounter"  // Auto-generated when referenced
     
     // Your actual Go code gets executed here:
     if err := x.OperationPermit(c, operationID); err != nil {
-        return c.Status(fiber.StatusForbidden).SendString(err.Error())
+        return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
     }
     
     if err := x.PostValidate(c); err != nil {
-        return c.Status(fiber.StatusForbidden).SendString(err.Error())
+        return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
     }
     return x.ServerInterface.IncrementCounter(c)
 }
 ```
+
+Validation hooks and check rules default to `403 Forbidden`, but if they return an error wrapping `*fiber.Error`, the generated middleware uses that error's status code.
 
 ## x-check-rules
 

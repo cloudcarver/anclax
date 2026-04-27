@@ -527,9 +527,9 @@ func renderMiddlewareDefinitions(b *strings.Builder, doc *document) {
 	b.WriteString("type Validator interface {\n")
 	b.WriteString("\t// AuthFunc is called before the request is processed. The response will be 401 if the auth fails.\n")
 	b.WriteString("\tAuthFunc(fiber.Ctx) error\n\n")
-	b.WriteString("\t// PreValidate is called before the request is processed. The response will be 403 if the validation fails.\n")
+	b.WriteString("\t// PreValidate is called before the request is processed. The response will use a wrapped *fiber.Error status code, or 403 otherwise.\n")
 	b.WriteString("\tPreValidate(fiber.Ctx) error\n\n")
-	b.WriteString("\t// PostValidate is called after the request is processed. The response will be 403 if the validation fails.\n")
+	b.WriteString("\t// PostValidate is called after the request is processed. The response will use a wrapped *fiber.Error status code, or 403 otherwise.\n")
 	b.WriteString("\tPostValidate(fiber.Ctx) error\n")
 	if len(doc.CheckRules) > 0 || len(doc.Functions) > 0 {
 		b.WriteString("\n")
@@ -577,6 +577,14 @@ func renderMiddlewareDefinitions(b *strings.Builder, doc *document) {
 	}
 	b.WriteString("}\n\n")
 
+	b.WriteString("func xCheckRuleStatusCode(err error) int {\n")
+	b.WriteString("\tvar fiberErr *fiber.Error\n")
+	b.WriteString("\tif errors.As(err, &fiberErr) {\n")
+	b.WriteString("\t\treturn fiberErr.Code\n")
+	b.WriteString("\t}\n")
+	b.WriteString("\treturn fiber.StatusForbidden\n")
+	b.WriteString("}\n\n")
+
 	b.WriteString("type XMiddleware struct {\n\tServerInterface\n\tValidator\n}\n\n")
 	b.WriteString("func NewXMiddleware(handler ServerInterface, validator Validator) ServerInterface {\n")
 	b.WriteString("\treturn &XMiddleware{ServerInterface: handler, Validator: validator}\n")
@@ -612,7 +620,7 @@ func renderMiddlewareDefinitions(b *strings.Builder, doc *document) {
 		b.WriteString("\t\treturn c.Status(fiber.StatusUnauthorized).SendString(err.Error())\n")
 		b.WriteString("\t}\n")
 		b.WriteString("\tif err := x.PreValidate(c); err != nil {\n")
-		b.WriteString("\t\treturn c.Status(fiber.StatusForbidden).SendString(err.Error())\n")
+		b.WriteString("\t\treturn c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())\n")
 		b.WriteString("\t}\n")
 		if operationNeedsOperationID(op) {
 			b.WriteString("\toperationID := ")
@@ -624,12 +632,12 @@ func renderMiddlewareDefinitions(b *strings.Builder, doc *document) {
 				b.WriteString("\tif err := ")
 				b.WriteString(scope)
 				b.WriteString("; err != nil {\n")
-				b.WriteString("\t\treturn c.Status(fiber.StatusForbidden).SendString(err.Error())\n")
+				b.WriteString("\t\treturn c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())\n")
 				b.WriteString("\t}\n")
 			}
 		}
 		b.WriteString("\tif err := x.PostValidate(c); err != nil {\n")
-		b.WriteString("\t\treturn c.Status(fiber.StatusForbidden).SendString(err.Error())\n")
+		b.WriteString("\t\treturn c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())\n")
 		b.WriteString("\t}\n")
 		b.WriteString("\treturn x.ServerInterface.")
 		b.WriteString(op.Name)
@@ -1539,6 +1547,7 @@ func renderPathParamParse(b *strings.Builder, param paramDef) {
 func specImports(doc *document) []string {
 	imports := map[string]struct{}{
 		"context":                     {},
+		"errors":                      {},
 		"fmt":                         {},
 		"io":                          {},
 		"net/http":                    {},

@@ -205,6 +205,49 @@ x-check-rules:
 	}
 }
 
+func TestGenerateMiddlewareUsesWrappedFiberErrorStatus(t *testing.T) {
+	t.Parallel()
+
+	workdir := t.TempDir()
+	outPath := filepath.Join(workdir, "spec_gen.go")
+
+	if err := Generate(".", Config{
+		Path:    filepath.Join("testdata", "x_check_rules_status.yaml"),
+		Out:     outPath,
+		Package: "apigen",
+	}); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	raw, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("read output: %v", err)
+	}
+	out := string(raw)
+
+	required := []string{
+		`"errors"`,
+		"func xCheckRuleStatusCode(err error) int {",
+		"if errors.As(err, &fiberErr) {",
+		"return fiberErr.Code",
+		"return fiber.StatusForbidden",
+		"OperationPermit(c fiber.Ctx, operationID string) error",
+	}
+	for _, needle := range required {
+		if !strings.Contains(out, needle) {
+			t.Fatalf("generated output missing %q", needle)
+		}
+	}
+
+	statusCall := "return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())"
+	if got := strings.Count(out, statusCall); got != 3 {
+		t.Fatalf("generated output contains %q %d times, want 3", statusCall, got)
+	}
+	if strings.Contains(out, "return c.Status(fiber.StatusForbidden).SendString(err.Error())") {
+		t.Fatal("generated output still returns fixed 403 for check-rule errors")
+	}
+}
+
 func TestGenerateSupportsMultilineEnumDescriptions(t *testing.T) {
 	t.Parallel()
 

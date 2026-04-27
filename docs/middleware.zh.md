@@ -49,27 +49,37 @@ paths:
 
 **生成的中间件：**
 ```go
+func xCheckRuleStatusCode(err error) int {
+    var fiberErr *fiber.Error
+    if errors.As(err, &fiberErr) {
+        return fiberErr.Code
+    }
+    return fiber.StatusForbidden
+}
+
 func (x *XMiddleware) IncrementCounter(c *fiber.Ctx) error {
     if err := x.AuthFunc(c); err != nil {
         return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
     }
     if err := x.PreValidate(c); err != nil {
-        return c.Status(fiber.StatusForbidden).SendString(err.Error())
+        return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
     }
     
     operationID := "IncrementCounter"  // 引用时自动生成
     
     // 您的实际 Go 代码在这里执行：
     if err := x.OperationPermit(c, operationID); err != nil {
-        return c.Status(fiber.StatusForbidden).SendString(err.Error())
+        return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
     }
     
     if err := x.PostValidate(c); err != nil {
-        return c.Status(fiber.StatusForbidden).SendString(err.Error())
+        return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
     }
     return x.ServerInterface.IncrementCounter(c)
 }
 ```
+
+验证钩子和 check rules 默认返回 `403 Forbidden`；如果返回的错误 wrap 了 `*fiber.Error`，生成的中间件会使用该错误的状态码。
 
 ## x-check-rules
 
