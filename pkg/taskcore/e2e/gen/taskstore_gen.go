@@ -16,9 +16,9 @@ type ControlPlane interface {
 	UpdateRuntimeConfig(ctx context.Context, key string, maxStrictPercentage int32, defaultWeight int32, w1Weight int32, w2Weight int32) error
 	PauseTask(ctx context.Context, task string) error
 	CancelTask(ctx context.Context, task string) error
-	PauseTasksByLabels(ctx context.Context, labels []string) error
-	CancelTasksByLabels(ctx context.Context, labels []string) error
-	ResumeTasksByLabels(ctx context.Context, labels []string) error
+	PauseTasksByLabels(ctx context.Context, labels []string, exceptLabelSets [][]string) error
+	CancelTasksByLabels(ctx context.Context, labels []string, exceptLabelSets [][]string) error
+	ResumeTasksByLabels(ctx context.Context, labels []string, exceptLabelSets [][]string) error
 }
 
 
@@ -5277,6 +5277,16 @@ func runStepSmokeLabelControlIntersectionS1(parent context.Context, actors Actor
 			cancel()
 			return
 		}
+		if err := actors.TaskStore.EnqueueRaw(ctx, "SLC_PAUSE_EXCEPT_PAIR", "label-control-e2e", "{}", 0, 1, []string{"ctrl-a", "ctrl-b", "skip-a", "skip-b"}, "", 0, "", 0); err != nil {
+			errCh <- fmt.Errorf("actor taskStore call %s: %w", "EnqueueRaw(ctx, \"SLC_PAUSE_EXCEPT_PAIR\", \"label-control-e2e\", \"{}\", 0, 1, []string{\"ctrl-a\", \"ctrl-b\", \"skip-a\", \"skip-b\"}, \"\", 0, \"\", 0)", err)
+			cancel()
+			return
+		}
+		if err := actors.TaskStore.EnqueueRaw(ctx, "SLC_PAUSE_EXCEPT_SINGLE", "label-control-e2e", "{}", 0, 1, []string{"ctrl-a", "ctrl-b", "skip-c"}, "", 0, "", 0); err != nil {
+			errCh <- fmt.Errorf("actor taskStore call %s: %w", "EnqueueRaw(ctx, \"SLC_PAUSE_EXCEPT_SINGLE\", \"label-control-e2e\", \"{}\", 0, 1, []string{\"ctrl-a\", \"ctrl-b\", \"skip-c\"}, \"\", 0, \"\", 0)", err)
+			cancel()
+			return
+		}
 		if err := actors.TaskStore.EnqueueRaw(ctx, "SLC_PAUSE_A", "label-control-e2e", "{}", 0, 1, []string{"ctrl-a"}, "", 0, "", 0); err != nil {
 			errCh <- fmt.Errorf("actor taskStore call %s: %w", "EnqueueRaw(ctx, \"SLC_PAUSE_A\", \"label-control-e2e\", \"{}\", 0, 1, []string{\"ctrl-a\"}, \"\", 0, \"\", 0)", err)
 			cancel()
@@ -5289,6 +5299,11 @@ func runStepSmokeLabelControlIntersectionS1(parent context.Context, actors Actor
 		}
 		if err := actors.TaskStore.EnqueueRaw(ctx, "SLC_CANCEL_BOTH", "label-control-e2e", "{}", 0, 1, []string{"cancel-a", "cancel-b"}, "", 0, "", 0); err != nil {
 			errCh <- fmt.Errorf("actor taskStore call %s: %w", "EnqueueRaw(ctx, \"SLC_CANCEL_BOTH\", \"label-control-e2e\", \"{}\", 0, 1, []string{\"cancel-a\", \"cancel-b\"}, \"\", 0, \"\", 0)", err)
+			cancel()
+			return
+		}
+		if err := actors.TaskStore.EnqueueRaw(ctx, "SLC_CANCEL_EXCEPT", "label-control-e2e", "{}", 0, 1, []string{"cancel-a", "cancel-b", "skip-cancel"}, "", 0, "", 0); err != nil {
+			errCh <- fmt.Errorf("actor taskStore call %s: %w", "EnqueueRaw(ctx, \"SLC_CANCEL_EXCEPT\", \"label-control-e2e\", \"{}\", 0, 1, []string{\"cancel-a\", \"cancel-b\", \"skip-cancel\"}, \"\", 0, \"\", 0)", err)
 			cancel()
 			return
 		}
@@ -5318,13 +5333,13 @@ func runStepSmokeLabelControlIntersectionS2(parent context.Context, actors Actor
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := actors.ControlPlane.PauseTasksByLabels(ctx, []string{"ctrl-a", "ctrl-b"}); err != nil {
-			errCh <- fmt.Errorf("actor controlPlane call %s: %w", "PauseTasksByLabels(ctx, []string{\"ctrl-a\", \"ctrl-b\"})", err)
+		if err := actors.ControlPlane.PauseTasksByLabels(ctx, []string{"ctrl-a", "ctrl-b"}, [][]string{{"skip-a", "skip-b"}, {"skip-c"}}); err != nil {
+			errCh <- fmt.Errorf("actor controlPlane call %s: %w", "PauseTasksByLabels(ctx, []string{\"ctrl-a\", \"ctrl-b\"}, [][]string{{\"skip-a\", \"skip-b\"}, {\"skip-c\"}})", err)
 			cancel()
 			return
 		}
-		if err := actors.ControlPlane.CancelTasksByLabels(ctx, []string{"cancel-a", "cancel-b"}); err != nil {
-			errCh <- fmt.Errorf("actor controlPlane call %s: %w", "CancelTasksByLabels(ctx, []string{\"cancel-a\", \"cancel-b\"})", err)
+		if err := actors.ControlPlane.CancelTasksByLabels(ctx, []string{"cancel-a", "cancel-b"}, [][]string{{"skip-cancel"}}); err != nil {
+			errCh <- fmt.Errorf("actor controlPlane call %s: %w", "CancelTasksByLabels(ctx, []string{\"cancel-a\", \"cancel-b\"}, [][]string{{\"skip-cancel\"}})", err)
 			cancel()
 			return
 		}
@@ -5384,9 +5399,12 @@ func runStepSmokeLabelControlIntersectionS3(parent context.Context, actors Actor
 	}
 
 	require.Equal(t, "paused", statusByName("SLC_PAUSE_BOTH"))
+	require.Equal(t, "pending", statusByName("SLC_PAUSE_EXCEPT_PAIR"))
+	require.Equal(t, "pending", statusByName("SLC_PAUSE_EXCEPT_SINGLE"))
 	require.Equal(t, "pending", statusByName("SLC_PAUSE_A"))
 	require.Equal(t, "pending", statusByName("SLC_PAUSE_B"))
 	require.Equal(t, "cancelled", statusByName("SLC_CANCEL_BOTH"))
+	require.Equal(t, "pending", statusByName("SLC_CANCEL_EXCEPT"))
 	require.Equal(t, "pending", statusByName("SLC_CANCEL_A"))
 	return err
 }
@@ -5401,8 +5419,8 @@ func runStepSmokeLabelControlIntersectionS4(parent context.Context, actors Actor
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := actors.ControlPlane.ResumeTasksByLabels(ctx, []string{"ctrl-a", "ctrl-b"}); err != nil {
-			errCh <- fmt.Errorf("actor controlPlane call %s: %w", "ResumeTasksByLabels(ctx, []string{\"ctrl-a\", \"ctrl-b\"})", err)
+		if err := actors.ControlPlane.ResumeTasksByLabels(ctx, []string{"ctrl-a", "ctrl-b"}, [][]string{{"skip-a", "skip-b"}, {"skip-c"}}); err != nil {
+			errCh <- fmt.Errorf("actor controlPlane call %s: %w", "ResumeTasksByLabels(ctx, []string{\"ctrl-a\", \"ctrl-b\"}, [][]string{{\"skip-a\", \"skip-b\"}, {\"skip-c\"}})", err)
 			cancel()
 			return
 		}
@@ -5427,18 +5445,18 @@ func runStepSmokeLabelControlIntersectionS5(parent context.Context, actors Actor
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := actors.Runtime.StartWorker(ctx, "SLC_W1", "capture", "label-control-e2e", []string{"ctrl-a", "ctrl-b", "cancel-a"}, 20, 20, 200, 20, 1, 0, false, ""); err != nil {
-			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"SLC_W1\", \"capture\", \"label-control-e2e\", []string{\"ctrl-a\", \"ctrl-b\", \"cancel-a\"}, 20, 20, 200, 20, 1, 0, false, \"\")", err)
+		if err := actors.Runtime.StartWorker(ctx, "SLC_W1", "capture", "label-control-e2e", []string{"ctrl-a", "ctrl-b", "skip-a", "skip-b", "skip-c", "cancel-a", "cancel-b", "skip-cancel"}, 20, 20, 200, 20, 1, 0, false, ""); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"SLC_W1\", \"capture\", \"label-control-e2e\", []string{\"ctrl-a\", \"ctrl-b\", \"skip-a\", \"skip-b\", \"skip-c\", \"cancel-a\", \"cancel-b\", \"skip-cancel\"}, 20, 20, 200, 20, 1, 0, false, \"\")", err)
 			cancel()
 			return
 		}
-		if err := actors.Runtime.WaitCapturedCount(ctx, 4, 8000); err != nil {
-			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitCapturedCount(ctx, 4, 8000)", err)
+		if err := actors.Runtime.WaitCapturedCount(ctx, 7, 8000); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitCapturedCount(ctx, 7, 8000)", err)
 			cancel()
 			return
 		}
-		if err := actors.Runtime.AssertCapturedContains(ctx, []string{"SLC_PAUSE_BOTH", "SLC_PAUSE_A", "SLC_PAUSE_B", "SLC_CANCEL_A"}); err != nil {
-			errCh <- fmt.Errorf("actor runtime call %s: %w", "AssertCapturedContains(ctx, []string{\"SLC_PAUSE_BOTH\", \"SLC_PAUSE_A\", \"SLC_PAUSE_B\", \"SLC_CANCEL_A\"})", err)
+		if err := actors.Runtime.AssertCapturedContains(ctx, []string{"SLC_PAUSE_BOTH", "SLC_PAUSE_EXCEPT_PAIR", "SLC_PAUSE_EXCEPT_SINGLE", "SLC_PAUSE_A", "SLC_PAUSE_B", "SLC_CANCEL_EXCEPT", "SLC_CANCEL_A"}); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "AssertCapturedContains(ctx, []string{\"SLC_PAUSE_BOTH\", \"SLC_PAUSE_EXCEPT_PAIR\", \"SLC_PAUSE_EXCEPT_SINGLE\", \"SLC_PAUSE_A\", \"SLC_PAUSE_B\", \"SLC_CANCEL_EXCEPT\", \"SLC_CANCEL_A\"})", err)
 			cancel()
 			return
 		}

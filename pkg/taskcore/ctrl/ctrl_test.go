@@ -2,6 +2,7 @@ package ctrl
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
+	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -18,6 +20,19 @@ import (
 )
 
 type fakeTx struct{}
+
+func taskLabelsQueryParams(labels []string, exceptLabelSets ...[]string) querier.ListTaskIDsByLabelsParams {
+	sets := make([][]string, 0, len(exceptLabelSets))
+	sets = append(sets, exceptLabelSets...)
+	raw, err := json.Marshal(sets)
+	if err != nil {
+		panic(err)
+	}
+	return querier.ListTaskIDsByLabelsParams{
+		Labels:          labels,
+		ExceptLabelSets: raw,
+	}
+}
 
 func (t *fakeTx) Exec(context.Context, string, ...interface{}) (pgconn.CommandTag, error) {
 	return pgconn.CommandTag{}, nil
@@ -213,6 +228,7 @@ func TestPauseTasksByLabelsUsesIntersectionAndBroadcastsDescendants(t *testing.T
 
 	ctx := context.Background()
 	labels := []string{"billing", "critical"}
+	exceptLabelSets := [][]string{{"skip-a", "skip-b"}, {"skip-c"}}
 	rootA := int32(10)
 	rootB := int32(20)
 	childA := int32(11)
@@ -231,7 +247,7 @@ func TestPauseTasksByLabelsUsesIntersectionAndBroadcastsDescendants(t *testing.T
 			return fn(fake, mockModel)
 		},
 	)
-	mockModel.EXPECT().ListTaskIDsByLabels(ctx, labels).Return([]int32{rootA, rootB}, nil)
+	mockModel.EXPECT().ListTaskIDsByLabels(ctx, taskLabelsQueryParams(labels, exceptLabelSets...)).Return([]int32{rootA, rootB}, nil)
 	mockModel.EXPECT().ListTaskDescendantIDs(ctx, &rootA).Return([]int32{childA}, nil)
 	mockModel.EXPECT().ListTaskDescendantIDs(ctx, &rootB).Return([]int32{duplicateChild, childB}, nil)
 	mockStore.EXPECT().PauseTaskWithTx(ctx, fake, rootA).Return(nil)
@@ -254,7 +270,7 @@ func TestPauseTasksByLabelsUsesIntersectionAndBroadcastsDescendants(t *testing.T
 	mockStore.EXPECT().WaitForTask(ctx, broadcastTaskID).Return(nil)
 
 	cp := NewWorkerControlPlane(mockModel, mockRunner, mockStore)
-	err := cp.PauseTasksByLabels(ctx, labels)
+	err := cp.PauseTasksByLabels(ctx, labels, exceptLabelSets...)
 	require.NoError(t, err)
 }
 
@@ -278,7 +294,7 @@ func TestCancelTasksByLabelsUsesIntersectionAndBroadcasts(t *testing.T) {
 			return fn(fake, mockModel)
 		},
 	)
-	mockModel.EXPECT().ListTaskIDsByLabels(ctx, labels).Return([]int32{taskID}, nil)
+	mockModel.EXPECT().ListTaskIDsByLabels(ctx, taskLabelsQueryParams(labels)).Return([]int32{taskID}, nil)
 	mockModel.EXPECT().ListTaskDescendantIDs(ctx, &taskID).Return(nil, nil)
 	mockStore.EXPECT().CancelTaskWithTx(ctx, fake, taskID).Return(nil)
 	mockModel.EXPECT().ListOnlineWorkerIDs(ctx, gomock.Any()).Return([]uuid.UUID{workerID}, nil)
@@ -316,7 +332,7 @@ func TestPauseTasksByLabelsWithTxDedupesLabelsAndReturnsBroadcastTaskID(t *testi
 	broadcastTaskID := int32(703)
 
 	mockModel.EXPECT().SpawnWithTx(fake).Return(mockModel)
-	mockModel.EXPECT().ListTaskIDsByLabels(ctx, labels).Return([]int32{taskID}, nil)
+	mockModel.EXPECT().ListTaskIDsByLabels(ctx, taskLabelsQueryParams(labels)).Return([]int32{taskID}, nil)
 	mockModel.EXPECT().ListTaskDescendantIDs(ctx, &taskID).Return(nil, nil)
 	mockStore.EXPECT().PauseTaskWithTx(ctx, fake, taskID).Return(nil)
 	mockModel.EXPECT().ListOnlineWorkerIDs(ctx, gomock.Any()).Return([]uuid.UUID{uuid.New()}, nil)
@@ -335,6 +351,7 @@ func TestResumeTasksByLabelsUsesTransactionAndDedupesTasks(t *testing.T) {
 
 	ctx := context.Background()
 	labels := []string{"billing", "critical"}
+	exceptLabelSets := [][]string{{"paused-except"}}
 	taskA := int32(50)
 	taskB := int32(51)
 
@@ -348,14 +365,14 @@ func TestResumeTasksByLabelsUsesTransactionAndDedupesTasks(t *testing.T) {
 			return fn(fake, mockModel)
 		},
 	)
-	mockModel.EXPECT().ListTaskIDsByLabels(ctx, labels).Return([]int32{taskA, taskB, taskA}, nil)
+	mockModel.EXPECT().ListTaskIDsByLabels(ctx, taskLabelsQueryParams(labels, exceptLabelSets...)).Return([]int32{taskA, taskB, taskA}, nil)
 	mockStore.EXPECT().ResumeTaskWithTx(ctx, fake, taskA).Return(nil)
 	mockStore.EXPECT().ResumeTaskWithTx(ctx, fake, taskB).Return(nil)
 	mockRunner.EXPECT().RunBroadcastPauseTaskWithTx(ctx, gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 	mockRunner.EXPECT().RunBroadcastCancelTaskWithTx(ctx, gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
 	cp := NewWorkerControlPlane(mockModel, mockRunner, mockStore)
-	err := cp.ResumeTasksByLabels(ctx, labels)
+	err := cp.ResumeTasksByLabels(ctx, labels, exceptLabelSets...)
 	require.NoError(t, err)
 }
 
@@ -376,7 +393,7 @@ func TestPauseTasksByLabelsNoMatchesSkipsBroadcast(t *testing.T) {
 			return fn(fake, mockModel)
 		},
 	)
-	mockModel.EXPECT().ListTaskIDsByLabels(ctx, labels).Return(nil, nil)
+	mockModel.EXPECT().ListTaskIDsByLabels(ctx, taskLabelsQueryParams(labels)).Return(nil, nil)
 	mockStore.EXPECT().PauseTaskWithTx(ctx, fake, gomock.Any()).Times(0)
 	mockModel.EXPECT().ListOnlineWorkerIDs(ctx, gomock.Any()).Times(0)
 	mockRunner.EXPECT().RunBroadcastPauseTaskWithTx(ctx, fake, gomock.Any(), gomock.Any()).Times(0)
@@ -527,6 +544,10 @@ func TestPauseCancelResumeInvalidInput(t *testing.T) {
 	require.ErrorContains(t, err, "non-empty labels")
 	err = cp.ResumeTasksByLabels(context.Background(), []string{})
 	require.ErrorContains(t, err, "at least one label")
+	err = cp.PauseTasksByLabels(context.Background(), []string{"billing"}, []string{})
+	require.ErrorContains(t, err, "non-empty except label set")
+	err = cp.CancelTasksByLabels(context.Background(), []string{"billing"}, []string{"ok", ""})
+	require.ErrorContains(t, err, "non-empty except label set")
 }
 
 func TestPauseTaskWaitError(t *testing.T) {

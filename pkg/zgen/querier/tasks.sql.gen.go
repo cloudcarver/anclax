@@ -7,6 +7,7 @@ package querier
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
@@ -742,11 +743,27 @@ WHERE
         FROM unnest($1::text[]) AS required_label(value)
         WHERE NOT (t.attributes->'labels' ? required_label.value)
     )
+    AND NOT EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements($2::jsonb) AS except_set(labels)
+        WHERE jsonb_typeof(except_set.labels) = 'array'
+            AND jsonb_array_length(except_set.labels) > 0
+            AND NOT EXISTS (
+                SELECT 1
+                FROM jsonb_array_elements_text(except_set.labels) AS except_label(value)
+                WHERE NOT (t.attributes->'labels' ? except_label.value)
+            )
+    )
 ORDER BY t.id
 `
 
-func (q *Queries) ListTaskIDsByLabels(ctx context.Context, labels []string) ([]int32, error) {
-	rows, err := q.db.Query(ctx, listTaskIDsByLabels, labels)
+type ListTaskIDsByLabelsParams struct {
+	Labels          []string
+	ExceptLabelSets json.RawMessage
+}
+
+func (q *Queries) ListTaskIDsByLabels(ctx context.Context, arg ListTaskIDsByLabelsParams) ([]int32, error) {
+	rows, err := q.db.Query(ctx, listTaskIDsByLabels, arg.Labels, arg.ExceptLabelSets)
 	if err != nil {
 		return nil, err
 	}

@@ -441,6 +441,17 @@ WHERE
         FROM unnest(sqlc.arg(labels)::text[]) AS required_label(value)
         WHERE NOT (t.attributes->'labels' ? required_label.value)
     )
+    AND NOT EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(sqlc.arg(except_label_sets)::jsonb) AS except_set(labels)
+        WHERE jsonb_typeof(except_set.labels) = 'array'
+            AND jsonb_array_length(except_set.labels) > 0
+            AND NOT EXISTS (
+                SELECT 1
+                FROM jsonb_array_elements_text(except_set.labels) AS except_label(value)
+                WHERE NOT (t.attributes->'labels' ? except_label.value)
+            )
+    )
 ORDER BY t.id;
 
 -- name: IncrementAttempts :exec

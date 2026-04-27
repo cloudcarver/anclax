@@ -2,12 +2,14 @@ package ctrl
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/logger"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
+	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -25,6 +27,11 @@ type WorkerControlPlane struct {
 
 	now            func() time.Time
 	aliveWorkerTTL time.Duration
+}
+
+type taskLabelSelector struct {
+	labels              []string
+	exceptLabelSetsJSON json.RawMessage
 }
 
 func NewWorkerControlPlane(model model.ModelInterface, runner taskgen.TaskRunner, store taskcore.TaskStoreInterface) *WorkerControlPlane {
@@ -94,15 +101,41 @@ func collectTasksAndDescendantIDs(ctx context.Context, txm model.ModelInterface,
 	return ids, nil
 }
 
-func normalizeTaskControlLabels(operation string, labels []string) ([]string, error) {
+func normalizeTaskControlLabels(operation string, labels []string, exceptLabelSets [][]string) (*taskLabelSelector, error) {
+	labels, err := normalizeTaskControlLabelSet(operation, "labels", labels)
+	if err != nil {
+		return nil, err
+	}
+	normalizedExcept := make([][]string, 0, len(exceptLabelSets))
+	for _, exceptLabels := range exceptLabelSets {
+		normalizedSet, err := normalizeTaskControlLabelSet(operation, "except label set", exceptLabels)
+		if err != nil {
+			return nil, err
+		}
+		normalizedExcept = append(normalizedExcept, normalizedSet)
+	}
+	rawExcept, err := json.Marshal(normalizedExcept)
+	if err != nil {
+		return nil, errors.Wrap(err, "marshal except label sets")
+	}
+	return &taskLabelSelector{
+		labels:              labels,
+		exceptLabelSetsJSON: rawExcept,
+	}, nil
+}
+
+func normalizeTaskControlLabelSet(operation string, field string, labels []string) ([]string, error) {
 	if len(labels) == 0 {
-		return nil, errors.Errorf("%s tasks requires at least one label", operation)
+		if field == "labels" {
+			return nil, errors.Errorf("%s tasks requires at least one label", operation)
+		}
+		return nil, errors.Errorf("%s tasks requires non-empty %s", operation, field)
 	}
 	out := make([]string, 0, len(labels))
 	seen := make(map[string]struct{}, len(labels))
 	for _, label := range labels {
 		if label == "" {
-			return nil, errors.Errorf("%s tasks requires non-empty labels", operation)
+			return nil, errors.Errorf("%s tasks requires non-empty %s", operation, field)
 		}
 		if _, ok := seen[label]; ok {
 			continue
@@ -127,6 +160,13 @@ func uniqueTaskIDs(taskIDs []int32) []int32 {
 		out = append(out, taskID)
 	}
 	return out
+}
+
+func listTaskIDsBySelector(ctx context.Context, txm model.ModelInterface, selector *taskLabelSelector) ([]int32, error) {
+	return txm.ListTaskIDsByLabels(ctx, querier.ListTaskIDsByLabelsParams{
+		Labels:          selector.labels,
+		ExceptLabelSets: selector.exceptLabelSetsJSON,
+	})
 }
 
 // StartUpdateWorkerRuntimeConfig snapshots the current alive workers and enqueues a runtime config update task.
@@ -275,14 +315,16 @@ func (c *WorkerControlPlane) ResumeTask(ctx context.Context, taskID int32) error
 }
 
 // PauseTasksByLabels pauses tasks whose labels contain every input label and cascades to descendants.
-func (c *WorkerControlPlane) PauseTasksByLabels(ctx context.Context, labels []string) error {
-	labels, err := normalizeTaskControlLabels("pause", labels)
+// exceptLabelSets optionally excludes root tasks before descendant expansion: the outer slice is OR, each inner slice is AND.
+// For example, exceptLabelSets [][]string{{"a", "b"}, {"c", "d"}} excludes tasks that contain both a+b and tasks that contain both c+d.
+func (c *WorkerControlPlane) PauseTasksByLabels(ctx context.Context, labels []string, exceptLabelSets ...[]string) error {
+	selector, err := normalizeTaskControlLabels("pause", labels, exceptLabelSets)
 	if err != nil {
 		return err
 	}
 	var broadcastTaskID int32
 	err = c.model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
-		id, err := c.pauseTasksByLabelsInTx(ctx, tx, txm, labels)
+		id, err := c.pauseTasksByLabelsInTx(ctx, tx, txm, selector)
 		if err != nil {
 			return err
 		}
@@ -303,24 +345,25 @@ func (c *WorkerControlPlane) PauseTasksByLabels(ctx context.Context, labels []st
 
 // PauseTasksByLabelsWithTx pauses matching tasks inside tx and returns the broadcast task ID if one was enqueued.
 // Callers that use this to compose label unions should wait for returned broadcast tasks after committing tx.
-func (c *WorkerControlPlane) PauseTasksByLabelsWithTx(ctx context.Context, tx core.Tx, labels []string) (int32, error) {
-	labels, err := normalizeTaskControlLabels("pause", labels)
+// exceptLabelSets has OR-of-AND semantics and filters only root task selection; selected roots still cascade to descendants.
+func (c *WorkerControlPlane) PauseTasksByLabelsWithTx(ctx context.Context, tx core.Tx, labels []string, exceptLabelSets ...[]string) (int32, error) {
+	selector, err := normalizeTaskControlLabels("pause", labels, exceptLabelSets)
 	if err != nil {
 		return 0, err
 	}
-	return c.pauseTasksByLabelsWithTx(ctx, tx, labels)
+	return c.pauseTasksByLabelsWithTx(ctx, tx, selector)
 }
 
-func (c *WorkerControlPlane) pauseTasksByLabelsWithTx(ctx context.Context, tx core.Tx, labels []string) (int32, error) {
+func (c *WorkerControlPlane) pauseTasksByLabelsWithTx(ctx context.Context, tx core.Tx, selector *taskLabelSelector) (int32, error) {
 	if tx == nil {
 		return 0, errors.New("pause tasks by labels requires tx")
 	}
 	txm := c.model.SpawnWithTx(tx)
-	return c.pauseTasksByLabelsInTx(ctx, tx, txm, labels)
+	return c.pauseTasksByLabelsInTx(ctx, tx, txm, selector)
 }
 
-func (c *WorkerControlPlane) pauseTasksByLabelsInTx(ctx context.Context, tx core.Tx, txm model.ModelInterface, labels []string) (int32, error) {
-	rootTaskIDs, err := txm.ListTaskIDsByLabels(ctx, labels)
+func (c *WorkerControlPlane) pauseTasksByLabelsInTx(ctx context.Context, tx core.Tx, txm model.ModelInterface, selector *taskLabelSelector) (int32, error) {
+	rootTaskIDs, err := listTaskIDsBySelector(ctx, txm, selector)
 	if err != nil {
 		return 0, errors.Wrap(err, "list tasks by labels")
 	}
@@ -354,14 +397,16 @@ func (c *WorkerControlPlane) pauseTasksByLabelsInTx(ctx context.Context, tx core
 }
 
 // CancelTasksByLabels cancels tasks whose labels contain every input label and cascades to descendants.
-func (c *WorkerControlPlane) CancelTasksByLabels(ctx context.Context, labels []string) error {
-	labels, err := normalizeTaskControlLabels("cancel", labels)
+// exceptLabelSets optionally excludes root tasks before descendant expansion: the outer slice is OR, each inner slice is AND.
+// For example, exceptLabelSets [][]string{{"a", "b"}, {"c", "d"}} excludes tasks that contain both a+b and tasks that contain both c+d.
+func (c *WorkerControlPlane) CancelTasksByLabels(ctx context.Context, labels []string, exceptLabelSets ...[]string) error {
+	selector, err := normalizeTaskControlLabels("cancel", labels, exceptLabelSets)
 	if err != nil {
 		return err
 	}
 	var broadcastTaskID int32
 	err = c.model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
-		id, err := c.cancelTasksByLabelsInTx(ctx, tx, txm, labels)
+		id, err := c.cancelTasksByLabelsInTx(ctx, tx, txm, selector)
 		if err != nil {
 			return err
 		}
@@ -382,24 +427,25 @@ func (c *WorkerControlPlane) CancelTasksByLabels(ctx context.Context, labels []s
 
 // CancelTasksByLabelsWithTx cancels matching tasks inside tx and returns the broadcast task ID if one was enqueued.
 // Callers that use this to compose label unions should wait for returned broadcast tasks after committing tx.
-func (c *WorkerControlPlane) CancelTasksByLabelsWithTx(ctx context.Context, tx core.Tx, labels []string) (int32, error) {
-	labels, err := normalizeTaskControlLabels("cancel", labels)
+// exceptLabelSets has OR-of-AND semantics and filters only root task selection; selected roots still cascade to descendants.
+func (c *WorkerControlPlane) CancelTasksByLabelsWithTx(ctx context.Context, tx core.Tx, labels []string, exceptLabelSets ...[]string) (int32, error) {
+	selector, err := normalizeTaskControlLabels("cancel", labels, exceptLabelSets)
 	if err != nil {
 		return 0, err
 	}
-	return c.cancelTasksByLabelsWithTx(ctx, tx, labels)
+	return c.cancelTasksByLabelsWithTx(ctx, tx, selector)
 }
 
-func (c *WorkerControlPlane) cancelTasksByLabelsWithTx(ctx context.Context, tx core.Tx, labels []string) (int32, error) {
+func (c *WorkerControlPlane) cancelTasksByLabelsWithTx(ctx context.Context, tx core.Tx, selector *taskLabelSelector) (int32, error) {
 	if tx == nil {
 		return 0, errors.New("cancel tasks by labels requires tx")
 	}
 	txm := c.model.SpawnWithTx(tx)
-	return c.cancelTasksByLabelsInTx(ctx, tx, txm, labels)
+	return c.cancelTasksByLabelsInTx(ctx, tx, txm, selector)
 }
 
-func (c *WorkerControlPlane) cancelTasksByLabelsInTx(ctx context.Context, tx core.Tx, txm model.ModelInterface, labels []string) (int32, error) {
-	rootTaskIDs, err := txm.ListTaskIDsByLabels(ctx, labels)
+func (c *WorkerControlPlane) cancelTasksByLabelsInTx(ctx context.Context, tx core.Tx, txm model.ModelInterface, selector *taskLabelSelector) (int32, error) {
+	rootTaskIDs, err := listTaskIDsBySelector(ctx, txm, selector)
 	if err != nil {
 		return 0, errors.Wrap(err, "list tasks by labels")
 	}
@@ -433,35 +479,38 @@ func (c *WorkerControlPlane) cancelTasksByLabelsInTx(ctx context.Context, tx cor
 }
 
 // ResumeTasksByLabels resumes tasks whose labels contain every input label.
-func (c *WorkerControlPlane) ResumeTasksByLabels(ctx context.Context, labels []string) error {
-	labels, err := normalizeTaskControlLabels("resume", labels)
+// exceptLabelSets optionally excludes directly matched tasks: the outer slice is OR, each inner slice is AND.
+// For example, exceptLabelSets [][]string{{"a", "b"}, {"c", "d"}} excludes tasks that contain both a+b and tasks that contain both c+d.
+func (c *WorkerControlPlane) ResumeTasksByLabels(ctx context.Context, labels []string, exceptLabelSets ...[]string) error {
+	selector, err := normalizeTaskControlLabels("resume", labels, exceptLabelSets)
 	if err != nil {
 		return err
 	}
 	return c.model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
-		return c.resumeTasksByLabelsInTx(ctx, tx, txm, labels)
+		return c.resumeTasksByLabelsInTx(ctx, tx, txm, selector)
 	})
 }
 
 // ResumeTasksByLabelsWithTx resumes matching tasks inside tx.
-func (c *WorkerControlPlane) ResumeTasksByLabelsWithTx(ctx context.Context, tx core.Tx, labels []string) error {
-	labels, err := normalizeTaskControlLabels("resume", labels)
+// exceptLabelSets has OR-of-AND semantics and filters directly matched tasks.
+func (c *WorkerControlPlane) ResumeTasksByLabelsWithTx(ctx context.Context, tx core.Tx, labels []string, exceptLabelSets ...[]string) error {
+	selector, err := normalizeTaskControlLabels("resume", labels, exceptLabelSets)
 	if err != nil {
 		return err
 	}
-	return c.resumeTasksByLabelsWithTx(ctx, tx, labels)
+	return c.resumeTasksByLabelsWithTx(ctx, tx, selector)
 }
 
-func (c *WorkerControlPlane) resumeTasksByLabelsWithTx(ctx context.Context, tx core.Tx, labels []string) error {
+func (c *WorkerControlPlane) resumeTasksByLabelsWithTx(ctx context.Context, tx core.Tx, selector *taskLabelSelector) error {
 	if tx == nil {
 		return errors.New("resume tasks by labels requires tx")
 	}
 	txm := c.model.SpawnWithTx(tx)
-	return c.resumeTasksByLabelsInTx(ctx, tx, txm, labels)
+	return c.resumeTasksByLabelsInTx(ctx, tx, txm, selector)
 }
 
-func (c *WorkerControlPlane) resumeTasksByLabelsInTx(ctx context.Context, tx core.Tx, txm model.ModelInterface, labels []string) error {
-	taskIDs, err := txm.ListTaskIDsByLabels(ctx, labels)
+func (c *WorkerControlPlane) resumeTasksByLabelsInTx(ctx context.Context, tx core.Tx, txm model.ModelInterface, selector *taskLabelSelector) error {
+	taskIDs, err := listTaskIDsBySelector(ctx, txm, selector)
 	if err != nil {
 		return errors.Wrap(err, "list tasks by labels")
 	}
