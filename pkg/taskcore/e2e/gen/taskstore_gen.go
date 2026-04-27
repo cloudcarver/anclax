@@ -16,6 +16,9 @@ type ControlPlane interface {
 	UpdateRuntimeConfig(ctx context.Context, key string, maxStrictPercentage int32, defaultWeight int32, w1Weight int32, w2Weight int32) error
 	PauseTask(ctx context.Context, task string) error
 	CancelTask(ctx context.Context, task string) error
+	PauseTasksByLabels(ctx context.Context, labels []string) error
+	CancelTasksByLabels(ctx context.Context, labels []string) error
+	ResumeTasksByLabels(ctx context.Context, labels []string) error
 }
 
 
@@ -284,6 +287,9 @@ func runAllWithActors(ctx context.Context, actors Actors) error {
 	if err := RunScenarioSmokeCancelTaskDescendants(ctx, actors); err != nil {
 		return fmt.Errorf("scenario smoke_cancel_task_descendants: %w", err)
 	}
+	if err := RunScenarioSmokeLabelControlIntersection(ctx, actors); err != nil {
+		return fmt.Errorf("scenario smoke_label_control_intersection: %w", err)
+	}
 	if err := RunScenarioSmokeWorkerOffline(ctx, actors); err != nil {
 		return fmt.Errorf("scenario smoke_worker_offline: %w", err)
 	}
@@ -332,7 +338,7 @@ func runStepStrictPriorityAndWeightedGroupsS1(parent context.Context, actors Act
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -352,7 +358,7 @@ func runStepStrictPriorityAndWeightedGroupsS1(parent context.Context, actors Act
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -403,7 +409,7 @@ func runStepStrictPriorityAndWeightedGroupsS2(parent context.Context, actors Act
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -524,7 +530,7 @@ func runStepSerialGatingAndFailureProgressionS1(parent context.Context, actors A
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -539,7 +545,7 @@ func runStepSerialGatingAndFailureProgressionS1(parent context.Context, actors A
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -575,7 +581,7 @@ func runStepSerialGatingAndFailureProgressionS2(parent context.Context, actors A
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -606,7 +612,7 @@ func runStepSerialGatingAndFailureProgressionS3(parent context.Context, actors A
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -632,7 +638,7 @@ func runStepSerialGatingAndFailureProgressionS4(parent context.Context, actors A
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -750,7 +756,7 @@ func runStepDefaultGroupUnknownLabelFallbackS1(parent context.Context, actors Ac
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -770,7 +776,7 @@ func runStepDefaultGroupUnknownLabelFallbackS1(parent context.Context, actors Ac
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -801,7 +807,7 @@ func runStepDefaultGroupUnknownLabelFallbackS2(parent context.Context, actors Ac
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -921,7 +927,7 @@ func runStepLeaseTakeoverAfterTtlAndAbandonS1(parent context.Context, actors Act
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -931,7 +937,7 @@ func runStepLeaseTakeoverAfterTtlAndAbandonS1(parent context.Context, actors Act
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -957,7 +963,7 @@ func runStepLeaseTakeoverAfterTtlAndAbandonS2(parent context.Context, actors Act
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -983,7 +989,7 @@ func runStepLeaseTakeoverAfterTtlAndAbandonS3(parent context.Context, actors Act
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1019,7 +1025,7 @@ func runStepLeaseTakeoverAfterTtlAndAbandonS4(parent context.Context, actors Act
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1045,7 +1051,7 @@ func runStepLeaseTakeoverAfterTtlAndAbandonS5(parent context.Context, actors Act
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1114,7 +1120,7 @@ func runStepLeaseTakeoverAfterTtlAndAbandonS7(parent context.Context, actors Act
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1228,7 +1234,7 @@ func runStepWorkerLabelFilteringS1(parent context.Context, actors Actors, vars *
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1238,7 +1244,7 @@ func runStepWorkerLabelFilteringS1(parent context.Context, actors Actors, vars *
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1269,7 +1275,7 @@ func runStepWorkerLabelFilteringS2(parent context.Context, actors Actors, vars *
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1300,7 +1306,7 @@ func runStepWorkerLabelFilteringS3(parent context.Context, actors Actors, vars *
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1341,7 +1347,7 @@ func runStepWorkerLabelFilteringS4(parent context.Context, actors Actors, vars *
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1367,7 +1373,7 @@ func runStepWorkerLabelFilteringS5(parent context.Context, actors Actors, vars *
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1465,7 +1471,7 @@ func runStepWorkerLabelAllMatchGpuArmS1(parent context.Context, actors Actors, v
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1475,7 +1481,7 @@ func runStepWorkerLabelAllMatchGpuArmS1(parent context.Context, actors Actors, v
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1501,7 +1507,7 @@ func runStepWorkerLabelAllMatchGpuArmS2(parent context.Context, actors Actors, v
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1532,7 +1538,7 @@ func runStepWorkerLabelAllMatchGpuArmS3(parent context.Context, actors Actors, v
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1638,7 +1644,7 @@ func runStepWorkerLabelInternalOnlyScopeS1(parent context.Context, actors Actors
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1653,7 +1659,7 @@ func runStepWorkerLabelInternalOnlyScopeS1(parent context.Context, actors Actors
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1694,7 +1700,7 @@ func runStepWorkerLabelInternalOnlyScopeS2(parent context.Context, actors Actors
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1783,7 +1789,7 @@ func runStepWorkerLabelInternalOnlyScopeS4(parent context.Context, actors Actors
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1881,7 +1887,7 @@ func runStepWorkerLabelAllMatchStrictPriorityS1(parent context.Context, actors A
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1891,7 +1897,7 @@ func runStepWorkerLabelAllMatchStrictPriorityS1(parent context.Context, actors A
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1917,7 +1923,7 @@ func runStepWorkerLabelAllMatchStrictPriorityS2(parent context.Context, actors A
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1948,7 +1954,7 @@ func runStepWorkerLabelAllMatchStrictPriorityS3(parent context.Context, actors A
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -2054,7 +2060,7 @@ func runStepStrictQueryDoesNotPickNormalS1(parent context.Context, actors Actors
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -2074,7 +2080,7 @@ func runStepStrictQueryDoesNotPickNormalS1(parent context.Context, actors Actors
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -2105,7 +2111,7 @@ func runStepStrictQueryDoesNotPickNormalS2(parent context.Context, actors Actors
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -2189,7 +2195,7 @@ func runStepStrictQueryDoesNotPickNormalS4(parent context.Context, actors Actors
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -2297,7 +2303,7 @@ func runStepSmokeLeaseLifecycleS1(parent context.Context, actors Actors, vars *v
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -2307,7 +2313,7 @@ func runStepSmokeLeaseLifecycleS1(parent context.Context, actors Actors, vars *v
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -2338,7 +2344,7 @@ func runStepSmokeLeaseLifecycleS2(parent context.Context, actors Actors, vars *v
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -2364,7 +2370,7 @@ func runStepSmokeLeaseLifecycleS3(parent context.Context, actors Actors, vars *v
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -2400,7 +2406,7 @@ func runStepSmokeLeaseLifecycleS4(parent context.Context, actors Actors, vars *v
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -2426,7 +2432,7 @@ func runStepSmokeLeaseLifecycleS5(parent context.Context, actors Actors, vars *v
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -2495,7 +2501,7 @@ func runStepSmokeLeaseLifecycleS7(parent context.Context, actors Actors, vars *v
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -2541,7 +2547,7 @@ func runStepSmokeLeaseLifecycleS8(parent context.Context, actors Actors, vars *v
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -2641,7 +2647,7 @@ func runStepSmokeWorkerLoopS1(parent context.Context, actors Actors, vars *varSt
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -2651,7 +2657,7 @@ func runStepSmokeWorkerLoopS1(parent context.Context, actors Actors, vars *varSt
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -2677,7 +2683,7 @@ func runStepSmokeWorkerLoopS2(parent context.Context, actors Actors, vars *varSt
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -2713,7 +2719,7 @@ func runStepSmokeWorkerLoopS3(parent context.Context, actors Actors, vars *varSt
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -2776,7 +2782,7 @@ func runStepSmokeSerialBehaviorS1(parent context.Context, actors Actors, vars *v
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -2791,7 +2797,7 @@ func runStepSmokeSerialBehaviorS1(parent context.Context, actors Actors, vars *v
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -2827,7 +2833,7 @@ func runStepSmokeSerialBehaviorS2(parent context.Context, actors Actors, vars *v
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -2858,7 +2864,7 @@ func runStepSmokeSerialBehaviorS3(parent context.Context, actors Actors, vars *v
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -2884,7 +2890,7 @@ func runStepSmokeSerialBehaviorS4(parent context.Context, actors Actors, vars *v
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -2991,7 +2997,7 @@ func runStepSmokePriorityWeightS1(parent context.Context, actors Actors, vars *v
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -3011,7 +3017,7 @@ func runStepSmokePriorityWeightS1(parent context.Context, actors Actors, vars *v
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -3057,7 +3063,7 @@ func runStepSmokePriorityWeightS2(parent context.Context, actors Actors, vars *v
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -3124,7 +3130,7 @@ func runStepSmokeRetryPolicyS1(parent context.Context, actors Actors, vars *varS
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -3134,7 +3140,7 @@ func runStepSmokeRetryPolicyS1(parent context.Context, actors Actors, vars *varS
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -3160,7 +3166,7 @@ func runStepSmokeRetryPolicyS2(parent context.Context, actors Actors, vars *varS
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -3196,7 +3202,7 @@ func runStepSmokeRetryPolicyS3(parent context.Context, actors Actors, vars *varS
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -3248,7 +3254,7 @@ func runStepSmokeCronjobS1(parent context.Context, actors Actors, vars *varStore
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -3258,7 +3264,7 @@ func runStepSmokeCronjobS1(parent context.Context, actors Actors, vars *varStore
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -3284,7 +3290,7 @@ func runStepSmokeCronjobS2(parent context.Context, actors Actors, vars *varStore
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -3325,7 +3331,7 @@ func runStepSmokeCronjobS3(parent context.Context, actors Actors, vars *varStore
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -3369,7 +3375,7 @@ func runStepSmokeRuntimeConfigPollS1(parent context.Context, actors Actors, vars
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -3400,7 +3406,7 @@ func runStepSmokeRuntimeConfigPollS2(parent context.Context, actors Actors, vars
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -3449,7 +3455,7 @@ func runStepSmokeRuntimeConfigControlPlaneBroadcastS1(parent context.Context, ac
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -3480,7 +3486,7 @@ func runStepSmokeRuntimeConfigControlPlaneBroadcastS2(parent context.Context, ac
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -3490,7 +3496,7 @@ func runStepSmokeRuntimeConfigControlPlaneBroadcastS2(parent context.Context, ac
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -3542,7 +3548,7 @@ func runStepSmokeRuntimeConfigNewWorkerJoinsAfterBroadcastS1(parent context.Cont
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -3573,7 +3579,7 @@ func runStepSmokeRuntimeConfigNewWorkerJoinsAfterBroadcastS2(parent context.Cont
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -3583,7 +3589,7 @@ func runStepSmokeRuntimeConfigNewWorkerJoinsAfterBroadcastS2(parent context.Cont
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -3619,7 +3625,7 @@ func runStepSmokeRuntimeConfigNewWorkerJoinsAfterBroadcastS3(parent context.Cont
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -3681,7 +3687,7 @@ func runStepSmokeRuntimeConfigWorkerStopsDuringBroadcastS1(parent context.Contex
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -3722,7 +3728,7 @@ func runStepSmokeRuntimeConfigWorkerStopsDuringBroadcastS2(parent context.Contex
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -3732,7 +3738,7 @@ func runStepSmokeRuntimeConfigWorkerStopsDuringBroadcastS2(parent context.Contex
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -3763,7 +3769,7 @@ func runStepSmokeRuntimeConfigWorkerStopsDuringBroadcastS3(parent context.Contex
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -3823,7 +3829,7 @@ func runStepSmokePauseTaskWorkerJoinsAfterPauseS1(parent context.Context, actors
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -3849,7 +3855,7 @@ func runStepSmokePauseTaskWorkerJoinsAfterPauseS2(parent context.Context, actors
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -3875,7 +3881,7 @@ func runStepSmokePauseTaskWorkerJoinsAfterPauseS3(parent context.Context, actors
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -3973,7 +3979,7 @@ func runStepSmokeCancelTaskWorkerJoinsAfterCancelS1(parent context.Context, acto
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -3999,7 +4005,7 @@ func runStepSmokeCancelTaskWorkerJoinsAfterCancelS2(parent context.Context, acto
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -4025,7 +4031,7 @@ func runStepSmokeCancelTaskWorkerJoinsAfterCancelS3(parent context.Context, acto
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -4129,7 +4135,7 @@ func runStepSmokePauseTaskInterruptS1(parent context.Context, actors Actors, var
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -4144,7 +4150,7 @@ func runStepSmokePauseTaskInterruptS1(parent context.Context, actors Actors, var
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -4170,7 +4176,7 @@ func runStepSmokePauseTaskInterruptS2(parent context.Context, actors Actors, var
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -4201,7 +4207,7 @@ func runStepSmokePauseTaskInterruptS3(parent context.Context, actors Actors, var
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -4227,7 +4233,7 @@ func runStepSmokePauseTaskInterruptS4(parent context.Context, actors Actors, var
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -4301,7 +4307,7 @@ func runStepSmokePauseTaskInterruptS6(parent context.Context, actors Actors, var
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -4351,7 +4357,7 @@ func runStepSmokePauseTaskBeforeStartS1(parent context.Context, actors Actors, v
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -4361,7 +4367,7 @@ func runStepSmokePauseTaskBeforeStartS1(parent context.Context, actors Actors, v
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -4387,7 +4393,7 @@ func runStepSmokePauseTaskBeforeStartS2(parent context.Context, actors Actors, v
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -4413,7 +4419,7 @@ func runStepSmokePauseTaskBeforeStartS3(parent context.Context, actors Actors, v
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -4512,7 +4518,7 @@ func runStepSmokeCancelTaskInterruptS1(parent context.Context, actors Actors, va
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -4527,7 +4533,7 @@ func runStepSmokeCancelTaskInterruptS1(parent context.Context, actors Actors, va
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -4553,7 +4559,7 @@ func runStepSmokeCancelTaskInterruptS2(parent context.Context, actors Actors, va
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -4584,7 +4590,7 @@ func runStepSmokeCancelTaskInterruptS3(parent context.Context, actors Actors, va
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -4610,7 +4616,7 @@ func runStepSmokeCancelTaskInterruptS4(parent context.Context, actors Actors, va
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -4684,7 +4690,7 @@ func runStepSmokeCancelTaskInterruptS6(parent context.Context, actors Actors, va
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -4740,7 +4746,7 @@ func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS1(parent context.Con
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -4755,7 +4761,7 @@ func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS1(parent context.Con
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -4781,7 +4787,7 @@ func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS2(parent context.Con
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -4844,7 +4850,7 @@ func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS3(parent context.Con
 		}
 	}()
 	var wg sync.WaitGroup
-	
+
 	wg.Add(1)
 	go func() {
 	  defer wg.Done()
@@ -4854,10 +4860,10 @@ func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS3(parent context.Con
 	  time.Sleep(20 * time.Millisecond)
 	  require.NoError(t, actors.Runtime.StartWorker(ctx, "SCRACE_CHURN", "noop", "pause-e2e", []string{"control"}, 20, 20, 200, 20, 1, 0, true, "33333333-3333-3333-3333-333333333333"))
 	}()
-	
+
 	require.NoError(t, actors.ControlPlane.PauseTask(ctx, "SCRACE_TASK"))
 	require.NoError(t, actors.ControlPlane.CancelTask(ctx, "SCRACE_TASK"))
-	
+
 	wg.Wait()
 	return err
 }
@@ -4868,7 +4874,7 @@ func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS4(parent context.Con
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -4938,7 +4944,7 @@ func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS5(parent context.Con
 	rows, err := actors.Validator.Query(ctx, "select status from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"SCRACE_TASK"})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{"cancelled"}}, rows)
-	
+
 	rows, err = actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type' in ('broadcastPauseTask','broadcastCancelTask','pauseTaskOnWorker','cancelTaskOnWorker')", []any{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(0)}}, rows)
@@ -4951,7 +4957,7 @@ func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS6(parent context.Con
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -5012,7 +5018,7 @@ func runStepSmokeCancelTaskDescendantsS1(parent context.Context, actors Actors, 
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -5022,7 +5028,7 @@ func runStepSmokeCancelTaskDescendantsS1(parent context.Context, actors Actors, 
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -5063,7 +5069,7 @@ func runStepSmokeCancelTaskDescendantsS2(parent context.Context, actors Actors, 
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -5089,7 +5095,7 @@ func runStepSmokeCancelTaskDescendantsS3(parent context.Context, actors Actors, 
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -5125,7 +5131,7 @@ func runStepSmokeCancelTaskDescendantsS4(parent context.Context, actors Actors, 
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -5187,7 +5193,7 @@ func runStepSmokeCancelTaskDescendantsS5(parent context.Context, actors Actors, 
 	  require.NoError(t, err)
 	  require.Equal(t, [][]any{{"cancelled"}}, rows)
 	}
-	
+
 	assertCancelled("SCD_ROOT")
 	assertCancelled("SCD_CHILD")
 	assertCancelled("SCD_GRAND")
@@ -5201,7 +5207,7 @@ func runStepSmokeCancelTaskDescendantsS6(parent context.Context, actors Actors, 
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -5223,6 +5229,285 @@ func runStepSmokeCancelTaskDescendantsS6(parent context.Context, actors Actors, 
 
 
 
+func RunScenarioSmokeLabelControlIntersection(ctx context.Context, actors Actors) error {
+	vars := newVarStore()
+	if err := runStepSmokeLabelControlIntersectionS1(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s1: %w", err)
+	}
+	if err := runStepSmokeLabelControlIntersectionS2(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s2: %w", err)
+	}
+	if err := runStepSmokeLabelControlIntersectionS3(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s3: %w", err)
+	}
+	if err := runStepSmokeLabelControlIntersectionS4(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s4: %w", err)
+	}
+	if err := runStepSmokeLabelControlIntersectionS5(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s5: %w", err)
+	}
+	if err := runStepSmokeLabelControlIntersectionS6(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s6: %w", err)
+	}
+	return nil
+}
+
+
+func runStepSmokeLabelControlIntersectionS1(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 2)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Runtime.ResetCaptured(ctx); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "ResetCaptured(ctx)", err)
+			cancel()
+			return
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.TaskStore.EnqueueRaw(ctx, "SLC_PAUSE_BOTH", "label-control-e2e", "{}", 0, 1, []string{"ctrl-a", "ctrl-b"}, "", 0, "", 0); err != nil {
+			errCh <- fmt.Errorf("actor taskStore call %s: %w", "EnqueueRaw(ctx, \"SLC_PAUSE_BOTH\", \"label-control-e2e\", \"{}\", 0, 1, []string{\"ctrl-a\", \"ctrl-b\"}, \"\", 0, \"\", 0)", err)
+			cancel()
+			return
+		}
+		if err := actors.TaskStore.EnqueueRaw(ctx, "SLC_PAUSE_A", "label-control-e2e", "{}", 0, 1, []string{"ctrl-a"}, "", 0, "", 0); err != nil {
+			errCh <- fmt.Errorf("actor taskStore call %s: %w", "EnqueueRaw(ctx, \"SLC_PAUSE_A\", \"label-control-e2e\", \"{}\", 0, 1, []string{\"ctrl-a\"}, \"\", 0, \"\", 0)", err)
+			cancel()
+			return
+		}
+		if err := actors.TaskStore.EnqueueRaw(ctx, "SLC_PAUSE_B", "label-control-e2e", "{}", 0, 1, []string{"ctrl-b"}, "", 0, "", 0); err != nil {
+			errCh <- fmt.Errorf("actor taskStore call %s: %w", "EnqueueRaw(ctx, \"SLC_PAUSE_B\", \"label-control-e2e\", \"{}\", 0, 1, []string{\"ctrl-b\"}, \"\", 0, \"\", 0)", err)
+			cancel()
+			return
+		}
+		if err := actors.TaskStore.EnqueueRaw(ctx, "SLC_CANCEL_BOTH", "label-control-e2e", "{}", 0, 1, []string{"cancel-a", "cancel-b"}, "", 0, "", 0); err != nil {
+			errCh <- fmt.Errorf("actor taskStore call %s: %w", "EnqueueRaw(ctx, \"SLC_CANCEL_BOTH\", \"label-control-e2e\", \"{}\", 0, 1, []string{\"cancel-a\", \"cancel-b\"}, \"\", 0, \"\", 0)", err)
+			cancel()
+			return
+		}
+		if err := actors.TaskStore.EnqueueRaw(ctx, "SLC_CANCEL_A", "label-control-e2e", "{}", 0, 1, []string{"cancel-a"}, "", 0, "", 0); err != nil {
+			errCh <- fmt.Errorf("actor taskStore call %s: %w", "EnqueueRaw(ctx, \"SLC_CANCEL_A\", \"label-control-e2e\", \"{}\", 0, 1, []string{\"cancel-a\"}, \"\", 0, \"\", 0)", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func runStepSmokeLabelControlIntersectionS2(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.ControlPlane.PauseTasksByLabels(ctx, []string{"ctrl-a", "ctrl-b"}); err != nil {
+			errCh <- fmt.Errorf("actor controlPlane call %s: %w", "PauseTasksByLabels(ctx, []string{\"ctrl-a\", \"ctrl-b\"})", err)
+			cancel()
+			return
+		}
+		if err := actors.ControlPlane.CancelTasksByLabels(ctx, []string{"cancel-a", "cancel-b"}); err != nil {
+			errCh <- fmt.Errorf("actor controlPlane call %s: %w", "CancelTasksByLabels(ctx, []string{\"cancel-a\", \"cancel-b\"})", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func runStepSmokeLabelControlIntersectionS3(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var err error
+	t := &scriptT{}
+	set := func(name string, value any) {
+		vars.Set(name, value)
+	}
+	get := func(name string) any {
+		val, _ := vars.Get(name)
+		return val
+	}
+	_ = t
+	_ = set
+	_ = get
+	defer func() {
+		if r := recover(); r != nil {
+			if fail, ok := r.(scriptFail); ok {
+				if fail.err != nil {
+					err = fail.err
+					return
+				}
+				err = fmt.Errorf("script failed")
+				return
+			}
+			err = fmt.Errorf("script panic: %v", r)
+			return
+		}
+		if t.failed && err == nil {
+			if t.err != nil {
+				err = t.err
+			} else {
+				err = fmt.Errorf("script failed")
+			}
+		}
+	}()
+	statusByName := func(name string) string {
+	  rows, err := actors.Validator.Query(ctx, "select status from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{name})
+	  require.NoError(t, err)
+	  require.Len(t, rows, 1)
+	  return rows[0][0].(string)
+	}
+
+	require.Equal(t, "paused", statusByName("SLC_PAUSE_BOTH"))
+	require.Equal(t, "pending", statusByName("SLC_PAUSE_A"))
+	require.Equal(t, "pending", statusByName("SLC_PAUSE_B"))
+	require.Equal(t, "cancelled", statusByName("SLC_CANCEL_BOTH"))
+	require.Equal(t, "pending", statusByName("SLC_CANCEL_A"))
+	return err
+}
+
+
+func runStepSmokeLabelControlIntersectionS4(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.ControlPlane.ResumeTasksByLabels(ctx, []string{"ctrl-a", "ctrl-b"}); err != nil {
+			errCh <- fmt.Errorf("actor controlPlane call %s: %w", "ResumeTasksByLabels(ctx, []string{\"ctrl-a\", \"ctrl-b\"})", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func runStepSmokeLabelControlIntersectionS5(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.Runtime.StartWorker(ctx, "SLC_W1", "capture", "label-control-e2e", []string{"ctrl-a", "ctrl-b", "cancel-a"}, 20, 20, 200, 20, 1, 0, false, ""); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"SLC_W1\", \"capture\", \"label-control-e2e\", []string{\"ctrl-a\", \"ctrl-b\", \"cancel-a\"}, 20, 20, 200, 20, 1, 0, false, \"\")", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.WaitCapturedCount(ctx, 4, 8000); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitCapturedCount(ctx, 4, 8000)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.AssertCapturedContains(ctx, []string{"SLC_PAUSE_BOTH", "SLC_PAUSE_A", "SLC_PAUSE_B", "SLC_CANCEL_A"}); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "AssertCapturedContains(ctx, []string{\"SLC_PAUSE_BOTH\", \"SLC_PAUSE_A\", \"SLC_PAUSE_B\", \"SLC_CANCEL_A\"})", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.WaitNoPendingTasks(ctx, 8000); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitNoPendingTasks(ctx, 8000)", err)
+			cancel()
+			return
+		}
+		if err := actors.Runtime.StopWorker(ctx, "SLC_W1"); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StopWorker(ctx, \"SLC_W1\")", err)
+			cancel()
+			return
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func runStepSmokeLabelControlIntersectionS6(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var err error
+	t := &scriptT{}
+	set := func(name string, value any) {
+		vars.Set(name, value)
+	}
+	get := func(name string) any {
+		val, _ := vars.Get(name)
+		return val
+	}
+	_ = t
+	_ = set
+	_ = get
+	defer func() {
+		if r := recover(); r != nil {
+			if fail, ok := r.(scriptFail); ok {
+				if fail.err != nil {
+					err = fail.err
+					return
+				}
+				err = fmt.Errorf("script failed")
+				return
+			}
+			err = fmt.Errorf("script panic: %v", r)
+			return
+		}
+		if t.failed && err == nil {
+			if t.err != nil {
+				err = t.err
+			} else {
+				err = fmt.Errorf("script failed")
+			}
+		}
+	}()
+	rows, err := actors.Validator.Query(ctx, "select status from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"SLC_CANCEL_BOTH"})
+	require.NoError(t, err)
+	require.Equal(t, [][]any{{"cancelled"}}, rows)
+	return err
+}
+
+
+
 func RunScenarioSmokeWorkerOffline(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepSmokeWorkerOfflineS1(ctx, actors, vars); err != nil {
@@ -5240,7 +5525,7 @@ func runStepSmokeWorkerOfflineS1(parent context.Context, actors Actors, vars *va
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -5271,7 +5556,7 @@ func runStepSmokeWorkerOfflineS2(parent context.Context, actors Actors, vars *va
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -5330,7 +5615,7 @@ func runStepSmokeFailureEventS1(parent context.Context, actors Actors, vars *var
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -5340,7 +5625,7 @@ func runStepSmokeFailureEventS1(parent context.Context, actors Actors, vars *var
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -5366,7 +5651,7 @@ func runStepSmokeFailureEventS2(parent context.Context, actors Actors, vars *var
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -5468,7 +5753,7 @@ func runStepSmokeHighContentionS2(parent context.Context, actors Actors, vars *v
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -5504,7 +5789,7 @@ func runStepSmokeHighContentionS3(parent context.Context, actors Actors, vars *v
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -5566,7 +5851,7 @@ func runStepSmokeWorkerExitRecoveryS1(parent context.Context, actors Actors, var
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -5576,7 +5861,7 @@ func runStepSmokeWorkerExitRecoveryS1(parent context.Context, actors Actors, var
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -5602,7 +5887,7 @@ func runStepSmokeWorkerExitRecoveryS2(parent context.Context, actors Actors, var
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -5638,7 +5923,7 @@ func runStepSmokeWorkerExitRecoveryS3(parent context.Context, actors Actors, var
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -5695,7 +5980,7 @@ func runStepSmokeLockLossS1(parent context.Context, actors Actors, vars *varStor
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -5705,7 +5990,7 @@ func runStepSmokeLockLossS1(parent context.Context, actors Actors, vars *varStor
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -5731,7 +6016,7 @@ func runStepSmokeLockLossS2(parent context.Context, actors Actors, vars *varStor
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -5777,7 +6062,7 @@ func runStepSmokeLockLossS3(parent context.Context, actors Actors, vars *varStor
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -5861,7 +6146,7 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS1(parent context.Context, a
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -5912,7 +6197,7 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS2(parent context.Context, a
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -5958,7 +6243,7 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS3(parent context.Context, a
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -6004,7 +6289,7 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS4(parent context.Context, a
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -6045,7 +6330,7 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS5(parent context.Context, a
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -6086,7 +6371,7 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS6(parent context.Context, a
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -6127,7 +6412,7 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS7(parent context.Context, a
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -6137,7 +6422,7 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS7(parent context.Context, a
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -6163,7 +6448,7 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS8(parent context.Context, a
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -6252,7 +6537,7 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS10(parent context.Context, 
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -6298,7 +6583,7 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS11(parent context.Context, 
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -6328,7 +6613,7 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS11(parent context.Context, 
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -6416,7 +6701,7 @@ func runStepBoundedSoakNoBacklogWithWorkerChurnS1(parent context.Context, actors
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -6510,7 +6795,7 @@ func runStepBoundedSoakNoBacklogWithWorkerChurnS3(parent context.Context, actors
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -6608,7 +6893,7 @@ func runStepAtLeastOnceRetryAndIdempotentSideEffectPatternS1(parent context.Cont
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -6623,7 +6908,7 @@ func runStepAtLeastOnceRetryAndIdempotentSideEffectPatternS1(parent context.Cont
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -6649,7 +6934,7 @@ func runStepAtLeastOnceRetryAndIdempotentSideEffectPatternS2(parent context.Cont
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -6685,7 +6970,7 @@ func runStepAtLeastOnceRetryAndIdempotentSideEffectPatternS3(parent context.Cont
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 2)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -6695,7 +6980,7 @@ func runStepAtLeastOnceRetryAndIdempotentSideEffectPatternS3(parent context.Cont
 			return
 		}
 	}()
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -6721,7 +7006,7 @@ func runStepAtLeastOnceRetryAndIdempotentSideEffectPatternS4(parent context.Cont
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()

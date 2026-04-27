@@ -207,6 +207,186 @@ func TestResumeTaskUpdatesStore(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestPauseTasksByLabelsUsesIntersectionAndBroadcastsDescendants(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	labels := []string{"billing", "critical"}
+	rootA := int32(10)
+	rootB := int32(20)
+	childA := int32(11)
+	childB := int32(21)
+	duplicateChild := childA
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockStore := store.NewMockTaskStoreInterface(ctrl)
+	mockRunner := taskgen.NewMockTaskRunner(ctrl)
+	fake := &fakeTx{}
+	broadcastTaskID := int32(701)
+	workerID := uuid.New()
+
+	mockModel.EXPECT().RunTransactionWithTx(ctx, gomock.Any()).DoAndReturn(
+		func(ctx context.Context, fn func(core.Tx, model.ModelInterface) error) error {
+			return fn(fake, mockModel)
+		},
+	)
+	mockModel.EXPECT().ListTaskIDsByLabels(ctx, labels).Return([]int32{rootA, rootB}, nil)
+	mockModel.EXPECT().ListTaskDescendantIDs(ctx, &rootA).Return([]int32{childA}, nil)
+	mockModel.EXPECT().ListTaskDescendantIDs(ctx, &rootB).Return([]int32{duplicateChild, childB}, nil)
+	mockStore.EXPECT().PauseTaskWithTx(ctx, fake, rootA).Return(nil)
+	mockStore.EXPECT().PauseTaskWithTx(ctx, fake, childA).Return(nil)
+	mockStore.EXPECT().PauseTaskWithTx(ctx, fake, rootB).Return(nil)
+	mockStore.EXPECT().PauseTaskWithTx(ctx, fake, childB).Return(nil)
+	mockModel.EXPECT().ListOnlineWorkerIDs(ctx, gomock.Any()).Return([]uuid.UUID{workerID}, nil)
+	mockRunner.EXPECT().RunBroadcastPauseTaskWithTx(ctx, fake, gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, tx core.Tx, params *taskgen.BroadcastPauseTaskParameters, overrides ...store.TaskOverride) (int32, error) {
+			require.ElementsMatch(t, []int32{rootA, childA, rootB, childB}, params.TaskIDs)
+			require.Equal(t, []uuid.UUID{workerID}, params.WorkerIDs)
+			require.Len(t, overrides, 1)
+			task := &apigen.Task{Attributes: apigen.TaskAttributes{}}
+			require.NoError(t, overrides[0](task))
+			require.NotNil(t, task.Attributes.Priority)
+			require.Equal(t, WorkerControlTaskPriority, *task.Attributes.Priority)
+			return broadcastTaskID, nil
+		},
+	)
+	mockStore.EXPECT().WaitForTask(ctx, broadcastTaskID).Return(nil)
+
+	cp := NewWorkerControlPlane(mockModel, mockRunner, mockStore)
+	err := cp.PauseTasksByLabels(ctx, labels)
+	require.NoError(t, err)
+}
+
+func TestCancelTasksByLabelsUsesIntersectionAndBroadcasts(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	labels := []string{"tenant:acme", "gpu"}
+	taskID := int32(30)
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockStore := store.NewMockTaskStoreInterface(ctrl)
+	mockRunner := taskgen.NewMockTaskRunner(ctrl)
+	fake := &fakeTx{}
+	broadcastTaskID := int32(702)
+	workerID := uuid.New()
+
+	mockModel.EXPECT().RunTransactionWithTx(ctx, gomock.Any()).DoAndReturn(
+		func(ctx context.Context, fn func(core.Tx, model.ModelInterface) error) error {
+			return fn(fake, mockModel)
+		},
+	)
+	mockModel.EXPECT().ListTaskIDsByLabels(ctx, labels).Return([]int32{taskID}, nil)
+	mockModel.EXPECT().ListTaskDescendantIDs(ctx, &taskID).Return(nil, nil)
+	mockStore.EXPECT().CancelTaskWithTx(ctx, fake, taskID).Return(nil)
+	mockModel.EXPECT().ListOnlineWorkerIDs(ctx, gomock.Any()).Return([]uuid.UUID{workerID}, nil)
+	mockRunner.EXPECT().RunBroadcastCancelTaskWithTx(ctx, fake, gomock.Any(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, tx core.Tx, params *taskgen.BroadcastCancelTaskParameters, overrides ...store.TaskOverride) (int32, error) {
+			require.Equal(t, []int32{taskID}, params.TaskIDs)
+			require.Equal(t, []uuid.UUID{workerID}, params.WorkerIDs)
+			require.Len(t, overrides, 1)
+			task := &apigen.Task{Attributes: apigen.TaskAttributes{}}
+			require.NoError(t, overrides[0](task))
+			require.NotNil(t, task.Attributes.Priority)
+			require.Equal(t, WorkerControlTaskPriority, *task.Attributes.Priority)
+			return broadcastTaskID, nil
+		},
+	)
+	mockStore.EXPECT().WaitForTask(ctx, broadcastTaskID).Return(nil)
+
+	cp := NewWorkerControlPlane(mockModel, mockRunner, mockStore)
+	err := cp.CancelTasksByLabels(ctx, labels)
+	require.NoError(t, err)
+}
+
+func TestPauseTasksByLabelsWithTxDedupesLabelsAndReturnsBroadcastTaskID(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	labels := []string{"billing"}
+	taskID := int32(40)
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockStore := store.NewMockTaskStoreInterface(ctrl)
+	mockRunner := taskgen.NewMockTaskRunner(ctrl)
+	fake := &fakeTx{}
+	broadcastTaskID := int32(703)
+
+	mockModel.EXPECT().SpawnWithTx(fake).Return(mockModel)
+	mockModel.EXPECT().ListTaskIDsByLabels(ctx, labels).Return([]int32{taskID}, nil)
+	mockModel.EXPECT().ListTaskDescendantIDs(ctx, &taskID).Return(nil, nil)
+	mockStore.EXPECT().PauseTaskWithTx(ctx, fake, taskID).Return(nil)
+	mockModel.EXPECT().ListOnlineWorkerIDs(ctx, gomock.Any()).Return([]uuid.UUID{uuid.New()}, nil)
+	mockRunner.EXPECT().RunBroadcastPauseTaskWithTx(ctx, fake, gomock.Any(), gomock.Any()).Return(broadcastTaskID, nil)
+	mockStore.EXPECT().WaitForTask(ctx, gomock.Any()).Times(0)
+
+	cp := NewWorkerControlPlane(mockModel, mockRunner, mockStore)
+	got, err := cp.PauseTasksByLabelsWithTx(ctx, fake, []string{"billing", "billing"})
+	require.NoError(t, err)
+	require.Equal(t, broadcastTaskID, got)
+}
+
+func TestResumeTasksByLabelsUsesTransactionAndDedupesTasks(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	labels := []string{"billing", "critical"}
+	taskA := int32(50)
+	taskB := int32(51)
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockStore := store.NewMockTaskStoreInterface(ctrl)
+	mockRunner := taskgen.NewMockTaskRunner(ctrl)
+	fake := &fakeTx{}
+
+	mockModel.EXPECT().RunTransactionWithTx(ctx, gomock.Any()).DoAndReturn(
+		func(ctx context.Context, fn func(core.Tx, model.ModelInterface) error) error {
+			return fn(fake, mockModel)
+		},
+	)
+	mockModel.EXPECT().ListTaskIDsByLabels(ctx, labels).Return([]int32{taskA, taskB, taskA}, nil)
+	mockStore.EXPECT().ResumeTaskWithTx(ctx, fake, taskA).Return(nil)
+	mockStore.EXPECT().ResumeTaskWithTx(ctx, fake, taskB).Return(nil)
+	mockRunner.EXPECT().RunBroadcastPauseTaskWithTx(ctx, gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+	mockRunner.EXPECT().RunBroadcastCancelTaskWithTx(ctx, gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+	cp := NewWorkerControlPlane(mockModel, mockRunner, mockStore)
+	err := cp.ResumeTasksByLabels(ctx, labels)
+	require.NoError(t, err)
+}
+
+func TestPauseTasksByLabelsNoMatchesSkipsBroadcast(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	labels := []string{"missing"}
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockStore := store.NewMockTaskStoreInterface(ctrl)
+	mockRunner := taskgen.NewMockTaskRunner(ctrl)
+	fake := &fakeTx{}
+
+	mockModel.EXPECT().RunTransactionWithTx(ctx, gomock.Any()).DoAndReturn(
+		func(ctx context.Context, fn func(core.Tx, model.ModelInterface) error) error {
+			return fn(fake, mockModel)
+		},
+	)
+	mockModel.EXPECT().ListTaskIDsByLabels(ctx, labels).Return(nil, nil)
+	mockStore.EXPECT().PauseTaskWithTx(ctx, fake, gomock.Any()).Times(0)
+	mockModel.EXPECT().ListOnlineWorkerIDs(ctx, gomock.Any()).Times(0)
+	mockRunner.EXPECT().RunBroadcastPauseTaskWithTx(ctx, fake, gomock.Any(), gomock.Any()).Times(0)
+	mockStore.EXPECT().WaitForTask(ctx, gomock.Any()).Times(0)
+
+	cp := NewWorkerControlPlane(mockModel, mockRunner, mockStore)
+	err := cp.PauseTasksByLabels(ctx, labels)
+	require.NoError(t, err)
+}
+
 func TestPauseTaskByUniqueTagResolvesTaskID(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -341,6 +521,12 @@ func TestPauseCancelResumeInvalidInput(t *testing.T) {
 	require.ErrorContains(t, err, "positive taskID")
 	err = cp.ResumeTask(context.Background(), 0)
 	require.ErrorContains(t, err, "positive taskID")
+	err = cp.PauseTasksByLabels(context.Background(), nil)
+	require.ErrorContains(t, err, "at least one label")
+	err = cp.CancelTasksByLabels(context.Background(), []string{""})
+	require.ErrorContains(t, err, "non-empty labels")
+	err = cp.ResumeTasksByLabels(context.Background(), []string{})
+	require.ErrorContains(t, err, "at least one label")
 }
 
 func TestPauseTaskWaitError(t *testing.T) {

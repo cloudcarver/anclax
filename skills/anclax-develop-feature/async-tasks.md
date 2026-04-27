@@ -126,6 +126,47 @@ if err := controlPlane.CancelTask(ctx, taskID); err != nil {
 }
 ```
 
+Label-based control:
+- Use `PauseTasksByLabels`, `CancelTasksByLabels`, and `ResumeTasksByLabels` when selecting tasks by labels.
+- Multiple input labels use all-match intersection semantics: the task must contain every requested label; extra task labels are allowed.
+- Empty label lists and empty label strings are rejected.
+- Pause/cancel by labels cascade to descendants, matching task-ID pause/cancel behavior.
+- Resume by labels resumes only the directly matched labeled tasks.
+- Use the `WithTx` variants to compose unions: call once per label set in the same transaction, then wait for returned broadcast task IDs after commit.
+
+```go
+if err := controlPlane.PauseTasksByLabels(ctx, []string{"tenant:acme", "gpu"}); err != nil {
+    return err
+}
+
+var broadcastTaskIDs []int32
+err := model.RunTransactionWithTx(ctx, func(tx core.Tx, _ model.ModelInterface) error {
+    id, err := controlPlane.PauseTasksByLabelsWithTx(ctx, tx, []string{"tenant:acme"})
+    if err != nil {
+        return err
+    }
+    if id != 0 {
+        broadcastTaskIDs = append(broadcastTaskIDs, id)
+    }
+    id, err = controlPlane.PauseTasksByLabelsWithTx(ctx, tx, []string{"tenant:globex"})
+    if err != nil {
+        return err
+    }
+    if id != 0 {
+        broadcastTaskIDs = append(broadcastTaskIDs, id)
+    }
+    return nil
+})
+if err != nil {
+    return err
+}
+for _, taskID := range broadcastTaskIDs {
+    if err := controlPlane.WaitForTask(ctx, taskID); err != nil {
+        return err
+    }
+}
+```
+
 ## Runtime overrides
 
 Use `taskcore.TaskOverride` helpers:

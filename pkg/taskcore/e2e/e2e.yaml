@@ -53,6 +53,9 @@ interfaces:
       - UpdateRuntimeConfig(ctx context.Context, key string, maxStrictPercentage int32, defaultWeight int32, w1Weight int32, w2Weight int32) error
       - PauseTask(ctx context.Context, task string) error
       - CancelTask(ctx context.Context, task string) error
+      - PauseTasksByLabels(ctx context.Context, labels []string) error
+      - CancelTasksByLabels(ctx context.Context, labels []string) error
+      - ResumeTasksByLabels(ctx context.Context, labels []string) error
 
 instances:
   taskStore: TaskStore
@@ -959,6 +962,61 @@ scenarios:
         parallel:
           runtime:
             - StopWorker(ctx, "SCD_W1")
+
+  - name: smoke_label_control_intersection
+    description: label-based pause/cancel/resume controls require every requested label to match.
+    steps:
+      - id: s1
+        parallel:
+          runtime:
+            - ResetCaptured(ctx)
+          taskStore:
+            - EnqueueRaw(ctx, "SLC_PAUSE_BOTH", "label-control-e2e", "{}", 0, 1, []string{"ctrl-a", "ctrl-b"}, "", 0, "", 0)
+            - EnqueueRaw(ctx, "SLC_PAUSE_A", "label-control-e2e", "{}", 0, 1, []string{"ctrl-a"}, "", 0, "", 0)
+            - EnqueueRaw(ctx, "SLC_PAUSE_B", "label-control-e2e", "{}", 0, 1, []string{"ctrl-b"}, "", 0, "", 0)
+            - EnqueueRaw(ctx, "SLC_CANCEL_BOTH", "label-control-e2e", "{}", 0, 1, []string{"cancel-a", "cancel-b"}, "", 0, "", 0)
+            - EnqueueRaw(ctx, "SLC_CANCEL_A", "label-control-e2e", "{}", 0, 1, []string{"cancel-a"}, "", 0, "", 0)
+
+      - id: s2
+        parallel:
+          controlPlane:
+            - PauseTasksByLabels(ctx, []string{"ctrl-a", "ctrl-b"})
+            - CancelTasksByLabels(ctx, []string{"cancel-a", "cancel-b"})
+
+      - id: s3
+        script: |
+          statusByName := func(name string) string {
+            rows, err := actors.Validator.Query(ctx, "select status from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{name})
+            require.NoError(t, err)
+            require.Len(t, rows, 1)
+            return rows[0][0].(string)
+          }
+
+          require.Equal(t, "paused", statusByName("SLC_PAUSE_BOTH"))
+          require.Equal(t, "pending", statusByName("SLC_PAUSE_A"))
+          require.Equal(t, "pending", statusByName("SLC_PAUSE_B"))
+          require.Equal(t, "cancelled", statusByName("SLC_CANCEL_BOTH"))
+          require.Equal(t, "pending", statusByName("SLC_CANCEL_A"))
+
+      - id: s4
+        parallel:
+          controlPlane:
+            - ResumeTasksByLabels(ctx, []string{"ctrl-a", "ctrl-b"})
+
+      - id: s5
+        parallel:
+          runtime:
+            - StartWorker(ctx, "SLC_W1", "capture", "label-control-e2e", []string{"ctrl-a", "ctrl-b", "cancel-a"}, 20, 20, 200, 20, 1, 0, false, "")
+            - WaitCapturedCount(ctx, 4, 8000)
+            - AssertCapturedContains(ctx, []string{"SLC_PAUSE_BOTH", "SLC_PAUSE_A", "SLC_PAUSE_B", "SLC_CANCEL_A"})
+            - WaitNoPendingTasks(ctx, 8000)
+            - StopWorker(ctx, "SLC_W1")
+
+      - id: s6
+        script: |
+          rows, err := actors.Validator.Query(ctx, "select status from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"SLC_CANCEL_BOTH"})
+          require.NoError(t, err)
+          require.Equal(t, [][]any{{"cancelled"}}, rows)
 
   - name: smoke_worker_offline
     description: offline workers removed from lagging list.

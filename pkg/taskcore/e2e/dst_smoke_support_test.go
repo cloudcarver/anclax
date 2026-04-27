@@ -485,6 +485,27 @@ func (a *controlPlaneActor) CancelTask(ctx context.Context, task string) error {
 	return a.controlPlane.CancelTask(ctx, taskID)
 }
 
+func (a *controlPlaneActor) PauseTasksByLabels(ctx context.Context, labels []string) error {
+	if err := a.ensureAvailable(); err != nil {
+		return err
+	}
+	return a.controlPlane.PauseTasksByLabels(ctx, labels)
+}
+
+func (a *controlPlaneActor) CancelTasksByLabels(ctx context.Context, labels []string) error {
+	if err := a.ensureAvailable(); err != nil {
+		return err
+	}
+	return a.controlPlane.CancelTasksByLabels(ctx, labels)
+}
+
+func (a *controlPlaneActor) ResumeTasksByLabels(ctx context.Context, labels []string) error {
+	if err := a.ensureAvailable(); err != nil {
+		return err
+	}
+	return a.controlPlane.ResumeTasksByLabels(ctx, labels)
+}
+
 func (a *controlPlaneActor) taskIDByName(ctx context.Context, task string) (int32, error) {
 	var id int32
 	err := a.model.RunTransactionWithTx(ctx, func(tx core.Tx, _ model.ModelInterface) error {
