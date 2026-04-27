@@ -730,6 +730,41 @@ func (q *Queries) ListTaskDescendantIDs(ctx context.Context, parentTaskID *int32
 	return items, nil
 }
 
+const listTaskIDsByLabels = `-- name: ListTaskIDsByLabels :many
+SELECT t.id
+FROM anclax.tasks t
+WHERE
+    COALESCE(array_length($1::text[], 1), 0) > 0
+    AND t.attributes->'labels' IS NOT NULL
+    AND jsonb_array_length(t.attributes->'labels') > 0
+    AND NOT EXISTS (
+        SELECT 1
+        FROM unnest($1::text[]) AS required_label(value)
+        WHERE NOT (t.attributes->'labels' ? required_label.value)
+    )
+ORDER BY t.id
+`
+
+func (q *Queries) ListTaskIDsByLabels(ctx context.Context, labels []string) ([]int32, error) {
+	rows, err := q.db.Query(ctx, listTaskIDsByLabels, labels)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int32
+	for rows.Next() {
+		var id int32
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const refreshTaskLock = `-- name: RefreshTaskLock :one
 UPDATE anclax.tasks
 SET locked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP

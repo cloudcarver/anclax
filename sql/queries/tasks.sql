@@ -429,6 +429,20 @@ WITH RECURSIVE descendants AS (
 )
 SELECT id FROM descendants;
 
+-- name: ListTaskIDsByLabels :many
+SELECT t.id
+FROM anclax.tasks t
+WHERE
+    COALESCE(array_length(sqlc.arg(labels)::text[], 1), 0) > 0
+    AND t.attributes->'labels' IS NOT NULL
+    AND jsonb_array_length(t.attributes->'labels') > 0
+    AND NOT EXISTS (
+        SELECT 1
+        FROM unnest(sqlc.arg(labels)::text[]) AS required_label(value)
+        WHERE NOT (t.attributes->'labels' ? required_label.value)
+    )
+ORDER BY t.id;
+
 -- name: IncrementAttempts :exec
 UPDATE anclax.tasks
 SET attempts = attempts + 1, updated_at = CURRENT_TIMESTAMP
