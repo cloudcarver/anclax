@@ -485,25 +485,25 @@ func (a *controlPlaneActor) CancelTask(ctx context.Context, task string) error {
 	return a.controlPlane.CancelTask(ctx, taskID)
 }
 
-func (a *controlPlaneActor) PauseTasksByLabels(ctx context.Context, labels []string, exceptLabelSets [][]string) error {
+func (a *controlPlaneActor) PauseTasksByTags(ctx context.Context, tags []string, exceptTagSets [][]string) error {
 	if err := a.ensureAvailable(); err != nil {
 		return err
 	}
-	return a.controlPlane.PauseTasksByLabels(ctx, labels, exceptLabelSets...)
+	return a.controlPlane.PauseTasksByTags(ctx, tags, exceptTagSets...)
 }
 
-func (a *controlPlaneActor) CancelTasksByLabels(ctx context.Context, labels []string, exceptLabelSets [][]string) error {
+func (a *controlPlaneActor) CancelTasksByTags(ctx context.Context, tags []string, exceptTagSets [][]string) error {
 	if err := a.ensureAvailable(); err != nil {
 		return err
 	}
-	return a.controlPlane.CancelTasksByLabels(ctx, labels, exceptLabelSets...)
+	return a.controlPlane.CancelTasksByTags(ctx, tags, exceptTagSets...)
 }
 
-func (a *controlPlaneActor) ResumeTasksByLabels(ctx context.Context, labels []string, exceptLabelSets [][]string) error {
+func (a *controlPlaneActor) ResumeTasksByTags(ctx context.Context, tags []string, exceptTagSets [][]string) error {
 	if err := a.ensureAvailable(); err != nil {
 		return err
 	}
-	return a.controlPlane.ResumeTasksByLabels(ctx, labels, exceptLabelSets...)
+	return a.controlPlane.ResumeTasksByTags(ctx, tags, exceptTagSets...)
 }
 
 func (a *controlPlaneActor) taskIDByName(ctx context.Context, task string) (int32, error) {

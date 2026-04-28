@@ -51,6 +51,7 @@ Heartbeat is for monitoring only; task claims use `locked_at` TTL only.
 
 - Task labels come from `api/tasks/tasks.yaml` and runtime overrides.
 - Worker labels come from config.
+- Task tags are separate metadata for control-plane selection (pause/cancel/resume by tags) and do not affect worker claiming.
 - Claiming uses **all-match** semantics:
   - unlabeled task (`[]`) can be claimed by any worker.
   - labeled task can be claimed only when **all task labels are contained in worker labels**.

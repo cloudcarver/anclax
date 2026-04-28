@@ -82,6 +82,7 @@ func (c *Client) run{{upperFirst .Name}}(ctx context.Context, taskstore taskcore
 		CronExpression: "{{.Cronjob.CronExpression}}",
 	}{{end}}
 	{{if .Labels }}attributes.Labels = &[]string{ {{range $idx, $label := .Labels}}{{if $idx}}, {{end}}"{{$label}}"{{end}} }{{end}}
+	{{if .Tags }}attributes.Tags = &[]string{ {{range $idx, $tag := .Tags}}{{if $idx}}, {{end}}"{{$tag}}"{{end}} }{{end}}
 	{{if .Priority}}attributes.Priority = utils.Ptr(int32({{derefInt32 .Priority}})){{end}}
 	task := &apigen.Task{
 		Attributes: attributes,

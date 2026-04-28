@@ -126,19 +126,20 @@ if err := controlPlane.CancelTask(ctx, taskID); err != nil {
 }
 ```
 
-Label-based control:
-- Use `PauseTasksByLabels`, `CancelTasksByLabels`, and `ResumeTasksByLabels` when selecting tasks by labels.
-- Multiple input labels use all-match intersection semantics: the task must contain every requested label; extra task labels are allowed.
-- Optional `exceptLabelSets` use outer-OR / inner-AND semantics. `[][]string{{"a", "b"}, {"c", "d"}}` excludes tasks containing both `a` and `b`, and also excludes tasks containing both `c` and `d`.
-- Empty label lists and empty label strings are rejected.
-- Empty except label sets and empty strings inside except label sets are rejected.
-- Pause/cancel by labels cascade to descendants, matching task-ID pause/cancel behavior.
+Tag-based control:
+- Use `PauseTasksByTags`, `CancelTasksByTags`, and `ResumeTasksByTags` when selecting tasks by metadata tags.
+- Tags are not worker labels. Tags are for control-plane selection only and do not affect worker claim or scheduling.
+- Multiple input tags use all-match intersection semantics: the task must contain every requested tag; extra task tags are allowed.
+- Optional `exceptTagSets` use outer-OR / inner-AND semantics. `[][]string{{"a", "b"}, {"c", "d"}}` excludes tasks containing both `a` and `b`, and also excludes tasks containing both `c` and `d`.
+- Empty tag lists and empty tag strings are rejected.
+- Empty except tag sets and empty strings inside except tag sets are rejected.
+- Pause/cancel by tags cascade to descendants, matching task-ID pause/cancel behavior.
 - Pause/cancel exceptions filter only root task selection; once a root task is selected, descendants still cascade.
-- Resume by labels resumes only the directly matched labeled tasks.
-- Use the `WithTx` variants to compose unions: call once per label set in the same transaction, then wait for returned broadcast task IDs after commit.
+- Resume by tags resumes only the directly matched tagged tasks.
+- Use the `WithTx` variants to compose unions: call once per tag set in the same transaction, then wait for returned broadcast task IDs after commit.
 
 ```go
-if err := controlPlane.PauseTasksByLabels(ctx,
+if err := controlPlane.PauseTasksByTags(ctx,
     []string{"tenant:acme", "gpu"},
     []string{"do-not-pause"},
     []string{"maintenance", "pinned"},
@@ -148,14 +149,14 @@ if err := controlPlane.PauseTasksByLabels(ctx,
 
 var broadcastTaskIDs []int32
 err := model.RunTransactionWithTx(ctx, func(tx core.Tx, _ model.ModelInterface) error {
-    id, err := controlPlane.PauseTasksByLabelsWithTx(ctx, tx, []string{"tenant:acme"})
+    id, err := controlPlane.PauseTasksByTagsWithTx(ctx, tx, []string{"tenant:acme"})
     if err != nil {
         return err
     }
     if id != 0 {
         broadcastTaskIDs = append(broadcastTaskIDs, id)
     }
-    id, err = controlPlane.PauseTasksByLabelsWithTx(ctx, tx, []string{"tenant:globex"})
+    id, err = controlPlane.PauseTasksByTagsWithTx(ctx, tx, []string{"tenant:globex"})
     if err != nil {
         return err
     }
@@ -174,6 +175,16 @@ for _, taskID := range broadcastTaskIDs {
 }
 ```
 
+## Labels vs tags
+
+Keep labels and tags separate:
+- Use `labels` for worker claim and scheduling only. A task label is a worker requirement; every task label must be present on the worker before the worker can claim the task.
+- Use `tags` for task metadata and bulk control-plane selection, such as pause, cancel, and resume by tenant, org, campaign, or maintenance group.
+
+Example split:
+- `labels: ["gpu", "arm"]` means only workers with GPU and ARM machine may claim the task.
+- `tags: ["org:123", "billing"]` means control-plane operations can target that org or group without changing worker eligibility.
+
 ## Runtime overrides
 
 Use `taskcore.TaskOverride` helpers:
@@ -184,10 +195,13 @@ Use `taskcore.TaskOverride` helpers:
 - `taskcore.WithUniqueTag(tag)`
 - `taskcore.WithParentTaskID(parentID)`
 - `taskcore.WithLabels([]string{"billing", "critical"})`
+- `taskcore.WithTags([]string{"tenant:acme", "billing"})`
 - `taskcore.WithSerialKey("order-42")`
 - `taskcore.WithSerialID(7)`
 
 If a unique tag already exists, the existing task ID is returned instead of inserting a new task.
+
+Use `WithLabels` only for worker requirements. Use `WithTags` for control metadata.
 
 ## Error handling
 

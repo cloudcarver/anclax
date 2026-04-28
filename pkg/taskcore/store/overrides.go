@@ -58,6 +58,14 @@ func WithLabels(labels []string) TaskOverride {
 	}
 }
 
+func WithTags(tags []string) TaskOverride {
+	return func(task *apigen.Task) error {
+		tagsCopy := append([]string(nil), tags...)
+		task.Attributes.Tags = &tagsCopy
+		return nil
+	}
+}
+
 func WithSerialKey(serialKey string) TaskOverride {
 	return func(task *apigen.Task) error {
 		task.Attributes.SerialKey = &serialKey

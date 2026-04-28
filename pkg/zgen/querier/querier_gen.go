@@ -50,7 +50,7 @@ type Querier interface {
 	ListOnlineWorkerIDs(ctx context.Context, heartbeatCutoff time.Time) ([]uuid.UUID, error)
 	ListOrgs(ctx context.Context, userID int32) ([]*AnclaxOrg, error)
 	ListTaskDescendantIDs(ctx context.Context, parentTaskID *int32) ([]int32, error)
-	ListTaskIDsByLabels(ctx context.Context, arg ListTaskIDsByLabelsParams) ([]int32, error)
+	ListTaskIDsByTags(ctx context.Context, arg ListTaskIDsByTagsParams) ([]int32, error)
 	MarkWorkerOffline(ctx context.Context, id uuid.UUID) error
 	NotifyWorkerRuntimeConfig(ctx context.Context, payload string) error
 	NotifyWorkerRuntimeConfigAck(ctx context.Context, payload string) error

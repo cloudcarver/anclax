@@ -7,6 +7,7 @@ interfaces:
       - Enqueue(ctx context.Context, task string, priority int32, weight int32, labels []string) error
       - EnqueueRaw(ctx context.Context, task string, taskType string, payload string, priority int32, weight int32, labels []string, retryInterval string, retryMaxAttempts int32, cronExpression string, startInSeconds int32) error
       - EnqueueSerial(ctx context.Context, task string, serialKey string, serialID int32, startInSeconds int32) error
+      - SetTaskTags(ctx context.Context, task string, tags []string) error
       - SetTaskStartOffset(ctx context.Context, task string, offsetSeconds int32) error
       - SetTaskParent(ctx context.Context, task string, parent string) error
       - Sleep(ctx context.Context, seconds int32) error
@@ -53,9 +54,9 @@ interfaces:
       - UpdateRuntimeConfig(ctx context.Context, key string, maxStrictPercentage int32, defaultWeight int32, w1Weight int32, w2Weight int32) error
       - PauseTask(ctx context.Context, task string) error
       - CancelTask(ctx context.Context, task string) error
-      - PauseTasksByLabels(ctx context.Context, labels []string, exceptLabelSets [][]string) error
-      - CancelTasksByLabels(ctx context.Context, labels []string, exceptLabelSets [][]string) error
-      - ResumeTasksByLabels(ctx context.Context, labels []string, exceptLabelSets [][]string) error
+      - PauseTasksByTags(ctx context.Context, tags []string, exceptTagSets [][]string) error
+      - CancelTasksByTags(ctx context.Context, tags []string, exceptTagSets [][]string) error
+      - ResumeTasksByTags(ctx context.Context, tags []string, exceptTagSets [][]string) error
 
 instances:
   taskStore: TaskStore
@@ -963,28 +964,36 @@ scenarios:
           runtime:
             - StopWorker(ctx, "SCD_W1")
 
-  - name: smoke_label_control_intersection
-    description: label-based pause/cancel/resume controls require every requested label to match.
+  - name: smoke_tag_control_intersection
+    description: tag-based pause/cancel/resume controls require every requested tag to match.
     steps:
       - id: s1
         parallel:
           runtime:
             - ResetCaptured(ctx)
           taskStore:
-            - EnqueueRaw(ctx, "SLC_PAUSE_BOTH", "label-control-e2e", "{}", 0, 1, []string{"ctrl-a", "ctrl-b"}, "", 0, "", 0)
-            - EnqueueRaw(ctx, "SLC_PAUSE_EXCEPT_PAIR", "label-control-e2e", "{}", 0, 1, []string{"ctrl-a", "ctrl-b", "skip-a", "skip-b"}, "", 0, "", 0)
-            - EnqueueRaw(ctx, "SLC_PAUSE_EXCEPT_SINGLE", "label-control-e2e", "{}", 0, 1, []string{"ctrl-a", "ctrl-b", "skip-c"}, "", 0, "", 0)
-            - EnqueueRaw(ctx, "SLC_PAUSE_A", "label-control-e2e", "{}", 0, 1, []string{"ctrl-a"}, "", 0, "", 0)
-            - EnqueueRaw(ctx, "SLC_PAUSE_B", "label-control-e2e", "{}", 0, 1, []string{"ctrl-b"}, "", 0, "", 0)
-            - EnqueueRaw(ctx, "SLC_CANCEL_BOTH", "label-control-e2e", "{}", 0, 1, []string{"cancel-a", "cancel-b"}, "", 0, "", 0)
-            - EnqueueRaw(ctx, "SLC_CANCEL_EXCEPT", "label-control-e2e", "{}", 0, 1, []string{"cancel-a", "cancel-b", "skip-cancel"}, "", 0, "", 0)
-            - EnqueueRaw(ctx, "SLC_CANCEL_A", "label-control-e2e", "{}", 0, 1, []string{"cancel-a"}, "", 0, "", 0)
+            - EnqueueRaw(ctx, "SLC_PAUSE_BOTH", "tag-control-e2e", "{}", 0, 1, []string{}, "", 0, "", 0)
+            - SetTaskTags(ctx, "SLC_PAUSE_BOTH", []string{"ctrl-a", "ctrl-b"})
+            - EnqueueRaw(ctx, "SLC_PAUSE_EXCEPT_PAIR", "tag-control-e2e", "{}", 0, 1, []string{}, "", 0, "", 0)
+            - SetTaskTags(ctx, "SLC_PAUSE_EXCEPT_PAIR", []string{"ctrl-a", "ctrl-b", "skip-a", "skip-b"})
+            - EnqueueRaw(ctx, "SLC_PAUSE_EXCEPT_SINGLE", "tag-control-e2e", "{}", 0, 1, []string{}, "", 0, "", 0)
+            - SetTaskTags(ctx, "SLC_PAUSE_EXCEPT_SINGLE", []string{"ctrl-a", "ctrl-b", "skip-c"})
+            - EnqueueRaw(ctx, "SLC_PAUSE_A", "tag-control-e2e", "{}", 0, 1, []string{}, "", 0, "", 0)
+            - SetTaskTags(ctx, "SLC_PAUSE_A", []string{"ctrl-a"})
+            - EnqueueRaw(ctx, "SLC_PAUSE_B", "tag-control-e2e", "{}", 0, 1, []string{}, "", 0, "", 0)
+            - SetTaskTags(ctx, "SLC_PAUSE_B", []string{"ctrl-b"})
+            - EnqueueRaw(ctx, "SLC_CANCEL_BOTH", "tag-control-e2e", "{}", 0, 1, []string{}, "", 0, "", 0)
+            - SetTaskTags(ctx, "SLC_CANCEL_BOTH", []string{"cancel-a", "cancel-b"})
+            - EnqueueRaw(ctx, "SLC_CANCEL_EXCEPT", "tag-control-e2e", "{}", 0, 1, []string{}, "", 0, "", 0)
+            - SetTaskTags(ctx, "SLC_CANCEL_EXCEPT", []string{"cancel-a", "cancel-b", "skip-cancel"})
+            - EnqueueRaw(ctx, "SLC_CANCEL_A", "tag-control-e2e", "{}", 0, 1, []string{}, "", 0, "", 0)
+            - SetTaskTags(ctx, "SLC_CANCEL_A", []string{"cancel-a"})
 
       - id: s2
         parallel:
           controlPlane:
-            - PauseTasksByLabels(ctx, []string{"ctrl-a", "ctrl-b"}, [][]string{{"skip-a", "skip-b"}, {"skip-c"}})
-            - CancelTasksByLabels(ctx, []string{"cancel-a", "cancel-b"}, [][]string{{"skip-cancel"}})
+            - PauseTasksByTags(ctx, []string{"ctrl-a", "ctrl-b"}, [][]string{{"skip-a", "skip-b"}, {"skip-c"}})
+            - CancelTasksByTags(ctx, []string{"cancel-a", "cancel-b"}, [][]string{{"skip-cancel"}})
 
       - id: s3
         script: |
@@ -1007,12 +1016,12 @@ scenarios:
       - id: s4
         parallel:
           controlPlane:
-            - ResumeTasksByLabels(ctx, []string{"ctrl-a", "ctrl-b"}, [][]string{{"skip-a", "skip-b"}, {"skip-c"}})
+            - ResumeTasksByTags(ctx, []string{"ctrl-a", "ctrl-b"}, [][]string{{"skip-a", "skip-b"}, {"skip-c"}})
 
       - id: s5
         parallel:
           runtime:
-            - StartWorker(ctx, "SLC_W1", "capture", "label-control-e2e", []string{"ctrl-a", "ctrl-b", "skip-a", "skip-b", "skip-c", "cancel-a", "cancel-b", "skip-cancel"}, 20, 20, 200, 20, 1, 0, false, "")
+            - StartWorker(ctx, "SLC_W1", "capture", "tag-control-e2e", []string{}, 20, 20, 200, 20, 1, 0, false, "")
             - WaitCapturedCount(ctx, 7, 8000)
             - AssertCapturedContains(ctx, []string{"SLC_PAUSE_BOTH", "SLC_PAUSE_EXCEPT_PAIR", "SLC_PAUSE_EXCEPT_SINGLE", "SLC_PAUSE_A", "SLC_PAUSE_B", "SLC_CANCEL_EXCEPT", "SLC_CANCEL_A"})
             - WaitNoPendingTasks(ctx, 8000)

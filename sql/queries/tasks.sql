@@ -429,27 +429,27 @@ WITH RECURSIVE descendants AS (
 )
 SELECT id FROM descendants;
 
--- name: ListTaskIDsByLabels :many
+-- name: ListTaskIDsByTags :many
 SELECT t.id
 FROM anclax.tasks t
 WHERE
-    COALESCE(array_length(sqlc.arg(labels)::text[], 1), 0) > 0
-    AND t.attributes->'labels' IS NOT NULL
-    AND jsonb_array_length(t.attributes->'labels') > 0
+    COALESCE(array_length(sqlc.arg(tags)::text[], 1), 0) > 0
+    AND t.attributes->'tags' IS NOT NULL
+    AND jsonb_array_length(t.attributes->'tags') > 0
     AND NOT EXISTS (
         SELECT 1
-        FROM unnest(sqlc.arg(labels)::text[]) AS required_label(value)
-        WHERE NOT (t.attributes->'labels' ? required_label.value)
+        FROM unnest(sqlc.arg(tags)::text[]) AS required_tag(value)
+        WHERE NOT (t.attributes->'tags' ? required_tag.value)
     )
     AND NOT EXISTS (
         SELECT 1
-        FROM jsonb_array_elements(sqlc.arg(except_label_sets)::jsonb) AS except_set(labels)
-        WHERE jsonb_typeof(except_set.labels) = 'array'
-            AND jsonb_array_length(except_set.labels) > 0
+        FROM jsonb_array_elements(sqlc.arg(except_tag_sets)::jsonb) AS except_set(tags)
+        WHERE jsonb_typeof(except_set.tags) = 'array'
+            AND jsonb_array_length(except_set.tags) > 0
             AND NOT EXISTS (
                 SELECT 1
-                FROM jsonb_array_elements_text(except_set.labels) AS except_label(value)
-                WHERE NOT (t.attributes->'labels' ? except_label.value)
+                FROM jsonb_array_elements_text(except_set.tags) AS except_tag(value)
+                WHERE NOT (t.attributes->'tags' ? except_tag.value)
             )
     )
 ORDER BY t.id;

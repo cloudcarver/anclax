@@ -19,6 +19,17 @@ func TestWithLabelsOverride(t *testing.T) {
 	require.Equal(t, []string{"billing", "critical"}, *task.Attributes.Labels)
 }
 
+func TestWithTagsOverride(t *testing.T) {
+	task := &apigen.Task{
+		Attributes: apigen.TaskAttributes{},
+	}
+
+	err := WithTags([]string{"org:acme", "billing"})(task)
+	require.NoError(t, err)
+	require.NotNil(t, task.Attributes.Tags)
+	require.Equal(t, []string{"org:acme", "billing"}, *task.Attributes.Tags)
+}
+
 func TestWithSerialKeyOverride(t *testing.T) {
 	task := &apigen.Task{
 		Attributes: apigen.TaskAttributes{},

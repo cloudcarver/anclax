@@ -35,6 +35,7 @@ type Function struct {
 	Delay           *string      `yaml:"delay,omitempty"`
 	Events          *Events      `yaml:"events,omitempty"`
 	Labels          []string     `yaml:"labels,omitempty"`
+	Tags            []string     `yaml:"tags,omitempty"`
 	Priority        *int32       `yaml:"priority,omitempty"`
 	HasLocalHelpers bool         `yaml:"hasLocalHelpers,omitempty"`
 }

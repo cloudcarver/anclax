@@ -136,7 +136,8 @@ type Task struct {
 // TaskAttributes defines model for TaskAttributes.
 type TaskAttributes struct {
 	Cronjob *TaskCronjob `json:"cronjob,omitempty"`
-	Labels  *[]string    `json:"labels,omitempty"`
+	// Worker claim and scheduling labels. A worker must have all task labels to claim the task.
+	Labels *[]string `json:"labels,omitempty"`
 	// Strict priority of the task. Higher number runs first. Zero means normal weighted scheduling.
 	Priority    *int32           `json:"priority,omitempty"`
 	RetryPolicy *TaskRetryPolicy `json:"retryPolicy,omitempty"`
@@ -144,6 +145,8 @@ type TaskAttributes struct {
 	SerialID *int32 `json:"serialID,omitempty"`
 	// Serial key for forcing tasks with the same key to run one by one
 	SerialKey *string `json:"serialKey,omitempty"`
+	// Task metadata tags used by control-plane bulk operations such as pause, cancel, and resume.
+	Tags *[]string `json:"tags,omitempty"`
 	// Timeout of the task, a valid go time duration value e.g. 1h, 1d, 1w, 1m
 	Timeout *string `json:"timeout,omitempty"`
 	// Relative weight of the task within weighted scheduling (normal tasks only).

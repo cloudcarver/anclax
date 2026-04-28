@@ -731,39 +731,39 @@ func (q *Queries) ListTaskDescendantIDs(ctx context.Context, parentTaskID *int32
 	return items, nil
 }
 
-const listTaskIDsByLabels = `-- name: ListTaskIDsByLabels :many
+const listTaskIDsByTags = `-- name: ListTaskIDsByTags :many
 SELECT t.id
 FROM anclax.tasks t
 WHERE
     COALESCE(array_length($1::text[], 1), 0) > 0
-    AND t.attributes->'labels' IS NOT NULL
-    AND jsonb_array_length(t.attributes->'labels') > 0
+    AND t.attributes->'tags' IS NOT NULL
+    AND jsonb_array_length(t.attributes->'tags') > 0
     AND NOT EXISTS (
         SELECT 1
-        FROM unnest($1::text[]) AS required_label(value)
-        WHERE NOT (t.attributes->'labels' ? required_label.value)
+        FROM unnest($1::text[]) AS required_tag(value)
+        WHERE NOT (t.attributes->'tags' ? required_tag.value)
     )
     AND NOT EXISTS (
         SELECT 1
-        FROM jsonb_array_elements($2::jsonb) AS except_set(labels)
-        WHERE jsonb_typeof(except_set.labels) = 'array'
-            AND jsonb_array_length(except_set.labels) > 0
+        FROM jsonb_array_elements($2::jsonb) AS except_set(tags)
+        WHERE jsonb_typeof(except_set.tags) = 'array'
+            AND jsonb_array_length(except_set.tags) > 0
             AND NOT EXISTS (
                 SELECT 1
-                FROM jsonb_array_elements_text(except_set.labels) AS except_label(value)
-                WHERE NOT (t.attributes->'labels' ? except_label.value)
+                FROM jsonb_array_elements_text(except_set.tags) AS except_tag(value)
+                WHERE NOT (t.attributes->'tags' ? except_tag.value)
             )
     )
 ORDER BY t.id
 `
 
-type ListTaskIDsByLabelsParams struct {
-	Labels          []string
-	ExceptLabelSets json.RawMessage
+type ListTaskIDsByTagsParams struct {
+	Tags          []string
+	ExceptTagSets json.RawMessage
 }
 
-func (q *Queries) ListTaskIDsByLabels(ctx context.Context, arg ListTaskIDsByLabelsParams) ([]int32, error) {
-	rows, err := q.db.Query(ctx, listTaskIDsByLabels, arg.Labels, arg.ExceptLabelSets)
+func (q *Queries) ListTaskIDsByTags(ctx context.Context, arg ListTaskIDsByTagsParams) ([]int32, error) {
+	rows, err := q.db.Query(ctx, listTaskIDsByTags, arg.Tags, arg.ExceptTagSets)
 	if err != nil {
 		return nil, err
 	}

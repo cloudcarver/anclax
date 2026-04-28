@@ -297,6 +297,21 @@ func (a *taskStoreActor) EnqueueSerial(ctx context.Context, task string, serialK
 	return nil
 }
 
+func (a *taskStoreActor) SetTaskTags(ctx context.Context, task string, tags []string) error {
+	if task == "" {
+		return fmt.Errorf("task name is required")
+	}
+	id, err := a.taskIDByName(ctx, task)
+	if err != nil {
+		return err
+	}
+	tagsCopy := append([]string(nil), tags...)
+	return a.model.RunTransactionWithTx(ctx, func(tx core.Tx, _ model.ModelInterface) error {
+		_, err := tx.Exec(ctx, "update anclax.tasks set attributes = jsonb_set(attributes, '{tags}', to_jsonb($1::text[]), true), updated_at = current_timestamp where id = $2", tagsCopy, id)
+		return err
+	})
+}
+
 func (a *taskStoreActor) SetTaskStartOffset(ctx context.Context, task string, offsetSeconds int32) error {
 	id, err := a.taskIDByName(ctx, task)
 	if err != nil {

@@ -161,6 +161,22 @@ func process(data map[string]any, onFunc func(f Function) error, onParam func(na
 			}
 		}
 
+		// parse tags
+		var tags []string
+		if _, ok := fnData["tags"]; ok {
+			tagsData, ok := fnData["tags"].([]any)
+			if !ok {
+				return errors.New("tags cannot be parsed to an array")
+			}
+			for _, tag := range tagsData {
+				tagStr, ok := tag.(string)
+				if !ok {
+					return errors.New("tag cannot be parsed to a string")
+				}
+				tags = append(tags, tagStr)
+			}
+		}
+
 		// parse priority
 		var priority *int32
 		if rawPriority, ok := fnData["priority"]; ok {
@@ -214,6 +230,7 @@ func process(data map[string]any, onFunc func(f Function) error, onParam func(na
 			Delay:           delay,
 			Events:          events,
 			Labels:          labels,
+			Tags:            tags,
 			Priority:        priority,
 			HasLocalHelpers: parameterInfo.StructDef != "",
 		}); err != nil {

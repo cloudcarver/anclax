@@ -304,6 +304,12 @@ components:
           type: array
           items:
             type: string
+          description: Worker claim and scheduling labels. A worker must have all task labels to claim the task.
+        tags:
+          type: array
+          items:
+            type: string
+          description: Task metadata tags used by control-plane bulk operations such as pause, cancel, and resume.
         serialKey:
           type: string
           description: Serial key for forcing tasks with the same key to run one by one
