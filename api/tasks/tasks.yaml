@@ -273,6 +273,9 @@ tasks:
         group:
           type: string
           description: Logical group name for test-side metrics and labels
+        failMode:
+          type: string
+          description: Optional failure mode for chaos tests. Set to "always" to return a retryable error every run.
         signalBaseURL:
           type: string
           description: Optional signal service base URL used by running tasks to emit observable heartbeats

@@ -98,6 +98,7 @@ func TestContainerizedTaskcoreChaosSmoke(t *testing.T) {
 			{name: "worker-a", labels: []string{"w1"}},
 			{name: "worker-b", labels: []string{"w2"}},
 			{name: "worker-c", labels: []string{"w1", "w2"}},
+			{name: "worker-fair", labels: []string{"retry-fairness"}},
 		},
 		tasks:             map[string]*chaosTaskSlot{},
 		componentDowns:    map[string]int{},
@@ -112,6 +113,8 @@ func TestContainerizedTaskcoreChaosSmoke(t *testing.T) {
 	user := h.User()
 	must(runInitialUserCancel(ctx, user, state))
 	must(runInitialUserPauseResume(ctx, user, state))
+	must(runInitialUserTagControl(ctx, user, state))
+	must(runInitialInfiniteRetryFairness(ctx, user, state))
 	iterations := readChaosPositiveEnvInt(t, "ANCLAX_TASKCORE_CHAOS_ITERATIONS", 28)
 	interIterSleep := time.Duration(readChaosPositiveEnvInt(t, "ANCLAX_TASKCORE_CHAOS_INTER_ITER_SLEEP_MS", 300)) * time.Millisecond
 	for iter := 1; iter <= iterations; iter++ {
@@ -327,6 +330,162 @@ func runInitialUserPauseResume(ctx context.Context, user *User, state *chaosStat
 	}
 	task.controlState = "resumed"
 	state.userResumes++
+	return nil
+}
+
+func runInitialUserTagControl(ctx context.Context, user *User, state *chaosState) error {
+	if user == nil || user.DB == nil {
+		return fmt.Errorf("user is not ready")
+	}
+	commonTag := "chaos:tag-control"
+	pauseTag := "action:pause"
+	cancelTag := "action:cancel"
+	exceptTag := "action:skip"
+	type taggedTask struct {
+		name        string
+		jobID       int64
+		labels      []string
+		tags        []string
+		finalStatus string
+	}
+	tasks := []taggedTask{
+		{
+			name:        "LONG-000-tags-pause-target",
+			jobID:       7101,
+			labels:      []string{"w1"},
+			tags:        []string{commonTag, pauseTag, "org:chaos-a"},
+			finalStatus: "completed",
+		},
+		{
+			name:        "LONG-000-tags-pause-except",
+			jobID:       7102,
+			labels:      []string{"w2"},
+			tags:        []string{commonTag, pauseTag, exceptTag, "org:chaos-a"},
+			finalStatus: "completed",
+		},
+		{
+			name:        "LONG-000-tags-cancel-target",
+			jobID:       7201,
+			labels:      []string{"w1"},
+			tags:        []string{commonTag, cancelTag, "org:chaos-b"},
+			finalStatus: "cancelled",
+		},
+		{
+			name:        "LONG-000-tags-cancel-except",
+			jobID:       7202,
+			labels:      []string{"w2"},
+			tags:        []string{commonTag, cancelTag, exceptTag, "org:chaos-b"},
+			finalStatus: "completed",
+		},
+	}
+	for _, item := range tasks {
+		taskID, err := user.SubmitStressProbe(ctx, SubmitStressProbeRequest{
+			TaskName: item.name,
+			JobID:    item.jobID,
+			SleepMs:  50,
+			DelayMs:  2000,
+			Group:    "tag-control",
+			Labels:   item.labels,
+			Tags:     item.tags,
+		})
+		if err != nil {
+			return err
+		}
+		state.tasks[item.name] = &chaosTaskSlot{taskID: taskID, uniqueTag: item.name, finalStatus: item.finalStatus}
+		state.tasksSubmitted++
+	}
+
+	if err := user.PauseTasksByTags(ctx, []string{commonTag, pauseTag}, []string{exceptTag}); err != nil {
+		return err
+	}
+	if err := user.ExpectPaused(ctx, "LONG-000-tags-pause-target", 20*time.Second); err != nil {
+		return err
+	}
+	state.userPauses++
+	if err := user.ResumeTasksByTags(ctx, []string{commonTag, pauseTag}, []string{exceptTag}); err != nil {
+		return err
+	}
+	if err := user.ExpectPending(ctx, "LONG-000-tags-pause-target", 20*time.Second); err != nil {
+		return err
+	}
+	state.userResumes++
+	if err := user.CancelTasksByTags(ctx, []string{commonTag, cancelTag}, []string{exceptTag}); err != nil {
+		return err
+	}
+	if err := user.ExpectCancelled(ctx, "LONG-000-tags-cancel-target", 20*time.Second); err != nil {
+		return err
+	}
+	state.userCancels++
+
+	for _, name := range []string{
+		"LONG-000-tags-pause-target",
+		"LONG-000-tags-pause-except",
+		"LONG-000-tags-cancel-except",
+	} {
+		if err := user.ExpectCompleted(ctx, name, 30*time.Second); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func runInitialInfiniteRetryFairness(ctx context.Context, user *User, state *chaosState) error {
+	if user == nil || user.DB == nil {
+		return fmt.Errorf("user is not ready")
+	}
+	retryMaxAttempts := int32(-1)
+	failers := []string{"LONG-000-retry-loop-a", "LONG-000-retry-loop-b"}
+	for idx, name := range failers {
+		taskID, err := user.SubmitStressProbe(ctx, SubmitStressProbeRequest{
+			TaskName:         name,
+			JobID:            int64(8100 + idx),
+			SleepMs:          0,
+			Group:            "retry-fairness",
+			FailMode:         "always",
+			Labels:           []string{"retry-fairness"},
+			Tags:             []string{"chaos:retry-fairness", "retry:infinite"},
+			RetryInterval:    "2s",
+			RetryMaxAttempts: &retryMaxAttempts,
+		})
+		if err != nil {
+			return err
+		}
+		state.tasks[name] = &chaosTaskSlot{taskID: taskID, uniqueTag: name, finalStatus: "cancelled"}
+		state.tasksSubmitted++
+	}
+	for _, name := range failers {
+		if err := user.DB.WaitTaskAttemptsAtLeast(ctx, name, 2, 10*time.Second); err != nil {
+			return err
+		}
+	}
+
+	normalName := "LONG-000-retry-fairness-normal"
+	normalID, err := user.SubmitStressProbe(ctx, SubmitStressProbeRequest{
+		TaskName: normalName,
+		JobID:    8199,
+		SleepMs:  10,
+		Group:    "retry-fairness",
+		Labels:   []string{"retry-fairness"},
+		Tags:     []string{"chaos:retry-fairness", "retry:normal"},
+	})
+	if err != nil {
+		return err
+	}
+	state.tasks[normalName] = &chaosTaskSlot{taskID: normalID, uniqueTag: normalName, finalStatus: "completed"}
+	state.tasksSubmitted++
+	if err := user.ExpectCompleted(ctx, normalName, 5*time.Second); err != nil {
+		return fmt.Errorf("normal task starved behind infinite retry tasks: %w", err)
+	}
+
+	for _, name := range failers {
+		if err := user.CancelTask(ctx, name); err != nil {
+			return err
+		}
+		if err := user.ExpectCancelled(ctx, name, 20*time.Second); err != nil {
+			return err
+		}
+		state.userCancels++
+	}
 	return nil
 }
 

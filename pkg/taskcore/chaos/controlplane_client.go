@@ -21,9 +21,13 @@ type SubmitStressProbeRequest struct {
 	JobID            int64    `json:"jobID"`
 	SleepMs          int32    `json:"sleepMs"`
 	Group            string   `json:"group"`
+	FailMode         string   `json:"failMode,omitempty"`
 	Labels           []string `json:"labels,omitempty"`
+	Tags             []string `json:"tags,omitempty"`
 	DelayMs          int32    `json:"delayMs,omitempty"`
 	UniqueTag        string   `json:"uniqueTag,omitempty"`
+	RetryInterval    string   `json:"retryInterval,omitempty"`
+	RetryMaxAttempts *int32   `json:"retryMaxAttempts,omitempty"`
 	SignalBaseURL    string   `json:"signalBaseURL,omitempty"`
 	SignalIntervalMs int32    `json:"signalIntervalMs,omitempty"`
 }
@@ -36,6 +40,7 @@ type SubmitCancelObservableProbeRequest struct {
 	TaskName         string   `json:"taskName"`
 	Group            string   `json:"group"`
 	Labels           []string `json:"labels,omitempty"`
+	Tags             []string `json:"tags,omitempty"`
 	UniqueTag        string   `json:"uniqueTag,omitempty"`
 	SignalBaseURL    string   `json:"signalBaseURL,omitempty"`
 	SignalIntervalMs int32    `json:"signalIntervalMs,omitempty"`
@@ -53,6 +58,11 @@ type RuntimeConfigResponse struct {
 
 type TaskControlRequest struct {
 	UniqueTag string `json:"uniqueTag"`
+}
+
+type TaskTagsControlRequest struct {
+	Tags          []string   `json:"tags"`
+	ExceptTagSets [][]string `json:"exceptTagSets,omitempty"`
 }
 
 const chaosControlClientTimeout = 5 * time.Minute
@@ -106,6 +116,18 @@ func (c *ControlPlaneClient) CancelTask(ctx context.Context, uniqueTag string) e
 
 func (c *ControlPlaneClient) ResumeTask(ctx context.Context, uniqueTag string) error {
 	return c.doJSON(ctx, http.MethodPost, "/tasks/resume", TaskControlRequest{UniqueTag: uniqueTag}, nil)
+}
+
+func (c *ControlPlaneClient) PauseTasksByTags(ctx context.Context, tags []string, exceptTagSets [][]string) error {
+	return c.doJSON(ctx, http.MethodPost, "/tasks/pause-by-tags", TaskTagsControlRequest{Tags: tags, ExceptTagSets: exceptTagSets}, nil)
+}
+
+func (c *ControlPlaneClient) CancelTasksByTags(ctx context.Context, tags []string, exceptTagSets [][]string) error {
+	return c.doJSON(ctx, http.MethodPost, "/tasks/cancel-by-tags", TaskTagsControlRequest{Tags: tags, ExceptTagSets: exceptTagSets}, nil)
+}
+
+func (c *ControlPlaneClient) ResumeTasksByTags(ctx context.Context, tags []string, exceptTagSets [][]string) error {
+	return c.doJSON(ctx, http.MethodPost, "/tasks/resume-by-tags", TaskTagsControlRequest{Tags: tags, ExceptTagSets: exceptTagSets}, nil)
 }
 
 func (c *ControlPlaneClient) StartUpdateRuntimeConfig(ctx context.Context, reqBody RuntimeConfigRequest) (int32, error) {

@@ -785,6 +785,9 @@ type PauseTaskOnWorkerParameters struct {
 }
 
 type StressProbeParameters struct { 
+    // Optional failure mode for chaos tests. Set to "always" to return a retryable error every run.
+	FailMode *string `json:"failMode" yaml:"failMode"`
+
     // Logical group name for test-side metrics and labels
 	Group string `json:"group" yaml:"group"`
 

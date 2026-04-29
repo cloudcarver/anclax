@@ -25,9 +25,13 @@ type stressProbeRequest struct {
 	JobID            int64    `json:"jobID"`
 	SleepMs          int32    `json:"sleepMs"`
 	Group            string   `json:"group"`
+	FailMode         string   `json:"failMode,omitempty"`
 	Labels           []string `json:"labels,omitempty"`
+	Tags             []string `json:"tags,omitempty"`
 	DelayMs          int32    `json:"delayMs,omitempty"`
 	UniqueTag        string   `json:"uniqueTag,omitempty"`
+	RetryInterval    string   `json:"retryInterval,omitempty"`
+	RetryMaxAttempts *int32   `json:"retryMaxAttempts,omitempty"`
 	SignalBaseURL    string   `json:"signalBaseURL,omitempty"`
 	SignalIntervalMs int32    `json:"signalIntervalMs,omitempty"`
 }
@@ -36,6 +40,7 @@ type cancelObservableProbeRequest struct {
 	TaskName         string   `json:"taskName"`
 	Group            string   `json:"group"`
 	Labels           []string `json:"labels,omitempty"`
+	Tags             []string `json:"tags,omitempty"`
 	UniqueTag        string   `json:"uniqueTag,omitempty"`
 	SignalBaseURL    string   `json:"signalBaseURL,omitempty"`
 	SignalIntervalMs int32    `json:"signalIntervalMs,omitempty"`
@@ -43,6 +48,11 @@ type cancelObservableProbeRequest struct {
 
 type taskControlRequest struct {
 	UniqueTag string `json:"uniqueTag"`
+}
+
+type taskTagsControlRequest struct {
+	Tags          []string   `json:"tags"`
+	ExceptTagSets [][]string `json:"exceptTagSets,omitempty"`
 }
 
 type runtimeConfigRequest struct {
@@ -110,6 +120,9 @@ func main() {
 	mux.HandleFunc("/tasks/pause", a.handlePauseTask)
 	mux.HandleFunc("/tasks/cancel", a.handleCancelTask)
 	mux.HandleFunc("/tasks/resume", a.handleResumeTask)
+	mux.HandleFunc("/tasks/pause-by-tags", a.handlePauseTasksByTags)
+	mux.HandleFunc("/tasks/cancel-by-tags", a.handleCancelTasksByTags)
+	mux.HandleFunc("/tasks/resume-by-tags", a.handleResumeTasksByTags)
 	mux.HandleFunc("/runtime-config", a.handleRuntimeConfig)
 
 	server := &http.Server{Addr: addr, Handler: mux}
@@ -226,6 +239,16 @@ func (a *app) handleStressProbe(w http.ResponseWriter, r *http.Request) {
 	if len(req.Labels) > 0 {
 		overrides = append(overrides, taskcore.WithLabels(req.Labels))
 	}
+	if len(req.Tags) > 0 {
+		overrides = append(overrides, taskcore.WithTags(req.Tags))
+	}
+	if req.RetryInterval != "" || req.RetryMaxAttempts != nil {
+		if req.RetryInterval == "" || req.RetryMaxAttempts == nil {
+			http.Error(w, "retryInterval and retryMaxAttempts must be set together", http.StatusBadRequest)
+			return
+		}
+		overrides = append(overrides, taskcore.WithRetryPolicy(req.RetryInterval, *req.RetryMaxAttempts))
+	}
 	if req.DelayMs > 0 {
 		overrides = append(overrides, taskcore.WithStartedAt(time.Now().Add(time.Duration(req.DelayMs)*time.Millisecond)))
 	}
@@ -233,6 +256,9 @@ func (a *app) handleStressProbe(w http.ResponseWriter, r *http.Request) {
 		JobID:   req.JobID,
 		SleepMs: req.SleepMs,
 		Group:   req.Group,
+	}
+	if req.FailMode != "" {
+		params.FailMode = &req.FailMode
 	}
 	if req.SignalBaseURL != "" {
 		params.SignalBaseURL = &req.SignalBaseURL
@@ -274,6 +300,9 @@ func (a *app) handleCancelObservableProbe(w http.ResponseWriter, r *http.Request
 	if len(req.Labels) > 0 {
 		overrides = append(overrides, taskcore.WithLabels(req.Labels))
 	}
+	if len(req.Tags) > 0 {
+		overrides = append(overrides, taskcore.WithTags(req.Tags))
+	}
 	params := &taskgen.CancelObservableProbeParameters{Group: req.Group}
 	if req.SignalBaseURL != "" {
 		params.SignalBaseURL = &req.SignalBaseURL
@@ -307,6 +336,24 @@ func (a *app) handleResumeTask(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (a *app) handlePauseTasksByTags(w http.ResponseWriter, r *http.Request) {
+	a.handleTaskTagsControl(w, r, func(ctx context.Context, tags []string, exceptTagSets [][]string) error {
+		return a.controlPlane.PauseTasksByTags(ctx, tags, exceptTagSets...)
+	})
+}
+
+func (a *app) handleCancelTasksByTags(w http.ResponseWriter, r *http.Request) {
+	a.handleTaskTagsControl(w, r, func(ctx context.Context, tags []string, exceptTagSets [][]string) error {
+		return a.controlPlane.CancelTasksByTags(ctx, tags, exceptTagSets...)
+	})
+}
+
+func (a *app) handleResumeTasksByTags(w http.ResponseWriter, r *http.Request) {
+	a.handleTaskTagsControl(w, r, func(ctx context.Context, tags []string, exceptTagSets [][]string) error {
+		return a.controlPlane.ResumeTasksByTags(ctx, tags, exceptTagSets...)
+	})
+}
+
 func (a *app) handleTaskControl(w http.ResponseWriter, r *http.Request, fn func(context.Context, string) error) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -325,6 +372,29 @@ func (a *app) handleTaskControl(w http.ResponseWriter, r *http.Request, fn func(
 	defer cancel()
 	if err := fn(ctx, req.UniqueTag); err != nil {
 		writeInternalError(w, "TaskControl", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (a *app) handleTaskTagsControl(w http.ResponseWriter, r *http.Request, fn func(context.Context, []string, [][]string) error) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req taskTagsControlRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if len(req.Tags) == 0 {
+		http.Error(w, "tags are required", http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), chaosControlRequestTimeout)
+	defer cancel()
+	if err := fn(ctx, req.Tags, req.ExceptTagSets); err != nil {
+		writeInternalError(w, "TaskTagsControl", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})

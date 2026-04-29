@@ -3,6 +3,7 @@ package chaos
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -30,9 +31,13 @@ func (u *User) SubmitStressProbe(ctx context.Context, req SubmitStressProbeReque
 			"taskID":           taskID,
 			"group":            req.Group,
 			"labels":           req.Labels,
+			"tags":             req.Tags,
 			"sleepMs":          req.SleepMs,
 			"delayMs":          req.DelayMs,
+			"failMode":         req.FailMode,
 			"uniqueTag":        req.UniqueTag,
+			"retryInterval":    req.RetryInterval,
+			"retryMaxAttempts": req.RetryMaxAttempts,
 			"signalBaseURL":    req.SignalBaseURL,
 			"signalIntervalMs": req.SignalIntervalMs,
 		})
@@ -59,6 +64,7 @@ func (u *User) SubmitCancelObservableProbe(ctx context.Context, req SubmitCancel
 			"taskID":           taskID,
 			"group":            req.Group,
 			"labels":           req.Labels,
+			"tags":             req.Tags,
 			"uniqueTag":        req.UniqueTag,
 			"signalBaseURL":    req.SignalBaseURL,
 			"signalIntervalMs": req.SignalIntervalMs,
@@ -102,6 +108,45 @@ func (u *User) ResumeTask(ctx context.Context, uniqueTag string) error {
 	}
 	if u.Report != nil {
 		u.Report.AddEvent("user.resume_task", uniqueTag, "task resumed", nil)
+	}
+	return nil
+}
+
+func (u *User) PauseTasksByTags(ctx context.Context, tags []string, exceptTagSets ...[]string) error {
+	if len(tags) == 0 {
+		return fmt.Errorf("tags are required")
+	}
+	if err := u.Control.PauseTasksByTags(ctx, tags, exceptTagSets); err != nil {
+		return err
+	}
+	if u.Report != nil {
+		u.Report.AddEvent("user.pause_tasks_by_tags", strings.Join(tags, ","), "tasks paused by tags", map[string]any{"tags": tags, "exceptTagSets": exceptTagSets})
+	}
+	return nil
+}
+
+func (u *User) CancelTasksByTags(ctx context.Context, tags []string, exceptTagSets ...[]string) error {
+	if len(tags) == 0 {
+		return fmt.Errorf("tags are required")
+	}
+	if err := u.Control.CancelTasksByTags(ctx, tags, exceptTagSets); err != nil {
+		return err
+	}
+	if u.Report != nil {
+		u.Report.AddEvent("user.cancel_tasks_by_tags", strings.Join(tags, ","), "tasks cancelled by tags", map[string]any{"tags": tags, "exceptTagSets": exceptTagSets})
+	}
+	return nil
+}
+
+func (u *User) ResumeTasksByTags(ctx context.Context, tags []string, exceptTagSets ...[]string) error {
+	if len(tags) == 0 {
+		return fmt.Errorf("tags are required")
+	}
+	if err := u.Control.ResumeTasksByTags(ctx, tags, exceptTagSets); err != nil {
+		return err
+	}
+	if u.Report != nil {
+		u.Report.AddEvent("user.resume_tasks_by_tags", strings.Join(tags, ","), "tasks resumed by tags", map[string]any{"tags": tags, "exceptTagSets": exceptTagSets})
 	}
 	return nil
 }

@@ -79,6 +79,18 @@ func TestExecuteStressProbeExplicitBaseURLUsesDefaultSignalInterval(t *testing.T
 	require.GreaterOrEqual(t, hits.Load(), int32(1))
 }
 
+func TestExecuteStressProbeAlwaysFailModeReturnsRetryableError(t *testing.T) {
+	failMode := "always"
+	exec := &Executor{}
+	err := exec.ExecuteStressProbe(context.Background(), worker.Task{ID: 14}, &taskgen.StressProbeParameters{
+		JobID:    4,
+		SleepMs:  0,
+		Group:    "default",
+		FailMode: &failMode,
+	})
+	require.ErrorContains(t, err, "retryable failure")
+}
+
 func TestStressProbeSignalHelpersHandleDisabledTicker(t *testing.T) {
 	require.Nil(t, newStressProbeSignalTicker(false, 10))
 	require.Nil(t, stressProbeSignalChan(nil))

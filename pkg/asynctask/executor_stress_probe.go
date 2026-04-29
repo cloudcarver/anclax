@@ -16,6 +16,10 @@ import (
 )
 
 func (e *Executor) ExecuteStressProbe(ctx context.Context, task worker.Task, params *taskgen.StressProbeParameters) error {
+	failMode := ""
+	if params.FailMode != nil {
+		failMode = strings.TrimSpace(*params.FailMode)
+	}
 	sleep := time.Duration(params.SleepMs) * time.Millisecond
 	explicitSignals := false
 	signalBaseURL := strings.TrimSpace(os.Getenv("CHAOS_SIGNAL_BASE_URL"))
@@ -36,7 +40,7 @@ func (e *Executor) ExecuteStressProbe(ctx context.Context, task worker.Task, par
 				return err
 			}
 		}
-		return taskInterruptCauseOrErr(ctx)
+		return stressProbeResult(ctx, failMode)
 	}
 
 	timer := time.NewTimer(sleep)
@@ -50,12 +54,26 @@ func (e *Executor) ExecuteStressProbe(ctx context.Context, task worker.Task, par
 		case <-ctx.Done():
 			return taskInterruptCauseOrErr(ctx)
 		case <-timer.C:
-			return nil
+			return stressProbeResult(ctx, failMode)
 		case <-stressProbeSignalChan(signalTicker):
 			if err := emitStressProbeSignal(ctx, task.ID, signalBaseURL); err != nil {
 				return err
 			}
 		}
+	}
+}
+
+func stressProbeResult(ctx context.Context, failMode string) error {
+	if err := taskInterruptCauseOrErr(ctx); err != nil {
+		return err
+	}
+	switch failMode {
+	case "", "none":
+		return nil
+	case "always":
+		return fmt.Errorf("stress probe requested retryable failure")
+	default:
+		return fmt.Errorf("unknown stress probe fail mode %q", failMode)
 	}
 }
 

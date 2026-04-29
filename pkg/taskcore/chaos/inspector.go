@@ -90,6 +90,38 @@ func (i *Inspector) TaskStatusByID(ctx context.Context, taskID int32) (string, e
 	return status, nil
 }
 
+func (i *Inspector) TaskAttempts(ctx context.Context, uniqueTag string) (int32, error) {
+	var attempts int32
+	err := i.pool.QueryRow(ctx, `
+		select attempts
+		from anclax.tasks
+		where unique_tag = $1
+		order by created_at desc
+		limit 1
+	`, uniqueTag).Scan(&attempts)
+	return attempts, err
+}
+
+func (i *Inspector) WaitTaskAttemptsAtLeast(ctx context.Context, uniqueTag string, minAttempts int32, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		attempts, err := i.TaskAttempts(ctx, uniqueTag)
+		if err == nil && attempts >= minAttempts {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+	attempts, err := i.TaskAttempts(ctx, uniqueTag)
+	if err != nil {
+		return err
+	}
+	return fmt.Errorf("task %s attempts=%d want>=%d", uniqueTag, attempts, minAttempts)
+}
+
 func (i *Inspector) WaitForTaskByID(ctx context.Context, taskID int32, timeout time.Duration) (string, error) {
 	var deadline time.Time
 	if timeout > 0 {
