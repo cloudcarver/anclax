@@ -74,6 +74,9 @@ func (controller *Controller) RefreshToken(c fiber.Ctx) error {
 	if err := c.Bind().Body(&params); err != nil {
 		return c.SendStatus(fiber.StatusBadRequest)
 	}
+	if params.RefreshToken == "" {
+		return c.Status(fiber.StatusUnauthorized).SendString("Expired refresh token")
+	}
 
 	credentials, err := controller.svc.RefreshToken(c.Context(), params.RefreshToken)
 	if err != nil {

@@ -4,10 +4,15 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/cloudcarver/anclax/pkg/auth"
+	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/hooks"
+	"github.com/cloudcarver/anclax/pkg/macaroons"
+	macaroonstore "github.com/cloudcarver/anclax/pkg/macaroons/store"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
+	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -126,4 +131,113 @@ func TestUpdateUserPassword(t *testing.T) {
 	resultUserID, err := service.UpdateUserPassword(ctx, username, password)
 	require.NoError(t, err)
 	require.Equal(t, userID, resultUserID)
+}
+
+type testKeyStore struct {
+	next     int64
+	keys     map[int64][]byte
+	userKeys map[int32]map[int64]struct{}
+}
+
+func newTestKeyStore() *testKeyStore {
+	return &testKeyStore{
+		keys:     map[int64][]byte{},
+		userKeys: map[int32]map[int64]struct{}{},
+	}
+}
+
+func (s *testKeyStore) Create(_ context.Context, key []byte, _ time.Duration, userID *int32) (int64, error) {
+	s.next++
+	keyID := s.next
+	s.keys[keyID] = append([]byte(nil), key...)
+	if userID != nil {
+		if s.userKeys[*userID] == nil {
+			s.userKeys[*userID] = map[int64]struct{}{}
+		}
+		s.userKeys[*userID][keyID] = struct{}{}
+	}
+	return keyID, nil
+}
+
+func (s *testKeyStore) Get(_ context.Context, keyID int64) ([]byte, error) {
+	key, ok := s.keys[keyID]
+	if !ok {
+		return nil, macaroonstore.ErrKeyNotFound
+	}
+	return append([]byte(nil), key...), nil
+}
+
+func (s *testKeyStore) Delete(_ context.Context, keyID int64) error {
+	if _, ok := s.keys[keyID]; !ok {
+		return macaroonstore.ErrKeyNotFound
+	}
+	delete(s.keys, keyID)
+	for userID, keyIDs := range s.userKeys {
+		delete(keyIDs, keyID)
+		if len(keyIDs) == 0 {
+			delete(s.userKeys, userID)
+		}
+	}
+	return nil
+}
+
+func (s *testKeyStore) DeleteUserKeys(_ context.Context, userID int32) error {
+	keyIDs, ok := s.userKeys[userID]
+	if !ok {
+		return macaroonstore.ErrKeyNotFound
+	}
+	for keyID := range keyIDs {
+		delete(s.keys, keyID)
+	}
+	delete(s.userKeys, userID)
+	return nil
+}
+
+func TestRefreshTokenRotatesRealMacaroons(t *testing.T) {
+	ctx := context.Background()
+	userID := int32(102)
+	orgID := int32(201)
+
+	caveatParser := macaroons.NewCaveatParser()
+	macaroonManager := macaroons.NewMacaroonManager(newTestKeyStore(), caveatParser)
+	authSvc, err := auth.NewAuth(&config.Config{}, macaroonManager, caveatParser, nil)
+	require.NoError(t, err)
+
+	accessToken, err := authSvc.CreateToken(ctx, &userID, auth.NewUserContextCaveat(userID, orgID))
+	require.NoError(t, err)
+
+	refreshToken, err := authSvc.CreateRefreshToken(ctx, &userID, accessToken)
+	require.NoError(t, err)
+
+	svc := &Service{auth: authSvc}
+	credentials, err := svc.RefreshToken(ctx, refreshToken.StringToken())
+	require.NoError(t, err)
+	require.Equal(t, apigen.Bearer, credentials.TokenType)
+	require.NotEmpty(t, credentials.AccessToken)
+	require.NotEmpty(t, credentials.RefreshToken)
+	require.NotEqual(t, accessToken.StringToken(), credentials.AccessToken)
+	require.NotEqual(t, refreshToken.StringToken(), credentials.RefreshToken)
+
+	_, newRefreshCaveat, err := authSvc.ParseRefreshToken(ctx, credentials.RefreshToken)
+	require.NoError(t, err)
+	require.Equal(t, userID, *newRefreshCaveat.UserID)
+	require.Len(t, newRefreshCaveat.AccessTokenCaveats, 1)
+
+	_, _, err = authSvc.ParseRefreshToken(ctx, refreshToken.StringToken())
+	require.Error(t, err)
+}
+
+func TestRefreshTokenParseFailureReturnsRefreshTokenExpired(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	mockAuth := auth.NewMockAuthInterface(ctrl)
+	mockAuth.EXPECT().ParseRefreshToken(ctx, "not-a-refresh-token").Return(nil, nil, macaroons.ErrMalformedToken)
+
+	svc := &Service{auth: mockAuth}
+	credentials, err := svc.RefreshToken(ctx, "not-a-refresh-token")
+	require.Nil(t, credentials)
+	require.ErrorIs(t, err, ErrRefreshTokenExpired)
+	require.ErrorIs(t, err, macaroons.ErrMalformedToken)
 }

@@ -59,7 +59,7 @@ func (s *Service) SignInWithPassword(ctx context.Context, params apigen.SignInRe
 func (s *Service) RefreshToken(ctx context.Context, token string) (*apigen.Credentials, error) {
 	refreshToken, roc, err := s.auth.ParseRefreshToken(ctx, token)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to parse refresh token")
+		return nil, fmt.Errorf("%w: failed to parse refresh token: %w", ErrRefreshTokenExpired, err)
 	}
 
 	if roc.UserID != nil {

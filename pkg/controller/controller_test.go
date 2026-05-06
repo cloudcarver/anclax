@@ -19,6 +19,7 @@ import (
 type stubService struct {
 	service.ServiceInterface
 	signInWithPassword func(context.Context, apigen.SignInRequest) (*apigen.Credentials, error)
+	refreshToken       func(context.Context, string) (*apigen.Credentials, error)
 	isUsernameExists   func(context.Context, string) (bool, error)
 	createNewUser      func(context.Context, string, string) (*service.UserMeta, error)
 	signIn             func(context.Context, int32) (*apigen.Credentials, error)
@@ -26,6 +27,10 @@ type stubService struct {
 
 func (s stubService) SignInWithPassword(ctx context.Context, params apigen.SignInRequest) (*apigen.Credentials, error) {
 	return s.signInWithPassword(ctx, params)
+}
+
+func (s stubService) RefreshToken(ctx context.Context, refreshToken string) (*apigen.Credentials, error) {
+	return s.refreshToken(ctx, refreshToken)
 }
 
 func (s stubService) IsUsernameExists(ctx context.Context, username string) (bool, error) {
@@ -117,6 +122,78 @@ func TestControllerSignIn(t *testing.T) {
 			require.NoError(t, err)
 
 			req := httptest.NewRequest(http.MethodPost, "/auth/sign-in", bytes.NewReader(body))
+			req.Header.Set("Content-Type", fiber.MIMEApplicationJSON)
+
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, tc.expectedStatus, resp.StatusCode)
+
+			if tc.serviceResult != nil {
+				var got apigen.Credentials
+				require.NoError(t, json.NewDecoder(resp.Body).Decode(&got))
+				require.Equal(t, *tc.serviceResult, got)
+			}
+		})
+	}
+}
+
+func TestControllerRefreshToken(t *testing.T) {
+	testCases := []struct {
+		name           string
+		body           string
+		serviceError   error
+		serviceResult  *apigen.Credentials
+		expectedStatus int
+		expectService  bool
+	}{
+		{
+			name:           "missing refresh token",
+			body:           `{}`,
+			expectedStatus: fiber.StatusBadRequest,
+		},
+		{
+			name:           "invalid json",
+			body:           `{`,
+			expectedStatus: fiber.StatusBadRequest,
+		},
+		{
+			name:           "expired refresh token",
+			body:           `{"refreshToken":"refresh-token"}`,
+			serviceError:   service.ErrRefreshTokenExpired,
+			expectedStatus: fiber.StatusUnauthorized,
+			expectService:  true,
+		},
+		{
+			name: "success",
+			body: `{"refreshToken":"refresh-token"}`,
+			serviceResult: &apigen.Credentials{
+				AccessToken:  "new-access-token",
+				RefreshToken: "new-refresh-token",
+				TokenType:    apigen.Bearer,
+			},
+			expectedStatus: fiber.StatusOK,
+			expectService:  true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			app := fiber.New(fiber.Config{ErrorHandler: utils.ErrorHandler})
+			controller := &Controller{
+				svc: stubService{
+					refreshToken: func(ctx context.Context, refreshToken string) (*apigen.Credentials, error) {
+						if !tc.expectService {
+							t.Fatal("refresh service should not be called")
+						}
+						require.Equal(t, "refresh-token", refreshToken)
+						return tc.serviceResult, tc.serviceError
+					},
+				},
+			}
+			app.Post("/auth/refresh", controller.RefreshToken)
+
+			req := httptest.NewRequest(http.MethodPost, "/auth/refresh", bytes.NewBufferString(tc.body))
 			req.Header.Set("Content-Type", fiber.MIMEApplicationJSON)
 
 			resp, err := app.Test(req)
