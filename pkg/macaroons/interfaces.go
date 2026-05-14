@@ -22,11 +22,12 @@ type Caveat interface {
 }
 
 type MacaroonManagerInterface interface {
-	CreateToken(ctx context.Context, caveats []Caveat, ttl time.Duration, userID *int32) (*Macaroon, error)
+	CreateToken(ctx context.Context, caveats []Caveat, ttl time.Duration, groupID *int32) (*Macaroon, error)
 
 	Parse(ctx context.Context, token string) (*Macaroon, error)
 
-	InvalidateUserTokens(ctx context.Context, userID int32) error
+	// InvalidateTokensByGroupID invalidates all tokens in the given group.
+	InvalidateTokensByGroupID(ctx context.Context, groupID int32) error
 
 	InvalidateToken(ctx context.Context, keyID int64) error
 }

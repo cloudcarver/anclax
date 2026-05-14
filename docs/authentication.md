@@ -141,7 +141,7 @@ Use these depending on how much control you need:
 - `auth.CreateToken(...)` / `auth.CreateRefreshToken(...)`
   - lower-level token control for advanced cases
 - `auth.InvalidateUserTokens(ctx, userID)` / `auth.InvalidateToken(ctx, keyID)`
-  - revoke tokens
+  - revoke tokens; the built-in user-scoped flow stores that `userID` as the opaque key group ID
 
 References:
 - service auth logic: `pkg/service/auth_service.go`

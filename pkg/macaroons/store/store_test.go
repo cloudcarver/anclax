@@ -7,6 +7,7 @@ import (
 
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
+	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
 	"github.com/jackc/pgx/v5"
 	"github.com/pkg/errors"
@@ -25,13 +26,16 @@ func TestCreate(t *testing.T) {
 		ctx      = context.Background()
 		ttl      = 1 * time.Hour
 		key      = []byte("test")
-		userID   = int32(201)
+		groupID  = int32(201)
 		currTime = time.Now()
 		keyID    = int64(101)
 		taskID   = int32(101)
 	)
 
-	mockModel.EXPECT().CreateOpaqueKey(gomock.Any(), gomock.Any()).Return(keyID, nil)
+	mockModel.EXPECT().CreateOpaqueKey(gomock.Any(), querier.CreateOpaqueKeyParams{
+		GroupID: &groupID,
+		Key:     key,
+	}).Return(keyID, nil)
 	taskRunner.EXPECT().RunDeleteOpaqueKeyWithTx(
 		ctx,
 		gomock.Any(),
@@ -47,7 +51,7 @@ func TestCreate(t *testing.T) {
 		now:        func() time.Time { return currTime },
 	}
 
-	ret, err := store.Create(ctx, key, ttl, &userID)
+	ret, err := store.Create(ctx, key, ttl, &groupID)
 	require.NoError(t, err)
 	require.Equal(t, keyID, ret)
 }
@@ -160,7 +164,7 @@ func TestGet(t *testing.T) {
 	}
 }
 
-func TestDeleteUserKeys(t *testing.T) {
+func TestDeleteUserKeysDeletesGroupKeys(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -183,8 +187,8 @@ func TestDeleteUserKeys(t *testing.T) {
 	}
 
 	var (
-		ctx    = context.Background()
-		userID = int32(201)
+		ctx     = context.Background()
+		groupID = int32(201)
 	)
 
 	for _, tc := range testCases {
@@ -196,12 +200,12 @@ func TestDeleteUserKeys(t *testing.T) {
 			}
 
 			if tc.err == nil {
-				model.EXPECT().DeleteOpaqueKeys(gomock.Any(), &userID).Return(nil)
+				model.EXPECT().DeleteOpaqueKeys(gomock.Any(), &groupID).Return(nil)
 			} else {
-				model.EXPECT().DeleteOpaqueKeys(gomock.Any(), &userID).Return(tc.err)
+				model.EXPECT().DeleteOpaqueKeys(gomock.Any(), &groupID).Return(tc.err)
 			}
 
-			err := store.DeleteUserKeys(ctx, userID)
+			err := store.DeleteUserKeys(ctx, groupID)
 			if tc.err == nil {
 				require.NoError(t, err)
 			} else if tc.err == pgx.ErrNoRows {

@@ -10,16 +10,16 @@ import (
 )
 
 const createOpaqueKey = `-- name: CreateOpaqueKey :one
-INSERT INTO anclax.opaque_keys (user_id, key) VALUES ($1, $2) RETURNING id
+INSERT INTO anclax.opaque_keys (group_id, key) VALUES ($1, $2) RETURNING id
 `
 
 type CreateOpaqueKeyParams struct {
-	UserID *int32
-	Key    []byte
+	GroupID *int32
+	Key     []byte
 }
 
 func (q *Queries) CreateOpaqueKey(ctx context.Context, arg CreateOpaqueKeyParams) (int64, error) {
-	row := q.db.QueryRow(ctx, createOpaqueKey, arg.UserID, arg.Key)
+	row := q.db.QueryRow(ctx, createOpaqueKey, arg.GroupID, arg.Key)
 	var id int64
 	err := row.Scan(&id)
 	return id, err
@@ -35,11 +35,11 @@ func (q *Queries) DeleteOpaqueKey(ctx context.Context, id int64) error {
 }
 
 const deleteOpaqueKeys = `-- name: DeleteOpaqueKeys :exec
-DELETE FROM anclax.opaque_keys WHERE user_id = $1
+DELETE FROM anclax.opaque_keys WHERE group_id = $1
 `
 
-func (q *Queries) DeleteOpaqueKeys(ctx context.Context, userID *int32) error {
-	_, err := q.db.Exec(ctx, deleteOpaqueKeys, userID)
+func (q *Queries) DeleteOpaqueKeys(ctx context.Context, groupID *int32) error {
+	_, err := q.db.Exec(ctx, deleteOpaqueKeys, groupID)
 	return err
 }
 

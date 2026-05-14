@@ -14,6 +14,7 @@ import (
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
+	"github.com/jackc/pgx/v5"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -133,28 +134,90 @@ func TestUpdateUserPassword(t *testing.T) {
 	require.Equal(t, userID, resultUserID)
 }
 
+func TestDeleteUserByNameDeletesTokenKeysInTransaction(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockModel := model.NewMockModelInterfaceWithTransaction(ctrl)
+
+	var (
+		ctx      = context.Background()
+		username = "testuser"
+		userID   = int32(102)
+	)
+
+	mockModel.EXPECT().DeleteUserByNameReturningID(ctx, username).Return(userID, nil)
+	mockModel.EXPECT().DeleteOpaqueKeys(ctx, &userID).Return(nil)
+
+	service := &Service{m: mockModel}
+
+	err := service.DeleteUserByName(ctx, username)
+	require.NoError(t, err)
+}
+
+func TestDeleteUserByNameNoopsWhenUserDoesNotExist(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockModel := model.NewMockModelInterfaceWithTransaction(ctrl)
+
+	var (
+		ctx      = context.Background()
+		username = "missing-user"
+	)
+
+	mockModel.EXPECT().DeleteUserByNameReturningID(ctx, username).Return(int32(0), pgx.ErrNoRows)
+
+	service := &Service{m: mockModel}
+
+	err := service.DeleteUserByName(ctx, username)
+	require.NoError(t, err)
+}
+
+func TestDeleteUserByNameReturnsTokenKeyDeleteError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockModel := model.NewMockModelInterfaceWithTransaction(ctrl)
+
+	var (
+		ctx       = context.Background()
+		username  = "testuser"
+		userID    = int32(102)
+		deleteErr = errors.New("delete token keys failed")
+	)
+
+	mockModel.EXPECT().DeleteUserByNameReturningID(ctx, username).Return(userID, nil)
+	mockModel.EXPECT().DeleteOpaqueKeys(ctx, &userID).Return(deleteErr)
+
+	service := &Service{m: mockModel}
+
+	err := service.DeleteUserByName(ctx, username)
+	require.ErrorIs(t, err, deleteErr)
+}
+
 type testKeyStore struct {
-	next     int64
-	keys     map[int64][]byte
-	userKeys map[int32]map[int64]struct{}
+	next      int64
+	keys      map[int64][]byte
+	groupKeys map[int32]map[int64]struct{}
 }
 
 func newTestKeyStore() *testKeyStore {
 	return &testKeyStore{
-		keys:     map[int64][]byte{},
-		userKeys: map[int32]map[int64]struct{}{},
+		keys:      map[int64][]byte{},
+		groupKeys: map[int32]map[int64]struct{}{},
 	}
 }
 
-func (s *testKeyStore) Create(_ context.Context, key []byte, _ time.Duration, userID *int32) (int64, error) {
+func (s *testKeyStore) Create(_ context.Context, key []byte, _ time.Duration, groupID *int32) (int64, error) {
 	s.next++
 	keyID := s.next
 	s.keys[keyID] = append([]byte(nil), key...)
-	if userID != nil {
-		if s.userKeys[*userID] == nil {
-			s.userKeys[*userID] = map[int64]struct{}{}
+	if groupID != nil {
+		if s.groupKeys[*groupID] == nil {
+			s.groupKeys[*groupID] = map[int64]struct{}{}
 		}
-		s.userKeys[*userID][keyID] = struct{}{}
+		s.groupKeys[*groupID][keyID] = struct{}{}
 	}
 	return keyID, nil
 }
@@ -172,24 +235,24 @@ func (s *testKeyStore) Delete(_ context.Context, keyID int64) error {
 		return macaroonstore.ErrKeyNotFound
 	}
 	delete(s.keys, keyID)
-	for userID, keyIDs := range s.userKeys {
+	for groupID, keyIDs := range s.groupKeys {
 		delete(keyIDs, keyID)
 		if len(keyIDs) == 0 {
-			delete(s.userKeys, userID)
+			delete(s.groupKeys, groupID)
 		}
 	}
 	return nil
 }
 
-func (s *testKeyStore) DeleteUserKeys(_ context.Context, userID int32) error {
-	keyIDs, ok := s.userKeys[userID]
+func (s *testKeyStore) DeleteUserKeys(_ context.Context, groupID int32) error {
+	keyIDs, ok := s.groupKeys[groupID]
 	if !ok {
 		return macaroonstore.ErrKeyNotFound
 	}
 	for keyID := range keyIDs {
 		delete(s.keys, keyID)
 	}
-	delete(s.userKeys, userID)
+	delete(s.groupKeys, groupID)
 	return nil
 }
 

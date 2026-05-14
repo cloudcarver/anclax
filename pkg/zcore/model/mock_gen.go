@@ -237,17 +237,17 @@ func (mr *MockModelInterfaceMockRecorder) DeleteOpaqueKey(ctx, id any) *gomock.C
 }
 
 // DeleteOpaqueKeys mocks base method.
-func (m *MockModelInterface) DeleteOpaqueKeys(ctx context.Context, userID *int32) error {
+func (m *MockModelInterface) DeleteOpaqueKeys(ctx context.Context, groupID *int32) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteOpaqueKeys", ctx, userID)
+	ret := m.ctrl.Call(m, "DeleteOpaqueKeys", ctx, groupID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteOpaqueKeys indicates an expected call of DeleteOpaqueKeys.
-func (mr *MockModelInterfaceMockRecorder) DeleteOpaqueKeys(ctx, userID any) *gomock.Call {
+func (mr *MockModelInterfaceMockRecorder) DeleteOpaqueKeys(ctx, groupID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteOpaqueKeys", reflect.TypeOf((*MockModelInterface)(nil).DeleteOpaqueKeys), ctx, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteOpaqueKeys", reflect.TypeOf((*MockModelInterface)(nil).DeleteOpaqueKeys), ctx, groupID)
 }
 
 // DeleteUserByName mocks base method.
@@ -262,6 +262,21 @@ func (m *MockModelInterface) DeleteUserByName(ctx context.Context, name string) 
 func (mr *MockModelInterfaceMockRecorder) DeleteUserByName(ctx, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteUserByName", reflect.TypeOf((*MockModelInterface)(nil).DeleteUserByName), ctx, name)
+}
+
+// DeleteUserByNameReturningID mocks base method.
+func (m *MockModelInterface) DeleteUserByNameReturningID(ctx context.Context, name string) (int32, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteUserByNameReturningID", ctx, name)
+	ret0, _ := ret[0].(int32)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteUserByNameReturningID indicates an expected call of DeleteUserByNameReturningID.
+func (mr *MockModelInterfaceMockRecorder) DeleteUserByNameReturningID(ctx, name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteUserByNameReturningID", reflect.TypeOf((*MockModelInterface)(nil).DeleteUserByNameReturningID), ctx, name)
 }
 
 // GetKeyPair mocks base method.

@@ -42,18 +42,18 @@ func (m *MockKeyStore) EXPECT() *MockKeyStoreMockRecorder {
 }
 
 // Create mocks base method.
-func (m *MockKeyStore) Create(ctx context.Context, key []byte, ttl time.Duration, userID *int32) (int64, error) {
+func (m *MockKeyStore) Create(ctx context.Context, key []byte, ttl time.Duration, groupID *int32) (int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Create", ctx, key, ttl, userID)
+	ret := m.ctrl.Call(m, "Create", ctx, key, ttl, groupID)
 	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Create indicates an expected call of Create.
-func (mr *MockKeyStoreMockRecorder) Create(ctx, key, ttl, userID any) *gomock.Call {
+func (mr *MockKeyStoreMockRecorder) Create(ctx, key, ttl, groupID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockKeyStore)(nil).Create), ctx, key, ttl, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockKeyStore)(nil).Create), ctx, key, ttl, groupID)
 }
 
 // Delete mocks base method.
@@ -71,17 +71,17 @@ func (mr *MockKeyStoreMockRecorder) Delete(ctx, keyID any) *gomock.Call {
 }
 
 // DeleteUserKeys mocks base method.
-func (m *MockKeyStore) DeleteUserKeys(ctx context.Context, userID int32) error {
+func (m *MockKeyStore) DeleteUserKeys(ctx context.Context, groupID int32) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteUserKeys", ctx, userID)
+	ret := m.ctrl.Call(m, "DeleteUserKeys", ctx, groupID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteUserKeys indicates an expected call of DeleteUserKeys.
-func (mr *MockKeyStoreMockRecorder) DeleteUserKeys(ctx, userID any) *gomock.Call {
+func (mr *MockKeyStoreMockRecorder) DeleteUserKeys(ctx, groupID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteUserKeys", reflect.TypeOf((*MockKeyStore)(nil).DeleteUserKeys), ctx, userID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteUserKeys", reflect.TypeOf((*MockKeyStore)(nil).DeleteUserKeys), ctx, groupID)
 }
 
 // Get mocks base method.

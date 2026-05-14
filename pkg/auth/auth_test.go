@@ -445,7 +445,7 @@ func TestAuth_InvalidateUserTokens(t *testing.T) {
 			name:   "successful invalidation",
 			userID: userID,
 			setupMock: func() {
-				mockMacaroons.EXPECT().InvalidateUserTokens(gomock.Any(), userID).Return(nil)
+				mockMacaroons.EXPECT().InvalidateTokensByGroupID(gomock.Any(), userID).Return(nil)
 			},
 			expectedError: nil,
 		},
@@ -453,7 +453,7 @@ func TestAuth_InvalidateUserTokens(t *testing.T) {
 			name:   "invalidation failure",
 			userID: userID,
 			setupMock: func() {
-				mockMacaroons.EXPECT().InvalidateUserTokens(gomock.Any(), userID).Return(errors.New("invalidation failed"))
+				mockMacaroons.EXPECT().InvalidateTokensByGroupID(gomock.Any(), userID).Return(errors.New("invalidation failed"))
 			},
 			expectedError: errors.New("invalidation failed"),
 		},

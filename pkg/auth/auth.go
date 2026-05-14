@@ -40,8 +40,8 @@ type AuthInterface interface {
 	// CreateTokenWithRefreshToken creates both access token and refresh token
 	CreateUserTokens(ctx context.Context, userID int32, orgID int32, caveats ...macaroons.Caveat) (*macaroons.Macaroon, *macaroons.Macaroon, error)
 
-	// CreateToken creates a macaroon token, the userID is required to track all generated keys.
-	CreateToken(ctx context.Context, userID *int32, caveats ...macaroons.Caveat) (*macaroons.Macaroon, error)
+	// CreateToken creates a macaroon token, the groupID tracks related generated keys.
+	CreateToken(ctx context.Context, groupID *int32, caveats ...macaroons.Caveat) (*macaroons.Macaroon, error)
 
 	// CreateRefreshToken creates a refresh token for the given userID and access token
 	CreateRefreshToken(ctx context.Context, userID *int32, accessToken *macaroons.Macaroon) (*macaroons.Macaroon, error)
@@ -49,7 +49,8 @@ type AuthInterface interface {
 	// ParseRefreshToken parses the given refresh token and returns the carrying info
 	ParseRefreshToken(ctx context.Context, refreshToken string) (*macaroons.Macaroon, *RefreshOnlyCaveat, error)
 
-	// InvalidateUserTokens invalidates all tokens for the given user
+	// InvalidateUserTokens invalidates all tokens for the given user.
+	// The built-in auth flow uses that user ID as the opaque key group ID.
 	InvalidateUserTokens(ctx context.Context, userID int32) error
 
 	// InvalidateToken invalidates the token with the given key ID
@@ -134,8 +135,8 @@ func (a *Auth) CreateUserTokens(ctx context.Context, userID int32, orgID int32, 
 	return accessToken, refreshToken, nil
 }
 
-func (a *Auth) CreateToken(ctx context.Context, userID *int32, caveats ...macaroons.Caveat) (*macaroons.Macaroon, error) {
-	token, err := a.macaroonManager.CreateToken(ctx, caveats, a.timeoutAccessToken, userID)
+func (a *Auth) CreateToken(ctx context.Context, groupID *int32, caveats ...macaroons.Caveat) (*macaroons.Macaroon, error) {
+	token, err := a.macaroonManager.CreateToken(ctx, caveats, a.timeoutAccessToken, groupID)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create macaroon token")
 	}
@@ -194,7 +195,7 @@ func (a *Auth) ParseRefreshToken(ctx context.Context, refreshToken string) (*mac
 }
 
 func (a *Auth) InvalidateUserTokens(ctx context.Context, userID int32) error {
-	return a.macaroonManager.InvalidateUserTokens(ctx, userID)
+	return a.macaroonManager.InvalidateTokensByGroupID(ctx, userID)
 }
 
 func (a *Auth) InvalidateToken(ctx context.Context, keyID int64) error {

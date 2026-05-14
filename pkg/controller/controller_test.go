@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	anclaxauth "github.com/cloudcarver/anclax/pkg/auth"
 	"github.com/cloudcarver/anclax/pkg/service"
 	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
@@ -46,6 +47,15 @@ func (s stubService) SignIn(ctx context.Context, userID int32) (*apigen.Credenti
 }
 
 var _ service.ServiceInterface = stubService{}
+
+type stubAuth struct {
+	anclaxauth.AuthInterface
+	invalidateUserTokens func(context.Context, int32) error
+}
+
+func (s stubAuth) InvalidateUserTokens(ctx context.Context, userID int32) error {
+	return s.invalidateUserTokens(ctx, userID)
+}
 
 func TestControllerSignInDisabledByDefault(t *testing.T) {
 	app := fiber.New(fiber.Config{ErrorHandler: utils.ErrorHandler})
@@ -138,6 +148,30 @@ func TestControllerSignIn(t *testing.T) {
 	}
 }
 
+func TestControllerSignOutUsesUserIDAsTokenGroupID(t *testing.T) {
+	app := fiber.New(fiber.Config{ErrorHandler: utils.ErrorHandler})
+	groupID := int32(201)
+	controller := &Controller{
+		auth: stubAuth{
+			invalidateUserTokens: func(ctx context.Context, gotGroupID int32) error {
+				require.Equal(t, groupID, gotGroupID)
+				return nil
+			},
+		},
+	}
+	app.Post("/auth/sign-out", func(c fiber.Ctx) error {
+		c.Locals(anclaxauth.ContextKeyUserID, groupID)
+		return controller.SignOut(c)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/sign-out", nil)
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
 func TestControllerRefreshToken(t *testing.T) {
 	testCases := []struct {
 		name           string
@@ -150,7 +184,7 @@ func TestControllerRefreshToken(t *testing.T) {
 		{
 			name:           "missing refresh token",
 			body:           `{}`,
-			expectedStatus: fiber.StatusBadRequest,
+			expectedStatus: fiber.StatusUnauthorized,
 		},
 		{
 			name:           "invalid json",

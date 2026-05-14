@@ -20,6 +20,9 @@ SELECT EXISTS (SELECT 1 FROM anclax.users WHERE name = $1);
 -- name: DeleteUserByName :exec
 UPDATE anclax.users SET deleted_at = CURRENT_TIMESTAMP WHERE name = $1;
 
+-- name: DeleteUserByNameReturningID :one
+UPDATE anclax.users SET deleted_at = CURRENT_TIMESTAMP WHERE name = $1 RETURNING id;
+
 -- name: RestoreUserByName :exec
 UPDATE anclax.users SET deleted_at = NULL WHERE name = $1;
 

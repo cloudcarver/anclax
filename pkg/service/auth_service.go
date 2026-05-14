@@ -164,7 +164,19 @@ func (s *Service) CreateNewUserWithTx(ctx context.Context, tx core.Tx, username,
 }
 
 func (s *Service) DeleteUserByName(ctx context.Context, username string) error {
-	return s.m.DeleteUserByName(ctx, username)
+	return s.m.RunTransaction(ctx, func(txm model.ModelInterface) error {
+		userID, err := txm.DeleteUserByNameReturningID(ctx, username)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil
+			}
+			return errors.Wrapf(err, "failed to delete user by name")
+		}
+		if err := txm.DeleteOpaqueKeys(ctx, &userID); err != nil {
+			return errors.Wrapf(err, "failed to delete user token keys")
+		}
+		return nil
+	})
 }
 
 func (s *Service) RestoreUserByName(ctx context.Context, username string) error {

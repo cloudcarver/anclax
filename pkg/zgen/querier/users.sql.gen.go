@@ -49,6 +49,17 @@ func (q *Queries) DeleteUserByName(ctx context.Context, name string) error {
 	return err
 }
 
+const deleteUserByNameReturningID = `-- name: DeleteUserByNameReturningID :one
+UPDATE anclax.users SET deleted_at = CURRENT_TIMESTAMP WHERE name = $1 RETURNING id
+`
+
+func (q *Queries) DeleteUserByNameReturningID(ctx context.Context, name string) (int32, error) {
+	row := q.db.QueryRow(ctx, deleteUserByNameReturningID, name)
+	var id int32
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getUser = `-- name: GetUser :one
 SELECT id, name, password_hash, password_salt, created_at, updated_at, deleted_at FROM anclax.users
 WHERE id = $1 AND deleted_at IS NULL

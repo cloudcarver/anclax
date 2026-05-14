@@ -72,9 +72,9 @@ func (mr *MockAuthInterfaceMockRecorder) CreateRefreshToken(ctx, userID, accessT
 }
 
 // CreateToken mocks base method.
-func (m *MockAuthInterface) CreateToken(ctx context.Context, userID *int32, caveats ...macaroons.Caveat) (*macaroons.Macaroon, error) {
+func (m *MockAuthInterface) CreateToken(ctx context.Context, groupID *int32, caveats ...macaroons.Caveat) (*macaroons.Macaroon, error) {
 	m.ctrl.T.Helper()
-	varargs := []any{ctx, userID}
+	varargs := []any{ctx, groupID}
 	for _, a := range caveats {
 		varargs = append(varargs, a)
 	}
@@ -85,9 +85,9 @@ func (m *MockAuthInterface) CreateToken(ctx context.Context, userID *int32, cave
 }
 
 // CreateToken indicates an expected call of CreateToken.
-func (mr *MockAuthInterfaceMockRecorder) CreateToken(ctx, userID any, caveats ...any) *gomock.Call {
+func (mr *MockAuthInterfaceMockRecorder) CreateToken(ctx, groupID any, caveats ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx, userID}, caveats...)
+	varargs := append([]any{ctx, groupID}, caveats...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateToken", reflect.TypeOf((*MockAuthInterface)(nil).CreateToken), varargs...)
 }
 

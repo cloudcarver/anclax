@@ -26,8 +26,9 @@ type Querier interface {
 	CreateWorkerRuntimeConfig(ctx context.Context, payload json.RawMessage) (*AnclaxWorkerRuntimeConfig, error)
 	DeleteKeyPair(ctx context.Context, accessKey string) error
 	DeleteOpaqueKey(ctx context.Context, id int64) error
-	DeleteOpaqueKeys(ctx context.Context, userID *int32) error
+	DeleteOpaqueKeys(ctx context.Context, groupID *int32) error
 	DeleteUserByName(ctx context.Context, name string) error
+	DeleteUserByNameReturningID(ctx context.Context, name string) (int32, error)
 	GetKeyPair(ctx context.Context, accessKey string) (*AnclaxAccessKeyPair, error)
 	GetLastTaskErrorEvent(ctx context.Context, taskID int32) (*AnclaxEvent, error)
 	GetLatestWorkerRuntimeConfig(ctx context.Context) (*AnclaxWorkerRuntimeConfig, error)

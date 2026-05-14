@@ -1,0 +1,31 @@
+services:
+  dev:
+    build:
+      context: ..
+      dockerfile: ./dev/Dockerfile.dev
+    ports: 
+      - 2911:2911
+    command:
+      - go
+      - run
+      - cmd/server/main.go
+      - start
+    volumes:
+      - go-data:/go/pkg/mod
+      - go-build-data:/root/.cache/go-build
+      - ../:/app
+    restart: always
+
+  db:
+    image: "postgres:17"
+    ports:
+      - 7432:7432
+    environment:
+      POSTGRES_PASSWORD: postgres
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+    volumes:
+      - ../dev/e2e_postgres.conf:/etc/postgresql/postgresql.conf:ro
+
+volumes:
+  go-data:
+  go-build-data:
