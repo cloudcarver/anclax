@@ -78,6 +78,20 @@ func TestAuth_Authfunc(t *testing.T) {
 			expectedStatus: fiber.StatusUnauthorized,
 		},
 		{
+			name:       "duplicate user context caveat",
+			authHeader: testToken,
+			setupMock: func() {
+				macaroon, err := macaroons.CreateMacaroon(123, []byte("key"), []macaroons.Caveat{
+					NewUserContextCaveat(101, 202),
+					NewUserContextCaveat(303, 404),
+				})
+				require.NoError(t, err)
+
+				mockMacaroons.EXPECT().Parse(gomock.Any(), testToken).Return(macaroon, nil)
+			},
+			expectedStatus: fiber.StatusUnauthorized,
+		},
+		{
 			name:       "successful authorization",
 			authHeader: testToken,
 			setupMock: func() {
@@ -418,6 +432,37 @@ func TestRefreshOnlyCaveat_JSONRoundTrip(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, accessCaveat.UserID, uc.UserID)
 	require.Equal(t, accessCaveat.OrgID, uc.OrgID)
+}
+
+func TestUserContextCaveat_ValidateRejectsDuplicateContext(t *testing.T) {
+	app := fiber.New()
+
+	app.Get("/test", func(c fiber.Ctx) error {
+		first := NewUserContextCaveat(101, 202)
+		second := NewUserContextCaveat(303, 404)
+
+		require.NoError(t, first.Validate(c))
+
+		err := second.Validate(c)
+		require.Error(t, err)
+		require.ErrorIs(t, err, macaroons.ErrCaveatCheckFailed)
+		require.Contains(t, err.Error(), "user_context caveat already exists")
+
+		userID, err := GetUserID(c)
+		require.NoError(t, err)
+		require.Equal(t, int32(101), userID)
+
+		orgID, err := GetOrgID(c)
+		require.NoError(t, err)
+		require.Equal(t, int32(202), orgID)
+
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
 func TestAuth_InvalidateUserTokens(t *testing.T) {

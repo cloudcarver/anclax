@@ -32,6 +32,9 @@ func (uc *UserContextCaveat) Type() string {
 }
 
 func (uc *UserContextCaveat) Validate(ctx fiber.Ctx) error {
+	if ctx.Locals(ContextKeyUserID) != nil && ctx.Locals(ContextKeyOrgID) != nil {
+		return errors.Wrap(macaroons.ErrCaveatCheckFailed, "user_context caveat already exists")
+	}
 	ctx.Locals(ContextKeyUserID, uc.UserID)
 	ctx.Locals(ContextKeyOrgID, uc.OrgID)
 	return nil
