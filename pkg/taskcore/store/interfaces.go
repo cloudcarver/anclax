@@ -61,7 +61,4 @@ type TaskStoreInterface interface {
 
 	GetLastTaskErrorEvent(ctx context.Context, taskID int32) (*apigen.Event, error)
 	GetLastTaskErrorEventWithTx(ctx context.Context, tx core.Tx, taskID int32) (*apigen.Event, error)
-
-	WaitForTask(ctx context.Context, taskID int32, opts ...WaitForTaskOption) error
-	WaitForTaskWithTx(ctx context.Context, tx core.Tx, taskID int32, opts ...WaitForTaskOption) error
 }

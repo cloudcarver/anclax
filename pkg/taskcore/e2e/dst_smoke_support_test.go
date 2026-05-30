@@ -21,6 +21,7 @@ import (
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/globalctx"
 	"github.com/cloudcarver/anclax/pkg/taskcore/ctrl"
+	tasklistener "github.com/cloudcarver/anclax/pkg/taskcore/listener"
 	"github.com/cloudcarver/anclax/pkg/taskcore/pgnotify"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
@@ -407,9 +408,9 @@ type controlPlaneActor struct {
 	model        model.ModelInterface
 }
 
-func newControlPlaneActor(model model.ModelInterface, store taskcore.TaskStoreInterface) *controlPlaneActor {
+func newControlPlaneActor(model model.ModelInterface, store taskcore.TaskStoreInterface, taskListener tasklistener.TaskEventListener) *controlPlaneActor {
 	runner := taskgen.NewTaskRunner(store)
-	controlPlane := ctrl.NewWorkerControlPlane(model, runner, store)
+	controlPlane := ctrl.NewWorkerControlPlane(model, runner, store, taskListener)
 	return &controlPlaneActor{available: true, controlPlane: controlPlane, model: model}
 }
 

@@ -28,8 +28,6 @@ type TaskStore struct {
 }
 
 // NewTaskStore returns a TaskStore backed by the provided model and default time source.
-// It uses time.Now for scheduling decisions and the given model for persistence.
-// Callers typically keep a single instance and use the WithTx variants for transaction-scoped work.
 func NewTaskStore(model model.ModelInterface) TaskStoreInterface {
 	return &TaskStore{
 		now:   time.Now,

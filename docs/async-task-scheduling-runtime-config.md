@@ -100,14 +100,22 @@ Note: the control-plane API supplies `requestID`, `notifyInterval`, and `listenT
 Use the control plane API to enqueue and wait for runtime config updates:
 
 ```go
-import "github.com/cloudcarver/anclax/pkg/taskcore/ctrl"
+import (
+    "context"
+
+    "github.com/cloudcarver/anclax/pkg/taskcore/ctrl"
+    tasklistener "github.com/cloudcarver/anclax/pkg/taskcore/listener"
+)
 
 maxStrict := int32(20)
 defaultWeight := int32(1)
 labels := []string{"w1", "w2"}
 weights := []int32{5, 1}
 
-controlPlane := ctrl.NewWorkerControlPlane(model, taskRunner, taskStore)
+taskListener := tasklistener.NewPollingTaskEventListener(model)
+defer taskListener.Close(context.Background())
+
+controlPlane := ctrl.NewWorkerControlPlane(model, taskRunner, taskStore, taskListener)
 err := controlPlane.UpdateWorkerRuntimeConfig(ctx,
     &ctrl.UpdateWorkerRuntimeConfigRequest{
         MaxStrictPercentage: &maxStrict,

@@ -33,6 +33,7 @@ func InitializeApplication(cfg *config.Config, libCfg *config.LibConfig) (*app.A
 		controller.NewController,
 		controller.NewValidator,
 		model.NewModel,
+		NewTaskEventListener,
 		server.NewServer,
 		auth.NewAuth,
 		macaroons.NewMacaroonManager,

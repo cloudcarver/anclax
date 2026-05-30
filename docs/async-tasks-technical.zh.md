@@ -432,28 +432,28 @@ taskID, err := taskRunner.RunSendWelcomeEmail(ctx, params,
 ### 等待任务完成
 
 有时需要阻塞直到任务完成（用于测试、编排或 CLI 工作流）。
-TaskStore 提供了轮询辅助方法，用于等待终态并附带失败上下文。
+WorkerControlPlane 提供了等待辅助方法，用于等待终态并附带失败上下文。
 
 ```go
-store := taskcore.NewTaskStore(model)
-err := store.WaitForTask(ctx, taskID,
-    taskcore.WithWaitForTaskPollInterval(200*time.Millisecond),
-    taskcore.WithWaitForTaskTimeout(30*time.Second),
-)
+ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+defer cancel()
+
+err := controlPlane.WaitForTask(ctx, taskID)
 ```
 
 **工作机制：**
-- 轮询 `GetTaskByID`，直到任务状态为 `completed` 或 `failed`。
+- 等待任务进入 `completed`、`failed` 或 `cancelled`。
 - 失败时读取最新的 TaskError 事件，并返回包含以下信息的错误消息：
   - 任务尝试次数
   - 重试策略的最大尝试次数
   - TaskError 事件中的最新错误消息
+- 取消时返回包装了 `ErrTaskCancelled` 的错误。
 - 超时或上下文取消时，直接返回上下文错误。
 
 **实现参考：**
-- `pkg/taskcore/wait.go` 实现轮询辅助方法。
-- `pkg/taskcore/store.go` 暴露 `GetTaskByID` 和 `GetLastTaskErrorEvent`。
-- `sql/queries/tasks.sql` 定义 events 表的 `GetLastTaskErrorEvent` 查询。
+- `pkg/taskcore/ctrl/ctrl.go` 实现公开等待辅助方法。
+- `pkg/taskcore/listener` 实现内部 task listener。
+- `sql/queries/tasks.sql` 定义 wait status 和 task error 查询。
 
 ### 失败钩子
 

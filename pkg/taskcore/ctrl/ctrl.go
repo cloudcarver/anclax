@@ -3,15 +3,19 @@ package ctrl
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"time"
 
 	"github.com/cloudcarver/anclax/core"
 	"github.com/cloudcarver/anclax/pkg/logger"
+	tasklistener "github.com/cloudcarver/anclax/pkg/taskcore/listener"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
+	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/pkg/errors"
 )
 
@@ -21,9 +25,10 @@ const defaultAliveWorkerHeartbeatTTL = 9 * time.Second
 
 // WorkerControlPlane coordinates worker runtime configuration updates.
 type WorkerControlPlane struct {
-	model  model.ModelInterface
-	runner taskgen.TaskRunner
-	store  taskcore.TaskStoreInterface
+	model        model.ModelInterface
+	runner       taskgen.TaskRunner
+	store        taskcore.TaskStoreInterface
+	taskListener tasklistener.TaskEventListener
 
 	now            func() time.Time
 	aliveWorkerTTL time.Duration
@@ -34,11 +39,12 @@ type taskTagSelector struct {
 	exceptTagSetsJSON json.RawMessage
 }
 
-func NewWorkerControlPlane(model model.ModelInterface, runner taskgen.TaskRunner, store taskcore.TaskStoreInterface) *WorkerControlPlane {
+func NewWorkerControlPlane(model model.ModelInterface, runner taskgen.TaskRunner, store taskcore.TaskStoreInterface, taskListener tasklistener.TaskEventListener) *WorkerControlPlane {
 	return &WorkerControlPlane{
 		model:          model,
 		runner:         runner,
 		store:          store,
+		taskListener:   taskListener,
 		now:            time.Now,
 		aliveWorkerTTL: defaultAliveWorkerHeartbeatTTL,
 	}
@@ -189,13 +195,85 @@ func (c *WorkerControlPlane) StartUpdateWorkerRuntimeConfig(ctx context.Context,
 
 // WaitForTask waits for the given task to finish.
 func (c *WorkerControlPlane) WaitForTask(ctx context.Context, taskID int32) error {
-	if taskID <= 0 {
-		return errors.New("wait for task requires a positive taskID")
+	ch, err := c.taskListener.WaitTask(ctx, taskID)
+	if err != nil {
+		return mapWaitTaskError(err)
 	}
-	if err := c.store.WaitForTask(ctx, taskID); err != nil {
-		return errors.Wrap(err, "wait for task")
+
+	select {
+	case event, ok := <-ch:
+		if !ok {
+			if ctx.Err() != nil {
+				return errors.Wrap(ctx.Err(), "wait for task")
+			}
+			return errors.Wrap(tasklistener.ErrListenerClosed, "wait for task")
+		}
+		if event.Err != nil {
+			return mapWaitTaskError(event.Err)
+		}
+		return c.handleTaskTerminalEvent(ctx, event)
+	case <-ctx.Done():
+		return errors.Wrap(ctx.Err(), "wait for task")
 	}
-	return nil
+}
+
+func mapWaitTaskError(err error) error {
+	if errors.Is(err, tasklistener.ErrTaskNotFound) {
+		return errors.Wrap(taskcore.ErrTaskNotFound, "wait for task")
+	}
+	return errors.Wrap(err, "wait for task")
+}
+
+func (c *WorkerControlPlane) handleTaskTerminalEvent(ctx context.Context, event tasklistener.TaskTerminalEvent) error {
+	switch event.Status {
+	case apigen.Completed:
+		return nil
+	case apigen.Failed:
+		return c.buildTaskFailedError(ctx, event.TaskID)
+	case apigen.Cancelled:
+		return errors.Wrapf(taskcore.ErrTaskCancelled, "task %d cancelled", event.TaskID)
+	default:
+		return errors.Errorf("task %d reached non-terminal status %s", event.TaskID, event.Status)
+	}
+}
+
+func (c *WorkerControlPlane) buildTaskFailedError(ctx context.Context, taskID int32) error {
+	task, err := c.model.GetTaskByID(ctx, taskID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errors.Wrap(taskcore.ErrTaskNotFound, "get failed task")
+		}
+		return errors.Wrap(err, "get failed task")
+	}
+
+	lastError := "unknown"
+	if event, err := c.model.GetLastTaskErrorEvent(ctx, taskID); err == nil {
+		if event.Spec.TaskError != nil {
+			lastError = event.Spec.TaskError.Error
+		}
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return errors.Wrap(err, "get last task error event")
+	}
+
+	maxAttempts := formatMaxAttempts(task.Attributes.RetryPolicy)
+	return errors.Errorf(
+		"task %s failed (id=%d attempts=%d max_attempts=%s last_error=%s)",
+		task.Spec.Type,
+		task.ID,
+		task.Attempts,
+		maxAttempts,
+		lastError,
+	)
+}
+
+func formatMaxAttempts(policy *apigen.TaskRetryPolicy) string {
+	if policy == nil {
+		return "0"
+	}
+	if policy.MaxAttempts < 0 {
+		return "unlimited"
+	}
+	return strconv.FormatInt(int64(policy.MaxAttempts), 10)
 }
 
 // UpdateWorkerRuntimeConfig enqueues a runtime config update task and waits for all workers to ack it.
@@ -251,7 +329,7 @@ func (c *WorkerControlPlane) PauseTask(ctx context.Context, taskID int32) error 
 		log.Info("no alive workers to broadcast pause task to")
 		return nil
 	}
-	if err := c.store.WaitForTask(ctx, broadcastTaskID); err != nil {
+	if err := c.WaitForTask(ctx, broadcastTaskID); err != nil {
 		return errors.Wrap(err, "wait for broadcast pause task")
 	}
 	return nil
@@ -297,7 +375,7 @@ func (c *WorkerControlPlane) CancelTask(ctx context.Context, taskID int32) error
 		log.Info("no alive workers to broadcast cancel task to")
 		return nil
 	}
-	if err := c.store.WaitForTask(ctx, broadcastTaskID); err != nil {
+	if err := c.WaitForTask(ctx, broadcastTaskID); err != nil {
 		return errors.Wrap(err, "wait for broadcast cancel task")
 	}
 	return nil
@@ -337,7 +415,7 @@ func (c *WorkerControlPlane) PauseTasksByTags(ctx context.Context, tags []string
 	if broadcastTaskID == 0 {
 		return nil
 	}
-	if err := c.store.WaitForTask(ctx, broadcastTaskID); err != nil {
+	if err := c.WaitForTask(ctx, broadcastTaskID); err != nil {
 		return errors.Wrap(err, "wait for broadcast pause task")
 	}
 	return nil
@@ -419,7 +497,7 @@ func (c *WorkerControlPlane) CancelTasksByTags(ctx context.Context, tags []strin
 	if broadcastTaskID == 0 {
 		return nil
 	}
-	if err := c.store.WaitForTask(ctx, broadcastTaskID); err != nil {
+	if err := c.WaitForTask(ctx, broadcastTaskID); err != nil {
 		return errors.Wrap(err, "wait for broadcast cancel task")
 	}
 	return nil

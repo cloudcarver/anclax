@@ -417,6 +417,17 @@ LIMIT 1;
 SELECT * FROM anclax.tasks
 WHERE id = $1;
 
+-- name: GetTaskWaitStatusByID :one
+SELECT id, status
+FROM anclax.tasks
+WHERE id = $1;
+
+-- name: ListTerminalTaskWaitStatuses :many
+SELECT id, status
+FROM anclax.tasks
+WHERE id = ANY(sqlc.arg(ids)::int[])
+  AND status IN ('completed', 'failed', 'cancelled');
+
 -- name: ListTaskDescendantIDs :many
 WITH RECURSIVE descendants AS (
     SELECT t.id

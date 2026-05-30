@@ -628,6 +628,24 @@ func (q *Queries) GetTaskByUniqueTag(ctx context.Context, uniqueTag *string) (*A
 	return &i, err
 }
 
+const getTaskWaitStatusByID = `-- name: GetTaskWaitStatusByID :one
+SELECT id, status
+FROM anclax.tasks
+WHERE id = $1
+`
+
+type GetTaskWaitStatusByIDRow struct {
+	ID     int32
+	Status string
+}
+
+func (q *Queries) GetTaskWaitStatusByID(ctx context.Context, id int32) (*GetTaskWaitStatusByIDRow, error) {
+	row := q.db.QueryRow(ctx, getTaskWaitStatusByID, id)
+	var i GetTaskWaitStatusByIDRow
+	err := row.Scan(&i.ID, &i.Status)
+	return &i, err
+}
+
 const incrementAttempts = `-- name: IncrementAttempts :exec
 UPDATE anclax.tasks
 SET attempts = attempts + 1, updated_at = CURRENT_TIMESTAMP
@@ -775,6 +793,38 @@ func (q *Queries) ListTaskIDsByTags(ctx context.Context, arg ListTaskIDsByTagsPa
 			return nil, err
 		}
 		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTerminalTaskWaitStatuses = `-- name: ListTerminalTaskWaitStatuses :many
+SELECT id, status
+FROM anclax.tasks
+WHERE id = ANY($1::int[])
+  AND status IN ('completed', 'failed', 'cancelled')
+`
+
+type ListTerminalTaskWaitStatusesRow struct {
+	ID     int32
+	Status string
+}
+
+func (q *Queries) ListTerminalTaskWaitStatuses(ctx context.Context, ids []int32) ([]*ListTerminalTaskWaitStatusesRow, error) {
+	rows, err := q.db.Query(ctx, listTerminalTaskWaitStatuses, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*ListTerminalTaskWaitStatusesRow
+	for rows.Next() {
+		var i ListTerminalTaskWaitStatusesRow
+		if err := rows.Scan(&i.ID, &i.Status); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

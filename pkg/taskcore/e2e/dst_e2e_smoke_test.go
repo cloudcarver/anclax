@@ -6,12 +6,15 @@ package taskcoree2e_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/cloudcarver/anclax/core"
 	taskcoree2e "github.com/cloudcarver/anclax/pkg/taskcore/e2e/gen"
+	tasklistener "github.com/cloudcarver/anclax/pkg/taskcore/listener"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
@@ -24,6 +27,9 @@ func TestDSTTaskStoreScenariosSmoke(t *testing.T) {
 	withSmokePostgres(t, func(ctx context.Context, m model.ModelInterface) {
 		env, err := newDSTEnv(m)
 		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, env.close(ctx))
+		}()
 
 		err = taskcoree2e.RunAll(ctx, func(ctx context.Context) (taskcoree2e.Actors, error) {
 			return taskcoree2e.Actors{
@@ -46,6 +52,9 @@ func TestDSTTaskStoreScenariosStressSmoke(t *testing.T) {
 				if err := prevEnv.runtime.stopAllWorkers(ctx, 3*time.Second); err != nil {
 					return taskcoree2e.Actors{}, err
 				}
+				if err := prevEnv.close(ctx); err != nil {
+					return taskcoree2e.Actors{}, err
+				}
 			}
 			if err := resetDSTState(ctx, m); err != nil {
 				return taskcoree2e.Actors{}, err
@@ -64,6 +73,7 @@ func TestDSTTaskStoreScenariosStressSmoke(t *testing.T) {
 		}, taskcoree2e.RunOptions{Repeat: 3, ContinueOnError: true})
 		if prevEnv != nil {
 			require.NoError(t, prevEnv.runtime.stopAllWorkers(ctx, 3*time.Second))
+			require.NoError(t, prevEnv.close(ctx))
 		}
 		for _, run := range report.Runs {
 			t.Logf("stress run %d duration=%s err=%v", run.Iteration, run.Duration, run.Err)
@@ -75,6 +85,7 @@ func TestDSTTaskStoreScenariosStressSmoke(t *testing.T) {
 
 type dstEnv struct {
 	store        taskcore.TaskStoreInterface
+	listener     *tasklistener.PollingTaskEventListener
 	taskStore    *taskStoreActor
 	runtime      *runtimeActor
 	validator    *validatorActor
@@ -82,6 +93,7 @@ type dstEnv struct {
 }
 
 func newDSTEnv(m model.ModelInterface) (*dstEnv, error) {
+	taskListener := tasklistener.NewPollingTaskEventListener(m)
 	store := taskcore.NewTaskStore(m)
 
 	taskStore := &taskStoreActor{
@@ -91,11 +103,16 @@ func newDSTEnv(m model.ModelInterface) (*dstEnv, error) {
 
 	return &dstEnv{
 		store:        store,
+		listener:     taskListener,
 		taskStore:    taskStore,
 		runtime:      newRuntimeActor(m),
 		validator:    newValidatorActor(m),
-		controlPlane: newControlPlaneActor(m, store),
+		controlPlane: newControlPlaneActor(m, store, taskListener),
 	}, nil
+}
+
+func (e *dstEnv) close(ctx context.Context) error {
+	return e.listener.Close(ctx)
 }
 
 func resetDSTState(ctx context.Context, m model.ModelInterface) error {
@@ -351,6 +368,33 @@ func (a *taskStoreActor) taskIDByName(ctx context.Context, task string) (int32, 
 		return 0, err
 	}
 	return id, nil
+}
+
+func (a *controlPlaneActor) WaitForTaskFailed(ctx context.Context, task string, expectedError string) error {
+	id, err := a.taskIDByName(ctx, task)
+	if err != nil {
+		return err
+	}
+	err = a.controlPlane.WaitForTask(ctx, id)
+	if err == nil {
+		return fmt.Errorf("expected task %q to fail", task)
+	}
+	if !strings.Contains(err.Error(), expectedError) {
+		return fmt.Errorf("expected task %q wait error to contain %q: %w", task, expectedError, err)
+	}
+	return nil
+}
+
+func (a *controlPlaneActor) WaitForTaskCancelled(ctx context.Context, task string) error {
+	id, err := a.taskIDByName(ctx, task)
+	if err != nil {
+		return err
+	}
+	err = a.controlPlane.WaitForTask(ctx, id)
+	if !errors.Is(err, taskcore.ErrTaskCancelled) {
+		return fmt.Errorf("expected task %q wait error to be cancelled: %w", task, err)
+	}
+	return nil
 }
 
 func (a *taskStoreActor) Sleep(ctx context.Context, seconds int32) error {

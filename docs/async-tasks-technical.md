@@ -432,28 +432,28 @@ Tasks may include an optional `parentTaskId` to form a hierarchy. Use `taskcore.
 ### Waiting for Task Completion
 
 Sometimes you need to block until a task finishes (for tests, orchestration, or CLI workflows).
-TaskStore provides a polling helper that waits for terminal states and includes failure context.
+WorkerControlPlane provides a wait helper that waits for terminal states and includes failure context.
 
 ```go
-store := taskcore.NewTaskStore(model)
-err := store.WaitForTask(ctx, taskID,
-    taskcore.WithWaitForTaskPollInterval(200*time.Millisecond),
-    taskcore.WithWaitForTaskTimeout(30*time.Second),
-)
+ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+defer cancel()
+
+err := controlPlane.WaitForTask(ctx, taskID)
 ```
 
 **How it works:**
-- Polls `GetTaskByID` until the task is `completed` or `failed`.
+- Waits until the task reaches `completed`, `failed`, or `cancelled`.
 - On failure, reads the most recent TaskError event and returns a message that includes:
   - the task attempt count
   - the retry policy max attempts
   - the last error message from the TaskError event
+- On cancellation, returns an error wrapping `ErrTaskCancelled`.
 - On timeout or context cancellation, returns the context error.
 
 **Implementation references:**
-- `pkg/taskcore/wait.go` implements the polling helper.
-- `pkg/taskcore/store.go` exposes `GetTaskByID` and `GetLastTaskErrorEvent`.
-- `sql/queries/tasks.sql` defines `GetLastTaskErrorEvent` for the events table.
+- `pkg/taskcore/ctrl/ctrl.go` implements the public wait helper.
+- `pkg/taskcore/listener` implements the internal task listener.
+- `sql/queries/tasks.sql` defines wait status and task error queries.
 
 ### Failure Hooks
 

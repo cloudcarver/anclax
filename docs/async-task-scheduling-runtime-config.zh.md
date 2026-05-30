@@ -100,14 +100,22 @@ Anclax 提供 `updateWorkerRuntimeConfig` 任务（定义见 `api/tasks/tasks.ya
 建议通过控制面 API 入队并等待配置更新完成：
 
 ```go
-import "github.com/cloudcarver/anclax/pkg/taskcore/ctrl"
+import (
+    "context"
+
+    "github.com/cloudcarver/anclax/pkg/taskcore/ctrl"
+    tasklistener "github.com/cloudcarver/anclax/pkg/taskcore/listener"
+)
 
 maxStrict := int32(20)
 defaultWeight := int32(1)
 labels := []string{"w1", "w2"}
 weights := []int32{5, 1}
 
-controlPlane := ctrl.NewWorkerControlPlane(model, taskRunner, taskStore)
+taskListener := tasklistener.NewPollingTaskEventListener(model)
+defer taskListener.Close(context.Background())
+
+controlPlane := ctrl.NewWorkerControlPlane(model, taskRunner, taskStore, taskListener)
 err := controlPlane.UpdateWorkerRuntimeConfig(ctx,
     &ctrl.UpdateWorkerRuntimeConfigRequest{
         MaxStrictPercentage: &maxStrict,

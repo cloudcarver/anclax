@@ -224,7 +224,7 @@ defaultWeight := int32(1)
 labels := []string{"w1", "w2"}
 weights := []int32{5, 1}
 
-controlPlane := ctrl.NewWorkerControlPlane(h.model, h.taskRunner, h.taskStore)
+controlPlane := ctrl.NewWorkerControlPlane(h.model, h.taskRunner, h.taskStore, h.taskListener)
 err := controlPlane.UpdateWorkerRuntimeConfig(ctx,
     &ctrl.UpdateWorkerRuntimeConfigRequest{
         MaxStrictPercentage: &maxStrict,
@@ -235,7 +235,7 @@ err := controlPlane.UpdateWorkerRuntimeConfig(ctx,
 )
 ```
 
-The control plane always enqueues the config-update task with reserved max strict priority and hides LISTEN/NOTIFY details.
+The control plane always enqueues the config-update task with reserved max strict priority and hides task-wait listener details.
 
 For full semantics (strict cap formula, label-group mapping, LISTEN/NOTIFY propagation, ACK convergence, and supersede behavior), see:
 - [Scheduling & Runtime Config Guide](async-task-scheduling-runtime-config.md)

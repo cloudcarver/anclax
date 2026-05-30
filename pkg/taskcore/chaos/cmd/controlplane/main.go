@@ -15,6 +15,7 @@ import (
 	"github.com/cloudcarver/anclax/pkg/app/closer"
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/taskcore/ctrl"
+	tasklistener "github.com/cloudcarver/anclax/pkg/taskcore/listener"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
@@ -106,9 +107,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	listener := tasklistener.NewPollingTaskEventListener(m)
+	cm.Register(listener.Close)
 	store := taskcore.NewTaskStore(m)
 	runner := taskgen.NewTaskRunner(store)
-	controlPlane := ctrl.NewWorkerControlPlane(m, runner, store)
+	controlPlane := ctrl.NewWorkerControlPlane(m, runner, store, listener)
 
 	a := &app{store: store, runner: runner, controlPlane: controlPlane, model: m, signals: map[int32]signalState{}}
 	mux := http.NewServeMux()

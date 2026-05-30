@@ -60,7 +60,8 @@ func InitializeApplication(cfg *config.Config, libCfg *config.LibConfig) (*app.A
 		return nil, err
 	}
 	debugServer := app.NewDebugServer(cfg, globalContext)
-	workerControlPlane := ctrl.NewWorkerControlPlane(modelInterface, taskRunner, taskStoreInterface)
+	taskEventListener := NewTaskEventListener(modelInterface, closerManager)
+	workerControlPlane := ctrl.NewWorkerControlPlane(modelInterface, taskRunner, taskStoreInterface, taskEventListener)
 	application, err := app.NewApplication(globalContext, cfg, serverServer, metricsServer, workerInterface, debugServer, authInterface, taskStoreInterface, workerControlPlane, serviceInterface, anclaxHookInterface, caveatParserInterface, closerManager)
 	if err != nil {
 		return nil, err

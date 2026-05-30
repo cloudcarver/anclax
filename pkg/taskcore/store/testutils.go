@@ -1,12 +1,10 @@
 package store
 
 import (
-	"context"
 	"fmt"
 	reflect "reflect"
 
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
-	gomock "go.uber.org/mock/gomock"
 )
 
 type OverrideMatcher struct {
@@ -31,18 +29,4 @@ func (m *OverrideMatcher) Matches(x any) bool {
 
 func (m *OverrideMatcher) String() string {
 	return fmt.Sprintf("is equal to %v", m.f)
-}
-
-type MockTaskStoreInterfaceExtended struct {
-	*MockTaskStoreInterface
-}
-
-func NewMockTaskStoreInterfaceWithTx(ctrl *gomock.Controller) *MockTaskStoreInterfaceExtended {
-	return &MockTaskStoreInterfaceExtended{
-		MockTaskStoreInterface: NewMockTaskStoreInterface(ctrl),
-	}
-}
-
-func (m *MockTaskStoreInterfaceExtended) WaitForTask(ctx context.Context, taskID int32, opts ...WaitForTaskOption) error {
-	return m.MockTaskStoreInterface.WaitForTask(ctx, taskID, opts...)
 }

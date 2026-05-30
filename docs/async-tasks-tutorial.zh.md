@@ -224,7 +224,7 @@ defaultWeight := int32(1)
 labels := []string{"w1", "w2"}
 weights := []int32{5, 1}
 
-controlPlane := ctrl.NewWorkerControlPlane(h.model, h.taskRunner, h.taskStore)
+controlPlane := ctrl.NewWorkerControlPlane(h.model, h.taskRunner, h.taskStore, h.taskListener)
 err := controlPlane.UpdateWorkerRuntimeConfig(ctx,
     &ctrl.UpdateWorkerRuntimeConfigRequest{
         MaxStrictPercentage: &maxStrict,
@@ -235,7 +235,7 @@ err := controlPlane.UpdateWorkerRuntimeConfig(ctx,
 )
 ```
 
-控制面会始终使用保留最高严格优先级入队配置更新任务，并封装 LISTEN/NOTIFY 细节。
+控制面会始终使用保留最高严格优先级入队配置更新任务，并封装 task wait listener 细节。
 
 完整语义（strict cap、标签组映射、LISTEN/NOTIFY 传播、ACK 收敛、supersede 行为）请见：
 - [调度与运行时配置指南](async-task-scheduling-runtime-config.zh.md)

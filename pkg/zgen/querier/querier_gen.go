@@ -37,6 +37,7 @@ type Querier interface {
 	GetOrgByName(ctx context.Context, name string) (*AnclaxOrg, error)
 	GetTaskByID(ctx context.Context, id int32) (*AnclaxTask, error)
 	GetTaskByUniqueTag(ctx context.Context, uniqueTag *string) (*AnclaxTask, error)
+	GetTaskWaitStatusByID(ctx context.Context, id int32) (*GetTaskWaitStatusByIDRow, error)
 	GetUser(ctx context.Context, id int32) (*AnclaxUser, error)
 	GetUserByName(ctx context.Context, name string) (*AnclaxUser, error)
 	GetUserDefaultOrg(ctx context.Context, userID int32) (int32, error)
@@ -52,6 +53,7 @@ type Querier interface {
 	ListOrgs(ctx context.Context, userID int32) ([]*AnclaxOrg, error)
 	ListTaskDescendantIDs(ctx context.Context, parentTaskID *int32) ([]int32, error)
 	ListTaskIDsByTags(ctx context.Context, arg ListTaskIDsByTagsParams) ([]int32, error)
+	ListTerminalTaskWaitStatuses(ctx context.Context, ids []int32) ([]*ListTerminalTaskWaitStatusesRow, error)
 	MarkWorkerOffline(ctx context.Context, id uuid.UUID) error
 	NotifyWorkerRuntimeConfig(ctx context.Context, payload string) error
 	NotifyWorkerRuntimeConfigAck(ctx context.Context, payload string) error

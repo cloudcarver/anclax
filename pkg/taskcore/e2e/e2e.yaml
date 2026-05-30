@@ -57,6 +57,8 @@ interfaces:
       - PauseTasksByTags(ctx context.Context, tags []string, exceptTagSets [][]string) error
       - CancelTasksByTags(ctx context.Context, tags []string, exceptTagSets [][]string) error
       - ResumeTasksByTags(ctx context.Context, tags []string, exceptTagSets [][]string) error
+      - WaitForTaskFailed(ctx context.Context, task string, expectedError string) error
+      - WaitForTaskCancelled(ctx context.Context, task string) error
 
 instances:
   taskStore: TaskStore
@@ -849,6 +851,7 @@ scenarios:
           rows, err := actors.Validator.Query(ctx, "select status from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"SCI_TASK"})
           require.NoError(t, err)
           require.Equal(t, [][]any{{"cancelled"}}, rows)
+          require.NoError(t, actors.ControlPlane.WaitForTaskCancelled(ctx, "SCI_TASK"))
 
       - id: s6
         parallel:
@@ -1063,6 +1066,8 @@ scenarios:
 
       - id: s2
         parallel:
+          controlPlane:
+            - WaitForTaskFailed(ctx, "SFE_TASK", "intentional failure")
           runtime:
             - WaitSignal(ctx, "sfe_w1", "failed", 5000)
             - WaitTaskFailed(ctx, "SFE_TASK", 5000)

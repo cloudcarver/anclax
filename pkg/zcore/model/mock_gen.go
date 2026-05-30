@@ -399,6 +399,21 @@ func (mr *MockModelInterfaceMockRecorder) GetTaskByUniqueTag(ctx, uniqueTag any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTaskByUniqueTag", reflect.TypeOf((*MockModelInterface)(nil).GetTaskByUniqueTag), ctx, uniqueTag)
 }
 
+// GetTaskWaitStatusByID mocks base method.
+func (m *MockModelInterface) GetTaskWaitStatusByID(ctx context.Context, id int32) (*querier.GetTaskWaitStatusByIDRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetTaskWaitStatusByID", ctx, id)
+	ret0, _ := ret[0].(*querier.GetTaskWaitStatusByIDRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetTaskWaitStatusByID indicates an expected call of GetTaskWaitStatusByID.
+func (mr *MockModelInterfaceMockRecorder) GetTaskWaitStatusByID(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTaskWaitStatusByID", reflect.TypeOf((*MockModelInterface)(nil).GetTaskWaitStatusByID), ctx, id)
+}
+
 // GetUser mocks base method.
 func (m *MockModelInterface) GetUser(ctx context.Context, id int32) (*querier.AnclaxUser, error) {
 	m.ctrl.T.Helper()
@@ -635,6 +650,21 @@ func (m *MockModelInterface) ListTaskIDsByTags(ctx context.Context, arg querier.
 func (mr *MockModelInterfaceMockRecorder) ListTaskIDsByTags(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTaskIDsByTags", reflect.TypeOf((*MockModelInterface)(nil).ListTaskIDsByTags), ctx, arg)
+}
+
+// ListTerminalTaskWaitStatuses mocks base method.
+func (m *MockModelInterface) ListTerminalTaskWaitStatuses(ctx context.Context, ids []int32) ([]*querier.ListTerminalTaskWaitStatusesRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListTerminalTaskWaitStatuses", ctx, ids)
+	ret0, _ := ret[0].([]*querier.ListTerminalTaskWaitStatusesRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListTerminalTaskWaitStatuses indicates an expected call of ListTerminalTaskWaitStatuses.
+func (mr *MockModelInterfaceMockRecorder) ListTerminalTaskWaitStatuses(ctx, ids any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTerminalTaskWaitStatuses", reflect.TypeOf((*MockModelInterface)(nil).ListTerminalTaskWaitStatuses), ctx, ids)
 }
 
 // MarkWorkerOffline mocks base method.

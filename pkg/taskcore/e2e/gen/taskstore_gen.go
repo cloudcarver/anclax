@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-
 type ControlPlane interface {
 	UpdateRuntimeConfig(ctx context.Context, key string, maxStrictPercentage int32, defaultWeight int32, w1Weight int32, w2Weight int32) error
 	PauseTask(ctx context.Context, task string) error
@@ -19,8 +18,9 @@ type ControlPlane interface {
 	PauseTasksByTags(ctx context.Context, tags []string, exceptTagSets [][]string) error
 	CancelTasksByTags(ctx context.Context, tags []string, exceptTagSets [][]string) error
 	ResumeTasksByTags(ctx context.Context, tags []string, exceptTagSets [][]string) error
+	WaitForTaskFailed(ctx context.Context, task string, expectedError string) error
+	WaitForTaskCancelled(ctx context.Context, task string) error
 }
-
 
 type Runtime interface {
 	StartWorker(ctx context.Context, name string, mode string, taskType string, labels []string, pollMs int32, lockRefreshMs int32, lockTTLms int32, heartbeatMs int32, concurrency int32, runtimePollMs int32, useDSN bool, workerID string) error
@@ -55,7 +55,6 @@ type Runtime interface {
 	MarkWorkerOffline(ctx context.Context, workerName string) error
 }
 
-
 type TaskStore interface {
 	Enqueue(ctx context.Context, task string, priority int32, weight int32, labels []string) error
 	EnqueueRaw(ctx context.Context, task string, taskType string, payload string, priority int32, weight int32, labels []string, retryInterval string, retryMaxAttempts int32, cronExpression string, startInSeconds int32) error
@@ -66,17 +65,15 @@ type TaskStore interface {
 	Sleep(ctx context.Context, seconds int32) error
 }
 
-
 type Validator interface {
 	Query(ctx context.Context, sql string, args []any) ([][]any, error)
 }
 
-
 type Actors struct {
 	ControlPlane ControlPlane
-	Runtime Runtime
-	TaskStore TaskStore
-	Validator Validator
+	Runtime      Runtime
+	TaskStore    TaskStore
+	Validator    Validator
 }
 
 type InitActorsFunc func(ctx context.Context) (Actors, error)
@@ -132,6 +129,7 @@ func (v *varStore) Get(name string) (any, bool) {
 	val, ok := v.values[name]
 	return val, ok
 }
+
 var _ = require.NoError
 
 type scriptFail struct {
@@ -318,7 +316,6 @@ func runAllWithActors(ctx context.Context, actors Actors) error {
 	return nil
 }
 
-
 func RunScenarioStrictPriorityAndWeightedGroups(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepStrictPriorityAndWeightedGroupsS1(ctx, actors, vars); err != nil {
@@ -332,7 +329,6 @@ func RunScenarioStrictPriorityAndWeightedGroups(ctx context.Context, actors Acto
 	}
 	return nil
 }
-
 
 func runStepStrictPriorityAndWeightedGroupsS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -404,7 +400,6 @@ func runStepStrictPriorityAndWeightedGroupsS1(parent context.Context, actors Act
 	return nil
 }
 
-
 func runStepStrictPriorityAndWeightedGroupsS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -460,7 +455,6 @@ func runStepStrictPriorityAndWeightedGroupsS2(parent context.Context, actors Act
 	return nil
 }
 
-
 func runStepStrictPriorityAndWeightedGroupsS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -503,8 +497,6 @@ func runStepStrictPriorityAndWeightedGroupsS3(parent context.Context, actors Act
 	return err
 }
 
-
-
 func RunScenarioSerialGatingAndFailureProgression(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepSerialGatingAndFailureProgressionS1(ctx, actors, vars); err != nil {
@@ -524,7 +516,6 @@ func RunScenarioSerialGatingAndFailureProgression(ctx context.Context, actors Ac
 	}
 	return nil
 }
-
 
 func runStepSerialGatingAndFailureProgressionS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -576,7 +567,6 @@ func runStepSerialGatingAndFailureProgressionS1(parent context.Context, actors A
 	return nil
 }
 
-
 func runStepSerialGatingAndFailureProgressionS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -607,7 +597,6 @@ func runStepSerialGatingAndFailureProgressionS2(parent context.Context, actors A
 	return nil
 }
 
-
 func runStepSerialGatingAndFailureProgressionS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -632,7 +621,6 @@ func runStepSerialGatingAndFailureProgressionS3(parent context.Context, actors A
 	}
 	return nil
 }
-
 
 func runStepSerialGatingAndFailureProgressionS4(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -689,7 +677,6 @@ func runStepSerialGatingAndFailureProgressionS4(parent context.Context, actors A
 	return nil
 }
 
-
 func runStepSerialGatingAndFailureProgressionS5(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -735,8 +722,6 @@ func runStepSerialGatingAndFailureProgressionS5(parent context.Context, actors A
 	return err
 }
 
-
-
 func RunScenarioDefaultGroupUnknownLabelFallback(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepDefaultGroupUnknownLabelFallbackS1(ctx, actors, vars); err != nil {
@@ -750,7 +735,6 @@ func RunScenarioDefaultGroupUnknownLabelFallback(ctx context.Context, actors Act
 	}
 	return nil
 }
-
 
 func runStepDefaultGroupUnknownLabelFallbackS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -802,7 +786,6 @@ func runStepDefaultGroupUnknownLabelFallbackS1(parent context.Context, actors Ac
 	return nil
 }
 
-
 func runStepDefaultGroupUnknownLabelFallbackS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -848,7 +831,6 @@ func runStepDefaultGroupUnknownLabelFallbackS2(parent context.Context, actors Ac
 	return nil
 }
 
-
 func runStepDefaultGroupUnknownLabelFallbackS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -891,8 +873,6 @@ func runStepDefaultGroupUnknownLabelFallbackS3(parent context.Context, actors Ac
 	return err
 }
 
-
-
 func RunScenarioLeaseTakeoverAfterTtlAndAbandon(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepLeaseTakeoverAfterTtlAndAbandonS1(ctx, actors, vars); err != nil {
@@ -921,7 +901,6 @@ func RunScenarioLeaseTakeoverAfterTtlAndAbandon(ctx context.Context, actors Acto
 	}
 	return nil
 }
-
 
 func runStepLeaseTakeoverAfterTtlAndAbandonS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -958,7 +937,6 @@ func runStepLeaseTakeoverAfterTtlAndAbandonS1(parent context.Context, actors Act
 	return nil
 }
 
-
 func runStepLeaseTakeoverAfterTtlAndAbandonS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -983,7 +961,6 @@ func runStepLeaseTakeoverAfterTtlAndAbandonS2(parent context.Context, actors Act
 	}
 	return nil
 }
-
 
 func runStepLeaseTakeoverAfterTtlAndAbandonS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -1020,7 +997,6 @@ func runStepLeaseTakeoverAfterTtlAndAbandonS3(parent context.Context, actors Act
 	return nil
 }
 
-
 func runStepLeaseTakeoverAfterTtlAndAbandonS4(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -1046,7 +1022,6 @@ func runStepLeaseTakeoverAfterTtlAndAbandonS4(parent context.Context, actors Act
 	return nil
 }
 
-
 func runStepLeaseTakeoverAfterTtlAndAbandonS5(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -1071,7 +1046,6 @@ func runStepLeaseTakeoverAfterTtlAndAbandonS5(parent context.Context, actors Act
 	}
 	return nil
 }
-
 
 func runStepLeaseTakeoverAfterTtlAndAbandonS6(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -1114,7 +1088,6 @@ func runStepLeaseTakeoverAfterTtlAndAbandonS6(parent context.Context, actors Act
 	require.Equal(t, [][]any{{"pending"}}, rows)
 	return err
 }
-
 
 func runStepLeaseTakeoverAfterTtlAndAbandonS7(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -1161,7 +1134,6 @@ func runStepLeaseTakeoverAfterTtlAndAbandonS7(parent context.Context, actors Act
 	return nil
 }
 
-
 func runStepLeaseTakeoverAfterTtlAndAbandonS8(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -1204,8 +1176,6 @@ func runStepLeaseTakeoverAfterTtlAndAbandonS8(parent context.Context, actors Act
 	return err
 }
 
-
-
 func RunScenarioWorkerLabelFiltering(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepWorkerLabelFilteringS1(ctx, actors, vars); err != nil {
@@ -1228,7 +1198,6 @@ func RunScenarioWorkerLabelFiltering(ctx context.Context, actors Actors) error {
 	}
 	return nil
 }
-
 
 func runStepWorkerLabelFilteringS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -1270,7 +1239,6 @@ func runStepWorkerLabelFilteringS1(parent context.Context, actors Actors, vars *
 	return nil
 }
 
-
 func runStepWorkerLabelFilteringS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -1300,7 +1268,6 @@ func runStepWorkerLabelFilteringS2(parent context.Context, actors Actors, vars *
 	}
 	return nil
 }
-
 
 func runStepWorkerLabelFilteringS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -1342,7 +1309,6 @@ func runStepWorkerLabelFilteringS3(parent context.Context, actors Actors, vars *
 	return nil
 }
 
-
 func runStepWorkerLabelFilteringS4(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -1367,7 +1333,6 @@ func runStepWorkerLabelFilteringS4(parent context.Context, actors Actors, vars *
 	}
 	return nil
 }
-
 
 func runStepWorkerLabelFilteringS5(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -1403,7 +1368,6 @@ func runStepWorkerLabelFilteringS5(parent context.Context, actors Actors, vars *
 	}
 	return nil
 }
-
 
 func runStepWorkerLabelFilteringS6(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -1447,8 +1411,6 @@ func runStepWorkerLabelFilteringS6(parent context.Context, actors Actors, vars *
 	return err
 }
 
-
-
 func RunScenarioWorkerLabelAllMatchGpuArm(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepWorkerLabelAllMatchGpuArmS1(ctx, actors, vars); err != nil {
@@ -1465,7 +1427,6 @@ func RunScenarioWorkerLabelAllMatchGpuArm(ctx context.Context, actors Actors) er
 	}
 	return nil
 }
-
 
 func runStepWorkerLabelAllMatchGpuArmS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -1502,7 +1463,6 @@ func runStepWorkerLabelAllMatchGpuArmS1(parent context.Context, actors Actors, v
 	return nil
 }
 
-
 func runStepWorkerLabelAllMatchGpuArmS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -1532,7 +1492,6 @@ func runStepWorkerLabelAllMatchGpuArmS2(parent context.Context, actors Actors, v
 	}
 	return nil
 }
-
 
 func runStepWorkerLabelAllMatchGpuArmS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -1573,7 +1532,6 @@ func runStepWorkerLabelAllMatchGpuArmS3(parent context.Context, actors Actors, v
 	}
 	return nil
 }
-
 
 func runStepWorkerLabelAllMatchGpuArmS4(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -1617,8 +1575,6 @@ func runStepWorkerLabelAllMatchGpuArmS4(parent context.Context, actors Actors, v
 	return err
 }
 
-
-
 func RunScenarioWorkerLabelInternalOnlyScope(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepWorkerLabelInternalOnlyScopeS1(ctx, actors, vars); err != nil {
@@ -1638,7 +1594,6 @@ func RunScenarioWorkerLabelInternalOnlyScope(ctx context.Context, actors Actors)
 	}
 	return nil
 }
-
 
 func runStepWorkerLabelInternalOnlyScopeS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -1695,7 +1650,6 @@ func runStepWorkerLabelInternalOnlyScopeS1(parent context.Context, actors Actors
 	return nil
 }
 
-
 func runStepWorkerLabelInternalOnlyScopeS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -1741,7 +1695,6 @@ func runStepWorkerLabelInternalOnlyScopeS2(parent context.Context, actors Actors
 	return nil
 }
 
-
 func runStepWorkerLabelInternalOnlyScopeS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -1784,7 +1737,6 @@ func runStepWorkerLabelInternalOnlyScopeS3(parent context.Context, actors Actors
 	return err
 }
 
-
 func runStepWorkerLabelInternalOnlyScopeS4(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -1819,7 +1771,6 @@ func runStepWorkerLabelInternalOnlyScopeS4(parent context.Context, actors Actors
 	}
 	return nil
 }
-
 
 func runStepWorkerLabelInternalOnlyScopeS5(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -1863,8 +1814,6 @@ func runStepWorkerLabelInternalOnlyScopeS5(parent context.Context, actors Actors
 	return err
 }
 
-
-
 func RunScenarioWorkerLabelAllMatchStrictPriority(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepWorkerLabelAllMatchStrictPriorityS1(ctx, actors, vars); err != nil {
@@ -1881,7 +1830,6 @@ func RunScenarioWorkerLabelAllMatchStrictPriority(ctx context.Context, actors Ac
 	}
 	return nil
 }
-
 
 func runStepWorkerLabelAllMatchStrictPriorityS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -1918,7 +1866,6 @@ func runStepWorkerLabelAllMatchStrictPriorityS1(parent context.Context, actors A
 	return nil
 }
 
-
 func runStepWorkerLabelAllMatchStrictPriorityS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -1948,7 +1895,6 @@ func runStepWorkerLabelAllMatchStrictPriorityS2(parent context.Context, actors A
 	}
 	return nil
 }
-
 
 func runStepWorkerLabelAllMatchStrictPriorityS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -1989,7 +1935,6 @@ func runStepWorkerLabelAllMatchStrictPriorityS3(parent context.Context, actors A
 	}
 	return nil
 }
-
 
 func runStepWorkerLabelAllMatchStrictPriorityS4(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -2033,8 +1978,6 @@ func runStepWorkerLabelAllMatchStrictPriorityS4(parent context.Context, actors A
 	return err
 }
 
-
-
 func RunScenarioStrictQueryDoesNotPickNormal(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepStrictQueryDoesNotPickNormalS1(ctx, actors, vars); err != nil {
@@ -2054,7 +1997,6 @@ func RunScenarioStrictQueryDoesNotPickNormal(ctx context.Context, actors Actors)
 	}
 	return nil
 }
-
 
 func runStepStrictQueryDoesNotPickNormalS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -2106,7 +2048,6 @@ func runStepStrictQueryDoesNotPickNormalS1(parent context.Context, actors Actors
 	return nil
 }
 
-
 func runStepStrictQueryDoesNotPickNormalS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -2146,7 +2087,6 @@ func runStepStrictQueryDoesNotPickNormalS2(parent context.Context, actors Actors
 	}
 	return nil
 }
-
 
 func runStepStrictQueryDoesNotPickNormalS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -2190,7 +2130,6 @@ func runStepStrictQueryDoesNotPickNormalS3(parent context.Context, actors Actors
 	return err
 }
 
-
 func runStepStrictQueryDoesNotPickNormalS4(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -2220,7 +2159,6 @@ func runStepStrictQueryDoesNotPickNormalS4(parent context.Context, actors Actors
 	}
 	return nil
 }
-
 
 func runStepStrictQueryDoesNotPickNormalS5(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -2264,8 +2202,6 @@ func runStepStrictQueryDoesNotPickNormalS5(parent context.Context, actors Actors
 	return err
 }
 
-
-
 func RunScenarioSmokeLeaseLifecycle(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepSmokeLeaseLifecycleS1(ctx, actors, vars); err != nil {
@@ -2297,7 +2233,6 @@ func RunScenarioSmokeLeaseLifecycle(ctx context.Context, actors Actors) error {
 	}
 	return nil
 }
-
 
 func runStepSmokeLeaseLifecycleS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -2339,7 +2274,6 @@ func runStepSmokeLeaseLifecycleS1(parent context.Context, actors Actors, vars *v
 	return nil
 }
 
-
 func runStepSmokeLeaseLifecycleS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -2364,7 +2298,6 @@ func runStepSmokeLeaseLifecycleS2(parent context.Context, actors Actors, vars *v
 	}
 	return nil
 }
-
 
 func runStepSmokeLeaseLifecycleS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -2401,7 +2334,6 @@ func runStepSmokeLeaseLifecycleS3(parent context.Context, actors Actors, vars *v
 	return nil
 }
 
-
 func runStepSmokeLeaseLifecycleS4(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -2427,7 +2359,6 @@ func runStepSmokeLeaseLifecycleS4(parent context.Context, actors Actors, vars *v
 	return nil
 }
 
-
 func runStepSmokeLeaseLifecycleS5(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -2452,7 +2383,6 @@ func runStepSmokeLeaseLifecycleS5(parent context.Context, actors Actors, vars *v
 	}
 	return nil
 }
-
 
 func runStepSmokeLeaseLifecycleS6(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -2495,7 +2425,6 @@ func runStepSmokeLeaseLifecycleS6(parent context.Context, actors Actors, vars *v
 	require.Equal(t, [][]any{{"pending"}}, rows)
 	return err
 }
-
 
 func runStepSmokeLeaseLifecycleS7(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -2542,7 +2471,6 @@ func runStepSmokeLeaseLifecycleS7(parent context.Context, actors Actors, vars *v
 	return nil
 }
 
-
 func runStepSmokeLeaseLifecycleS8(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -2582,7 +2510,6 @@ func runStepSmokeLeaseLifecycleS8(parent context.Context, actors Actors, vars *v
 	}
 	return nil
 }
-
 
 func runStepSmokeLeaseLifecycleS9(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -2626,8 +2553,6 @@ func runStepSmokeLeaseLifecycleS9(parent context.Context, actors Actors, vars *v
 	return err
 }
 
-
-
 func RunScenarioSmokeWorkerLoop(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepSmokeWorkerLoopS1(ctx, actors, vars); err != nil {
@@ -2641,7 +2566,6 @@ func RunScenarioSmokeWorkerLoop(ctx context.Context, actors Actors) error {
 	}
 	return nil
 }
-
 
 func runStepSmokeWorkerLoopS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -2678,7 +2602,6 @@ func runStepSmokeWorkerLoopS1(parent context.Context, actors Actors, vars *varSt
 	return nil
 }
 
-
 func runStepSmokeWorkerLoopS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -2713,7 +2636,6 @@ func runStepSmokeWorkerLoopS2(parent context.Context, actors Actors, vars *varSt
 	}
 	return nil
 }
-
 
 func runStepSmokeWorkerLoopS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -2755,8 +2677,6 @@ func runStepSmokeWorkerLoopS3(parent context.Context, actors Actors, vars *varSt
 	return nil
 }
 
-
-
 func RunScenarioSmokeSerialBehavior(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepSmokeSerialBehaviorS1(ctx, actors, vars); err != nil {
@@ -2776,7 +2696,6 @@ func RunScenarioSmokeSerialBehavior(ctx context.Context, actors Actors) error {
 	}
 	return nil
 }
-
 
 func runStepSmokeSerialBehaviorS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -2828,7 +2747,6 @@ func runStepSmokeSerialBehaviorS1(parent context.Context, actors Actors, vars *v
 	return nil
 }
 
-
 func runStepSmokeSerialBehaviorS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -2859,7 +2777,6 @@ func runStepSmokeSerialBehaviorS2(parent context.Context, actors Actors, vars *v
 	return nil
 }
 
-
 func runStepSmokeSerialBehaviorS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -2884,7 +2801,6 @@ func runStepSmokeSerialBehaviorS3(parent context.Context, actors Actors, vars *v
 	}
 	return nil
 }
-
 
 func runStepSmokeSerialBehaviorS4(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -2936,7 +2852,6 @@ func runStepSmokeSerialBehaviorS4(parent context.Context, actors Actors, vars *v
 	return nil
 }
 
-
 func runStepSmokeSerialBehaviorS5(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -2979,8 +2894,6 @@ func runStepSmokeSerialBehaviorS5(parent context.Context, actors Actors, vars *v
 	return err
 }
 
-
-
 func RunScenarioSmokePriorityWeight(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepSmokePriorityWeightS1(ctx, actors, vars); err != nil {
@@ -2991,7 +2904,6 @@ func RunScenarioSmokePriorityWeight(ctx context.Context, actors Actors) error {
 	}
 	return nil
 }
-
 
 func runStepSmokePriorityWeightS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -3058,7 +2970,6 @@ func runStepSmokePriorityWeightS1(parent context.Context, actors Actors, vars *v
 	return nil
 }
 
-
 func runStepSmokePriorityWeightS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -3109,8 +3020,6 @@ func runStepSmokePriorityWeightS2(parent context.Context, actors Actors, vars *v
 	return nil
 }
 
-
-
 func RunScenarioSmokeRetryPolicy(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepSmokeRetryPolicyS1(ctx, actors, vars); err != nil {
@@ -3124,7 +3033,6 @@ func RunScenarioSmokeRetryPolicy(ctx context.Context, actors Actors) error {
 	}
 	return nil
 }
-
 
 func runStepSmokeRetryPolicyS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -3161,7 +3069,6 @@ func runStepSmokeRetryPolicyS1(parent context.Context, actors Actors, vars *varS
 	return nil
 }
 
-
 func runStepSmokeRetryPolicyS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -3196,7 +3103,6 @@ func runStepSmokeRetryPolicyS2(parent context.Context, actors Actors, vars *varS
 	}
 	return nil
 }
-
 
 func runStepSmokeRetryPolicyS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -3233,8 +3139,6 @@ func runStepSmokeRetryPolicyS3(parent context.Context, actors Actors, vars *varS
 	return nil
 }
 
-
-
 func RunScenarioSmokeCronjob(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepSmokeCronjobS1(ctx, actors, vars); err != nil {
@@ -3248,7 +3152,6 @@ func RunScenarioSmokeCronjob(ctx context.Context, actors Actors) error {
 	}
 	return nil
 }
-
 
 func runStepSmokeCronjobS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -3284,7 +3187,6 @@ func runStepSmokeCronjobS1(parent context.Context, actors Actors, vars *varStore
 	}
 	return nil
 }
-
 
 func runStepSmokeCronjobS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -3326,7 +3228,6 @@ func runStepSmokeCronjobS2(parent context.Context, actors Actors, vars *varStore
 	return nil
 }
 
-
 func runStepSmokeCronjobS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -3357,8 +3258,6 @@ func runStepSmokeCronjobS3(parent context.Context, actors Actors, vars *varStore
 	return nil
 }
 
-
-
 func RunScenarioSmokeRuntimeConfigPoll(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepSmokeRuntimeConfigPollS1(ctx, actors, vars); err != nil {
@@ -3369,7 +3268,6 @@ func RunScenarioSmokeRuntimeConfigPoll(ctx context.Context, actors Actors) error
 	}
 	return nil
 }
-
 
 func runStepSmokeRuntimeConfigPollS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -3400,7 +3298,6 @@ func runStepSmokeRuntimeConfigPollS1(parent context.Context, actors Actors, vars
 	}
 	return nil
 }
-
 
 func runStepSmokeRuntimeConfigPollS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -3437,8 +3334,6 @@ func runStepSmokeRuntimeConfigPollS2(parent context.Context, actors Actors, vars
 	return nil
 }
 
-
-
 func RunScenarioSmokeRuntimeConfigControlPlaneBroadcast(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepSmokeRuntimeConfigControlPlaneBroadcastS1(ctx, actors, vars); err != nil {
@@ -3449,7 +3344,6 @@ func RunScenarioSmokeRuntimeConfigControlPlaneBroadcast(ctx context.Context, act
 	}
 	return nil
 }
-
 
 func runStepSmokeRuntimeConfigControlPlaneBroadcastS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -3480,7 +3374,6 @@ func runStepSmokeRuntimeConfigControlPlaneBroadcastS1(parent context.Context, ac
 	}
 	return nil
 }
-
 
 func runStepSmokeRuntimeConfigControlPlaneBroadcastS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -3527,8 +3420,6 @@ func runStepSmokeRuntimeConfigControlPlaneBroadcastS2(parent context.Context, ac
 	return nil
 }
 
-
-
 func RunScenarioSmokeRuntimeConfigNewWorkerJoinsAfterBroadcast(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepSmokeRuntimeConfigNewWorkerJoinsAfterBroadcastS1(ctx, actors, vars); err != nil {
@@ -3542,7 +3433,6 @@ func RunScenarioSmokeRuntimeConfigNewWorkerJoinsAfterBroadcast(ctx context.Conte
 	}
 	return nil
 }
-
 
 func runStepSmokeRuntimeConfigNewWorkerJoinsAfterBroadcastS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -3573,7 +3463,6 @@ func runStepSmokeRuntimeConfigNewWorkerJoinsAfterBroadcastS1(parent context.Cont
 	}
 	return nil
 }
-
 
 func runStepSmokeRuntimeConfigNewWorkerJoinsAfterBroadcastS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -3620,7 +3509,6 @@ func runStepSmokeRuntimeConfigNewWorkerJoinsAfterBroadcastS2(parent context.Cont
 	return nil
 }
 
-
 func runStepSmokeRuntimeConfigNewWorkerJoinsAfterBroadcastS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -3666,8 +3554,6 @@ func runStepSmokeRuntimeConfigNewWorkerJoinsAfterBroadcastS3(parent context.Cont
 	return nil
 }
 
-
-
 func RunScenarioSmokeRuntimeConfigWorkerStopsDuringBroadcast(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepSmokeRuntimeConfigWorkerStopsDuringBroadcastS1(ctx, actors, vars); err != nil {
@@ -3681,7 +3567,6 @@ func RunScenarioSmokeRuntimeConfigWorkerStopsDuringBroadcast(ctx context.Context
 	}
 	return nil
 }
-
 
 func runStepSmokeRuntimeConfigWorkerStopsDuringBroadcastS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -3723,7 +3608,6 @@ func runStepSmokeRuntimeConfigWorkerStopsDuringBroadcastS1(parent context.Contex
 	return nil
 }
 
-
 func runStepSmokeRuntimeConfigWorkerStopsDuringBroadcastS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -3763,7 +3647,6 @@ func runStepSmokeRuntimeConfigWorkerStopsDuringBroadcastS2(parent context.Contex
 	}
 	return nil
 }
-
 
 func runStepSmokeRuntimeConfigWorkerStopsDuringBroadcastS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -3805,8 +3688,6 @@ func runStepSmokeRuntimeConfigWorkerStopsDuringBroadcastS3(parent context.Contex
 	return nil
 }
 
-
-
 func RunScenarioSmokePauseTaskWorkerJoinsAfterPause(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepSmokePauseTaskWorkerJoinsAfterPauseS1(ctx, actors, vars); err != nil {
@@ -3823,7 +3704,6 @@ func RunScenarioSmokePauseTaskWorkerJoinsAfterPause(ctx context.Context, actors 
 	}
 	return nil
 }
-
 
 func runStepSmokePauseTaskWorkerJoinsAfterPauseS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -3850,7 +3730,6 @@ func runStepSmokePauseTaskWorkerJoinsAfterPauseS1(parent context.Context, actors
 	return nil
 }
 
-
 func runStepSmokePauseTaskWorkerJoinsAfterPauseS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -3875,7 +3754,6 @@ func runStepSmokePauseTaskWorkerJoinsAfterPauseS2(parent context.Context, actors
 	}
 	return nil
 }
-
 
 func runStepSmokePauseTaskWorkerJoinsAfterPauseS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -3911,7 +3789,6 @@ func runStepSmokePauseTaskWorkerJoinsAfterPauseS3(parent context.Context, actors
 	}
 	return nil
 }
-
 
 func runStepSmokePauseTaskWorkerJoinsAfterPauseS4(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -3955,8 +3832,6 @@ func runStepSmokePauseTaskWorkerJoinsAfterPauseS4(parent context.Context, actors
 	return err
 }
 
-
-
 func RunScenarioSmokeCancelTaskWorkerJoinsAfterCancel(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepSmokeCancelTaskWorkerJoinsAfterCancelS1(ctx, actors, vars); err != nil {
@@ -3973,7 +3848,6 @@ func RunScenarioSmokeCancelTaskWorkerJoinsAfterCancel(ctx context.Context, actor
 	}
 	return nil
 }
-
 
 func runStepSmokeCancelTaskWorkerJoinsAfterCancelS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -4000,7 +3874,6 @@ func runStepSmokeCancelTaskWorkerJoinsAfterCancelS1(parent context.Context, acto
 	return nil
 }
 
-
 func runStepSmokeCancelTaskWorkerJoinsAfterCancelS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -4025,7 +3898,6 @@ func runStepSmokeCancelTaskWorkerJoinsAfterCancelS2(parent context.Context, acto
 	}
 	return nil
 }
-
 
 func runStepSmokeCancelTaskWorkerJoinsAfterCancelS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -4061,7 +3933,6 @@ func runStepSmokeCancelTaskWorkerJoinsAfterCancelS3(parent context.Context, acto
 	}
 	return nil
 }
-
 
 func runStepSmokeCancelTaskWorkerJoinsAfterCancelS4(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -4105,8 +3976,6 @@ func runStepSmokeCancelTaskWorkerJoinsAfterCancelS4(parent context.Context, acto
 	return err
 }
 
-
-
 func RunScenarioSmokePauseTaskInterrupt(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepSmokePauseTaskInterruptS1(ctx, actors, vars); err != nil {
@@ -4129,7 +3998,6 @@ func RunScenarioSmokePauseTaskInterrupt(ctx context.Context, actors Actors) erro
 	}
 	return nil
 }
-
 
 func runStepSmokePauseTaskInterruptS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -4171,7 +4039,6 @@ func runStepSmokePauseTaskInterruptS1(parent context.Context, actors Actors, var
 	return nil
 }
 
-
 func runStepSmokePauseTaskInterruptS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -4202,7 +4069,6 @@ func runStepSmokePauseTaskInterruptS2(parent context.Context, actors Actors, var
 	return nil
 }
 
-
 func runStepSmokePauseTaskInterruptS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -4227,7 +4093,6 @@ func runStepSmokePauseTaskInterruptS3(parent context.Context, actors Actors, var
 	}
 	return nil
 }
-
 
 func runStepSmokePauseTaskInterruptS4(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -4258,7 +4123,6 @@ func runStepSmokePauseTaskInterruptS4(parent context.Context, actors Actors, var
 	}
 	return nil
 }
-
 
 func runStepSmokePauseTaskInterruptS5(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -4302,7 +4166,6 @@ func runStepSmokePauseTaskInterruptS5(parent context.Context, actors Actors, var
 	return err
 }
 
-
 func runStepSmokePauseTaskInterruptS6(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -4333,8 +4196,6 @@ func runStepSmokePauseTaskInterruptS6(parent context.Context, actors Actors, var
 	return nil
 }
 
-
-
 func RunScenarioSmokePauseTaskBeforeStart(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepSmokePauseTaskBeforeStartS1(ctx, actors, vars); err != nil {
@@ -4351,7 +4212,6 @@ func RunScenarioSmokePauseTaskBeforeStart(ctx context.Context, actors Actors) er
 	}
 	return nil
 }
-
 
 func runStepSmokePauseTaskBeforeStartS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -4388,7 +4248,6 @@ func runStepSmokePauseTaskBeforeStartS1(parent context.Context, actors Actors, v
 	return nil
 }
 
-
 func runStepSmokePauseTaskBeforeStartS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -4413,7 +4272,6 @@ func runStepSmokePauseTaskBeforeStartS2(parent context.Context, actors Actors, v
 	}
 	return nil
 }
-
 
 func runStepSmokePauseTaskBeforeStartS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -4444,7 +4302,6 @@ func runStepSmokePauseTaskBeforeStartS3(parent context.Context, actors Actors, v
 	}
 	return nil
 }
-
 
 func runStepSmokePauseTaskBeforeStartS4(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -4488,8 +4345,6 @@ func runStepSmokePauseTaskBeforeStartS4(parent context.Context, actors Actors, v
 	return err
 }
 
-
-
 func RunScenarioSmokeCancelTaskInterrupt(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepSmokeCancelTaskInterruptS1(ctx, actors, vars); err != nil {
@@ -4512,7 +4367,6 @@ func RunScenarioSmokeCancelTaskInterrupt(ctx context.Context, actors Actors) err
 	}
 	return nil
 }
-
 
 func runStepSmokeCancelTaskInterruptS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -4554,7 +4408,6 @@ func runStepSmokeCancelTaskInterruptS1(parent context.Context, actors Actors, va
 	return nil
 }
 
-
 func runStepSmokeCancelTaskInterruptS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -4585,7 +4438,6 @@ func runStepSmokeCancelTaskInterruptS2(parent context.Context, actors Actors, va
 	return nil
 }
 
-
 func runStepSmokeCancelTaskInterruptS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -4610,7 +4462,6 @@ func runStepSmokeCancelTaskInterruptS3(parent context.Context, actors Actors, va
 	}
 	return nil
 }
-
 
 func runStepSmokeCancelTaskInterruptS4(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -4641,7 +4492,6 @@ func runStepSmokeCancelTaskInterruptS4(parent context.Context, actors Actors, va
 	}
 	return nil
 }
-
 
 func runStepSmokeCancelTaskInterruptS5(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -4682,9 +4532,9 @@ func runStepSmokeCancelTaskInterruptS5(parent context.Context, actors Actors, va
 	rows, err := actors.Validator.Query(ctx, "select status from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"SCI_TASK"})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{"cancelled"}}, rows)
+	require.NoError(t, actors.ControlPlane.WaitForTaskCancelled(ctx, "SCI_TASK"))
 	return err
 }
-
 
 func runStepSmokeCancelTaskInterruptS6(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -4716,8 +4566,6 @@ func runStepSmokeCancelTaskInterruptS6(parent context.Context, actors Actors, va
 	return nil
 }
 
-
-
 func RunScenarioSmokeControlPlanePauseCancelRaceWithWorkerChurn(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS1(ctx, actors, vars); err != nil {
@@ -4740,7 +4588,6 @@ func RunScenarioSmokeControlPlanePauseCancelRaceWithWorkerChurn(ctx context.Cont
 	}
 	return nil
 }
-
 
 func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -4782,7 +4629,6 @@ func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS1(parent context.Con
 	return nil
 }
 
-
 func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -4812,7 +4658,6 @@ func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS2(parent context.Con
 	}
 	return nil
 }
-
 
 func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -4854,12 +4699,12 @@ func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS3(parent context.Con
 
 	wg.Add(1)
 	go func() {
-	  defer wg.Done()
-	  require.NoError(t, actors.Runtime.StartWorker(ctx, "SCRACE_CHURN", "noop", "pause-e2e", []string{"control"}, 20, 20, 200, 20, 1, 0, true, "33333333-3333-3333-3333-333333333333"))
-	  time.Sleep(40 * time.Millisecond)
-	  require.NoError(t, actors.Runtime.StopWorker(ctx, "SCRACE_CHURN"))
-	  time.Sleep(20 * time.Millisecond)
-	  require.NoError(t, actors.Runtime.StartWorker(ctx, "SCRACE_CHURN", "noop", "pause-e2e", []string{"control"}, 20, 20, 200, 20, 1, 0, true, "33333333-3333-3333-3333-333333333333"))
+		defer wg.Done()
+		require.NoError(t, actors.Runtime.StartWorker(ctx, "SCRACE_CHURN", "noop", "pause-e2e", []string{"control"}, 20, 20, 200, 20, 1, 0, true, "33333333-3333-3333-3333-333333333333"))
+		time.Sleep(40 * time.Millisecond)
+		require.NoError(t, actors.Runtime.StopWorker(ctx, "SCRACE_CHURN"))
+		time.Sleep(20 * time.Millisecond)
+		require.NoError(t, actors.Runtime.StartWorker(ctx, "SCRACE_CHURN", "noop", "pause-e2e", []string{"control"}, 20, 20, 200, 20, 1, 0, true, "33333333-3333-3333-3333-333333333333"))
 	}()
 
 	require.NoError(t, actors.ControlPlane.PauseTask(ctx, "SCRACE_TASK"))
@@ -4868,7 +4713,6 @@ func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS3(parent context.Con
 	wg.Wait()
 	return err
 }
-
 
 func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS4(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -4904,7 +4748,6 @@ func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS4(parent context.Con
 	}
 	return nil
 }
-
 
 func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS5(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -4952,7 +4795,6 @@ func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS5(parent context.Con
 	return err
 }
 
-
 func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS6(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -4988,8 +4830,6 @@ func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS6(parent context.Con
 	return nil
 }
 
-
-
 func RunScenarioSmokeCancelTaskDescendants(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepSmokeCancelTaskDescendantsS1(ctx, actors, vars); err != nil {
@@ -5012,7 +4852,6 @@ func RunScenarioSmokeCancelTaskDescendants(ctx context.Context, actors Actors) e
 	}
 	return nil
 }
-
 
 func runStepSmokeCancelTaskDescendantsS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -5064,7 +4903,6 @@ func runStepSmokeCancelTaskDescendantsS1(parent context.Context, actors Actors, 
 	return nil
 }
 
-
 func runStepSmokeCancelTaskDescendantsS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -5089,7 +4927,6 @@ func runStepSmokeCancelTaskDescendantsS2(parent context.Context, actors Actors, 
 	}
 	return nil
 }
-
 
 func runStepSmokeCancelTaskDescendantsS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -5126,7 +4963,6 @@ func runStepSmokeCancelTaskDescendantsS3(parent context.Context, actors Actors, 
 	return nil
 }
 
-
 func runStepSmokeCancelTaskDescendantsS4(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -5151,7 +4987,6 @@ func runStepSmokeCancelTaskDescendantsS4(parent context.Context, actors Actors, 
 	}
 	return nil
 }
-
 
 func runStepSmokeCancelTaskDescendantsS5(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -5190,9 +5025,9 @@ func runStepSmokeCancelTaskDescendantsS5(parent context.Context, actors Actors, 
 		}
 	}()
 	assertCancelled := func(name string) {
-	  rows, err := actors.Validator.Query(ctx, "select status from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{name})
-	  require.NoError(t, err)
-	  require.Equal(t, [][]any{{"cancelled"}}, rows)
+		rows, err := actors.Validator.Query(ctx, "select status from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{name})
+		require.NoError(t, err)
+		require.Equal(t, [][]any{{"cancelled"}}, rows)
 	}
 
 	assertCancelled("SCD_ROOT")
@@ -5201,7 +5036,6 @@ func runStepSmokeCancelTaskDescendantsS5(parent context.Context, actors Actors, 
 	assertCancelled("SCD_GREAT")
 	return err
 }
-
 
 func runStepSmokeCancelTaskDescendantsS6(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -5228,8 +5062,6 @@ func runStepSmokeCancelTaskDescendantsS6(parent context.Context, actors Actors, 
 	return nil
 }
 
-
-
 func RunScenarioSmokeTagControlIntersection(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepSmokeTagControlIntersectionS1(ctx, actors, vars); err != nil {
@@ -5252,7 +5084,6 @@ func RunScenarioSmokeTagControlIntersection(ctx context.Context, actors Actors) 
 	}
 	return nil
 }
-
 
 func runStepSmokeTagControlIntersectionS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -5364,7 +5195,6 @@ func runStepSmokeTagControlIntersectionS1(parent context.Context, actors Actors,
 	return nil
 }
 
-
 func runStepSmokeTagControlIntersectionS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -5394,7 +5224,6 @@ func runStepSmokeTagControlIntersectionS2(parent context.Context, actors Actors,
 	}
 	return nil
 }
-
 
 func runStepSmokeTagControlIntersectionS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -5433,10 +5262,10 @@ func runStepSmokeTagControlIntersectionS3(parent context.Context, actors Actors,
 		}
 	}()
 	statusByName := func(name string) string {
-	  rows, err := actors.Validator.Query(ctx, "select status from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{name})
-	  require.NoError(t, err)
-	  require.Len(t, rows, 1)
-	  return rows[0][0].(string)
+		rows, err := actors.Validator.Query(ctx, "select status from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{name})
+		require.NoError(t, err)
+		require.Len(t, rows, 1)
+		return rows[0][0].(string)
 	}
 
 	require.Equal(t, "paused", statusByName("SLC_PAUSE_BOTH"))
@@ -5449,7 +5278,6 @@ func runStepSmokeTagControlIntersectionS3(parent context.Context, actors Actors,
 	require.Equal(t, "pending", statusByName("SLC_CANCEL_A"))
 	return err
 }
-
 
 func runStepSmokeTagControlIntersectionS4(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -5475,7 +5303,6 @@ func runStepSmokeTagControlIntersectionS4(parent context.Context, actors Actors,
 	}
 	return nil
 }
-
 
 func runStepSmokeTagControlIntersectionS5(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -5522,7 +5349,6 @@ func runStepSmokeTagControlIntersectionS5(parent context.Context, actors Actors,
 	return nil
 }
 
-
 func runStepSmokeTagControlIntersectionS6(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -5565,8 +5391,6 @@ func runStepSmokeTagControlIntersectionS6(parent context.Context, actors Actors,
 	return err
 }
 
-
-
 func RunScenarioSmokeWorkerOffline(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepSmokeWorkerOfflineS1(ctx, actors, vars); err != nil {
@@ -5577,7 +5401,6 @@ func RunScenarioSmokeWorkerOffline(ctx context.Context, actors Actors) error {
 	}
 	return nil
 }
-
 
 func runStepSmokeWorkerOfflineS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -5608,7 +5431,6 @@ func runStepSmokeWorkerOfflineS1(parent context.Context, actors Actors, vars *va
 	}
 	return nil
 }
-
 
 func runStepSmokeWorkerOfflineS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -5655,8 +5477,6 @@ func runStepSmokeWorkerOfflineS2(parent context.Context, actors Actors, vars *va
 	return nil
 }
 
-
-
 func RunScenarioSmokeFailureEvent(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepSmokeFailureEventS1(ctx, actors, vars); err != nil {
@@ -5667,7 +5487,6 @@ func RunScenarioSmokeFailureEvent(ctx context.Context, actors Actors) error {
 	}
 	return nil
 }
-
 
 func runStepSmokeFailureEventS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -5704,12 +5523,21 @@ func runStepSmokeFailureEventS1(parent context.Context, actors Actors, vars *var
 	return nil
 }
 
-
 func runStepSmokeFailureEventS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
-	errCh := make(chan error, 1)
+	errCh := make(chan error, 2)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.ControlPlane.WaitForTaskFailed(ctx, "SFE_TASK", "intentional failure"); err != nil {
+			errCh <- fmt.Errorf("actor controlPlane call %s: %w", "WaitForTaskFailed(ctx, \"SFE_TASK\", \"intentional failure\")", err)
+			cancel()
+			return
+		}
+	}()
 
 	wg.Add(1)
 	go func() {
@@ -5745,8 +5573,6 @@ func runStepSmokeFailureEventS2(parent context.Context, actors Actors, vars *var
 	return nil
 }
 
-
-
 func RunScenarioSmokeHighContention(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepSmokeHighContentionS1(ctx, actors, vars); err != nil {
@@ -5760,7 +5586,6 @@ func RunScenarioSmokeHighContention(ctx context.Context, actors Actors) error {
 	}
 	return nil
 }
-
 
 func runStepSmokeHighContentionS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -5806,7 +5631,6 @@ func runStepSmokeHighContentionS1(parent context.Context, actors Actors, vars *v
 	return err
 }
 
-
 func runStepSmokeHighContentionS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -5841,7 +5665,6 @@ func runStepSmokeHighContentionS2(parent context.Context, actors Actors, vars *v
 	}
 	return nil
 }
-
 
 func runStepSmokeHighContentionS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -5888,8 +5711,6 @@ func runStepSmokeHighContentionS3(parent context.Context, actors Actors, vars *v
 	return nil
 }
 
-
-
 func RunScenarioSmokeWorkerExitRecovery(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepSmokeWorkerExitRecoveryS1(ctx, actors, vars); err != nil {
@@ -5903,7 +5724,6 @@ func RunScenarioSmokeWorkerExitRecovery(ctx context.Context, actors Actors) erro
 	}
 	return nil
 }
-
 
 func runStepSmokeWorkerExitRecoveryS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -5940,7 +5760,6 @@ func runStepSmokeWorkerExitRecoveryS1(parent context.Context, actors Actors, var
 	return nil
 }
 
-
 func runStepSmokeWorkerExitRecoveryS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -5975,7 +5794,6 @@ func runStepSmokeWorkerExitRecoveryS2(parent context.Context, actors Actors, var
 	}
 	return nil
 }
-
 
 func runStepSmokeWorkerExitRecoveryS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -6017,8 +5835,6 @@ func runStepSmokeWorkerExitRecoveryS3(parent context.Context, actors Actors, var
 	return nil
 }
 
-
-
 func RunScenarioSmokeLockLoss(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepSmokeLockLossS1(ctx, actors, vars); err != nil {
@@ -6032,7 +5848,6 @@ func RunScenarioSmokeLockLoss(ctx context.Context, actors Actors) error {
 	}
 	return nil
 }
-
 
 func runStepSmokeLockLossS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -6068,7 +5883,6 @@ func runStepSmokeLockLossS1(parent context.Context, actors Actors, vars *varStor
 	}
 	return nil
 }
-
 
 func runStepSmokeLockLossS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -6115,7 +5929,6 @@ func runStepSmokeLockLossS2(parent context.Context, actors Actors, vars *varStor
 	return nil
 }
 
-
 func runStepSmokeLockLossS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -6155,8 +5968,6 @@ func runStepSmokeLockLossS3(parent context.Context, actors Actors, vars *varStor
 	}
 	return nil
 }
-
-
 
 func RunScenarioComplexRuntimeReconfigFailoverAndFailure(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
@@ -6198,7 +6009,6 @@ func RunScenarioComplexRuntimeReconfigFailoverAndFailure(ctx context.Context, ac
 	}
 	return nil
 }
-
 
 func runStepComplexRuntimeReconfigFailoverAndFailureS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -6250,7 +6060,6 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS1(parent context.Context, a
 	return nil
 }
 
-
 func runStepComplexRuntimeReconfigFailoverAndFailureS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -6295,7 +6104,6 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS2(parent context.Context, a
 	}
 	return nil
 }
-
 
 func runStepComplexRuntimeReconfigFailoverAndFailureS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -6342,7 +6150,6 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS3(parent context.Context, a
 	return nil
 }
 
-
 func runStepComplexRuntimeReconfigFailoverAndFailureS4(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -6382,7 +6189,6 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS4(parent context.Context, a
 	}
 	return nil
 }
-
 
 func runStepComplexRuntimeReconfigFailoverAndFailureS5(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -6424,7 +6230,6 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS5(parent context.Context, a
 	return nil
 }
 
-
 func runStepComplexRuntimeReconfigFailoverAndFailureS6(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -6465,7 +6270,6 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS6(parent context.Context, a
 	return nil
 }
 
-
 func runStepComplexRuntimeReconfigFailoverAndFailureS7(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -6500,7 +6304,6 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS7(parent context.Context, a
 	}
 	return nil
 }
-
 
 func runStepComplexRuntimeReconfigFailoverAndFailureS8(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -6547,7 +6350,6 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS8(parent context.Context, a
 	return nil
 }
 
-
 func runStepComplexRuntimeReconfigFailoverAndFailureS9(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -6589,7 +6391,6 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS9(parent context.Context, a
 	require.Equal(t, [][]any{{"pending"}}, rows)
 	return err
 }
-
 
 func runStepComplexRuntimeReconfigFailoverAndFailureS10(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -6635,7 +6436,6 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS10(parent context.Context, 
 	}
 	return nil
 }
-
 
 func runStepComplexRuntimeReconfigFailoverAndFailureS11(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -6692,7 +6492,6 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS11(parent context.Context, 
 	return nil
 }
 
-
 func runStepComplexRuntimeReconfigFailoverAndFailureS12(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -6735,8 +6534,6 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS12(parent context.Context, 
 	return err
 }
 
-
-
 func RunScenarioBoundedSoakNoBacklogWithWorkerChurn(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepBoundedSoakNoBacklogWithWorkerChurnS1(ctx, actors, vars); err != nil {
@@ -6753,7 +6550,6 @@ func RunScenarioBoundedSoakNoBacklogWithWorkerChurn(ctx context.Context, actors 
 	}
 	return nil
 }
-
 
 func runStepBoundedSoakNoBacklogWithWorkerChurnS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -6789,7 +6585,6 @@ func runStepBoundedSoakNoBacklogWithWorkerChurnS1(parent context.Context, actors
 	}
 	return nil
 }
-
 
 func runStepBoundedSoakNoBacklogWithWorkerChurnS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -6828,26 +6623,25 @@ func runStepBoundedSoakNoBacklogWithWorkerChurnS2(parent context.Context, actors
 		}
 	}()
 	for i := 0; i < 60; i++ {
-	  task := "SOAK_UNLABELED"
-	  labels := []string{}
-	  switch i % 3 {
-	  case 1:
-	    task = "SOAK_W1"
-	    labels = []string{"w1"}
-	  case 2:
-	    task = "SOAK_W2"
-	    labels = []string{"w2"}
-	  }
-	  require.NoError(t, actors.TaskStore.Enqueue(ctx, task, 0, 1, labels))
-	  if i > 0 && i%20 == 0 {
-	    require.NoError(t, actors.Runtime.StopWorker(ctx, "soak_w1"))
-	    require.NoError(t, actors.Runtime.StartWorker(ctx, "soak_w1", "capture", "dst-taskstore", []string{"w1"}, 20, 20, 200, 3600000, 1, 0, false, ""))
-	  }
-	  require.NoError(t, actors.Runtime.SleepMs(ctx, 20))
+		task := "SOAK_UNLABELED"
+		labels := []string{}
+		switch i % 3 {
+		case 1:
+			task = "SOAK_W1"
+			labels = []string{"w1"}
+		case 2:
+			task = "SOAK_W2"
+			labels = []string{"w2"}
+		}
+		require.NoError(t, actors.TaskStore.Enqueue(ctx, task, 0, 1, labels))
+		if i > 0 && i%20 == 0 {
+			require.NoError(t, actors.Runtime.StopWorker(ctx, "soak_w1"))
+			require.NoError(t, actors.Runtime.StartWorker(ctx, "soak_w1", "capture", "dst-taskstore", []string{"w1"}, 20, 20, 200, 3600000, 1, 0, false, ""))
+		}
+		require.NoError(t, actors.Runtime.SleepMs(ctx, 20))
 	}
 	return err
 }
-
 
 func runStepBoundedSoakNoBacklogWithWorkerChurnS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -6883,7 +6677,6 @@ func runStepBoundedSoakNoBacklogWithWorkerChurnS3(parent context.Context, actors
 	}
 	return nil
 }
-
 
 func runStepBoundedSoakNoBacklogWithWorkerChurnS4(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -6927,8 +6720,6 @@ func runStepBoundedSoakNoBacklogWithWorkerChurnS4(parent context.Context, actors
 	return err
 }
 
-
-
 func RunScenarioAtLeastOnceRetryAndIdempotentSideEffectPattern(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepAtLeastOnceRetryAndIdempotentSideEffectPatternS1(ctx, actors, vars); err != nil {
@@ -6945,7 +6736,6 @@ func RunScenarioAtLeastOnceRetryAndIdempotentSideEffectPattern(ctx context.Conte
 	}
 	return nil
 }
-
 
 func runStepAtLeastOnceRetryAndIdempotentSideEffectPatternS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -6987,7 +6777,6 @@ func runStepAtLeastOnceRetryAndIdempotentSideEffectPatternS1(parent context.Cont
 	return nil
 }
 
-
 func runStepAtLeastOnceRetryAndIdempotentSideEffectPatternS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -7023,7 +6812,6 @@ func runStepAtLeastOnceRetryAndIdempotentSideEffectPatternS2(parent context.Cont
 	return nil
 }
 
-
 func runStepAtLeastOnceRetryAndIdempotentSideEffectPatternS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -7058,7 +6846,6 @@ func runStepAtLeastOnceRetryAndIdempotentSideEffectPatternS3(parent context.Cont
 	}
 	return nil
 }
-
 
 func runStepAtLeastOnceRetryAndIdempotentSideEffectPatternS4(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
@@ -7099,6 +6886,3 @@ func runStepAtLeastOnceRetryAndIdempotentSideEffectPatternS4(parent context.Cont
 	}
 	return nil
 }
-
-
-
