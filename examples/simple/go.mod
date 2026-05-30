@@ -7,7 +7,7 @@ require (
 	github.com/gofiber/fiber/v3 v3.1.0
 	github.com/golang-migrate/migrate/v4 v4.18.3
 	github.com/google/wire v0.6.0
-	github.com/jackc/pgx/v5 v5.7.4
+	github.com/jackc/pgx/v5 v5.9.2
 	github.com/pkg/errors v0.9.1
 	go.uber.org/mock v0.5.2
 )
