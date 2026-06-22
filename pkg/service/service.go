@@ -82,6 +82,9 @@ type Service struct {
 
 	singleSession bool
 
+	timeoutAccessToken  time.Duration
+	timeoutRefreshToken time.Duration
+
 	generateSaltAndHash func(password string) (string, string, error)
 	now                 func() time.Time
 }
@@ -89,15 +92,17 @@ type Service struct {
 func NewService(
 	cfg *config.Config,
 	m model.ModelInterface,
-	auth auth.AuthInterface,
+	authSvc auth.AuthInterface,
 	hooks hooks.AnclaxHookInterface,
 ) ServiceInterface {
 	return &Service{
 		m:                   m,
-		auth:                auth,
+		auth:                authSvc,
 		hooks:               hooks,
 		now:                 time.Now,
 		generateSaltAndHash: utils.GenerateSaltAndHash,
 		singleSession:       cfg.Auth.SingleSession,
+		timeoutAccessToken:  utils.UnwrapOrDefault(cfg.Auth.AccessExpiry, auth.DefaultTimeoutAccessToken),
+		timeoutRefreshToken: utils.UnwrapOrDefault(cfg.Auth.RefreshExpiry, auth.DefaultTimeoutRefreshToken),
 	}
 }

@@ -12,6 +12,7 @@ package auth
 import (
 	context "context"
 	reflect "reflect"
+	time "time"
 
 	macaroons "github.com/cloudcarver/anclax/pkg/macaroons"
 	fiber "github.com/gofiber/fiber/v3"
@@ -57,24 +58,24 @@ func (mr *MockAuthInterfaceMockRecorder) Authfunc(c any) *gomock.Call {
 }
 
 // CreateRefreshToken mocks base method.
-func (m *MockAuthInterface) CreateRefreshToken(ctx context.Context, userID *int32, accessToken *macaroons.Macaroon) (*macaroons.Macaroon, error) {
+func (m *MockAuthInterface) CreateRefreshToken(ctx context.Context, userID *int32, accessToken *macaroons.Macaroon, ttl time.Duration) (*macaroons.Macaroon, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateRefreshToken", ctx, userID, accessToken)
+	ret := m.ctrl.Call(m, "CreateRefreshToken", ctx, userID, accessToken, ttl)
 	ret0, _ := ret[0].(*macaroons.Macaroon)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateRefreshToken indicates an expected call of CreateRefreshToken.
-func (mr *MockAuthInterfaceMockRecorder) CreateRefreshToken(ctx, userID, accessToken any) *gomock.Call {
+func (mr *MockAuthInterfaceMockRecorder) CreateRefreshToken(ctx, userID, accessToken, ttl any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateRefreshToken", reflect.TypeOf((*MockAuthInterface)(nil).CreateRefreshToken), ctx, userID, accessToken)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateRefreshToken", reflect.TypeOf((*MockAuthInterface)(nil).CreateRefreshToken), ctx, userID, accessToken, ttl)
 }
 
 // CreateToken mocks base method.
-func (m *MockAuthInterface) CreateToken(ctx context.Context, groupID *int32, caveats ...macaroons.Caveat) (*macaroons.Macaroon, error) {
+func (m *MockAuthInterface) CreateToken(ctx context.Context, groupID *int32, ttl time.Duration, caveats ...macaroons.Caveat) (*macaroons.Macaroon, error) {
 	m.ctrl.T.Helper()
-	varargs := []any{ctx, groupID}
+	varargs := []any{ctx, groupID, ttl}
 	for _, a := range caveats {
 		varargs = append(varargs, a)
 	}
@@ -85,9 +86,9 @@ func (m *MockAuthInterface) CreateToken(ctx context.Context, groupID *int32, cav
 }
 
 // CreateToken indicates an expected call of CreateToken.
-func (mr *MockAuthInterfaceMockRecorder) CreateToken(ctx, groupID any, caveats ...any) *gomock.Call {
+func (mr *MockAuthInterfaceMockRecorder) CreateToken(ctx, groupID, ttl any, caveats ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx, groupID}, caveats...)
+	varargs := append([]any{ctx, groupID, ttl}, caveats...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateToken", reflect.TypeOf((*MockAuthInterface)(nil).CreateToken), varargs...)
 }
 

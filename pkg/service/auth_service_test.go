@@ -266,13 +266,17 @@ func TestRefreshTokenRotatesRealMacaroons(t *testing.T) {
 	authSvc, err := auth.NewAuth(&config.Config{}, macaroonManager, caveatParser, nil)
 	require.NoError(t, err)
 
-	accessToken, err := authSvc.CreateToken(ctx, &userID, auth.NewUserContextCaveat(userID, orgID))
+	accessToken, err := authSvc.CreateToken(ctx, &userID, auth.DefaultTimeoutAccessToken, auth.NewUserContextCaveat(userID, orgID))
 	require.NoError(t, err)
 
-	refreshToken, err := authSvc.CreateRefreshToken(ctx, &userID, accessToken)
+	refreshToken, err := authSvc.CreateRefreshToken(ctx, &userID, accessToken, auth.DefaultTimeoutRefreshToken)
 	require.NoError(t, err)
 
-	svc := &Service{auth: authSvc}
+	svc := &Service{
+		auth:                authSvc,
+		timeoutAccessToken:  auth.DefaultTimeoutAccessToken,
+		timeoutRefreshToken: auth.DefaultTimeoutRefreshToken,
+	}
 	credentials, err := svc.RefreshToken(ctx, refreshToken.StringToken())
 	require.NoError(t, err)
 	require.Equal(t, apigen.Bearer, credentials.TokenType)

@@ -41,10 +41,10 @@ type AuthInterface interface {
 	CreateUserTokens(ctx context.Context, userID int32, orgID int32, caveats ...macaroons.Caveat) (*macaroons.Macaroon, *macaroons.Macaroon, error)
 
 	// CreateToken creates a macaroon token, the groupID tracks related generated keys.
-	CreateToken(ctx context.Context, groupID *int32, caveats ...macaroons.Caveat) (*macaroons.Macaroon, error)
+	CreateToken(ctx context.Context, groupID *int32, ttl time.Duration, caveats ...macaroons.Caveat) (*macaroons.Macaroon, error)
 
 	// CreateRefreshToken creates a refresh token for the given userID and access token
-	CreateRefreshToken(ctx context.Context, userID *int32, accessToken *macaroons.Macaroon) (*macaroons.Macaroon, error)
+	CreateRefreshToken(ctx context.Context, userID *int32, accessToken *macaroons.Macaroon, ttl time.Duration) (*macaroons.Macaroon, error)
 
 	// ParseRefreshToken parses the given refresh token and returns the carrying info
 	ParseRefreshToken(ctx context.Context, refreshToken string) (*macaroons.Macaroon, *RefreshOnlyCaveat, error)
@@ -123,7 +123,7 @@ func (a *Auth) CreateUserTokens(ctx context.Context, userID int32, orgID int32, 
 		return nil, nil, errors.Wrap(err, "failed to create macaroon token")
 	}
 
-	refreshToken, err := a.CreateRefreshToken(ctx, &userID, accessToken)
+	refreshToken, err := a.CreateRefreshToken(ctx, &userID, accessToken, a.timeoutRefreshToken)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to create refresh token")
 	}
@@ -135,15 +135,15 @@ func (a *Auth) CreateUserTokens(ctx context.Context, userID int32, orgID int32, 
 	return accessToken, refreshToken, nil
 }
 
-func (a *Auth) CreateToken(ctx context.Context, groupID *int32, caveats ...macaroons.Caveat) (*macaroons.Macaroon, error) {
-	token, err := a.macaroonManager.CreateToken(ctx, caveats, a.timeoutAccessToken, groupID)
+func (a *Auth) CreateToken(ctx context.Context, groupID *int32, ttl time.Duration, caveats ...macaroons.Caveat) (*macaroons.Macaroon, error) {
+	token, err := a.macaroonManager.CreateToken(ctx, caveats, ttl, groupID)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create macaroon token")
 	}
 	return token, nil
 }
 
-func (a *Auth) CreateRefreshToken(ctx context.Context, userID *int32, accessToken *macaroons.Macaroon) (*macaroons.Macaroon, error) {
+func (a *Auth) CreateRefreshToken(ctx context.Context, userID *int32, accessToken *macaroons.Macaroon, ttl time.Duration) (*macaroons.Macaroon, error) {
 	if accessToken == nil {
 		return nil, errors.New("access token is nil")
 	}
@@ -159,7 +159,7 @@ func (a *Auth) CreateRefreshToken(ctx context.Context, userID *int32, accessToke
 
 	token, err := a.macaroonManager.CreateToken(ctx, []macaroons.Caveat{
 		NewRefreshOnlyCaveat(userID, accessCaveats),
-	}, a.timeoutRefreshToken, userID)
+	}, ttl, userID)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create macaroon token")
 	}

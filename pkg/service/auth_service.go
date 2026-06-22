@@ -72,12 +72,12 @@ func (s *Service) RefreshToken(ctx context.Context, token string) (*apigen.Crede
 		return nil, errors.Wrapf(err, "failed to invalidate refresh token")
 	}
 
-	accessToken, err := s.auth.CreateToken(ctx, roc.UserID, roc.AccessTokenCaveats...)
+	accessToken, err := s.auth.CreateToken(ctx, roc.UserID, s.timeoutAccessToken, roc.AccessTokenCaveats...)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create access token")
 	}
 
-	newRefreshToken, err := s.auth.CreateRefreshToken(ctx, roc.UserID, accessToken)
+	newRefreshToken, err := s.auth.CreateRefreshToken(ctx, roc.UserID, accessToken, s.timeoutRefreshToken)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create refresh token")
 	}

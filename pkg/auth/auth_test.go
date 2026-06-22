@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/hooks"
@@ -167,6 +168,7 @@ func TestAuth_CreateToken(t *testing.T) {
 	ctx := context.Background()
 	userID := int32(1)
 	keyID := int64(123)
+	ttl := 3 * time.Minute
 
 	user := &querier.AnclaxUser{
 		ID: userID,
@@ -189,7 +191,7 @@ func TestAuth_CreateToken(t *testing.T) {
 				mockMacaroons.EXPECT().CreateToken(
 					gomock.Any(),
 					nil,
-					DefaultTimeoutAccessToken,
+					ttl,
 					&userID,
 				).Return(macaroon, nil)
 			},
@@ -204,7 +206,7 @@ func TestAuth_CreateToken(t *testing.T) {
 				mockMacaroons.EXPECT().CreateToken(
 					gomock.Any(),
 					nil,
-					DefaultTimeoutAccessToken,
+					ttl,
 					&userID,
 				).Return(nil, errors.New("token creation failed"))
 			},
@@ -218,7 +220,7 @@ func TestAuth_CreateToken(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.setupMock()
 
-			token, err := auth.CreateToken(ctx, &tc.user.ID)
+			token, err := auth.CreateToken(ctx, &tc.user.ID, ttl)
 
 			if tc.expectedError != nil {
 				require.Error(t, err)
@@ -247,6 +249,7 @@ func TestAuth_CreateRefreshToken(t *testing.T) {
 	ctx := context.Background()
 	userID := int32(1)
 	accessKeyID := int64(123)
+	ttl := 4 * time.Hour
 
 	accessToken, err := macaroons.CreateMacaroon(0, []byte("key"), nil)
 	require.NoError(t, err)
@@ -270,7 +273,7 @@ func TestAuth_CreateRefreshToken(t *testing.T) {
 				mockMacaroons.EXPECT().CreateToken(
 					gomock.Any(),
 					gomock.Any(),
-					DefaultTimeoutRefreshToken,
+					ttl,
 					&userID,
 				).Return(macaroon, nil)
 			},
@@ -285,7 +288,7 @@ func TestAuth_CreateRefreshToken(t *testing.T) {
 				mockMacaroons.EXPECT().CreateToken(
 					gomock.Any(),
 					gomock.Any(),
-					DefaultTimeoutRefreshToken,
+					ttl,
 					&userID,
 				).Return(nil, errors.New("token creation failed"))
 			},
@@ -298,7 +301,7 @@ func TestAuth_CreateRefreshToken(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.setupMock()
 
-			gotToken, err := auth.CreateRefreshToken(ctx, &userID, accessToken)
+			gotToken, err := auth.CreateRefreshToken(ctx, &userID, accessToken, ttl)
 
 			if tc.expectedError != nil {
 				require.Error(t, err)
