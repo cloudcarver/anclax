@@ -72,12 +72,12 @@ func NewMacaroonManager(keyStore store.KeyStore, caveatParser CaveatParserInterf
 	}
 }
 
-func (m *MacaroonsManager) CreateToken(ctx context.Context, caveats []Caveat, ttl time.Duration, groupID *int32) (*Macaroon, error) {
+func (m *MacaroonsManager) CreateToken(ctx context.Context, caveats []Caveat, ttl time.Duration, group string) (*Macaroon, error) {
 	key, err := m.randomKey()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate random key")
 	}
-	keyID, err := m.keyStore.Create(ctx, key, ttl, groupID)
+	keyID, err := m.keyStore.Create(ctx, key, ttl, group)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get key")
 	}
@@ -174,8 +174,8 @@ func (m *MacaroonsManager) Parse(ctx context.Context, token string) (*Macaroon, 
 	}, nil
 }
 
-func (m *MacaroonsManager) InvalidateTokensByGroupID(ctx context.Context, groupID int32) error {
-	if err := m.keyStore.DeleteUserKeys(ctx, groupID); err != nil {
+func (m *MacaroonsManager) InvalidateTokensByGroup(ctx context.Context, group string) error {
+	if err := m.keyStore.DeleteGroupKeys(ctx, group); err != nil {
 		if errors.Is(err, store.ErrKeyNotFound) {
 			return nil
 		}

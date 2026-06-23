@@ -12,7 +12,6 @@ import (
 	"github.com/cloudcarver/anclax/pkg/hooks"
 	"github.com/cloudcarver/anclax/pkg/macaroons"
 	"github.com/cloudcarver/anclax/pkg/utils"
-	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 	"github.com/gofiber/fiber/v3"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -166,19 +165,14 @@ func TestAuth_CreateToken(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	userID := int32(1)
+	group := "test:1"
 	keyID := int64(123)
 	ttl := 3 * time.Minute
-
-	user := &querier.AnclaxUser{
-		ID: userID,
-	}
 
 	macaroon, err := macaroons.CreateMacaroon(123, []byte("key"), nil)
 	require.NoError(t, err)
 	testCases := []struct {
 		name          string
-		user          *querier.AnclaxUser
 		setupMock     func()
 		expectedKeyID int64
 		expectedToken string
@@ -186,13 +180,12 @@ func TestAuth_CreateToken(t *testing.T) {
 	}{
 		{
 			name: "successful token creation",
-			user: user,
 			setupMock: func() {
 				mockMacaroons.EXPECT().CreateToken(
 					gomock.Any(),
 					nil,
 					ttl,
-					&userID,
+					group,
 				).Return(macaroon, nil)
 			},
 			expectedKeyID: keyID,
@@ -201,13 +194,12 @@ func TestAuth_CreateToken(t *testing.T) {
 		},
 		{
 			name: "token creation failure",
-			user: user,
 			setupMock: func() {
 				mockMacaroons.EXPECT().CreateToken(
 					gomock.Any(),
 					nil,
 					ttl,
-					&userID,
+					group,
 				).Return(nil, errors.New("token creation failed"))
 			},
 			expectedKeyID: 0,
@@ -220,7 +212,7 @@ func TestAuth_CreateToken(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.setupMock()
 
-			token, err := auth.CreateToken(ctx, &tc.user.ID, ttl)
+			token, err := auth.CreateToken(ctx, group, ttl)
 
 			if tc.expectedError != nil {
 				require.Error(t, err)
@@ -248,6 +240,7 @@ func TestAuth_CreateRefreshToken(t *testing.T) {
 
 	ctx := context.Background()
 	userID := int32(1)
+	group := UserTokenGroup(userID)
 	accessKeyID := int64(123)
 	ttl := 4 * time.Hour
 
@@ -274,7 +267,7 @@ func TestAuth_CreateRefreshToken(t *testing.T) {
 					gomock.Any(),
 					gomock.Any(),
 					ttl,
-					&userID,
+					group,
 				).Return(macaroon, nil)
 			},
 			expectedToken: macaroon.StringToken(),
@@ -289,7 +282,7 @@ func TestAuth_CreateRefreshToken(t *testing.T) {
 					gomock.Any(),
 					gomock.Any(),
 					ttl,
-					&userID,
+					group,
 				).Return(nil, errors.New("token creation failed"))
 			},
 			expectedToken: "",
@@ -301,7 +294,7 @@ func TestAuth_CreateRefreshToken(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.setupMock()
 
-			gotToken, err := auth.CreateRefreshToken(ctx, &userID, accessToken, ttl)
+			gotToken, err := auth.CreateRefreshToken(ctx, group, accessToken, ttl)
 
 			if tc.expectedError != nil {
 				require.Error(t, err)
@@ -329,6 +322,7 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 
 	ctx := context.Background()
 	userID := int32(1)
+	group := UserTokenGroup(userID)
 
 	accessTokenCaveats := []macaroons.Caveat{
 		NewUserContextCaveat(101, 102),
@@ -344,7 +338,7 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 		encodedAccessCaveats[i] = encoded
 	}
 
-	refreshCaveat := NewRefreshOnlyCaveat(&userID, encodedAccessCaveats)
+	refreshCaveat := NewRefreshOnlyCaveat(group, encodedAccessCaveats)
 	macaroon, err := macaroons.CreateMacaroon(0, []byte("key"), []macaroons.Caveat{refreshCaveat})
 	require.NoError(t, err)
 
@@ -353,11 +347,11 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 	require.NoError(t, err)
 
 	testCases := []struct {
-		name           string
-		refreshToken   string
-		setupMock      func()
-		expectedUserID int32
-		expectedError  error
+		name          string
+		refreshToken  string
+		setupMock     func()
+		expectedGroup string
+		expectedError error
 	}{
 		{
 			name:         "successful refresh token parsing",
@@ -368,8 +362,8 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 					mockCaveatParser.EXPECT().Parse(encoded).Return(accessTokenCaveats[i], nil)
 				}
 			},
-			expectedUserID: userID,
-			expectedError:  nil,
+			expectedGroup: group,
+			expectedError: nil,
 		},
 		{
 			name:         "parse failure",
@@ -377,8 +371,8 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 			setupMock: func() {
 				mockMacaroons.EXPECT().Parse(gomock.Any(), macaroon.StringToken()).Return(nil, errors.New("parse failed"))
 			},
-			expectedUserID: 0,
-			expectedError:  errors.New("failed to parse macaroon token"),
+			expectedGroup: "",
+			expectedError: errors.New("failed to parse macaroon token"),
 		},
 		{
 			name:         "no refresh caveat",
@@ -386,8 +380,8 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 			setupMock: func() {
 				mockMacaroons.EXPECT().Parse(gomock.Any(), noRefreshMacaroon.StringToken()).Return(noRefreshMacaroon, nil)
 			},
-			expectedUserID: 0,
-			expectedError:  ErrInvalidRefreshToken,
+			expectedGroup: "",
+			expectedError: ErrInvalidRefreshToken,
 		},
 	}
 
@@ -403,6 +397,7 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, macaroon, token)
+				require.Equal(t, tc.expectedGroup, roc.Group)
 				require.ElementsMatch(t, accessTokenCaveats, roc.AccessTokenCaveats)
 			}
 		})
@@ -415,18 +410,18 @@ func TestRefreshOnlyCaveat_JSONRoundTrip(t *testing.T) {
 		return &UserContextCaveat{}
 	}))
 
-	userID := int32(42)
+	group := UserTokenGroup(42)
 	accessCaveat := NewUserContextCaveat(101, 202)
 	encodedAccessCaveat, err := macaroons.EncodeCaveat(accessCaveat)
 	require.NoError(t, err)
 
-	refreshCaveat := NewRefreshOnlyCaveat(&userID, []string{encodedAccessCaveat})
+	refreshCaveat := NewRefreshOnlyCaveat(group, []string{encodedAccessCaveat})
 	encodedRefreshCaveat, err := macaroons.EncodeCaveat(refreshCaveat)
 	require.NoError(t, err)
 
 	var decoded RefreshOnlyCaveat
 	require.NoError(t, macaroons.DecodeCaveat(encodedRefreshCaveat, &decoded))
-	require.Equal(t, refreshCaveat.UserID, decoded.UserID)
+	require.Equal(t, refreshCaveat.Group, decoded.Group)
 	require.ElementsMatch(t, refreshCaveat.AccessCaveats, decoded.AccessCaveats)
 
 	parsed, err := parser.Parse(decoded.AccessCaveats[0])
@@ -482,6 +477,7 @@ func TestAuth_InvalidateUserTokens(t *testing.T) {
 
 	ctx := context.Background()
 	userID := int32(1)
+	group := UserTokenGroup(userID)
 
 	testCases := []struct {
 		name          string
@@ -493,7 +489,7 @@ func TestAuth_InvalidateUserTokens(t *testing.T) {
 			name:   "successful invalidation",
 			userID: userID,
 			setupMock: func() {
-				mockMacaroons.EXPECT().InvalidateTokensByGroupID(gomock.Any(), userID).Return(nil)
+				mockMacaroons.EXPECT().InvalidateTokensByGroup(gomock.Any(), group).Return(nil)
 			},
 			expectedError: nil,
 		},
@@ -501,7 +497,7 @@ func TestAuth_InvalidateUserTokens(t *testing.T) {
 			name:   "invalidation failure",
 			userID: userID,
 			setupMock: func() {
-				mockMacaroons.EXPECT().InvalidateTokensByGroupID(gomock.Any(), userID).Return(errors.New("invalidation failed"))
+				mockMacaroons.EXPECT().InvalidateTokensByGroup(gomock.Any(), group).Return(errors.New("invalidation failed"))
 			},
 			expectedError: errors.New("invalidation failed"),
 		},

@@ -35,7 +35,7 @@ type AnclaxEvent struct {
 type AnclaxOpaqueKey struct {
 	ID        int64
 	Key       []byte
-	GroupID   *int32
+	Group     *string
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

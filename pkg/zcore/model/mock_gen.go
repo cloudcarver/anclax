@@ -237,17 +237,17 @@ func (mr *MockModelInterfaceMockRecorder) DeleteOpaqueKey(ctx, id any) *gomock.C
 }
 
 // DeleteOpaqueKeys mocks base method.
-func (m *MockModelInterface) DeleteOpaqueKeys(ctx context.Context, groupID *int32) error {
+func (m *MockModelInterface) DeleteOpaqueKeys(ctx context.Context, group *string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteOpaqueKeys", ctx, groupID)
+	ret := m.ctrl.Call(m, "DeleteOpaqueKeys", ctx, group)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteOpaqueKeys indicates an expected call of DeleteOpaqueKeys.
-func (mr *MockModelInterfaceMockRecorder) DeleteOpaqueKeys(ctx, groupID any) *gomock.Call {
+func (mr *MockModelInterfaceMockRecorder) DeleteOpaqueKeys(ctx, group any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteOpaqueKeys", reflect.TypeOf((*MockModelInterface)(nil).DeleteOpaqueKeys), ctx, groupID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteOpaqueKeys", reflect.TypeOf((*MockModelInterface)(nil).DeleteOpaqueKeys), ctx, group)
 }
 
 // DeleteUserByName mocks base method.

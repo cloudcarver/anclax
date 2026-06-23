@@ -138,10 +138,10 @@ Use these depending on how much control you need:
   - token rotation using the standard refresh flow
 - `auth.CreateUserTokens(ctx, userID, orgID, caveats...)`
   - create an access token and refresh token directly using configured default lifetimes
-- `auth.CreateToken(ctx, groupID, ttl, caveats...)` / `auth.CreateRefreshToken(ctx, userID, accessToken, ttl)`
+- `auth.CreateToken(ctx, group, ttl, caveats...)` / `auth.CreateRefreshToken(ctx, group, accessToken, ttl)`
   - lower-level token control for advanced cases; pass `0` to skip automatic expiration
-- `auth.InvalidateUserTokens(ctx, userID)` / `auth.InvalidateToken(ctx, keyID)`
-  - revoke tokens; the built-in user-scoped flow stores that `userID` as the opaque key group ID
+- `auth.InvalidateUserTokens(ctx, userID)` / `auth.InvalidateTokensByGroup(ctx, group)` / `auth.InvalidateToken(ctx, keyID)`
+  - revoke tokens; the built-in user-scoped flow stores tokens under `user:<userID>`
 
 References:
 - service auth logic: `pkg/service/auth_service.go`

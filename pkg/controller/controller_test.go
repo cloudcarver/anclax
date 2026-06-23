@@ -148,19 +148,19 @@ func TestControllerSignIn(t *testing.T) {
 	}
 }
 
-func TestControllerSignOutUsesUserIDAsTokenGroupID(t *testing.T) {
+func TestControllerSignOutInvalidatesUserTokens(t *testing.T) {
 	app := fiber.New(fiber.Config{ErrorHandler: utils.ErrorHandler})
-	groupID := int32(201)
+	userID := int32(201)
 	controller := &Controller{
 		auth: stubAuth{
-			invalidateUserTokens: func(ctx context.Context, gotGroupID int32) error {
-				require.Equal(t, groupID, gotGroupID)
+			invalidateUserTokens: func(ctx context.Context, gotUserID int32) error {
+				require.Equal(t, userID, gotUserID)
 				return nil
 			},
 		},
 	}
 	app.Post("/auth/sign-out", func(c fiber.Ctx) error {
-		c.Locals(anclaxauth.ContextKeyUserID, groupID)
+		c.Locals(anclaxauth.ContextKeyUserID, userID)
 		return controller.SignOut(c)
 	})
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/cloudcarver/anclax/core"
+	"github.com/cloudcarver/anclax/pkg/auth"
 	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
@@ -62,9 +63,9 @@ func (s *Service) RefreshToken(ctx context.Context, token string) (*apigen.Crede
 		return nil, fmt.Errorf("%w: failed to parse refresh token: %w", ErrRefreshTokenExpired, err)
 	}
 
-	if roc.UserID != nil {
-		if err := s.auth.InvalidateUserTokens(ctx, *roc.UserID); err != nil {
-			return nil, errors.Wrapf(err, "failed to invalidate user tokens")
+	if roc.Group != "" {
+		if err := s.auth.InvalidateTokensByGroup(ctx, roc.Group); err != nil {
+			return nil, errors.Wrapf(err, "failed to invalidate token group")
 		}
 	}
 
@@ -72,12 +73,12 @@ func (s *Service) RefreshToken(ctx context.Context, token string) (*apigen.Crede
 		return nil, errors.Wrapf(err, "failed to invalidate refresh token")
 	}
 
-	accessToken, err := s.auth.CreateToken(ctx, roc.UserID, s.timeoutAccessToken, roc.AccessTokenCaveats...)
+	accessToken, err := s.auth.CreateToken(ctx, roc.Group, s.timeoutAccessToken, roc.AccessTokenCaveats...)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create access token")
 	}
 
-	newRefreshToken, err := s.auth.CreateRefreshToken(ctx, roc.UserID, accessToken, s.timeoutRefreshToken)
+	newRefreshToken, err := s.auth.CreateRefreshToken(ctx, roc.Group, accessToken, s.timeoutRefreshToken)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create refresh token")
 	}
@@ -172,7 +173,8 @@ func (s *Service) DeleteUserByName(ctx context.Context, username string) error {
 			}
 			return errors.Wrapf(err, "failed to delete user by name")
 		}
-		if err := txm.DeleteOpaqueKeys(ctx, &userID); err != nil {
+		group := auth.UserTokenGroup(userID)
+		if err := txm.DeleteOpaqueKeys(ctx, &group); err != nil {
 			return errors.Wrapf(err, "failed to delete user token keys")
 		}
 		return nil

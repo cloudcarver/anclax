@@ -37,11 +37,11 @@ func TestMacaroonManager_CreateMacaroon(t *testing.T) {
 			&TestCaveat{Data: "caveat1"},
 			&TestCaveat{Data: "caveat2"},
 		}
-		ttl    = time.Second * 10
-		userID = int32(1)
+		ttl   = time.Second * 10
+		group = "user:1"
 	)
 
-	keyStore.EXPECT().Create(gomock.Any(), []byte("key"), ttl, &userID).Return(keyID, nil)
+	keyStore.EXPECT().Create(gomock.Any(), []byte("key"), ttl, group).Return(keyID, nil)
 	keyStore.EXPECT().Get(gomock.Any(), keyID).Return([]byte("key"), nil).Times(2)
 
 	encodedCaveat1, err := EncodeCaveat(caveats[0])
@@ -58,7 +58,7 @@ func TestMacaroonManager_CreateMacaroon(t *testing.T) {
 		randomKey:    func() ([]byte, error) { return []byte("key"), nil },
 	}
 
-	macaroon, err := manager.CreateToken(context.Background(), caveats, ttl, &userID)
+	macaroon, err := manager.CreateToken(context.Background(), caveats, ttl, group)
 	require.NoError(t, err)
 
 	parsed, err := manager.Parse(context.Background(), macaroon.StringToken())
@@ -81,7 +81,7 @@ func TestMacaroonManager_CreateMacaroon(t *testing.T) {
 	require.Equal(t, append(caveats, &TestCaveat{Data: "caveat3"}), parsed.Caveats)
 }
 
-func TestInvalidateTokensByGroupIDDeletesGroupKeys(t *testing.T) {
+func TestInvalidateTokensByGroupDeletesGroupKeys(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -106,18 +106,18 @@ func TestInvalidateTokensByGroupIDDeletesGroupKeys(t *testing.T) {
 	}
 
 	var (
-		groupID = int32(1)
+		group = "user:1"
 	)
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			keyStore.EXPECT().DeleteUserKeys(gomock.Any(), groupID).Return(tc.err)
+			keyStore.EXPECT().DeleteGroupKeys(gomock.Any(), group).Return(tc.err)
 
 			manager := &MacaroonsManager{
 				keyStore: keyStore,
 			}
 
-			err := manager.InvalidateTokensByGroupID(context.Background(), groupID)
+			err := manager.InvalidateTokensByGroup(context.Background(), group)
 			if tc.err == nil {
 				require.NoError(t, err)
 			} else if tc.err == store.ErrKeyNotFound {

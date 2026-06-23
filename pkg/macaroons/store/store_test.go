@@ -26,15 +26,15 @@ func TestCreate(t *testing.T) {
 		ctx      = context.Background()
 		ttl      = 1 * time.Hour
 		key      = []byte("test")
-		groupID  = int32(201)
+		group    = "user:201"
 		currTime = time.Now()
 		keyID    = int64(101)
 		taskID   = int32(101)
 	)
 
 	mockModel.EXPECT().CreateOpaqueKey(gomock.Any(), querier.CreateOpaqueKeyParams{
-		GroupID: &groupID,
-		Key:     key,
+		Group: &group,
+		Key:   key,
 	}).Return(keyID, nil)
 	taskRunner.EXPECT().RunDeleteOpaqueKeyWithTx(
 		ctx,
@@ -51,7 +51,7 @@ func TestCreate(t *testing.T) {
 		now:        func() time.Time { return currTime },
 	}
 
-	ret, err := store.Create(ctx, key, ttl, &groupID)
+	ret, err := store.Create(ctx, key, ttl, group)
 	require.NoError(t, err)
 	require.Equal(t, keyID, ret)
 }
@@ -164,7 +164,7 @@ func TestGet(t *testing.T) {
 	}
 }
 
-func TestDeleteUserKeysDeletesGroupKeys(t *testing.T) {
+func TestDeleteGroupKeysDeletesGroupKeys(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -187,8 +187,8 @@ func TestDeleteUserKeysDeletesGroupKeys(t *testing.T) {
 	}
 
 	var (
-		ctx     = context.Background()
-		groupID = int32(201)
+		ctx   = context.Background()
+		group = "user:201"
 	)
 
 	for _, tc := range testCases {
@@ -200,12 +200,12 @@ func TestDeleteUserKeysDeletesGroupKeys(t *testing.T) {
 			}
 
 			if tc.err == nil {
-				model.EXPECT().DeleteOpaqueKeys(gomock.Any(), &groupID).Return(nil)
+				model.EXPECT().DeleteOpaqueKeys(gomock.Any(), &group).Return(nil)
 			} else {
-				model.EXPECT().DeleteOpaqueKeys(gomock.Any(), &groupID).Return(tc.err)
+				model.EXPECT().DeleteOpaqueKeys(gomock.Any(), &group).Return(tc.err)
 			}
 
-			err := store.DeleteUserKeys(ctx, groupID)
+			err := store.DeleteGroupKeys(ctx, group)
 			if tc.err == nil {
 				require.NoError(t, err)
 			} else if tc.err == pgx.ErrNoRows {

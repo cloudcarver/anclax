@@ -31,12 +31,16 @@ func NewStore(model model.ModelInterface, taskRunner runner.TaskRunner) KeyStore
 	}
 }
 
-func (s *Store) Create(ctx context.Context, key []byte, ttl time.Duration, groupID *int32) (int64, error) {
+func (s *Store) Create(ctx context.Context, key []byte, ttl time.Duration, group string) (int64, error) {
 	var ret int64
 	if err := s.model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
+		var groupPtr *string
+		if group != "" {
+			groupPtr = &group
+		}
 		keyID, err := txm.CreateOpaqueKey(ctx, querier.CreateOpaqueKeyParams{
-			GroupID: groupID,
-			Key:     key,
+			Group: groupPtr,
+			Key:   key,
 		})
 		if err != nil {
 			return errors.Wrap(err, "failed to create key")
@@ -81,8 +85,11 @@ func (s *Store) Delete(ctx context.Context, keyID int64) error {
 	return nil
 }
 
-func (s *Store) DeleteUserKeys(ctx context.Context, groupID int32) error {
-	err := s.model.DeleteOpaqueKeys(ctx, &groupID)
+func (s *Store) DeleteGroupKeys(ctx context.Context, group string) error {
+	if group == "" {
+		return nil
+	}
+	err := s.model.DeleteOpaqueKeys(ctx, &group)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrKeyNotFound

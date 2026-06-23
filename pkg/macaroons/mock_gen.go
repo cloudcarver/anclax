@@ -148,18 +148,18 @@ func (m *MockMacaroonManagerInterface) EXPECT() *MockMacaroonManagerInterfaceMoc
 }
 
 // CreateToken mocks base method.
-func (m *MockMacaroonManagerInterface) CreateToken(ctx context.Context, caveats []Caveat, ttl time.Duration, groupID *int32) (*Macaroon, error) {
+func (m *MockMacaroonManagerInterface) CreateToken(ctx context.Context, caveats []Caveat, ttl time.Duration, group string) (*Macaroon, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateToken", ctx, caveats, ttl, groupID)
+	ret := m.ctrl.Call(m, "CreateToken", ctx, caveats, ttl, group)
 	ret0, _ := ret[0].(*Macaroon)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateToken indicates an expected call of CreateToken.
-func (mr *MockMacaroonManagerInterfaceMockRecorder) CreateToken(ctx, caveats, ttl, groupID any) *gomock.Call {
+func (mr *MockMacaroonManagerInterfaceMockRecorder) CreateToken(ctx, caveats, ttl, group any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateToken", reflect.TypeOf((*MockMacaroonManagerInterface)(nil).CreateToken), ctx, caveats, ttl, groupID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateToken", reflect.TypeOf((*MockMacaroonManagerInterface)(nil).CreateToken), ctx, caveats, ttl, group)
 }
 
 // InvalidateToken mocks base method.
@@ -176,18 +176,18 @@ func (mr *MockMacaroonManagerInterfaceMockRecorder) InvalidateToken(ctx, keyID a
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InvalidateToken", reflect.TypeOf((*MockMacaroonManagerInterface)(nil).InvalidateToken), ctx, keyID)
 }
 
-// InvalidateTokensByGroupID mocks base method.
-func (m *MockMacaroonManagerInterface) InvalidateTokensByGroupID(ctx context.Context, groupID int32) error {
+// InvalidateTokensByGroup mocks base method.
+func (m *MockMacaroonManagerInterface) InvalidateTokensByGroup(ctx context.Context, group string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InvalidateTokensByGroupID", ctx, groupID)
+	ret := m.ctrl.Call(m, "InvalidateTokensByGroup", ctx, group)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// InvalidateTokensByGroupID indicates an expected call of InvalidateTokensByGroupID.
-func (mr *MockMacaroonManagerInterfaceMockRecorder) InvalidateTokensByGroupID(ctx, groupID any) *gomock.Call {
+// InvalidateTokensByGroup indicates an expected call of InvalidateTokensByGroup.
+func (mr *MockMacaroonManagerInterfaceMockRecorder) InvalidateTokensByGroup(ctx, group any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InvalidateTokensByGroupID", reflect.TypeOf((*MockMacaroonManagerInterface)(nil).InvalidateTokensByGroupID), ctx, groupID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InvalidateTokensByGroup", reflect.TypeOf((*MockMacaroonManagerInterface)(nil).InvalidateTokensByGroup), ctx, group)
 }
 
 // Parse mocks base method.

@@ -144,10 +144,11 @@ func TestDeleteUserByNameDeletesTokenKeysInTransaction(t *testing.T) {
 		ctx      = context.Background()
 		username = "testuser"
 		userID   = int32(102)
+		group    = auth.UserTokenGroup(userID)
 	)
 
 	mockModel.EXPECT().DeleteUserByNameReturningID(ctx, username).Return(userID, nil)
-	mockModel.EXPECT().DeleteOpaqueKeys(ctx, &userID).Return(nil)
+	mockModel.EXPECT().DeleteOpaqueKeys(ctx, &group).Return(nil)
 
 	service := &Service{m: mockModel}
 
@@ -184,11 +185,12 @@ func TestDeleteUserByNameReturnsTokenKeyDeleteError(t *testing.T) {
 		ctx       = context.Background()
 		username  = "testuser"
 		userID    = int32(102)
+		group     = auth.UserTokenGroup(userID)
 		deleteErr = errors.New("delete token keys failed")
 	)
 
 	mockModel.EXPECT().DeleteUserByNameReturningID(ctx, username).Return(userID, nil)
-	mockModel.EXPECT().DeleteOpaqueKeys(ctx, &userID).Return(deleteErr)
+	mockModel.EXPECT().DeleteOpaqueKeys(ctx, &group).Return(deleteErr)
 
 	service := &Service{m: mockModel}
 
@@ -199,25 +201,25 @@ func TestDeleteUserByNameReturnsTokenKeyDeleteError(t *testing.T) {
 type testKeyStore struct {
 	next      int64
 	keys      map[int64][]byte
-	groupKeys map[int32]map[int64]struct{}
+	groupKeys map[string]map[int64]struct{}
 }
 
 func newTestKeyStore() *testKeyStore {
 	return &testKeyStore{
 		keys:      map[int64][]byte{},
-		groupKeys: map[int32]map[int64]struct{}{},
+		groupKeys: map[string]map[int64]struct{}{},
 	}
 }
 
-func (s *testKeyStore) Create(_ context.Context, key []byte, _ time.Duration, groupID *int32) (int64, error) {
+func (s *testKeyStore) Create(_ context.Context, key []byte, _ time.Duration, group string) (int64, error) {
 	s.next++
 	keyID := s.next
 	s.keys[keyID] = append([]byte(nil), key...)
-	if groupID != nil {
-		if s.groupKeys[*groupID] == nil {
-			s.groupKeys[*groupID] = map[int64]struct{}{}
+	if group != "" {
+		if s.groupKeys[group] == nil {
+			s.groupKeys[group] = map[int64]struct{}{}
 		}
-		s.groupKeys[*groupID][keyID] = struct{}{}
+		s.groupKeys[group][keyID] = struct{}{}
 	}
 	return keyID, nil
 }
@@ -235,24 +237,24 @@ func (s *testKeyStore) Delete(_ context.Context, keyID int64) error {
 		return macaroonstore.ErrKeyNotFound
 	}
 	delete(s.keys, keyID)
-	for groupID, keyIDs := range s.groupKeys {
+	for group, keyIDs := range s.groupKeys {
 		delete(keyIDs, keyID)
 		if len(keyIDs) == 0 {
-			delete(s.groupKeys, groupID)
+			delete(s.groupKeys, group)
 		}
 	}
 	return nil
 }
 
-func (s *testKeyStore) DeleteUserKeys(_ context.Context, groupID int32) error {
-	keyIDs, ok := s.groupKeys[groupID]
+func (s *testKeyStore) DeleteGroupKeys(_ context.Context, group string) error {
+	keyIDs, ok := s.groupKeys[group]
 	if !ok {
 		return macaroonstore.ErrKeyNotFound
 	}
 	for keyID := range keyIDs {
 		delete(s.keys, keyID)
 	}
-	delete(s.groupKeys, groupID)
+	delete(s.groupKeys, group)
 	return nil
 }
 
@@ -260,16 +262,17 @@ func TestRefreshTokenRotatesRealMacaroons(t *testing.T) {
 	ctx := context.Background()
 	userID := int32(102)
 	orgID := int32(201)
+	group := auth.UserTokenGroup(userID)
 
 	caveatParser := macaroons.NewCaveatParser()
 	macaroonManager := macaroons.NewMacaroonManager(newTestKeyStore(), caveatParser)
 	authSvc, err := auth.NewAuth(&config.Config{}, macaroonManager, caveatParser, nil)
 	require.NoError(t, err)
 
-	accessToken, err := authSvc.CreateToken(ctx, &userID, auth.DefaultTimeoutAccessToken, auth.NewUserContextCaveat(userID, orgID))
+	accessToken, err := authSvc.CreateToken(ctx, group, auth.DefaultTimeoutAccessToken, auth.NewUserContextCaveat(userID, orgID))
 	require.NoError(t, err)
 
-	refreshToken, err := authSvc.CreateRefreshToken(ctx, &userID, accessToken, auth.DefaultTimeoutRefreshToken)
+	refreshToken, err := authSvc.CreateRefreshToken(ctx, group, accessToken, auth.DefaultTimeoutRefreshToken)
 	require.NoError(t, err)
 
 	svc := &Service{
@@ -287,7 +290,7 @@ func TestRefreshTokenRotatesRealMacaroons(t *testing.T) {
 
 	_, newRefreshCaveat, err := authSvc.ParseRefreshToken(ctx, credentials.RefreshToken)
 	require.NoError(t, err)
-	require.Equal(t, userID, *newRefreshCaveat.UserID)
+	require.Equal(t, group, newRefreshCaveat.Group)
 	require.Len(t, newRefreshCaveat.AccessTokenCaveats, 1)
 
 	_, _, err = authSvc.ParseRefreshToken(ctx, refreshToken.StringToken())
