@@ -11,11 +11,10 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func TestNewExecutorWithoutDSNDisablesAckWaiter(t *testing.T) {
+func TestNewExecutorSetsRuntimeConfigHeartbeatTTL(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	exec := NewExecutor(&config.Config{}, model.NewMockModelInterface(ctrl), taskgen.NewMockTaskRunner(ctrl))
-	require.Nil(t, exec.waitForAck)
 	require.Equal(t, 9*time.Second, exec.runtimeConfigHeartbeatTTL)
 }

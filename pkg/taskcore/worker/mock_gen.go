@@ -167,6 +167,20 @@ func (mr *MockWorkerInterfaceMockRecorder) Start() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Start", reflect.TypeOf((*MockWorkerInterface)(nil).Start))
 }
 
+// WaitTaskRuntimes mocks base method.
+func (m *MockWorkerInterface) WaitTaskRuntimes(ctx context.Context, taskIDs []int32) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "WaitTaskRuntimes", ctx, taskIDs)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// WaitTaskRuntimes indicates an expected call of WaitTaskRuntimes.
+func (mr *MockWorkerInterfaceMockRecorder) WaitTaskRuntimes(ctx, taskIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WaitTaskRuntimes", reflect.TypeOf((*MockWorkerInterface)(nil).WaitTaskRuntimes), ctx, taskIDs)
+}
+
 // WorkerID mocks base method.
 func (m *MockWorkerInterface) WorkerID() string {
 	m.ctrl.T.Helper()

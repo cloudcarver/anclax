@@ -48,8 +48,6 @@ type Runtime interface {
 	SetTaskStatus(ctx context.Context, task string, status string) error
 	SleepMs(ctx context.Context, ms int32) error
 	CreateRuntimeConfig(ctx context.Context, key string, requestID string, maxStrictPercentage int32, defaultWeight int32, w1Weight int32, w2Weight int32, notify bool) error
-	WaitRuntimeConfigAck(ctx context.Context, key string, requestID string, timeoutMs int32) error
-	CaptureLatestRuntimeConfigVersion(ctx context.Context, key string) error
 	WaitWorkerLagging(ctx context.Context, workerName string, key string, expected bool, timeoutMs int32) error
 	WaitWorkerOnline(ctx context.Context, workerName string, expected bool, timeoutMs int32) error
 	MarkWorkerOffline(ctx context.Context, workerName string) error
@@ -3394,11 +3392,6 @@ func runStepSmokeRuntimeConfigControlPlaneBroadcastS2(parent context.Context, ac
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := actors.Runtime.CaptureLatestRuntimeConfigVersion(ctx, "SRCA_CFG"); err != nil {
-			errCh <- fmt.Errorf("actor runtime call %s: %w", "CaptureLatestRuntimeConfigVersion(ctx, \"SRCA_CFG\")", err)
-			cancel()
-			return
-		}
 		if err := actors.Runtime.WaitWorkerLagging(ctx, "SRCA_W1", "SRCA_CFG", false, 7000); err != nil {
 			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitWorkerLagging(ctx, \"SRCA_W1\", \"SRCA_CFG\", false, 7000)", err)
 			cancel()
@@ -3518,11 +3511,6 @@ func runStepSmokeRuntimeConfigNewWorkerJoinsAfterBroadcastS3(parent context.Cont
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := actors.Runtime.CaptureLatestRuntimeConfigVersion(ctx, "SRCJ_CFG"); err != nil {
-			errCh <- fmt.Errorf("actor runtime call %s: %w", "CaptureLatestRuntimeConfigVersion(ctx, \"SRCJ_CFG\")", err)
-			cancel()
-			return
-		}
 		if err := actors.Runtime.WaitWorkerLagging(ctx, "SRCJ_W1", "SRCJ_CFG", false, 7000); err != nil {
 			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitWorkerLagging(ctx, \"SRCJ_W1\", \"SRCJ_CFG\", false, 7000)", err)
 			cancel()
@@ -3657,11 +3645,6 @@ func runStepSmokeRuntimeConfigWorkerStopsDuringBroadcastS3(parent context.Contex
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := actors.Runtime.CaptureLatestRuntimeConfigVersion(ctx, "SRCO_CFG"); err != nil {
-			errCh <- fmt.Errorf("actor runtime call %s: %w", "CaptureLatestRuntimeConfigVersion(ctx, \"SRCO_CFG\")", err)
-			cancel()
-			return
-		}
 		if err := actors.Runtime.WaitWorkerLagging(ctx, "SRCO_W1", "SRCO_CFG", false, 7000); err != nil {
 			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitWorkerLagging(ctx, \"SRCO_W1\", \"SRCO_CFG\", false, 7000)", err)
 			cancel()
@@ -5974,6 +5957,9 @@ func RunScenarioComplexRuntimeReconfigFailoverAndFailure(ctx context.Context, ac
 	if err := runStepComplexRuntimeReconfigFailoverAndFailureS1(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s1: %w", err)
 	}
+	if err := runStepComplexRuntimeReconfigFailoverAndFailureS1b(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s1b: %w", err)
+	}
 	if err := runStepComplexRuntimeReconfigFailoverAndFailureS2(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s2: %w", err)
 	}
@@ -5982,6 +5968,9 @@ func RunScenarioComplexRuntimeReconfigFailoverAndFailure(ctx context.Context, ac
 	}
 	if err := runStepComplexRuntimeReconfigFailoverAndFailureS4(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s4: %w", err)
+	}
+	if err := runStepComplexRuntimeReconfigFailoverAndFailureS4b(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step s4b: %w", err)
 	}
 	if err := runStepComplexRuntimeReconfigFailoverAndFailureS5(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s5: %w", err)
@@ -6034,16 +6023,36 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS1(parent context.Context, a
 			cancel()
 			return
 		}
-		if err := actors.Runtime.CreateRuntimeConfig(ctx, "CRRF_CFG1", "req-crrf-1", 20, 1, 1, 4, true); err != nil {
-			errCh <- fmt.Errorf("actor runtime call %s: %w", "CreateRuntimeConfig(ctx, \"CRRF_CFG1\", \"req-crrf-1\", 20, 1, 1, 4, true)", err)
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func runStepComplexRuntimeReconfigFailoverAndFailureS1b(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 2)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.ControlPlane.UpdateRuntimeConfig(ctx, "CRRF_CFG1", 20, 1, 1, 4); err != nil {
+			errCh <- fmt.Errorf("actor controlPlane call %s: %w", "UpdateRuntimeConfig(ctx, \"CRRF_CFG1\", 20, 1, 1, 4)", err)
 			cancel()
 			return
 		}
-		if err := actors.Runtime.WaitRuntimeConfigAck(ctx, "CRRF_CFG1", "req-crrf-1", 8000); err != nil {
-			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitRuntimeConfigAck(ctx, \"CRRF_CFG1\", \"req-crrf-1\", 8000)", err)
-			cancel()
-			return
-		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
 		if err := actors.Runtime.WaitWorkerLagging(ctx, "crrf_cap", "CRRF_CFG1", false, 7000); err != nil {
 			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitWorkerLagging(ctx, \"crrf_cap\", \"CRRF_CFG1\", false, 7000)", err)
 			cancel()
@@ -6164,16 +6173,36 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS4(parent context.Context, a
 			cancel()
 			return
 		}
-		if err := actors.Runtime.CreateRuntimeConfig(ctx, "CRRF_CFG2", "req-crrf-2", 0, 1, 5, 1, true); err != nil {
-			errCh <- fmt.Errorf("actor runtime call %s: %w", "CreateRuntimeConfig(ctx, \"CRRF_CFG2\", \"req-crrf-2\", 0, 1, 5, 1, true)", err)
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func runStepComplexRuntimeReconfigFailoverAndFailureS4b(parent context.Context, actors Actors, vars *varStore) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	var wg sync.WaitGroup
+	errCh := make(chan error, 2)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := actors.ControlPlane.UpdateRuntimeConfig(ctx, "CRRF_CFG2", 0, 1, 5, 1); err != nil {
+			errCh <- fmt.Errorf("actor controlPlane call %s: %w", "UpdateRuntimeConfig(ctx, \"CRRF_CFG2\", 0, 1, 5, 1)", err)
 			cancel()
 			return
 		}
-		if err := actors.Runtime.WaitRuntimeConfigAck(ctx, "CRRF_CFG2", "req-crrf-2", 8000); err != nil {
-			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitRuntimeConfigAck(ctx, \"CRRF_CFG2\", \"req-crrf-2\", 8000)", err)
-			cancel()
-			return
-		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
 		if err := actors.Runtime.WaitWorkerLagging(ctx, "crrf_cap", "CRRF_CFG2", false, 7000); err != nil {
 			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitWorkerLagging(ctx, \"crrf_cap\", \"CRRF_CFG2\", false, 7000)", err)
 			cancel()

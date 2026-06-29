@@ -2,6 +2,7 @@ package asynctask
 
 import (
 	"context"
+	stdErrors "errors"
 	"testing"
 
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
@@ -102,6 +103,7 @@ func TestWorkerControlTaskHandlerEmptyTargetWorkerIDAppliesToLocal(t *testing.T)
 
 	mockWorker.EXPECT().WorkerID().Times(0)
 	mockWorker.EXPECT().InterruptTasks([]int32{9}, taskcore.ErrTaskCancelled)
+	mockWorker.EXPECT().WaitTaskRuntimes(gomock.Any(), []int32{9}).Return(nil)
 
 	err = handler.HandleTask(context.Background(), worker.Task{Spec: apigen.TaskSpec{
 		Type:    taskgen.CancelTaskOnWorker,
@@ -143,8 +145,10 @@ func TestWorkerControlTaskHandlerCancelAndPause(t *testing.T) {
 
 	mockWorker.EXPECT().WorkerID().Return(workerID.String())
 	mockWorker.EXPECT().InterruptTasks(taskIDs, taskcore.ErrTaskCancelled)
+	mockWorker.EXPECT().WaitTaskRuntimes(gomock.Any(), taskIDs).Return(nil)
 	mockWorker.EXPECT().WorkerID().Return(workerID.String())
 	mockWorker.EXPECT().InterruptTasks(taskIDs, taskcore.ErrTaskPaused)
+	mockWorker.EXPECT().WaitTaskRuntimes(gomock.Any(), taskIDs).Return(nil)
 
 	err = handler.HandleTask(context.Background(), worker.Task{Spec: apigen.TaskSpec{
 		Type:    taskgen.CancelTaskOnWorker,
@@ -155,6 +159,50 @@ func TestWorkerControlTaskHandlerCancelAndPause(t *testing.T) {
 	err = handler.HandleTask(context.Background(), worker.Task{Spec: apigen.TaskSpec{
 		Type:    taskgen.PauseTaskOnWorker,
 		Payload: pausePayload,
+	}})
+	require.NoError(t, err)
+}
+
+func TestWorkerControlTaskHandlerReturnsWaitError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockWorker := worker.NewMockWorkerInterface(ctrl)
+	handler := NewWorkerControlTaskHandler(mockWorker)
+
+	taskIDs := []int32{11}
+	params := &taskgen.CancelTaskOnWorkerParameters{WorkerID: uuid.Nil, TaskIDs: taskIDs}
+	payload, err := params.Marshal()
+	require.NoError(t, err)
+	waitErr := stdErrors.New("wait runtime")
+
+	mockWorker.EXPECT().InterruptTasks(taskIDs, taskcore.ErrTaskCancelled)
+	mockWorker.EXPECT().WaitTaskRuntimes(gomock.Any(), taskIDs).Return(waitErr)
+
+	err = handler.HandleTask(context.Background(), worker.Task{Spec: apigen.TaskSpec{
+		Type:    taskgen.CancelTaskOnWorker,
+		Payload: payload,
+	}})
+	require.ErrorIs(t, err, waitErr)
+}
+
+func TestWorkerControlTaskHandlerFiltersSelfTaskID(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockWorker := worker.NewMockWorkerInterface(ctrl)
+	handler := NewWorkerControlTaskHandler(mockWorker)
+
+	params := &taskgen.CancelTaskOnWorkerParameters{WorkerID: uuid.Nil, TaskIDs: []int32{7, 8}}
+	payload, err := params.Marshal()
+	require.NoError(t, err)
+
+	mockWorker.EXPECT().InterruptTasks([]int32{8}, taskcore.ErrTaskCancelled)
+	mockWorker.EXPECT().WaitTaskRuntimes(gomock.Any(), []int32{8}).Return(nil)
+
+	err = handler.HandleTask(context.Background(), worker.Task{ID: 7, Spec: apigen.TaskSpec{
+		Type:    taskgen.CancelTaskOnWorker,
+		Payload: payload,
 	}})
 	require.NoError(t, err)
 }

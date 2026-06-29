@@ -39,4 +39,3 @@ For production usage, `NewWorker(...)` wires:
 - `Engine` + `Runtime`
 - model-backed `Port` (`ModelPort`)
 - worker lifecycle handler semantics (retry/cron/failure logic)
-- optional runtime-config LISTEN loop when DSN is configured.

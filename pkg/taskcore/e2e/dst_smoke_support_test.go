@@ -22,7 +22,6 @@ import (
 	"github.com/cloudcarver/anclax/pkg/globalctx"
 	"github.com/cloudcarver/anclax/pkg/taskcore/ctrl"
 	tasklistener "github.com/cloudcarver/anclax/pkg/taskcore/listener"
-	"github.com/cloudcarver/anclax/pkg/taskcore/pgnotify"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
@@ -363,25 +362,33 @@ type runtimeConfigPayloadSpec struct {
 	LabelWeights        map[string]int32 `json:"labelWeights,omitempty"`
 }
 
-type runtimeConfigNotifySpec struct {
-	Op     string                    `json:"op"`
-	Params runtimeConfigNotifyParams `json:"params"`
+type runtimeConfigRegistry struct {
+	mu       sync.Mutex
+	versions map[string]int64
 }
 
-type runtimeConfigNotifyParams struct {
-	RequestID string `json:"request_id"`
-	Version   int64  `json:"version"`
+func newRuntimeConfigRegistry() *runtimeConfigRegistry {
+	return &runtimeConfigRegistry{versions: map[string]int64{}}
 }
 
-type runtimeConfigAckSpec struct {
-	Op     string                 `json:"op"`
-	Params runtimeConfigAckParams `json:"params"`
+func (r *runtimeConfigRegistry) record(key string, version int64) error {
+	if key == "" {
+		return fmt.Errorf("runtime config key is required")
+	}
+	if version <= 0 {
+		return fmt.Errorf("runtime config version must be positive")
+	}
+	r.mu.Lock()
+	r.versions[key] = version
+	r.mu.Unlock()
+	return nil
 }
 
-type runtimeConfigAckParams struct {
-	RequestID      string `json:"request_id"`
-	WorkerID       string `json:"worker_id"`
-	AppliedVersion int64  `json:"applied_version"`
+func (r *runtimeConfigRegistry) lookup(key string) (int64, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	version, ok := r.versions[key]
+	return version, ok
 }
 
 type runtimeWorker struct {
@@ -393,12 +400,12 @@ type runtimeWorker struct {
 type runtimeActor struct {
 	model model.ModelInterface
 
-	mu            sync.Mutex
-	workers       map[string]*runtimeWorker
-	lockAnchors   map[string]time.Time
-	configVersion map[string]int64
-	captures      *runtimeCaptureTracker
-	contention    *runtimeContentionTracker
+	mu          sync.Mutex
+	workers     map[string]*runtimeWorker
+	lockAnchors map[string]time.Time
+	configs     *runtimeConfigRegistry
+	captures    *runtimeCaptureTracker
+	contention  *runtimeContentionTracker
 }
 
 type controlPlaneActor struct {
@@ -406,12 +413,13 @@ type controlPlaneActor struct {
 	available    bool
 	controlPlane *ctrl.WorkerControlPlane
 	model        model.ModelInterface
+	configs      *runtimeConfigRegistry
 }
 
-func newControlPlaneActor(model model.ModelInterface, store taskcore.TaskStoreInterface, taskListener tasklistener.TaskEventListener) *controlPlaneActor {
+func newControlPlaneActor(model model.ModelInterface, store taskcore.TaskStoreInterface, taskListener tasklistener.TaskEventListener, configs *runtimeConfigRegistry) *controlPlaneActor {
 	runner := taskgen.NewTaskRunner(store)
 	controlPlane := ctrl.NewWorkerControlPlane(model, runner, store, taskListener)
-	return &controlPlaneActor{available: true, controlPlane: controlPlane, model: model}
+	return &controlPlaneActor{available: true, controlPlane: controlPlane, model: model, configs: configs}
 }
 
 func (a *controlPlaneActor) SetAvailable(available bool) {
@@ -453,6 +461,13 @@ func (a *controlPlaneActor) UpdateRuntimeConfig(ctx context.Context, key string,
 		Weights:             weights,
 	}
 	if err := a.controlPlane.UpdateWorkerRuntimeConfig(ctx, req); err != nil {
+		return err
+	}
+	latest, err := a.model.GetLatestWorkerRuntimeConfig(ctx)
+	if err != nil {
+		return err
+	}
+	if err := a.configs.record(key, latest.Version); err != nil {
 		return err
 	}
 	return nil
@@ -518,14 +533,14 @@ func (a *controlPlaneActor) taskIDByName(ctx context.Context, task string) (int3
 	return id, nil
 }
 
-func newRuntimeActor(m model.ModelInterface) *runtimeActor {
+func newRuntimeActor(m model.ModelInterface, configs *runtimeConfigRegistry) *runtimeActor {
 	return &runtimeActor{
-		model:         m,
-		workers:       map[string]*runtimeWorker{},
-		lockAnchors:   map[string]time.Time{},
-		configVersion: map[string]int64{},
-		captures:      newRuntimeCaptureTracker(),
-		contention:    newRuntimeContentionTracker(),
+		model:       m,
+		workers:     map[string]*runtimeWorker{},
+		lockAnchors: map[string]time.Time{},
+		configs:     configs,
+		captures:    newRuntimeCaptureTracker(),
+		contention:  newRuntimeContentionTracker(),
 	}
 }
 
@@ -949,19 +964,38 @@ func (a *runtimeActor) AssertCapturedBefore(ctx context.Context, first string, s
 }
 
 func (a *runtimeActor) AssertCapturedByWorkerContains(ctx context.Context, workerName string, tasks []string) error {
-	records := a.captures.snapshot()
-	seen := map[string]bool{}
-	for _, r := range records {
-		if r.Worker == workerName {
-			seen[r.Task] = true
+	deadline := time.Now().Add(5 * time.Second)
+	var missing string
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
 		}
-	}
-	for _, task := range tasks {
-		if !seen[task] {
-			return fmt.Errorf("worker %q did not capture task %q", workerName, task)
+
+		records := a.captures.snapshot()
+		seen := map[string]bool{}
+		for _, r := range records {
+			if r.Worker == workerName {
+				seen[r.Task] = true
+			}
 		}
+		missing = ""
+		for _, task := range tasks {
+			if !seen[task] {
+				missing = task
+				break
+			}
+		}
+		if missing == "" {
+			return nil
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
-	return nil
+	if missing == "" && len(tasks) > 0 {
+		missing = tasks[0]
+	}
+	return fmt.Errorf("worker %q did not capture task %q", workerName, missing)
 }
 
 func (a *runtimeActor) AssertCapturedTaskCount(ctx context.Context, task string, expected int32) error {
@@ -1051,12 +1085,12 @@ func (a *runtimeActor) SleepMs(ctx context.Context, ms int32) error {
 func (a *runtimeActor) CreateRuntimeConfig(
 	ctx context.Context,
 	key string,
-	requestID string,
+	_ string,
 	maxStrictPercentage int32,
 	defaultWeight int32,
 	w1Weight int32,
 	w2Weight int32,
-	notify bool,
+	_ bool,
 ) error {
 	if key == "" {
 		return fmt.Errorf("runtime config key is required")
@@ -1083,81 +1117,15 @@ func (a *runtimeActor) CreateRuntimeConfig(
 		return err
 	}
 
-	a.mu.Lock()
-	a.configVersion[key] = created.Version
-	a.mu.Unlock()
-
-	if notify {
-		return a.notifyRuntimeConfig(ctx, requestID, created.Version)
-	}
-	return nil
-}
-
-func (a *runtimeActor) WaitRuntimeConfigAck(ctx context.Context, key string, requestID string, timeoutMs int32) error {
-	if key == "" || requestID == "" {
-		return fmt.Errorf("key and requestID are required")
-	}
-	version, err := a.configVersionByKey(key)
-	if err != nil {
-		return err
-	}
-
-	dsn := smokePostgresDSN()
-	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
-	for time.Now().Before(deadline) {
-		if err := a.notifyRuntimeConfig(ctx, requestID, version); err != nil {
-			return err
-		}
-		waitWindow := 150 * time.Millisecond
-		if remaining := time.Until(deadline); remaining < waitWindow {
-			waitWindow = remaining
-		}
-		ack, err := a.waitForRuntimeConfigAck(ctx, dsn, requestID, waitWindow)
-		if err == nil {
-			if ack.Params.RequestID == requestID && ack.Params.AppliedVersion >= version {
-				return nil
-			}
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	return fmt.Errorf("timeout waiting runtime config ack for request %q", requestID)
-}
-
-func (a *runtimeActor) CaptureLatestRuntimeConfigVersion(ctx context.Context, key string) error {
-	if key == "" {
-		return fmt.Errorf("runtime config key is required")
-	}
-	latest, err := a.model.GetLatestWorkerRuntimeConfig(ctx)
-	if err != nil {
-		return err
-	}
-	captured := latest
-
-	// In some smoke scenarios this method runs concurrently with control-plane update calls.
-	// Wait long enough for the update task to be claimed/executed so we don't capture a stale baseline.
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-		curr, err := a.model.GetLatestWorkerRuntimeConfig(ctx)
-		if err == nil && curr.Version > captured.Version {
-			captured = curr
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-
-	a.mu.Lock()
-	a.configVersion[key] = captured.Version
-	a.mu.Unlock()
-	return nil
+	return a.configs.record(key, created.Version)
 }
 
 func (a *runtimeActor) WaitWorkerLagging(ctx context.Context, workerName string, key string, expected bool, timeoutMs int32) error {
-	version, err := a.configVersionByKey(key)
+	if timeoutMs <= 0 {
+		return fmt.Errorf("timeout must be positive")
+	}
+	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
+	version, err := a.configVersionByKey(ctx, key, deadline)
 	if err != nil {
 		return err
 	}
@@ -1166,7 +1134,6 @@ func (a *runtimeActor) WaitWorkerLagging(ctx context.Context, workerName string,
 		return err
 	}
 
-	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
 	guardUntil := time.Now().Add(200 * time.Millisecond)
 	for time.Now().Before(deadline) {
 		select {
@@ -1204,7 +1171,7 @@ func (a *runtimeActor) hasInFlightRuntimeConfigUpdateTask(ctx context.Context) (
 		return tx.QueryRow(ctx, `
 			select count(*)
 			from anclax.tasks
-			where spec->>'type' in ('updateWorkerRuntimeConfig', 'broadcastUpdateWorkerRuntimeConfig')
+				where spec->>'type' = 'broadcastUpdateWorkerRuntimeConfig'
 			  and status = 'pending'
 		`).Scan(&count)
 	})
@@ -1314,29 +1281,21 @@ func (a *runtimeActor) workerIDByName(name string) (uuid.UUID, error) {
 	return w.workerID, nil
 }
 
-func (a *runtimeActor) configVersionByKey(key string) (int64, error) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	version, ok := a.configVersion[key]
-	if !ok {
-		return 0, fmt.Errorf("runtime config key %q not found", key)
+func (a *runtimeActor) configVersionByKey(ctx context.Context, key string, deadline time.Time) (int64, error) {
+	if key == "" {
+		return 0, fmt.Errorf("runtime config key is required")
 	}
-	return version, nil
-}
-
-func (a *runtimeActor) notifyRuntimeConfig(ctx context.Context, requestID string, version int64) error {
-	notify := runtimeConfigNotifySpec{
-		Op: "up_config",
-		Params: runtimeConfigNotifyParams{
-			RequestID: requestID,
-			Version:   version,
-		},
+	for time.Now().Before(deadline) {
+		if version, ok := a.configs.lookup(key); ok {
+			return version, nil
+		}
+		select {
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		case <-time.After(20 * time.Millisecond):
+		}
 	}
-	raw, err := json.Marshal(notify)
-	if err != nil {
-		return err
-	}
-	return a.model.NotifyWorkerRuntimeConfig(ctx, string(raw))
+	return 0, fmt.Errorf("runtime config key %q not found", key)
 }
 
 func (a *runtimeActor) waitTaskState(ctx context.Context, task string, status string, unlocked bool, timeoutMs int32) error {
@@ -1374,43 +1333,6 @@ func (a *runtimeActor) taskIDByName(ctx context.Context, task string) (int32, er
 		return 0, err
 	}
 	return id, nil
-}
-
-func (a *runtimeActor) waitForRuntimeConfigAck(ctx context.Context, dsn string, requestID string, timeout time.Duration) (runtimeConfigAckSpec, error) {
-	conn, err := pgx.Connect(ctx, dsn)
-	if err != nil {
-		return runtimeConfigAckSpec{}, err
-	}
-	defer conn.Close(ctx)
-
-	if _, err := conn.Exec(ctx, fmt.Sprintf("LISTEN %s", pgnotify.ChannelRuntimeConfigAck)); err != nil {
-		return runtimeConfigAckSpec{}, err
-	}
-
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		waitCtx, cancel := context.WithTimeout(ctx, time.Until(deadline))
-		notification, err := conn.WaitForNotification(waitCtx)
-		cancel()
-		if err != nil {
-			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-				break
-			}
-			continue
-		}
-		if notification == nil {
-			continue
-		}
-		var ack runtimeConfigAckSpec
-		if err := json.Unmarshal([]byte(notification.Payload), &ack); err != nil {
-			continue
-		}
-		if ack.Op != "ack" || ack.Params.RequestID != requestID {
-			continue
-		}
-		return ack, nil
-	}
-	return runtimeConfigAckSpec{}, fmt.Errorf("timeout waiting for runtime config ack")
 }
 
 func runtimeSignalChannel(handler any, signal string) (<-chan struct{}, error) {

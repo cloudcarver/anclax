@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/cloudcarver/anclax/core"
-	"github.com/cloudcarver/anclax/pkg/taskcore/pgnotify"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/taskcore/types"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
@@ -18,6 +17,7 @@ import (
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"go.uber.org/zap"
 )
 
 var errSkipFinalize = errors.New("skip finalize")
@@ -37,8 +37,33 @@ type ModelPort struct {
 	taskHandler         TaskHandler
 	now                 func() time.Time
 
-	interruptMu    sync.Mutex
-	interruptTasks map[int32]context.CancelCauseFunc
+	taskRuntimeMu      sync.Mutex
+	taskRuntimeEntries map[int32]*taskRuntimeEntry
+}
+
+type taskRuntimeEntry struct {
+	cancel context.CancelCauseFunc
+	done   chan struct{}
+}
+
+func newTaskRuntimeEntry(cancel context.CancelCauseFunc) *taskRuntimeEntry {
+	return &taskRuntimeEntry{
+		cancel: cancel,
+		done:   make(chan struct{}),
+	}
+}
+
+func (e *taskRuntimeEntry) interrupt(cause error) {
+	e.cancel(cause)
+}
+
+func (e *taskRuntimeEntry) wait(ctx context.Context) error {
+	select {
+	case <-e.done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func NewModelPort(
@@ -65,7 +90,7 @@ func NewModelPort(
 		lifeCycleHandler:    NewTaskLifeCycleHandler(m, taskHandler, workerID),
 		taskHandler:         taskHandler,
 		now:                 time.Now,
-		interruptTasks:      make(map[int32]context.CancelCauseFunc),
+		taskRuntimeEntries:  make(map[int32]*taskRuntimeEntry),
 	}, nil
 }
 
@@ -177,9 +202,8 @@ func (p *ModelPort) ClaimByID(ctx context.Context, taskID int32, req ClaimReques
 
 func (p *ModelPort) ExecuteTask(ctx context.Context, task Task) error {
 	baseCtx, baseCancel := context.WithCancelCause(ctx)
-	p.registerTaskInterrupt(task.ID, baseCancel)
+	p.registerTaskRuntime(task.ID, baseCancel)
 	defer func() {
-		p.unregisterTaskInterrupt(task.ID)
 		baseCancel(nil)
 	}()
 
@@ -214,6 +238,9 @@ func (p *ModelPort) ExecuteTask(ctx context.Context, task Task) error {
 
 	err = p.taskHandler.HandleTask(execCtx, task)
 	if err != nil {
+		if interruptErr := p.taskInterruptCause(execCtx); interruptErr != nil {
+			return interruptErr
+		}
 		return err
 	}
 	if err := p.taskInterruptCause(execCtx); err != nil {
@@ -223,6 +250,8 @@ func (p *ModelPort) ExecuteTask(ctx context.Context, task Task) error {
 }
 
 func (p *ModelPort) FinalizeTask(ctx context.Context, task Task, execErr error) error {
+	defer p.completeTaskRuntime(task.ID)
+
 	if errors.Is(execErr, errSkipFinalize) {
 		return nil
 	}
@@ -296,62 +325,70 @@ func (p *ModelPort) AckRuntimeConfigApplied(ctx context.Context, workerID string
 	}); err != nil {
 		return fmt.Errorf("update worker applied config version: %w", err)
 	}
-
-	if requestID == "" {
-		return nil
-	}
-
-	payload := pgnotify.RuntimeConfigAckNotification{Op: pgnotify.OpAck}
-	payload.Params.RequestID = requestID
-	payload.Params.WorkerID = p.workerID.String()
-	payload.Params.AppliedVersion = appliedVersion
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("marshal runtime config ack notification: %w", err)
-	}
-	if err := p.model.NotifyWorkerRuntimeConfigAck(ctx, string(raw)); err != nil {
-		return fmt.Errorf("notify runtime config ack: %w", err)
-	}
-	return nil
-}
-
-func (p *ModelPort) AckTaskInterruptApplied(ctx context.Context, requestID string) error {
-	if requestID == "" {
-		return nil
-	}
-
-	payload := pgnotify.TaskInterruptAckNotification{Op: pgnotify.OpAck}
-	payload.Params.RequestID = requestID
-	payload.Params.WorkerID = p.workerID.String()
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("marshal task interrupt ack notification: %w", err)
-	}
-	if err := p.model.NotifyWorkerTaskInterruptAck(ctx, string(raw)); err != nil {
-		return fmt.Errorf("notify task interrupt ack: %w", err)
-	}
 	return nil
 }
 
 func (p *ModelPort) InterruptTask(taskID int32, cause error) {
-	p.interruptMu.Lock()
-	interrupt := p.interruptTasks[taskID]
-	p.interruptMu.Unlock()
-	if interrupt != nil {
-		interrupt(cause)
+	entry := p.taskRuntimeEntry(taskID)
+	if entry != nil {
+		entry.interrupt(cause)
 	}
 }
 
-func (p *ModelPort) registerTaskInterrupt(taskID int32, interrupt context.CancelCauseFunc) {
-	p.interruptMu.Lock()
-	p.interruptTasks[taskID] = interrupt
-	p.interruptMu.Unlock()
+func (p *ModelPort) WaitTaskRuntimes(ctx context.Context, taskIDs []int32) error {
+	entries := p.taskRuntimeEntriesFor(taskIDs)
+	for _, entry := range entries {
+		if err := entry.wait(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func (p *ModelPort) unregisterTaskInterrupt(taskID int32) {
-	p.interruptMu.Lock()
-	delete(p.interruptTasks, taskID)
-	p.interruptMu.Unlock()
+func (p *ModelPort) registerTaskRuntime(taskID int32, cancel context.CancelCauseFunc) {
+	p.taskRuntimeMu.Lock()
+	defer p.taskRuntimeMu.Unlock()
+	if _, exists := p.taskRuntimeEntries[taskID]; exists {
+		log.Error("duplicate task runtime entry", zap.Int32("task_id", taskID), zap.String("worker_id", p.workerID.String()))
+		panic(fmt.Sprintf("duplicate task runtime entry for task %d", taskID))
+	}
+	p.taskRuntimeEntries[taskID] = newTaskRuntimeEntry(cancel)
+}
+
+func (p *ModelPort) completeTaskRuntime(taskID int32) {
+	p.taskRuntimeMu.Lock()
+	entry := p.taskRuntimeEntries[taskID]
+	if entry != nil {
+		close(entry.done)
+		delete(p.taskRuntimeEntries, taskID)
+	}
+	p.taskRuntimeMu.Unlock()
+}
+
+func (p *ModelPort) taskRuntimeEntry(taskID int32) *taskRuntimeEntry {
+	p.taskRuntimeMu.Lock()
+	entry := p.taskRuntimeEntries[taskID]
+	p.taskRuntimeMu.Unlock()
+	return entry
+}
+
+func (p *ModelPort) taskRuntimeEntriesFor(taskIDs []int32) []*taskRuntimeEntry {
+	p.taskRuntimeMu.Lock()
+	defer p.taskRuntimeMu.Unlock()
+	entries := make([]*taskRuntimeEntry, 0, len(taskIDs))
+	seen := make(map[*taskRuntimeEntry]struct{}, len(taskIDs))
+	for _, taskID := range taskIDs {
+		entry := p.taskRuntimeEntries[taskID]
+		if entry == nil {
+			continue
+		}
+		if _, ok := seen[entry]; ok {
+			continue
+		}
+		seen[entry] = struct{}{}
+		entries = append(entries, entry)
+	}
+	return entries
 }
 
 func (p *ModelPort) withTaskTimeout(ctx context.Context, task Task) (context.Context, context.CancelFunc, error) {
@@ -419,10 +456,10 @@ func hasUserClaimLabels(labels []string) bool {
 	return false
 }
 
-func decodeRuntimeConfigPayload(raw json.RawMessage) (pgnotify.RuntimeConfigPayload, error) {
-	var payload pgnotify.RuntimeConfigPayload
+func decodeRuntimeConfigPayload(raw json.RawMessage) (RuntimeConfigPayload, error) {
+	var payload RuntimeConfigPayload
 	if err := json.Unmarshal(raw, &payload); err != nil {
-		return pgnotify.RuntimeConfigPayload{}, fmt.Errorf("unmarshal worker runtime config payload: %w", err)
+		return RuntimeConfigPayload{}, fmt.Errorf("unmarshal worker runtime config payload: %w", err)
 	}
 	return payload, nil
 }
@@ -487,8 +524,14 @@ func (p *ModelPort) releaseTaskLock(ctx context.Context, taskID int32) error {
 
 func (p *ModelPort) taskInterruptCause(ctx context.Context) error {
 	cause := context.Cause(ctx)
-	if errors.Is(cause, taskcore.ErrTaskInterrupted) {
+	switch {
+	case errors.Is(cause, taskcore.ErrTaskCancelled):
+		return taskcore.ErrTaskCancelled
+	case errors.Is(cause, taskcore.ErrTaskPaused):
+		return taskcore.ErrTaskPaused
+	case errors.Is(cause, taskcore.ErrTaskInterrupted):
 		return taskcore.ErrTaskInterrupted
+	default:
+		return nil
 	}
-	return nil
 }

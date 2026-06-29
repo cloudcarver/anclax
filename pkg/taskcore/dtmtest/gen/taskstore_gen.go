@@ -9,7 +9,6 @@ import (
 	"time"
 )
 
-
 type RuntimeHarness interface {
 	Start(ctx context.Context, concurrency int32, maxStrictPercentage int32) error
 	Stop(ctx context.Context) error
@@ -40,7 +39,6 @@ type RuntimeHarness interface {
 	AssertStopped(ctx context.Context, expected bool) error
 	StepStop(ctx context.Context) error
 }
-
 
 type Actors struct {
 	Runtime RuntimeHarness
@@ -149,8 +147,8 @@ func runAllWithActors(ctx context.Context, actors Actors) error {
 	if err := RunScenarioDeterministicConcurrencyGate(ctx, actors); err != nil {
 		return fmt.Errorf("scenario deterministic_concurrency_gate: %w", err)
 	}
-	if err := RunScenarioDeterministicRuntimeConfigAckAndCap(ctx, actors); err != nil {
-		return fmt.Errorf("scenario deterministic_runtime_config_ack_and_cap: %w", err)
+	if err := RunScenarioDeterministicRuntimeConfigRefreshAndCap(ctx, actors); err != nil {
+		return fmt.Errorf("scenario deterministic_runtime_config_refresh_and_cap: %w", err)
 	}
 	if err := RunScenarioDeterministicStrictFallbackToNormal(ctx, actors); err != nil {
 		return fmt.Errorf("scenario deterministic_strict_fallback_to_normal: %w", err)
@@ -173,7 +171,6 @@ func runAllWithActors(ctx context.Context, actors Actors) error {
 	return nil
 }
 
-
 func RunScenarioDeterministicConcurrencyGate(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepDeterministicConcurrencyGateS1(ctx, actors, vars); err != nil {
@@ -191,13 +188,12 @@ func RunScenarioDeterministicConcurrencyGate(ctx context.Context, actors Actors)
 	return nil
 }
 
-
 func runStepDeterministicConcurrencyGateS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -237,13 +233,12 @@ func runStepDeterministicConcurrencyGateS1(parent context.Context, actors Actors
 	return nil
 }
 
-
 func runStepDeterministicConcurrencyGateS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -273,13 +268,12 @@ func runStepDeterministicConcurrencyGateS2(parent context.Context, actors Actors
 	return nil
 }
 
-
 func runStepDeterministicConcurrencyGateS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -319,13 +313,12 @@ func runStepDeterministicConcurrencyGateS3(parent context.Context, actors Actors
 	return nil
 }
 
-
 func runStepDeterministicConcurrencyGateS4(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -395,26 +388,23 @@ func runStepDeterministicConcurrencyGateS4(parent context.Context, actors Actors
 	return nil
 }
 
-
-
-func RunScenarioDeterministicRuntimeConfigAckAndCap(ctx context.Context, actors Actors) error {
+func RunScenarioDeterministicRuntimeConfigRefreshAndCap(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
-	if err := runStepDeterministicRuntimeConfigAckAndCapS1(ctx, actors, vars); err != nil {
+	if err := runStepDeterministicRuntimeConfigRefreshAndCapS1(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s1: %w", err)
 	}
-	if err := runStepDeterministicRuntimeConfigAckAndCapS2(ctx, actors, vars); err != nil {
+	if err := runStepDeterministicRuntimeConfigRefreshAndCapS2(ctx, actors, vars); err != nil {
 		return fmt.Errorf("step s2: %w", err)
 	}
 	return nil
 }
 
-
-func runStepDeterministicRuntimeConfigAckAndCapS1(parent context.Context, actors Actors, vars *varStore) error {
+func runStepDeterministicRuntimeConfigRefreshAndCapS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -444,13 +434,12 @@ func runStepDeterministicRuntimeConfigAckAndCapS1(parent context.Context, actors
 	return nil
 }
 
-
-func runStepDeterministicRuntimeConfigAckAndCapS2(parent context.Context, actors Actors, vars *varStore) error {
+func runStepDeterministicRuntimeConfigRefreshAndCapS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -500,8 +489,6 @@ func runStepDeterministicRuntimeConfigAckAndCapS2(parent context.Context, actors
 	return nil
 }
 
-
-
 func RunScenarioDeterministicStrictFallbackToNormal(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepDeterministicStrictFallbackToNormalS1(ctx, actors, vars); err != nil {
@@ -516,13 +503,12 @@ func RunScenarioDeterministicStrictFallbackToNormal(ctx context.Context, actors 
 	return nil
 }
 
-
 func runStepDeterministicStrictFallbackToNormalS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -552,13 +538,12 @@ func runStepDeterministicStrictFallbackToNormalS1(parent context.Context, actors
 	return nil
 }
 
-
 func runStepDeterministicStrictFallbackToNormalS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -578,13 +563,12 @@ func runStepDeterministicStrictFallbackToNormalS2(parent context.Context, actors
 	return nil
 }
 
-
 func runStepDeterministicStrictFallbackToNormalS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -644,8 +628,6 @@ func runStepDeterministicStrictFallbackToNormalS3(parent context.Context, actors
 	return nil
 }
 
-
-
 func RunScenarioDeterministicStopBlocksNewWork(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepDeterministicStopBlocksNewWorkS1(ctx, actors, vars); err != nil {
@@ -657,13 +639,12 @@ func RunScenarioDeterministicStopBlocksNewWork(ctx context.Context, actors Actor
 	return nil
 }
 
-
 func runStepDeterministicStopBlocksNewWorkS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -693,13 +674,12 @@ func runStepDeterministicStopBlocksNewWorkS1(parent context.Context, actors Acto
 	return nil
 }
 
-
 func runStepDeterministicStopBlocksNewWorkS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -759,8 +739,6 @@ func runStepDeterministicStopBlocksNewWorkS2(parent context.Context, actors Acto
 	return nil
 }
 
-
-
 func RunScenarioDeterministicHeartbeatFailureStopsRuntime(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepDeterministicHeartbeatFailureStopsRuntimeS1(ctx, actors, vars); err != nil {
@@ -772,13 +750,12 @@ func RunScenarioDeterministicHeartbeatFailureStopsRuntime(ctx context.Context, a
 	return nil
 }
 
-
 func runStepDeterministicHeartbeatFailureStopsRuntimeS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -808,13 +785,12 @@ func runStepDeterministicHeartbeatFailureStopsRuntimeS1(parent context.Context, 
 	return nil
 }
 
-
 func runStepDeterministicHeartbeatFailureStopsRuntimeS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -879,8 +855,6 @@ func runStepDeterministicHeartbeatFailureStopsRuntimeS2(parent context.Context, 
 	return nil
 }
 
-
-
 func RunScenarioStaleResultEventsIgnored(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepStaleResultEventsIgnoredS1(ctx, actors, vars); err != nil {
@@ -892,13 +866,12 @@ func RunScenarioStaleResultEventsIgnored(ctx context.Context, actors Actors) err
 	return nil
 }
 
-
 func runStepStaleResultEventsIgnoredS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -933,13 +906,12 @@ func runStepStaleResultEventsIgnoredS1(parent context.Context, actors Actors, va
 	return nil
 }
 
-
 func runStepStaleResultEventsIgnoredS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -984,8 +956,6 @@ func runStepStaleResultEventsIgnoredS2(parent context.Context, actors Actors, va
 	return nil
 }
 
-
-
 func RunScenarioOutOfPhaseAndDuplicateEventsIgnored(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepOutOfPhaseAndDuplicateEventsIgnoredS1(ctx, actors, vars); err != nil {
@@ -1000,13 +970,12 @@ func RunScenarioOutOfPhaseAndDuplicateEventsIgnored(ctx context.Context, actors 
 	return nil
 }
 
-
 func runStepOutOfPhaseAndDuplicateEventsIgnoredS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1051,13 +1020,12 @@ func runStepOutOfPhaseAndDuplicateEventsIgnoredS1(parent context.Context, actors
 	return nil
 }
 
-
 func runStepOutOfPhaseAndDuplicateEventsIgnoredS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1087,13 +1055,12 @@ func runStepOutOfPhaseAndDuplicateEventsIgnoredS2(parent context.Context, actors
 	return nil
 }
 
-
 func runStepOutOfPhaseAndDuplicateEventsIgnoredS3(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1153,8 +1120,6 @@ func runStepOutOfPhaseAndDuplicateEventsIgnoredS3(parent context.Context, actors
 	return nil
 }
 
-
-
 func RunScenarioRuntimeConfigRaceNewerWins(ctx context.Context, actors Actors) error {
 	vars := newVarStore()
 	if err := runStepRuntimeConfigRaceNewerWinsS1(ctx, actors, vars); err != nil {
@@ -1166,13 +1131,12 @@ func RunScenarioRuntimeConfigRaceNewerWins(ctx context.Context, actors Actors) e
 	return nil
 }
 
-
 func runStepRuntimeConfigRaceNewerWinsS1(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1212,13 +1176,12 @@ func runStepRuntimeConfigRaceNewerWinsS1(parent context.Context, actors Actors, 
 	return nil
 }
 
-
 func runStepRuntimeConfigRaceNewerWinsS2(parent context.Context, actors Actors, vars *varStore) error {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
-	
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -1267,6 +1230,3 @@ func runStepRuntimeConfigRaceNewerWinsS2(parent context.Context, actors Actors, 
 	}
 	return nil
 }
-
-
-

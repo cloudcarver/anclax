@@ -2,13 +2,11 @@ package worker
 
 import (
 	"context"
-	"encoding/json"
 	stdErrors "errors"
 	"testing"
 	"time"
 
 	"github.com/cloudcarver/anclax/core"
-	"github.com/cloudcarver/anclax/pkg/taskcore/pgnotify"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
@@ -18,6 +16,33 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
+
+type fakeTaskLifeCycleHandler struct {
+	handleAttributes func(ctx context.Context, tx core.Tx, task apigen.Task) error
+	handleFailed     func(ctx context.Context, tx core.Tx, task apigen.Task, execErr error) error
+	handleCompleted  func(ctx context.Context, tx core.Tx, task apigen.Task) error
+}
+
+func (h *fakeTaskLifeCycleHandler) HandleAttributes(ctx context.Context, tx core.Tx, task apigen.Task) error {
+	if h.handleAttributes != nil {
+		return h.handleAttributes(ctx, tx, task)
+	}
+	return nil
+}
+
+func (h *fakeTaskLifeCycleHandler) HandleFailed(ctx context.Context, tx core.Tx, task apigen.Task, execErr error) error {
+	if h.handleFailed != nil {
+		return h.handleFailed(ctx, tx, task, execErr)
+	}
+	return nil
+}
+
+func (h *fakeTaskLifeCycleHandler) HandleCompleted(ctx context.Context, tx core.Tx, task apigen.Task) error {
+	if h.handleCompleted != nil {
+		return h.handleCompleted(ctx, tx, task)
+	}
+	return nil
+}
 
 func TestModelPortClaimByIDNoTask(t *testing.T) {
 	ctrl := gomock.NewController(t)
@@ -131,17 +156,6 @@ func TestModelPortAckRuntimeConfigApplied(t *testing.T) {
 		ID:                   workerID,
 		AppliedConfigVersion: appliedVersion,
 	}).Return(nil)
-	mockModel.EXPECT().NotifyWorkerRuntimeConfigAck(context.Background(), gomock.Any()).DoAndReturn(
-		func(ctx context.Context, payload string) error {
-			var ack pgnotify.RuntimeConfigAckNotification
-			require.NoError(t, json.Unmarshal([]byte(payload), &ack))
-			require.Equal(t, pgnotify.OpAck, ack.Op)
-			require.Equal(t, requestID, ack.Params.RequestID)
-			require.Equal(t, workerID.String(), ack.Params.WorkerID)
-			require.Equal(t, appliedVersion, ack.Params.AppliedVersion)
-			return nil
-		},
-	)
 
 	err = port.AckRuntimeConfigApplied(context.Background(), workerID.String(), requestID, appliedVersion)
 	require.NoError(t, err)
@@ -251,8 +265,8 @@ func TestStartLockRefreshTransientErrorsDoNotInterrupt(t *testing.T) {
 	taskID := int32(77)
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
-	port.registerTaskInterrupt(taskID, cancel)
-	defer port.unregisterTaskInterrupt(taskID)
+	port.registerTaskRuntime(taskID, cancel)
+	defer port.completeTaskRuntime(taskID)
 
 	mockModel.EXPECT().RefreshTaskLock(gomock.Any(), gomock.AssignableToTypeOf(querier.RefreshTaskLockParams{})).Return(int32(0), stdErrors.New("transient db error")).MinTimes(1)
 
@@ -278,8 +292,8 @@ func TestStartLockRefreshInterruptsOnLockLossAfterTransientError(t *testing.T) {
 	taskID := int32(88)
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
-	port.registerTaskInterrupt(taskID, cancel)
-	defer port.unregisterTaskInterrupt(taskID)
+	port.registerTaskRuntime(taskID, cancel)
+	defer port.completeTaskRuntime(taskID)
 
 	gomock.InOrder(
 		mockModel.EXPECT().RefreshTaskLock(gomock.Any(), gomock.AssignableToTypeOf(querier.RefreshTaskLockParams{})).Return(int32(0), stdErrors.New("transient db error")),
@@ -293,4 +307,136 @@ func TestStartLockRefreshInterruptsOnLockLossAfterTransientError(t *testing.T) {
 		return context.Cause(ctx) != nil
 	}, time.Second, 5*time.Millisecond)
 	require.ErrorIs(t, context.Cause(ctx), taskcore.ErrTaskCancelled)
+}
+
+func TestWaitTaskRuntimesWaitsForFinalizeCompletion(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	workerID := uuid.New()
+	mockModel := model.NewMockModelInterface(ctrl)
+	port, err := NewModelPort(mockModel, workerID, []string{"ops"}, nil, 5*time.Second, 0)
+	require.NoError(t, err)
+
+	taskID := int32(99)
+	_, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	port.registerTaskRuntime(taskID, cancel)
+
+	waitDone := make(chan error, 1)
+	go func() {
+		waitDone <- port.WaitTaskRuntimes(context.Background(), []int32{taskID})
+	}()
+
+	select {
+	case err := <-waitDone:
+		t.Fatalf("wait returned before runtime completed: %v", err)
+	case <-time.After(10 * time.Millisecond):
+	}
+
+	port.completeTaskRuntime(taskID)
+	require.NoError(t, <-waitDone)
+}
+
+func TestWaitTaskRuntimesReturnsContextError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	workerID := uuid.New()
+	mockModel := model.NewMockModelInterface(ctrl)
+	port, err := NewModelPort(mockModel, workerID, []string{"ops"}, nil, 5*time.Second, 0)
+	require.NoError(t, err)
+
+	taskID := int32(99)
+	_, cancelRuntime := context.WithCancelCause(context.Background())
+	defer cancelRuntime(nil)
+	port.registerTaskRuntime(taskID, cancelRuntime)
+	defer port.completeTaskRuntime(taskID)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	require.ErrorIs(t, port.WaitTaskRuntimes(ctx, []int32{taskID}), context.Canceled)
+}
+
+func TestWaitTaskRuntimesMissingEntryReturnsImmediately(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	workerID := uuid.New()
+	mockModel := model.NewMockModelInterface(ctrl)
+	port, err := NewModelPort(mockModel, workerID, []string{"ops"}, nil, 5*time.Second, 0)
+	require.NoError(t, err)
+
+	require.NoError(t, port.WaitTaskRuntimes(context.Background(), []int32{123}))
+}
+
+func TestInterruptTaskCancelsRuntimeWithCause(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	workerID := uuid.New()
+	mockModel := model.NewMockModelInterface(ctrl)
+	port, err := NewModelPort(mockModel, workerID, []string{"ops"}, nil, 5*time.Second, 0)
+	require.NoError(t, err)
+
+	taskID := int32(123)
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	port.registerTaskRuntime(taskID, cancel)
+	defer port.completeTaskRuntime(taskID)
+
+	port.InterruptTask(taskID, taskcore.ErrTaskPaused)
+	require.ErrorIs(t, context.Cause(ctx), taskcore.ErrTaskPaused)
+}
+
+func TestFinalizeTaskCompletesRuntimeEntry(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	workerID := uuid.New()
+	mockModel := model.NewMockModelInterface(ctrl)
+	port, err := NewModelPort(mockModel, workerID, []string{"ops"}, nil, 5*time.Second, 0)
+	require.NoError(t, err)
+	port.lifeCycleHandler = &fakeTaskLifeCycleHandler{}
+
+	taskID := int32(456)
+	_, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	port.registerTaskRuntime(taskID, cancel)
+
+	waitDone := make(chan error, 1)
+	go func() {
+		waitDone <- port.WaitTaskRuntimes(context.Background(), []int32{taskID})
+	}()
+	select {
+	case err := <-waitDone:
+		t.Fatalf("wait returned before finalize completed runtime entry: %v", err)
+	case <-time.After(10 * time.Millisecond):
+	}
+
+	mockModel.EXPECT().RunTransactionWithTx(context.Background(), gomock.Any()).DoAndReturn(
+		func(ctx context.Context, f func(core.Tx, model.ModelInterface) error) error {
+			return f(&fakeTx{}, mockModel)
+		},
+	)
+	require.NoError(t, port.FinalizeTask(context.Background(), Task{ID: taskID}, nil))
+	require.NoError(t, <-waitDone)
+}
+
+func TestTaskInterruptCauseRecognizesPauseAndCancel(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	workerID := uuid.New()
+	mockModel := model.NewMockModelInterface(ctrl)
+	port, err := NewModelPort(mockModel, workerID, []string{"ops"}, nil, 5*time.Second, 0)
+	require.NoError(t, err)
+
+	cancelCtx, cancel := context.WithCancelCause(context.Background())
+	cancel(taskcore.ErrTaskCancelled)
+	require.ErrorIs(t, port.taskInterruptCause(cancelCtx), taskcore.ErrTaskCancelled)
+
+	pauseCtx, pause := context.WithCancelCause(context.Background())
+	pause(taskcore.ErrTaskPaused)
+	require.ErrorIs(t, port.taskInterruptCause(pauseCtx), taskcore.ErrTaskPaused)
 }

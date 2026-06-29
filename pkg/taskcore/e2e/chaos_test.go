@@ -98,7 +98,6 @@ func TestChaosControlPlaneBroadcastDuringDBRestart(t *testing.T) {
 		require.NoError(t, env.runtime.StartWorker(ctx, "cp_w1", "noop", "noop", []string{}, 20, 20, 200, 3600000, 1, 50, true, ""))
 		require.NoError(t, env.runtime.StartWorker(ctx, "cp_w2", "noop", "noop", []string{}, 20, 20, 200, 3600000, 1, 50, true, ""))
 		require.NoError(t, env.controlPlane.UpdateRuntimeConfig(ctx, "CP_CFG_UP", 45, 1, 3, 1))
-		require.NoError(t, env.runtime.CaptureLatestRuntimeConfigVersion(ctx, "CP_CFG_UP"))
 		require.NoError(t, env.runtime.WaitWorkerLagging(ctx, "cp_w1", "CP_CFG_UP", false, 7000))
 		require.NoError(t, env.runtime.WaitWorkerLagging(ctx, "cp_w2", "CP_CFG_UP", false, 7000))
 		assertNoPendingRunningControlTasks(t, ctx, env)
@@ -175,8 +174,6 @@ func assertNoPendingRunningControlTasks(t *testing.T, ctx context.Context, env *
 		"pauseTaskOnWorker",
 		"broadcastUpdateWorkerRuntimeConfig",
 		"applyWorkerRuntimeConfigToWorker",
-		"updateWorkerRuntimeConfig",
-		"interruptTask",
 	}
 	rows, err := env.validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','running') and spec->>'type' = any($1::text[])", []any{types})
 	require.NoError(t, err)

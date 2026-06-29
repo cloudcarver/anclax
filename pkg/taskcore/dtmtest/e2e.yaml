@@ -80,8 +80,8 @@ scenarios:
             - AssertInvariants(ctx)
             - Stop(ctx)
 
-  - name: deterministic_runtime_config_ack_and_cap
-    description: runtime config notify should refresh, ack and update strict cap/labels deterministically.
+  - name: deterministic_runtime_config_refresh_and_cap
+    description: runtime config refresh should update strict cap/labels deterministically.
     steps:
       - id: s1
         parallel:

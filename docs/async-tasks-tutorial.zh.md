@@ -235,9 +235,9 @@ err := controlPlane.UpdateWorkerRuntimeConfig(ctx,
 )
 ```
 
-控制面会始终使用保留最高严格优先级入队配置更新任务，并封装 task wait listener 细节。
+控制面会封装 worker 快照、fanout 和 task wait listener 细节。
 
-完整语义（strict cap、标签组映射、LISTEN/NOTIFY 传播、ACK 收敛、supersede 行为）请见：
+完整语义（strict cap、标签组映射、任务 fanout、DB 收敛、supersede 行为）请见：
 - [调度与运行时配置指南](async-task-scheduling-runtime-config.zh.md)
 
 #### 任务层级与控制面中断

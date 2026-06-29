@@ -24,10 +24,6 @@ func init() {
 const (
 	DeleteOpaqueKey = "deleteOpaqueKey"
 
-	UpdateWorkerRuntimeConfig = "updateWorkerRuntimeConfig"
-
-	InterruptTask = "interruptTask"
-
 	BroadcastUpdateWorkerRuntimeConfig = "broadcastUpdateWorkerRuntimeConfig"
 
 	ApplyWorkerRuntimeConfigToWorker = "applyWorkerRuntimeConfigToWorker"
@@ -50,16 +46,6 @@ type TaskRunner interface {
 	RunDeleteOpaqueKey(ctx context.Context, params *DeleteOpaqueKeyParameters, overrides ...taskcore.TaskOverride) (int32, error)
 	// Delete an opaque key
 	RunDeleteOpaqueKeyWithTx(ctx context.Context, tx core.Tx, params *DeleteOpaqueKeyParameters, overrides ...taskcore.TaskOverride) (int32, error)
-
-	// Update worker runtime config and wait for alive workers to apply it
-	RunUpdateWorkerRuntimeConfig(ctx context.Context, params *UpdateWorkerRuntimeConfigParameters, overrides ...taskcore.TaskOverride) (int32, error)
-	// Update worker runtime config and wait for alive workers to apply it
-	RunUpdateWorkerRuntimeConfigWithTx(ctx context.Context, tx core.Tx, params *UpdateWorkerRuntimeConfigParameters, overrides ...taskcore.TaskOverride) (int32, error)
-
-	// Interrupt a task and stop any in-flight execution
-	RunInterruptTask(ctx context.Context, params *InterruptTaskParameters, overrides ...taskcore.TaskOverride) (int32, error)
-	// Interrupt a task and stop any in-flight execution
-	RunInterruptTaskWithTx(ctx context.Context, tx core.Tx, params *InterruptTaskParameters, overrides ...taskcore.TaskOverride) (int32, error)
 
 	// Broadcast a runtime config update command to all alive workers
 	RunBroadcastUpdateWorkerRuntimeConfig(ctx context.Context, params *BroadcastUpdateWorkerRuntimeConfigParameters, overrides ...taskcore.TaskOverride) (int32, error)
@@ -139,102 +125,6 @@ func (c *Client) runDeleteOpaqueKey(ctx context.Context, taskstore taskcore.Task
 		MaxAttempts: -1,
 	}
 
-	task := &apigen.Task{
-		Attributes: attributes,
-		Spec:       spec,
-		Status:     apigen.Pending,
-	}
-
-	for _, override := range overrides {
-		if err := override(task); err != nil {
-			return 0, errors.Wrap(err, "failed to apply task override")
-		}
-	}
-	var taskID int32
-	if tx == nil {
-		taskID, err = taskstore.PushTask(ctx, task)
-	} else {
-		taskID, err = taskstore.PushTaskWithTx(ctx, tx, task)
-	}
-	if err != nil {
-		return 0, err
-	}
-	return taskID, nil
-}
-func (c *Client) RunUpdateWorkerRuntimeConfig(ctx context.Context, params *UpdateWorkerRuntimeConfigParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	return c.runUpdateWorkerRuntimeConfig(ctx, c.taskStore, nil, params, overrides...)
-}
-
-func (c *Client) RunUpdateWorkerRuntimeConfigWithTx(ctx context.Context, tx core.Tx, params *UpdateWorkerRuntimeConfigParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	return c.runUpdateWorkerRuntimeConfig(ctx, c.taskStore, tx, params, overrides...)
-}
-
-func (c *Client) runUpdateWorkerRuntimeConfig(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *UpdateWorkerRuntimeConfigParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	payload, err := json.Marshal(params)
-	if err != nil {
-		return 0, err
-	}
-
-	spec := apigen.TaskSpec{
-		Type:    UpdateWorkerRuntimeConfig,
-		Payload: payload,
-	}
-	attributes := apigen.TaskAttributes{}
-	attributes.Timeout = utils.Ptr("5m")
-	attributes.RetryPolicy = &apigen.TaskRetryPolicy{
-		Interval:    "2s",
-		MaxAttempts: -1,
-	}
-
-	attributes.Priority = utils.Ptr(int32(2147483647))
-	task := &apigen.Task{
-		Attributes: attributes,
-		Spec:       spec,
-		Status:     apigen.Pending,
-	}
-
-	for _, override := range overrides {
-		if err := override(task); err != nil {
-			return 0, errors.Wrap(err, "failed to apply task override")
-		}
-	}
-	var taskID int32
-	if tx == nil {
-		taskID, err = taskstore.PushTask(ctx, task)
-	} else {
-		taskID, err = taskstore.PushTaskWithTx(ctx, tx, task)
-	}
-	if err != nil {
-		return 0, err
-	}
-	return taskID, nil
-}
-func (c *Client) RunInterruptTask(ctx context.Context, params *InterruptTaskParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	return c.runInterruptTask(ctx, c.taskStore, nil, params, overrides...)
-}
-
-func (c *Client) RunInterruptTaskWithTx(ctx context.Context, tx core.Tx, params *InterruptTaskParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	return c.runInterruptTask(ctx, c.taskStore, tx, params, overrides...)
-}
-
-func (c *Client) runInterruptTask(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *InterruptTaskParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	payload, err := json.Marshal(params)
-	if err != nil {
-		return 0, err
-	}
-
-	spec := apigen.TaskSpec{
-		Type:    InterruptTask,
-		Payload: payload,
-	}
-	attributes := apigen.TaskAttributes{}
-	attributes.Timeout = utils.Ptr("5m")
-	attributes.RetryPolicy = &apigen.TaskRetryPolicy{
-		Interval:    "2s",
-		MaxAttempts: -1,
-	}
-
-	attributes.Priority = utils.Ptr(int32(2147483647))
 	task := &apigen.Task{
 		Attributes: attributes,
 		Spec:       spec,
@@ -645,45 +535,8 @@ type DeleteOpaqueKeyParameters struct {
 	KeyID int64 `json:"keyID" yaml:"keyID"`
 }
 
-type UpdateWorkerRuntimeConfigParameters struct {
-	// Default weight for unlabeled task group
-	DefaultWeight *int32 `json:"defaultWeight" yaml:"defaultWeight"`
-
-	// Label names for weighted groups
-	Labels []string `json:"labels" yaml:"labels"`
-
-	// Ack listen timeout window for one iteration
-	ListenTimeout *string `json:"listenTimeout" yaml:"listenTimeout"`
-
-	// Maximum percentage of strict-priority slots (0-100)
-	MaxStrictPercentage *int32 `json:"maxStrictPercentage" yaml:"maxStrictPercentage"`
-
-	// Fallback retry interval when ack listening is unavailable
-	NotifyInterval *string `json:"notifyInterval" yaml:"notifyInterval"`
-
-	// Correlation ID for notify and ack messages
-	RequestID *string `json:"requestID" yaml:"requestID"`
-
-	// Weights for labels by index
-	Weights []int32 `json:"weights" yaml:"weights"`
-}
-
-type InterruptTaskParameters struct {
-	// Ack listen timeout window for one iteration
-	ListenTimeout *string `json:"listenTimeout" yaml:"listenTimeout"`
-
-	// Fallback retry interval when ack listening is unavailable
-	NotifyInterval *string `json:"notifyInterval" yaml:"notifyInterval"`
-
-	// Correlation ID for notify and ack messages
-	RequestID *string `json:"requestID" yaml:"requestID"`
-
-	// Task IDs to interrupt
-	TaskIDs []int32 `json:"taskIDs" yaml:"taskIDs"`
-}
-
 type BroadcastUpdateWorkerRuntimeConfigParameters struct {
-	// Poll interval used while waiting for worker convergence
+	// Poll interval used while waiting for DB convergence
 	AckPollInterval *string `json:"ackPollInterval" yaml:"ackPollInterval"`
 
 	// Default weight for unlabeled task group
@@ -717,7 +570,7 @@ type ApplyWorkerRuntimeConfigToWorkerParameters struct {
 }
 
 type BroadcastCancelTaskParameters struct {
-	// Poll interval used while waiting worker ack tasks
+	// Poll interval used while waiting worker command tasks
 	AckPollInterval *string `json:"ackPollInterval" yaml:"ackPollInterval"`
 
 	// Correlation ID for this broadcast command
@@ -742,7 +595,7 @@ type CancelTaskOnWorkerParameters struct {
 }
 
 type BroadcastPauseTaskParameters struct {
-	// Poll interval used while waiting worker ack tasks
+	// Poll interval used while waiting worker command tasks
 	AckPollInterval *string `json:"ackPollInterval" yaml:"ackPollInterval"`
 
 	// Correlation ID for this broadcast command
@@ -802,22 +655,6 @@ func (r *DeleteOpaqueKeyParameters) Parse(spec json.RawMessage) error {
 }
 
 func (r *DeleteOpaqueKeyParameters) Marshal() (json.RawMessage, error) {
-	return json.Marshal(r)
-}
-
-func (r *UpdateWorkerRuntimeConfigParameters) Parse(spec json.RawMessage) error {
-	return json.Unmarshal(spec, r)
-}
-
-func (r *UpdateWorkerRuntimeConfigParameters) Marshal() (json.RawMessage, error) {
-	return json.Marshal(r)
-}
-
-func (r *InterruptTaskParameters) Parse(spec json.RawMessage) error {
-	return json.Unmarshal(spec, r)
-}
-
-func (r *InterruptTaskParameters) Marshal() (json.RawMessage, error) {
 	return json.Marshal(r)
 }
 
@@ -892,12 +729,6 @@ type ExecutorInterface interface {
 	// Hook called when deleteOpaqueKey fails
 	OnDeleteOpaqueKeyFailed(ctx context.Context, taskID int32, params *DeleteOpaqueKeyParameters, tx core.Tx) error
 
-	// Update worker runtime config and wait for alive workers to apply it
-	ExecuteUpdateWorkerRuntimeConfig(ctx context.Context, task worker.Task, params *UpdateWorkerRuntimeConfigParameters) error
-
-	// Interrupt a task and stop any in-flight execution
-	ExecuteInterruptTask(ctx context.Context, task worker.Task, params *InterruptTaskParameters) error
-
 	// Broadcast a runtime config update command to all alive workers
 	ExecuteBroadcastUpdateWorkerRuntimeConfig(ctx context.Context, task worker.Task, params *BroadcastUpdateWorkerRuntimeConfigParameters) error
 
@@ -957,20 +788,6 @@ func (f *TaskHandler) HandleTask(ctx context.Context, task worker.Task) error {
 			return fmt.Errorf("failed to parse deleteOpaqueKey parameters: %w", err)
 		}
 		return f.executor.ExecuteDeleteOpaqueKey(ctx, task, &params)
-
-	case UpdateWorkerRuntimeConfig:
-		var params UpdateWorkerRuntimeConfigParameters
-		if err := json.Unmarshal(task.GetPayload(), &params); err != nil {
-			return fmt.Errorf("failed to parse updateWorkerRuntimeConfig parameters: %w", err)
-		}
-		return f.executor.ExecuteUpdateWorkerRuntimeConfig(ctx, task, &params)
-
-	case InterruptTask:
-		var params InterruptTaskParameters
-		if err := json.Unmarshal(task.GetPayload(), &params); err != nil {
-			return fmt.Errorf("failed to parse interruptTask parameters: %w", err)
-		}
-		return f.executor.ExecuteInterruptTask(ctx, task, &params)
 
 	case BroadcastUpdateWorkerRuntimeConfig:
 		var params BroadcastUpdateWorkerRuntimeConfigParameters

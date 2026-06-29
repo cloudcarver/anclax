@@ -39,8 +39,6 @@ interfaces:
       - SetTaskStatus(ctx context.Context, task string, status string) error
       - SleepMs(ctx context.Context, ms int32) error
       - CreateRuntimeConfig(ctx context.Context, key string, requestID string, maxStrictPercentage int32, defaultWeight int32, w1Weight int32, w2Weight int32, notify bool) error
-      - WaitRuntimeConfigAck(ctx context.Context, key string, requestID string, timeoutMs int32) error
-      - CaptureLatestRuntimeConfigVersion(ctx context.Context, key string) error
       - WaitWorkerLagging(ctx context.Context, workerName string, key string, expected bool, timeoutMs int32) error
       - WaitWorkerOnline(ctx context.Context, workerName string, expected bool, timeoutMs int32) error
       - MarkWorkerOffline(ctx context.Context, workerName string) error
@@ -641,7 +639,6 @@ scenarios:
           controlPlane:
             - UpdateRuntimeConfig(ctx, "SRCA_CFG", 15, 1, 0, 0)
           runtime:
-            - CaptureLatestRuntimeConfigVersion(ctx, "SRCA_CFG")
             - WaitWorkerLagging(ctx, "SRCA_W1", "SRCA_CFG", false, 7000)
             - StopWorker(ctx, "SRCA_W1")
 
@@ -666,7 +663,6 @@ scenarios:
       - id: s3
         parallel:
           runtime:
-            - CaptureLatestRuntimeConfigVersion(ctx, "SRCJ_CFG")
             - WaitWorkerLagging(ctx, "SRCJ_W1", "SRCJ_CFG", false, 7000)
             - WaitWorkerLagging(ctx, "SRCJ_W2", "SRCJ_CFG", false, 7000)
             - StopWorker(ctx, "SRCJ_W1")
@@ -694,7 +690,6 @@ scenarios:
       - id: s3
         parallel:
           runtime:
-            - CaptureLatestRuntimeConfigVersion(ctx, "SRCO_CFG")
             - WaitWorkerLagging(ctx, "SRCO_W1", "SRCO_CFG", false, 7000)
             - WaitWorkerOnline(ctx, "SRCO_W2", false, 5000)
             - StopWorker(ctx, "SRCO_W1")
@@ -1154,7 +1149,7 @@ scenarios:
             - StopWorker(ctx, "sll_w2")
 
   - name: complex_runtime_reconfig_failover_and_failure
-    description: combine runtime-config ACK/listen, strict-vs-normal draining, lease failover, and failure-event assertions.
+    description: combine runtime-config broadcast convergence, strict-vs-normal draining, lease failover, and failure-event assertions.
     steps:
       - id: s1
         parallel:
@@ -1162,8 +1157,12 @@ scenarios:
             - ResetCaptured(ctx)
             - StartWorker(ctx, "crrf_cap", "capture", "dst-taskstore", []string{"w1", "w2"}, 20, 20, 200, 20, 1, 0, true, "")
             - WaitWorkerOnline(ctx, "crrf_cap", true, 5000)
-            - CreateRuntimeConfig(ctx, "CRRF_CFG1", "req-crrf-1", 20, 1, 1, 4, true)
-            - WaitRuntimeConfigAck(ctx, "CRRF_CFG1", "req-crrf-1", 8000)
+
+      - id: s1b
+        parallel:
+          controlPlane:
+            - UpdateRuntimeConfig(ctx, "CRRF_CFG1", 20, 1, 1, 4)
+          runtime:
             - WaitWorkerLagging(ctx, "crrf_cap", "CRRF_CFG1", false, 7000)
 
       - id: s2
@@ -1188,8 +1187,12 @@ scenarios:
         parallel:
           runtime:
             - ResetCaptured(ctx)
-            - CreateRuntimeConfig(ctx, "CRRF_CFG2", "req-crrf-2", 0, 1, 5, 1, true)
-            - WaitRuntimeConfigAck(ctx, "CRRF_CFG2", "req-crrf-2", 8000)
+
+      - id: s4b
+        parallel:
+          controlPlane:
+            - UpdateRuntimeConfig(ctx, "CRRF_CFG2", 0, 1, 5, 1)
+          runtime:
             - WaitWorkerLagging(ctx, "crrf_cap", "CRRF_CFG2", false, 7000)
 
       - id: s5

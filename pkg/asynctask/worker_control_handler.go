@@ -43,8 +43,9 @@ func (h *WorkerControlTaskHandler) HandleTask(ctx context.Context, task worker.T
 		if !h.isTargetWorker(params.WorkerID) {
 			return nil
 		}
-		h.worker.InterruptTasks(params.TaskIDs, taskcore.ErrTaskCancelled)
-		return nil
+		taskIDs := workerControlTaskIDs(task.ID, params.TaskIDs)
+		h.worker.InterruptTasks(taskIDs, taskcore.ErrTaskCancelled)
+		return h.worker.WaitTaskRuntimes(ctx, taskIDs)
 	case taskgen.PauseTaskOnWorker:
 		var params taskgen.PauseTaskOnWorkerParameters
 		if err := json.Unmarshal(task.GetPayload(), &params); err != nil {
@@ -53,8 +54,9 @@ func (h *WorkerControlTaskHandler) HandleTask(ctx context.Context, task worker.T
 		if !h.isTargetWorker(params.WorkerID) {
 			return nil
 		}
-		h.worker.InterruptTasks(params.TaskIDs, taskcore.ErrTaskPaused)
-		return nil
+		taskIDs := workerControlTaskIDs(task.ID, params.TaskIDs)
+		h.worker.InterruptTasks(taskIDs, taskcore.ErrTaskPaused)
+		return h.worker.WaitTaskRuntimes(ctx, taskIDs)
 	default:
 		return worker.ErrUnknownTaskType
 	}
@@ -76,4 +78,18 @@ func (h *WorkerControlTaskHandler) isTargetWorker(targetWorkerID uuid.UUID) bool
 		return false
 	}
 	return workerID == targetWorkerID
+}
+
+func workerControlTaskIDs(controlTaskID int32, taskIDs []int32) []int32 {
+	if len(taskIDs) == 0 {
+		return nil
+	}
+	out := make([]int32, 0, len(taskIDs))
+	for _, taskID := range taskIDs {
+		if taskID == controlTaskID {
+			continue
+		}
+		out = append(out, taskID)
+	}
+	return out
 }

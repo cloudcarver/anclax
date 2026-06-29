@@ -95,6 +95,7 @@ type dstEnv struct {
 func newDSTEnv(m model.ModelInterface) (*dstEnv, error) {
 	taskListener := tasklistener.NewPollingTaskEventListener(m)
 	store := taskcore.NewTaskStore(m)
+	configs := newRuntimeConfigRegistry()
 
 	taskStore := &taskStoreActor{
 		model: m,
@@ -105,9 +106,9 @@ func newDSTEnv(m model.ModelInterface) (*dstEnv, error) {
 		store:        store,
 		listener:     taskListener,
 		taskStore:    taskStore,
-		runtime:      newRuntimeActor(m),
+		runtime:      newRuntimeActor(m, configs),
 		validator:    newValidatorActor(m),
-		controlPlane: newControlPlaneActor(m, store, taskListener),
+		controlPlane: newControlPlaneActor(m, store, taskListener, configs),
 	}, nil
 }
 

@@ -105,6 +105,13 @@ func (p *scriptedPort) FinalizeTask(ctx context.Context, task Task, execErr erro
 	return nil
 }
 
+func (p *scriptedPort) InterruptTask(taskID int32, cause error) {
+}
+
+func (p *scriptedPort) WaitTaskRuntimes(ctx context.Context, taskIDs []int32) error {
+	return nil
+}
+
 func (p *scriptedPort) Heartbeat(ctx context.Context, workerID string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()

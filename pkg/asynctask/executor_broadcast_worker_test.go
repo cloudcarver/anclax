@@ -42,13 +42,14 @@ func TestExecuteBroadcastCancelTaskLocalAndRemoteWorker(t *testing.T) {
 
 	mockLocalWorker.EXPECT().WorkerID().Return(w1.String())
 	mockLocalWorker.EXPECT().InterruptTasks([]int32{101, 102}, taskcore.ErrTaskCancelled)
+	mockLocalWorker.EXPECT().WaitTaskRuntimes(gomock.Any(), []int32{101, 102}).Return(nil)
 
 	mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{w1, w2}, nil).AnyTimes()
 
 	mockRunner.EXPECT().RunCancelTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, params *taskgen.CancelTaskOnWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 			require.Equal(t, w2, params.WorkerID)
-			require.Equal(t, []int32{101, 102}, params.TaskIDs)
+			require.Equal(t, []int32{777, 101, 102}, params.TaskIDs)
 			task := &apigen.Task{Attributes: apigen.TaskAttributes{}}
 			for _, override := range overrides {
 				require.NoError(t, override(task))
@@ -74,10 +75,39 @@ func TestExecuteBroadcastCancelTaskLocalAndRemoteWorker(t *testing.T) {
 
 	err := exec.ExecuteBroadcastCancelTask(context.Background(), worker.Task{ID: 777}, &taskgen.BroadcastCancelTaskParameters{
 		RequestID:       &requestID,
-		TaskIDs:         []int32{101, 102},
+		TaskIDs:         []int32{777, 101, 102},
 		AckPollInterval: &fanout,
 	})
 	require.NoError(t, err)
+}
+
+func TestExecuteBroadcastCancelTaskLocalWaitError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockModel := model.NewMockModelInterface(ctrl)
+	mockRunner := taskgen.NewMockTaskRunner(ctrl)
+	mockLocalWorker := worker.NewMockWorkerInterface(ctrl)
+
+	w1 := uuid.New()
+	waitErr := stdErrors.New("wait runtime")
+	exec := &Executor{
+		model:                     mockModel,
+		runner:                    mockRunner,
+		localWorker:               mockLocalWorker,
+		now:                       time.Now,
+		runtimeConfigHeartbeatTTL: 9 * time.Second,
+	}
+
+	mockLocalWorker.EXPECT().WorkerID().Return(w1.String())
+	mockLocalWorker.EXPECT().InterruptTasks([]int32{101}, taskcore.ErrTaskCancelled)
+	mockLocalWorker.EXPECT().WaitTaskRuntimes(gomock.Any(), []int32{101}).Return(waitErr)
+	mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{w1}, nil)
+
+	err := exec.ExecuteBroadcastCancelTask(context.Background(), worker.Task{ID: 777}, &taskgen.BroadcastCancelTaskParameters{
+		TaskIDs: []int32{777, 101},
+	})
+	require.ErrorIs(t, err, waitErr)
 }
 
 func TestExecuteBroadcastCancelTaskRemoteFailure(t *testing.T) {
@@ -131,6 +161,7 @@ func TestExecuteBroadcastPauseTaskLocalAndRemoteWorker(t *testing.T) {
 
 	mockLocalWorker.EXPECT().WorkerID().Return(w1.String())
 	mockLocalWorker.EXPECT().InterruptTasks([]int32{201}, taskcore.ErrTaskPaused)
+	mockLocalWorker.EXPECT().WaitTaskRuntimes(gomock.Any(), []int32{201}).Return(nil)
 
 	mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{w1, w2}, nil).AnyTimes()
 

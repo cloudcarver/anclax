@@ -1,7 +1,6 @@
 package asynctask
 
 import (
-	"context"
 	"time"
 
 	"github.com/cloudcarver/anclax/pkg/config"
@@ -20,9 +19,7 @@ type Executor struct {
 	runner                    taskgen.TaskRunner
 	localWorker               worker.WorkerInterface
 	now                       func() time.Time
-	waitForAck                func(ctx context.Context, requestID string, listenTimeout time.Duration) error
 	runtimeConfigHeartbeatTTL time.Duration
-	runtimeListenDSN          string
 }
 
 func NewExecutor(cfg *config.Config, model model.ModelInterface, runner taskgen.TaskRunner) *Executor {
@@ -30,9 +27,7 @@ func NewExecutor(cfg *config.Config, model model.ModelInterface, runner taskgen.
 		model:                     model,
 		runner:                    runner,
 		now:                       time.Now,
-		waitForAck:                newRuntimeConfigAckWaiter(runtimeListenDSNFromConfig(cfg)),
 		runtimeConfigHeartbeatTTL: runtimeConfigHeartbeatTTLFromConfig(cfg),
-		runtimeListenDSN:          runtimeListenDSNFromConfig(cfg),
 	}
 }
 

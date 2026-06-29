@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/cloudcarver/anclax/pkg/metrics"
-	"github.com/cloudcarver/anclax/pkg/taskcore/pgnotify"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	taskworker "github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
@@ -154,7 +153,11 @@ func (e *Executor) ExecuteBroadcastCancelTask(ctx context.Context, task taskwork
 	waitTargets := make([]uuid.UUID, 0, len(targetWorkers))
 	for _, workerID := range targetWorkers {
 		if localWorkerID != "" && workerID.String() == localWorkerID && e.localWorker != nil {
-			e.localWorker.InterruptTasks(taskIDs, taskcore.ErrTaskCancelled)
+			localTaskIDs := workerControlTaskIDs(task.ID, taskIDs)
+			e.localWorker.InterruptTasks(localTaskIDs, taskcore.ErrTaskCancelled)
+			if err := e.localWorker.WaitTaskRuntimes(ctx, localTaskIDs); err != nil {
+				return err
+			}
 			continue
 		}
 		if err := e.enqueueCancelTaskOnWorker(ctx, task.ID, requestID, workerID, taskIDs); err != nil {
@@ -204,7 +207,11 @@ func (e *Executor) ExecuteBroadcastPauseTask(ctx context.Context, task taskworke
 	waitTargets := make([]uuid.UUID, 0, len(targetWorkers))
 	for _, workerID := range targetWorkers {
 		if localWorkerID != "" && workerID.String() == localWorkerID && e.localWorker != nil {
-			e.localWorker.InterruptTasks(taskIDs, taskcore.ErrTaskPaused)
+			localTaskIDs := workerControlTaskIDs(task.ID, taskIDs)
+			e.localWorker.InterruptTasks(localTaskIDs, taskcore.ErrTaskPaused)
+			if err := e.localWorker.WaitTaskRuntimes(ctx, localTaskIDs); err != nil {
+				return err
+			}
 			continue
 		}
 		if err := e.enqueuePauseTaskOnWorker(ctx, task.ID, requestID, workerID, taskIDs); err != nil {
@@ -229,15 +236,11 @@ func buildBroadcastLabelWeights(params *taskgen.BroadcastUpdateWorkerRuntimeConf
 	if params == nil {
 		return nil, errors.New("broadcast update worker runtime config params cannot be nil")
 	}
-	return buildLabelWeights(&taskgen.UpdateWorkerRuntimeConfigParameters{
-		DefaultWeight: params.DefaultWeight,
-		Labels:        append([]string(nil), params.Labels...),
-		Weights:       append([]int32(nil), params.Weights...),
-	})
+	return buildLabelWeights(params.DefaultWeight, params.Labels, params.Weights)
 }
 
 func buildRuntimeConfigPayload(maxStrictPercentage *int32, labelWeights map[string]int32) ([]byte, error) {
-	payloadRaw, err := json.Marshal(pgnotify.RuntimeConfigPayload{
+	payloadRaw, err := json.Marshal(taskworker.RuntimeConfigPayload{
 		MaxStrictPercentage: maxStrictPercentage,
 		LabelWeights:        labelWeights,
 	})
@@ -245,6 +248,45 @@ func buildRuntimeConfigPayload(maxStrictPercentage *int32, labelWeights map[stri
 		return nil, errors.Wrap(err, "marshal runtime config payload")
 	}
 	return payloadRaw, nil
+}
+
+func normalizeMaxStrictPercentage(maxStrictPercentage *int32) (*int32, error) {
+	if maxStrictPercentage == nil {
+		return nil, nil
+	}
+	if *maxStrictPercentage < 0 || *maxStrictPercentage > 100 {
+		return nil, errors.New("maxStrictPercentage must be within [0, 100]")
+	}
+	return maxStrictPercentage, nil
+}
+
+func buildLabelWeights(defaultWeightRaw *int32, labels []string, weights []int32) (map[string]int32, error) {
+	defaultWeight := int32(1)
+	if defaultWeightRaw != nil {
+		defaultWeight = *defaultWeightRaw
+	}
+	if defaultWeight < 1 {
+		return nil, errors.New("defaultWeight must be greater than or equal to 1")
+	}
+
+	if len(labels) != len(weights) {
+		return nil, errors.New("labels and weights must have the same length")
+	}
+
+	labelWeights := map[string]int32{
+		taskworker.DefaultWeightConfigKey: defaultWeight,
+	}
+	for idx, label := range labels {
+		if label == "" {
+			return nil, errors.New("labels cannot contain empty value")
+		}
+		weight := weights[idx]
+		if weight < 1 {
+			return nil, errors.New("weights must be greater than or equal to 1")
+		}
+		labelWeights[label] = weight
+	}
+	return labelWeights, nil
 }
 
 func (e *Executor) workerHeartbeatTTL() time.Duration {

@@ -1,13 +1,9 @@
 package asynctask
 
 import (
-	"encoding/json"
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/cloudcarver/anclax/pkg/taskcore/pgnotify"
-	"github.com/cloudcarver/anclax/pkg/zgen/taskgen"
 )
 
 func FuzzBuildLabelWeights(f *testing.F) {
@@ -23,15 +19,12 @@ func FuzzBuildLabelWeights(f *testing.F) {
 		}
 		labels := splitTokens(rawLabels, 32)
 		weights := splitInt32Tokens(rawWeights, 32)
-		params := &taskgen.UpdateWorkerRuntimeConfigParameters{
-			Labels:  labels,
-			Weights: weights,
-		}
+		var defaultWeightPtr *int32
 		if withDefault {
-			params.DefaultWeight = &defaultWeight
+			defaultWeightPtr = &defaultWeight
 		}
 
-		labelWeights, err := buildLabelWeights(params)
+		labelWeights, err := buildLabelWeights(defaultWeightPtr, labels, weights)
 		if err != nil {
 			return
 		}
@@ -45,65 +38,6 @@ func FuzzBuildLabelWeights(f *testing.F) {
 			if weight < 1 {
 				t.Fatalf("non-positive weight in result: %d for %q", weight, label)
 			}
-		}
-	})
-}
-
-func FuzzParseRuntimeConfigDurations(f *testing.F) {
-	f.Add("1s", "2s", true, true)
-	f.Add("", "", false, false)
-	f.Add("x", "2s", true, true)
-	f.Add("0s", "2s", true, true)
-
-	f.Fuzz(func(t *testing.T, notify, listen string, withNotify, withListen bool) {
-		if len(notify) > 64 || len(listen) > 64 {
-			return
-		}
-		params := &taskgen.UpdateWorkerRuntimeConfigParameters{}
-		if withNotify {
-			params.NotifyInterval = &notify
-		}
-		if withListen {
-			params.ListenTimeout = &listen
-		}
-
-		notifyDur, listenDur, err := parseRuntimeConfigDurations(params)
-		if err != nil {
-			return
-		}
-		if notifyDur <= 0 || listenDur <= 0 {
-			t.Fatalf("durations must be positive: %v %v", notifyDur, listenDur)
-		}
-	})
-}
-
-func FuzzIsRuntimeConfigAckForRequest(f *testing.F) {
-	f.Add(`{"op":"ack","params":{"request_id":"r1"}}`, "r1")
-	f.Add(`{"op":"up_config","params":{"request_id":"r1"}}`, "r1")
-	f.Add(`{`, "r1")
-	f.Add(`{"params":{"request_id":"r2"}}`, "r1")
-	f.Add("", "")
-
-	f.Fuzz(func(t *testing.T, payload string, requestID string) {
-		if len(payload) > 1024 || len(requestID) > 128 {
-			return
-		}
-		got := isRuntimeConfigAckForRequest(payload, requestID)
-		if !got {
-			return
-		}
-		if requestID == "" {
-			t.Fatal("empty requestID should not match")
-		}
-		var ack pgnotify.RuntimeConfigAckNotification
-		if err := json.Unmarshal([]byte(payload), &ack); err != nil {
-			t.Fatalf("matched invalid payload: %v", err)
-		}
-		if !pgnotify.MatchesOp(ack.Op, pgnotify.OpAck) {
-			t.Fatalf("matched unexpected op: %q", ack.Op)
-		}
-		if ack.Params.RequestID != requestID {
-			t.Fatalf("matched wrong requestID: got=%q want=%q", ack.Params.RequestID, requestID)
 		}
 	})
 }

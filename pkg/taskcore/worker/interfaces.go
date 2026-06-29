@@ -40,4 +40,5 @@ type WorkerInterface interface {
 	WorkerID() string
 	NotifyRuntimeConfig(requestID string)
 	InterruptTasks(taskIDs []int32, cause error)
+	WaitTaskRuntimes(ctx context.Context, taskIDs []int32) error
 }

@@ -276,7 +276,7 @@ func formatMaxAttempts(policy *apigen.TaskRetryPolicy) string {
 	return strconv.FormatInt(int64(policy.MaxAttempts), 10)
 }
 
-// UpdateWorkerRuntimeConfig enqueues a runtime config update task and waits for all workers to ack it.
+// UpdateWorkerRuntimeConfig enqueues a runtime config update task and waits for convergence.
 func (c *WorkerControlPlane) UpdateWorkerRuntimeConfig(ctx context.Context, req *UpdateWorkerRuntimeConfigRequest) error {
 	taskID, err := c.StartUpdateWorkerRuntimeConfig(ctx, req)
 	if err != nil {
@@ -288,7 +288,7 @@ func (c *WorkerControlPlane) UpdateWorkerRuntimeConfig(ctx context.Context, req 
 	return nil
 }
 
-// PauseTask pauses a task and broadcasts a worker pause command, waiting for acknowledgements.
+// PauseTask pauses a task and broadcasts a worker pause command, waiting for worker command tasks.
 func (c *WorkerControlPlane) PauseTask(ctx context.Context, taskID int32) error {
 	if taskID <= 0 {
 		return errors.New("pause task requires a positive taskID")
@@ -335,7 +335,7 @@ func (c *WorkerControlPlane) PauseTask(ctx context.Context, taskID int32) error 
 	return nil
 }
 
-// CancelTask cancels a task and broadcasts a worker cancel command, waiting for acknowledgements.
+// CancelTask cancels a task and broadcasts a worker cancel command, waiting for worker command tasks.
 func (c *WorkerControlPlane) CancelTask(ctx context.Context, taskID int32) error {
 	if taskID <= 0 {
 		return errors.New("cancel task requires a positive taskID")

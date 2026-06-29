@@ -55,10 +55,6 @@ type Querier interface {
 	ListTaskIDsByTags(ctx context.Context, arg ListTaskIDsByTagsParams) ([]int32, error)
 	ListTerminalTaskWaitStatuses(ctx context.Context, ids []int32) ([]*ListTerminalTaskWaitStatusesRow, error)
 	MarkWorkerOffline(ctx context.Context, id uuid.UUID) error
-	NotifyWorkerRuntimeConfig(ctx context.Context, payload string) error
-	NotifyWorkerRuntimeConfigAck(ctx context.Context, payload string) error
-	NotifyWorkerTaskInterrupt(ctx context.Context, payload string) error
-	NotifyWorkerTaskInterruptAck(ctx context.Context, payload string) error
 	RefreshTaskLock(ctx context.Context, arg RefreshTaskLockParams) (int32, error)
 	ReleaseTaskLockByWorker(ctx context.Context, arg ReleaseTaskLockByWorkerParams) (int32, error)
 	RestoreUserByName(ctx context.Context, name string) error

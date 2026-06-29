@@ -138,10 +138,17 @@ type Port interface {
 
 	ExecuteTask(ctx context.Context, task Task) error
 	FinalizeTask(ctx context.Context, task Task, execErr error) error
+	InterruptTask(taskID int32, cause error)
+	WaitTaskRuntimes(ctx context.Context, taskIDs []int32) error
 
 	Heartbeat(ctx context.Context, workerID string) error
 	RefreshRuntimeConfig(ctx context.Context, workerID string, requestID string) (*RuntimeConfig, error)
 	AckRuntimeConfigApplied(ctx context.Context, workerID string, requestID string, appliedVersion int64) error
+}
+
+type RuntimeConfigPayload struct {
+	MaxStrictPercentage *int32           `json:"maxStrictPercentage,omitempty"`
+	LabelWeights        map[string]int32 `json:"labelWeights,omitempty"`
 }
 
 type EngineConfig struct {

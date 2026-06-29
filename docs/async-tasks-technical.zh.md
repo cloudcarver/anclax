@@ -373,36 +373,38 @@ strict_cap = ceil(concurrency * maxStrictPercentage / 100)
 
 ### 运行时 worker 配置更新
 
-内置任务 `updateWorkerRuntimeConfig` 会写入版本化配置，并通过 Postgres 通知传播更新。
+内置任务 `broadcastUpdateWorkerRuntimeConfig` 会写入版本化配置，并向存活 worker 快照 fanout worker-control 命令任务。
 
 流程摘要：
 1. 在 `anclax.worker_runtime_configs` 中持久化新版本。
-2. 向 `anclax_worker_runtime_config` 发送 `up_config` 通知（`request_id`、`version`）。
-3. worker 刷新最新配置、原子应用，并单调更新 `workers.applied_config_version`。
-4. worker 通过 `anclax_worker_runtime_config_ack` 发送 ACK 通知。
-5. 收敛以 DB 的落后 worker 状态为准；ACK 通知仅用于加速。
+2. 为每个远端目标 worker 入队 `applyWorkerRuntimeConfigToWorker`；本地 worker 可直接触发。
+3. worker 通过 `worker:<id>` 标签领取自己的命令任务，刷新最新配置、原子应用，并单调更新 `workers.applied_config_version`。
+4. 收敛以 DB 的落后 worker 状态为准。
+5. 如果等待期间出现更新版本，旧广播任务会视为 superseded 并退出。
 
 可运行示例与运维说明：
 - [调度与运行时配置指南](async-task-scheduling-runtime-config.zh.md)
 - [异步任务 Worker 租约设计](async-task-worker-lease.md)
 - [异步任务生产就绪测试策略](async-task-testing-production-readiness.md)
 
-### Worker 控制 LISTEN/NOTIFY 请求
+### Worker 控制任务请求
 
-Worker 控制面消息（运行时配置更新、任务中断）统一使用 JSON 外层结构：
+Worker 控制面消息是普通异步任务中的保留任务类型：
 
-```json
-{"op": "<operation>", "params": {"...": "..."}}
-```
+- `broadcastUpdateWorkerRuntimeConfig` fanout `applyWorkerRuntimeConfigToWorker`。
+- `broadcastCancelTask` fanout `cancelTaskOnWorker`。
+- `broadcastPauseTask` fanout `pauseTaskOnWorker`。
 
-规范化的 schema（op、params、channel、ACK params）集中在 `pkg/taskcore/pgnotify`，Worker 通过单一监听循环处理所有控制通知。
+广播任务会快照存活 worker，为每个远端 worker 入队一个定向命令任务，并根据操作等待命令任务完成或 DB 收敛。定向命令任务使用 `worker:<id>` 标签和 unique tag，确保目标 worker 领取自己的命令。
 
-新增用于即时通知 Worker 的请求时：
-1. **定义 schema**：在 `pkg/taskcore/pgnotify` 中新增 op 常量与 params 结构（需要 ACK 时同步新增）。
-2. **新增 channel + SQL 通知**：在 `sql/queries/workers.sql` 添加 `pg_notify` 查询（必要时运行 `anclax gen`）。
-3. **发送通知**：在控制面执行器中构造 `pgnotify.*Notification` 并调用 `NotifyWorker...`。
-4. **Worker 处理**：在 `pkg/taskcore/worker/worker.go` 的统一监听循环中注册 channel 并路由处理。
-5. **ACK 与测试**：更新 ACK 等待逻辑（如适用），并补充单元/端到端测试。
+cancel 和 pause 的 runtime interrupt 操作本身保持非阻塞。阻塞语义属于控制面命令任务 handler：调用 `InterruptTasks` 后，它会等待匹配的 in-flight task runtime entry 关闭。pending 或已 finalize 的任务没有 runtime entry，会直接返回。运行中的任务会在 `FinalizeTask` 末尾关闭 entry，因此控制面 cancel/pause 会在 worker 已经通过任务运行时生命周期处理完中断后返回。
+
+新增 worker-control 请求时：
+1. **定义任务 schema**：修改 `api/tasks/tasks.yaml`。
+2. **重新生成**：运行 `anclax gen` 更新生成代码。
+3. **新增广播执行逻辑**：快照目标 worker 并入队 worker 定向命令任务。
+4. **Worker 处理**：在 `WorkerControlTaskHandler` 中路由处理。
+5. **补充测试**：覆盖 fanout、本地 worker fast path、目标 worker 过滤、重复命令行为，以及等待/收敛语义。
 
 ## 高级功能
 

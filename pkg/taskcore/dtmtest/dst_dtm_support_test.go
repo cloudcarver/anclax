@@ -714,6 +714,13 @@ func (p *deterministicPort) AckRuntimeConfigApplied(ctx context.Context, workerI
 	return nil
 }
 
+func (p *deterministicPort) InterruptTask(taskID int32, cause error) {
+}
+
+func (p *deterministicPort) WaitTaskRuntimes(ctx context.Context, taskIDs []int32) error {
+	return nil
+}
+
 func (p *deterministicPort) queueStrict(task *worker.Task) {
 	p.mu.Lock()
 	defer p.mu.Unlock()

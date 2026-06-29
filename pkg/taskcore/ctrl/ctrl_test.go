@@ -405,7 +405,7 @@ func TestCancelTaskUsesTransactionAndWaitsForInterrupt(t *testing.T) {
 	mockStore := store.NewMockTaskStoreInterface(ctrl)
 	mockRunner := taskgen.NewMockTaskRunner(ctrl)
 	fake := &fakeTx{}
-	interruptTaskID := int32(101)
+	broadcastTaskID := int32(101)
 
 	mockModel.EXPECT().RunTransactionWithTx(ctx, gomock.Any()).DoAndReturn(
 		func(ctx context.Context, fn func(core.Tx, model.ModelInterface) error) error {
@@ -424,11 +424,11 @@ func TestCancelTaskUsesTransactionAndWaitsForInterrupt(t *testing.T) {
 			require.NoError(t, overrides[0](task))
 			require.NotNil(t, task.Attributes.Priority)
 			require.Equal(t, WorkerControlTaskPriority, *task.Attributes.Priority)
-			return interruptTaskID, nil
+			return broadcastTaskID, nil
 		},
 	)
 
-	cp := NewWorkerControlPlane(mockModel, mockRunner, mockStore, completedTaskEventListener(t, interruptTaskID))
+	cp := NewWorkerControlPlane(mockModel, mockRunner, mockStore, completedTaskEventListener(t, broadcastTaskID))
 	err := cp.CancelTask(ctx, taskID)
 	require.NoError(t, err)
 }
@@ -676,7 +676,7 @@ func TestCancelTaskByUniqueTagResolvesTaskID(t *testing.T) {
 	mockStore := store.NewMockTaskStoreInterface(ctrl)
 	mockRunner := taskgen.NewMockTaskRunner(ctrl)
 	fake := &fakeTx{}
-	interruptTaskID := int32(101)
+	broadcastTaskID := int32(101)
 
 	mockStore.EXPECT().GetTaskByUniqueTag(ctx, uniqueTag).Return(&apigen.Task{ID: taskID}, nil)
 	mockModel.EXPECT().RunTransactionWithTx(ctx, gomock.Any()).DoAndReturn(
@@ -690,11 +690,11 @@ func TestCancelTaskByUniqueTagResolvesTaskID(t *testing.T) {
 	mockRunner.EXPECT().RunBroadcastCancelTaskWithTx(ctx, fake, gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, tx core.Tx, params *taskgen.BroadcastCancelTaskParameters, overrides ...store.TaskOverride) (int32, error) {
 			require.Equal(t, []int32{taskID}, params.TaskIDs)
-			return interruptTaskID, nil
+			return broadcastTaskID, nil
 		},
 	)
 
-	cp := NewWorkerControlPlane(mockModel, mockRunner, mockStore, completedTaskEventListener(t, interruptTaskID))
+	cp := NewWorkerControlPlane(mockModel, mockRunner, mockStore, completedTaskEventListener(t, broadcastTaskID))
 	err := cp.CancelTaskByUniqueTag(ctx, uniqueTag)
 	require.NoError(t, err)
 }

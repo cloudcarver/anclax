@@ -235,9 +235,9 @@ err := controlPlane.UpdateWorkerRuntimeConfig(ctx,
 )
 ```
 
-The control plane always enqueues the config-update task with reserved max strict priority and hides task-wait listener details.
+The control plane hides worker snapshots, fanout, and task-wait listener details.
 
-For full semantics (strict cap formula, label-group mapping, LISTEN/NOTIFY propagation, ACK convergence, and supersede behavior), see:
+For full semantics (strict cap formula, label-group mapping, task fanout, DB convergence, and supersede behavior), see:
 - [Scheduling & Runtime Config Guide](async-task-scheduling-runtime-config.md)
 
 #### Task hierarchy and control-plane interrupts

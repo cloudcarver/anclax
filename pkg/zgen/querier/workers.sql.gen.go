@@ -124,42 +124,6 @@ func (q *Queries) MarkWorkerOffline(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
-const notifyWorkerRuntimeConfig = `-- name: NotifyWorkerRuntimeConfig :exec
-SELECT pg_notify('anclax_worker_runtime_config', $1::text)
-`
-
-func (q *Queries) NotifyWorkerRuntimeConfig(ctx context.Context, payload string) error {
-	_, err := q.db.Exec(ctx, notifyWorkerRuntimeConfig, payload)
-	return err
-}
-
-const notifyWorkerRuntimeConfigAck = `-- name: NotifyWorkerRuntimeConfigAck :exec
-SELECT pg_notify('anclax_worker_runtime_config_ack', $1::text)
-`
-
-func (q *Queries) NotifyWorkerRuntimeConfigAck(ctx context.Context, payload string) error {
-	_, err := q.db.Exec(ctx, notifyWorkerRuntimeConfigAck, payload)
-	return err
-}
-
-const notifyWorkerTaskInterrupt = `-- name: NotifyWorkerTaskInterrupt :exec
-SELECT pg_notify('anclax_worker_task_interrupt', $1::text)
-`
-
-func (q *Queries) NotifyWorkerTaskInterrupt(ctx context.Context, payload string) error {
-	_, err := q.db.Exec(ctx, notifyWorkerTaskInterrupt, payload)
-	return err
-}
-
-const notifyWorkerTaskInterruptAck = `-- name: NotifyWorkerTaskInterruptAck :exec
-SELECT pg_notify('anclax_worker_task_interrupt_ack', $1::text)
-`
-
-func (q *Queries) NotifyWorkerTaskInterruptAck(ctx context.Context, payload string) error {
-	_, err := q.db.Exec(ctx, notifyWorkerTaskInterruptAck, payload)
-	return err
-}
-
 const updateWorkerAppliedConfigVersion = `-- name: UpdateWorkerAppliedConfigVersion :exec
 UPDATE anclax.workers
 SET

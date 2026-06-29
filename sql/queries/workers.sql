@@ -57,15 +57,3 @@ WHERE
     status = 'online'
     AND last_heartbeat >= sqlc.arg(heartbeat_cutoff)
     AND applied_config_version < sqlc.arg(version);
-
--- name: NotifyWorkerRuntimeConfig :exec
-SELECT pg_notify('anclax_worker_runtime_config', sqlc.arg(payload)::text);
-
--- name: NotifyWorkerRuntimeConfigAck :exec
-SELECT pg_notify('anclax_worker_runtime_config_ack', sqlc.arg(payload)::text);
-
--- name: NotifyWorkerTaskInterrupt :exec
-SELECT pg_notify('anclax_worker_task_interrupt', sqlc.arg(payload)::text);
-
--- name: NotifyWorkerTaskInterruptAck :exec
-SELECT pg_notify('anclax_worker_task_interrupt_ack', sqlc.arg(payload)::text);

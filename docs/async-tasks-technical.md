@@ -373,36 +373,38 @@ strict_cap = ceil(concurrency * maxStrictPercentage / 100)
 
 ### Runtime worker config update
 
-The built-in task `updateWorkerRuntimeConfig` writes versioned config rows and propagates updates through Postgres notifications.
+The built-in task `broadcastUpdateWorkerRuntimeConfig` writes versioned config rows and fans worker-control command tasks out to the alive worker snapshot.
 
 Flow summary:
 1. Persist new version in `anclax.worker_runtime_configs`.
-2. Emit `up_config` notify payload (`request_id`, `version`) on `anclax_worker_runtime_config`.
-3. Workers refresh latest config, apply atomically, and update `workers.applied_config_version` monotonically.
-4. Workers send ACK notifications on `anclax_worker_runtime_config_ack`.
-5. Convergence is determined from DB lagging-worker state; ACK notify is only a fast path.
+2. Enqueue `applyWorkerRuntimeConfigToWorker` for each remote target worker; local workers can be signaled directly.
+3. Workers claim their command tasks by `worker:<id>` label, refresh latest config, apply atomically, and update `workers.applied_config_version` monotonically.
+4. Convergence is determined from DB lagging-worker state.
+5. If a newer config version appears while waiting, the older broadcast exits as superseded.
 
 For runnable examples and operational guidance, see:
 - [Scheduling & Runtime Config Guide](async-task-scheduling-runtime-config.md)
 - [Async Task Worker Lease Design](async-task-worker-lease.md)
 - [Async Task Testing for Production Readiness](async-task-testing-production-readiness.md)
 
-### Worker control LISTEN/NOTIFY requests
+### Worker control task requests
 
-Worker control-plane messages (runtime config update, task interrupt) share a unified JSON envelope:
+Worker control-plane messages are normal async tasks with reserved task types:
 
-```json
-{"op": "<operation>", "params": {"...": "..."}}
-```
+- `broadcastUpdateWorkerRuntimeConfig` fans out `applyWorkerRuntimeConfigToWorker`.
+- `broadcastCancelTask` fans out `cancelTaskOnWorker`.
+- `broadcastPauseTask` fans out `pauseTaskOnWorker`.
 
-The canonical schema (ops, params, channels, ACK params) lives in `pkg/taskcore/pgnotify`. A single worker listen loop consumes all worker control notifications.
+Broadcast tasks snapshot alive workers, enqueue one worker-targeted command task per remote worker, and wait for command tasks or DB convergence depending on the operation. Worker-targeted command tasks use `worker:<id>` labels and unique tags so each target worker claims its own command.
 
-When adding a new request to immediately inform workers:
-1. **Define schema**: add an op constant and params struct in `pkg/taskcore/pgnotify` (and ACK params if needed).
-2. **Add channel + SQL notify**: extend `sql/queries/workers.sql` with a `pg_notify` query (and regenerate via `anclax gen` if required).
-3. **Emit notification**: marshal the `pgnotify.*Notification` in the control-plane executor and call the model `NotifyWorker...` method.
-4. **Handle in worker**: register the channel in `pkg/taskcore/worker/worker.go` and route the op in the unified listen loop.
-5. **Wire ACKs/tests**: update ACK waiters (if applicable) and add unit/e2e coverage for the new request.
+Cancel and pause interrupt operations remain non-blocking at the runtime boundary. The blocking control-plane semantics come from the worker command task handler: after calling `InterruptTasks`, it waits for matching in-flight task runtime entries to close. Pending or already-finalized task IDs have no runtime entry and return immediately. Running tasks close their entries at the end of `FinalizeTask`, so control-plane cancel/pause returns after the worker has processed the interrupt through the task runtime lifecycle.
+
+When adding a new worker-control request:
+1. **Define task schema** in `api/tasks/tasks.yaml`.
+2. **Regenerate** generated task code with `anclax gen`.
+3. **Add broadcast executor logic** that snapshots target workers and enqueues worker-targeted command tasks.
+4. **Handle in worker** via `WorkerControlTaskHandler`.
+5. **Add tests** for fanout, local-worker fast path, worker-target filtering, duplicate command behavior, and wait/convergence semantics.
 
 ## Advanced Features
 

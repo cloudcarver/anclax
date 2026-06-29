@@ -2,21 +2,14 @@ package worker
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"net/url"
 	"time"
 
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/globalctx"
 	"github.com/cloudcarver/anclax/pkg/logger"
-	"github.com/cloudcarver/anclax/pkg/taskcore/pgnotify"
-	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
-	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"go.uber.org/zap"
 )
 
@@ -31,16 +24,13 @@ type Worker struct {
 
 	taskHandler TaskHandler
 	semaphore   chan struct{}
-
-	runtimeListenDSN string
 }
 
 type WorkerComponents struct {
-	Engine           *Engine
-	Runtime          *Runtime
-	Port             *ModelPort
-	Concurrency      int
-	RuntimeListenDSN string
+	Engine      *Engine
+	Runtime     *Runtime
+	Port        *ModelPort
+	Concurrency int
 }
 
 func BuildWorkerComponents(cfg *config.Config, m model.ModelInterface, taskHandler TaskHandler) (*WorkerComponents, error) {
@@ -124,11 +114,10 @@ func BuildWorkerComponents(cfg *config.Config, m model.ModelInterface, taskHandl
 	})
 
 	return &WorkerComponents{
-		Engine:           engine,
-		Runtime:          runtime,
-		Port:             port,
-		Concurrency:      concurrency,
-		RuntimeListenDSN: runtimeListenDSNFromConfig(cfg),
+		Engine:      engine,
+		Runtime:     runtime,
+		Port:        port,
+		Concurrency: concurrency,
 	}, nil
 }
 
@@ -153,13 +142,12 @@ func NewWorker(globalCtx *globalctx.GlobalContext, components *WorkerComponents,
 		concurrency = 1
 	}
 	return &Worker{
-		globalCtx:        globalCtx,
-		engine:           components.Engine,
-		runtime:          components.Runtime,
-		port:             components.Port,
-		taskHandler:      taskHandler,
-		semaphore:        make(chan struct{}, concurrency),
-		runtimeListenDSN: components.RuntimeListenDSN,
+		globalCtx:   globalCtx,
+		engine:      components.Engine,
+		runtime:     components.Runtime,
+		port:        components.Port,
+		taskHandler: taskHandler,
+		semaphore:   make(chan struct{}, concurrency),
 	}, nil
 }
 
@@ -194,28 +182,15 @@ func (w *Worker) InterruptTasks(taskIDs []int32, cause error) {
 	}
 }
 
+func (w *Worker) WaitTaskRuntimes(ctx context.Context, taskIDs []int32) error {
+	if w.port == nil {
+		return nil
+	}
+	return w.port.WaitTaskRuntimes(ctx, taskIDs)
+}
+
 func (w *Worker) Start() {
 	ctx := w.globalCtx.Context()
-	if w.runtimeListenDSN != "" {
-		ready := make(chan struct{})
-		errCh := make(chan error, 1)
-		go w.workerNotifyListenLoop(ctx, ready, errCh)
-		if err := waitForListenReady(ctx, errCh, ready); err != nil {
-			log.Error("worker listen setup failed", zap.Error(err))
-			w.globalCtx.Cancel()
-			return
-		}
-		go func() {
-			select {
-			case err := <-errCh:
-				if err != nil && ctx.Err() == nil {
-					log.Error("worker listen loop exited", zap.Error(err))
-					w.globalCtx.Cancel()
-				}
-			case <-ctx.Done():
-			}
-		}()
-	}
 	w.runtime.Start(ctx)
 	if ctx.Err() == nil {
 		log.Error("worker runtime exited unexpectedly; shutting down worker")
@@ -269,154 +244,4 @@ func (w *Worker) releaseSlot() {
 	default:
 		panic("worker releaseSlot called without acquire")
 	}
-}
-
-func (w *Worker) workerNotifyListenLoop(ctx context.Context, ready chan<- struct{}, errCh chan<- error) {
-	if err := w.listenWorkerNotifications(ctx, ready); err != nil && ctx.Err() == nil {
-		errCh <- err
-	}
-}
-
-func (w *Worker) listenWorkerNotifications(ctx context.Context, ready chan<- struct{}) error {
-	conn, err := pgx.Connect(ctx, w.runtimeListenDSN)
-	if err != nil {
-		return fmt.Errorf("connect worker listener: %w", err)
-	}
-	defer conn.Close(context.Background())
-
-	if _, err := conn.Exec(ctx, fmt.Sprintf("LISTEN %s", pgnotify.ChannelRuntimeConfig)); err != nil {
-		return fmt.Errorf("listen runtime config channel: %w", err)
-	}
-	if _, err := conn.Exec(ctx, fmt.Sprintf("LISTEN %s", pgnotify.ChannelTaskInterrupt)); err != nil {
-		return fmt.Errorf("listen task interrupt channel: %w", err)
-	}
-	signalListenReady(ready)
-
-	for {
-		waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		notification, err := conn.WaitForNotification(waitCtx)
-		cancel()
-		if err != nil {
-			if errors.Is(err, context.DeadlineExceeded) {
-				continue
-			}
-			if errors.Is(err, context.Canceled) && ctx.Err() != nil {
-				return nil
-			}
-			return fmt.Errorf("wait for worker notification: %w", err)
-		}
-		switch notification.Channel {
-		case pgnotify.ChannelRuntimeConfig:
-			if err := w.handleRuntimeConfigNotification(ctx, notification.Payload); err != nil {
-				log.Error("failed to handle runtime config notification", zap.Error(err), zap.String("payload", notification.Payload))
-			}
-		case pgnotify.ChannelTaskInterrupt:
-			if err := w.handleTaskInterruptNotification(ctx, notification.Payload); err != nil {
-				log.Error("failed to handle task interrupt notification", zap.Error(err), zap.String("payload", notification.Payload))
-			}
-		default:
-			log.Warn("received unknown worker notification channel", zap.String("channel", notification.Channel))
-		}
-	}
-}
-
-func (w *Worker) handleRuntimeConfigNotification(ctx context.Context, payload string) error {
-	requestID, shouldRefresh, err := parseRuntimeConfigNotificationPayload(payload)
-	if err != nil {
-		return err
-	}
-	if !shouldRefresh {
-		return nil
-	}
-	w.runtime.NotifyRuntimeConfig(ctx, requestID)
-	return nil
-}
-
-func parseRuntimeConfigNotificationPayload(payload string) (requestID string, shouldRefresh bool, err error) {
-	env, err := pgnotify.ParseEnvelope(payload)
-	if err != nil {
-		return "", false, fmt.Errorf("unmarshal runtime config notification: %w", err)
-	}
-	if !pgnotify.MatchesOp(env.Op, pgnotify.OpUpdateRuntimeConfig) {
-		return "", false, nil
-	}
-	var params pgnotify.RuntimeConfigParams
-	if err := json.Unmarshal(env.Params, &params); err != nil {
-		return "", false, fmt.Errorf("unmarshal runtime config params: %w", err)
-	}
-	return params.RequestID, true, nil
-}
-
-func (w *Worker) handleTaskInterruptNotification(ctx context.Context, payload string) error {
-	requestID, taskIDs, shouldProcess, err := parseTaskInterruptNotificationPayload(payload)
-	if err != nil {
-		return err
-	}
-	if !shouldProcess {
-		return nil
-	}
-	for _, taskID := range taskIDs {
-		w.port.InterruptTask(taskID, taskcore.ErrTaskInterrupted)
-	}
-	if err := w.port.AckTaskInterruptApplied(ctx, requestID); err != nil {
-		return err
-	}
-	return nil
-}
-
-func parseTaskInterruptNotificationPayload(payload string) (string, []int32, bool, error) {
-	env, err := pgnotify.ParseEnvelope(payload)
-	if err != nil {
-		return "", nil, false, fmt.Errorf("unmarshal task interrupt notification: %w", err)
-	}
-	if !pgnotify.MatchesOp(env.Op, pgnotify.OpInterruptTask) {
-		return "", nil, false, nil
-	}
-	var params pgnotify.TaskInterruptParams
-	if err := json.Unmarshal(env.Params, &params); err != nil {
-		return "", nil, false, fmt.Errorf("unmarshal task interrupt params: %w", err)
-	}
-	return params.RequestID, params.TaskIDs, true, nil
-}
-
-func waitForListenReady(ctx context.Context, errCh <-chan error, readyChans ...<-chan struct{}) error {
-	for _, ready := range readyChans {
-		select {
-		case <-ready:
-		case err := <-errCh:
-			if err != nil {
-				return err
-			}
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
-	return nil
-}
-
-func signalListenReady(ready chan<- struct{}) {
-	if ready == nil {
-		return
-	}
-	defer func() {
-		_ = recover()
-	}()
-	close(ready)
-}
-
-func runtimeListenDSNFromConfig(cfg *config.Config) string {
-	if cfg.Pg.DSN != nil && *cfg.Pg.DSN != "" {
-		return *cfg.Pg.DSN
-	}
-	if cfg.Pg.User == "" || cfg.Pg.Host == "" || cfg.Pg.Port == 0 || cfg.Pg.Db == "" {
-		return ""
-	}
-	dsnURL := &url.URL{
-		Scheme:   "postgres",
-		User:     url.UserPassword(cfg.Pg.User, cfg.Pg.Password),
-		Host:     fmt.Sprintf("%s:%d", cfg.Pg.Host, cfg.Pg.Port),
-		Path:     cfg.Pg.Db,
-		RawQuery: "sslmode=" + utils.IfElse(cfg.Pg.SSLMode == "", "require", cfg.Pg.SSLMode),
-	}
-	return dsnURL.String()
 }

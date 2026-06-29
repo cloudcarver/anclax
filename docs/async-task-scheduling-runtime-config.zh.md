@@ -10,7 +10,7 @@
 - [任务分类与选择顺序](#任务分类与选择顺序)
 - [如何使用 `WithPriority` 和 `WithWeight`](#如何使用-withpriority-和-withweight)
 - [运行时 Worker 配置任务](#运行时-worker-配置任务)
-- [传播流程（LISTEN/NOTIFY + DB）](#传播流程listennotify--db)
+- [传播流程（任务 fanout + DB）](#传播流程任务-fanout--db)
 - [运维说明](#运维说明)
 - [参考文档](#参考文档)
 
@@ -21,7 +21,7 @@
 - 严格通道受 `maxStrictPercentage` 与 worker 并发数共同限制。
 - 普通通道通过运行时标签组权重（`labelWeights`）实现加权公平。
 - 在选中的普通组内，任务按 `weight DESC`，再按 `created_at`、`id` 排序。
-- 运行时配置通过 DB 版本号 + Postgres `LISTEN/NOTIFY` + worker ACK 状态传播。
+- 运行时配置通过 DB 版本号 + 基于任务的 worker-control fanout 传播。
 
 ## 任务分类与选择顺序
 
@@ -82,18 +82,18 @@ taskID, err := taskRunner.RunSendWelcomeEmail(ctx, params,
 
 ## 运行时 Worker 配置任务
 
-Anclax 提供 `updateWorkerRuntimeConfig` 任务（定义见 `api/tasks/tasks.yaml`），用于在线更新调度配置。
+Anclax 提供 `broadcastUpdateWorkerRuntimeConfig` 任务（定义见 `api/tasks/tasks.yaml`），用于在线更新调度配置。
 
-生成参数（`taskgen.UpdateWorkerRuntimeConfigParameters`）：
+生成参数（`taskgen.BroadcastUpdateWorkerRuntimeConfigParameters`）：
 
 - `requestID`（可选）：关联 ID；为空时自动生成。
 - `maxStrictPercentage`（可选）：`[0, 100]`。
 - `defaultWeight`（可选）：`>= 1`。
 - `labels` + `weights`（可选）：长度必须相同。
-- `notifyInterval`（可选）：例如 `"1s"`，必须为正。
-- `listenTimeout`（可选）：例如 `"2s"`，必须为正。
+- `ackPollInterval`（可选）：等待 worker 收敛时使用的轮询间隔。
+- `workerIDs`（可选）：本次广播固定的 worker 快照。
 
-说明：控制面会自动提供 `requestID`、`notifyInterval` 和 `listenTimeout`；调用方无需手动设置。
+说明：控制面会封装 fanout 细节；调用方通常使用 `ctrl.UpdateWorkerRuntimeConfig`，不直接入队该任务。
 
 ### 使用 Worker 控制面
 
@@ -129,32 +129,30 @@ err := controlPlane.UpdateWorkerRuntimeConfig(ctx,
 推荐原因：
 - 控制面始终将配置更新任务设为保留最高严格优先级（`math.MaxInt32`）。
 - 避免控制面配置更新被低优先级业务任务长期阻塞。
-- 调用方无需关心 request ID 与 LISTEN/NOTIFY 细节；控制面负责重试与 ACK 等待。
+- 调用方无需关心 worker 快照、request ID 和收敛轮询细节。
 
-## 传播流程（LISTEN/NOTIFY + DB）
+## 传播流程（任务 fanout + DB）
 
-### 写入侧（配置更新任务执行器）
+### 广播侧
 
 1. 校验并规范化参数。
 2. 向 `anclax.worker_runtime_configs` 插入新版本。
-3. 向 `anclax_worker_runtime_config` 发送通知：
-   - `op: "up_config"`
-   - `{request_id, version}`
-4. 循环直到收敛或被新版本覆盖：
+3. 快照当前存活的目标 worker。
+4. 为每个远端 worker 入队一个 `applyWorkerRuntimeConfigToWorker` 命令任务；本地 worker 可直接触发。
+5. 循环直到收敛或被新版本覆盖：
    - 查询落后但仍存活的 worker（`applied_config_version < target_version`）
-   - 重发通知
-   - 可选监听 ACK 频道 `anclax_worker_runtime_config_ack`
+   - 取消已离线 worker 对应的过期命令任务
+   - 轮询直到所有目标存活 worker 应用了目标版本
 
 ### Worker 侧
 
-1. 启动运行时配置循环（先 `LISTEN`，再从 DB 拉取最新）。
-2. 收到通知（或轮询触发）后拉取最新版本。
-3. 若版本更新：原子更新内存配置，并用单调 `GREATEST` 更新 worker 行。
-4. 发送 ACK：`{request_id, worker_id, applied_version}`。
+1. 通过 `worker:<id>` 标签领取发给本 worker 的控制任务。
+2. 触发本地运行时配置刷新路径。
+3. 从 DB 拉取最新配置版本。
+4. 若版本更新：原子更新内存配置，并用单调 `GREATEST` 更新 worker 行。
 
 ### 收敛判定的真源
 
-- 通知/ACK 仅用于加速唤醒。
 - **DB 状态才是最终真源**：
   - 当没有存活 worker 落后目标版本时视为收敛。
 - 若等待期间出现更新版本，旧版本任务会视为 superseded 并提前退出。
@@ -163,7 +161,7 @@ err := controlPlane.UpdateWorkerRuntimeConfig(ctx,
 
 - 启动默认严格比例可来自 `worker.maxStrictPercentage`（应用配置）。
 - 运行时更新可在不重启 worker 的前提下生效。
-- 可选 `worker.runtimeConfigPollInterval` 作为通知异常时的兜底轮询。
+- 可选 `worker.runtimeConfigPollInterval` 仍可周期性刷新最新配置。
 - 公平性是 worker 本地近似，建议结合真实流量验证 SLO。
 
 可用指标：
