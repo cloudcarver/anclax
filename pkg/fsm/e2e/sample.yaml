@@ -1,0 +1,77 @@
+entities:
+  sandbox:
+    states: 
+      absent:
+      creating:
+      running:
+      enteringShallowSleep:
+      shallowSleeping:
+      enteringDeepSleep:
+      deepSleeping:
+      awakening:
+      destorying:
+      destroyed:
+    actions:
+      create:
+        preStates: [absent]
+        nextStates: [creating]
+      finishCreation:
+        preStates: [creating]
+        nextStates: [created]
+      startShallowSleep:
+        preStates: [running]
+        nextStates: [enteringShallowSleep]
+      finishShallowSleep:
+        preStates: [enteringShallowSleep]
+        nextStates: [shallowSleeping]
+      startDeepSleep:
+        preStates: [shallowSleeping]
+        nextStates: [enteringDeepSleep]
+      finsihDeepSleep:
+        preStates: [enteringDeepSleep]
+        nextStates: [deepSleeping]
+      resume:
+        preStates: [enteringShallowSleep, shallowSleeping, enteringDeepSleep, deepSleeping]
+        nextStates: [resuming]
+      finishResume:
+        preStates: [resuming]
+        nextStates: [running]
+      destory:
+        preStates: ["*"]
+        nextStates: [destoryed]
+
+  sessionSandbox:
+    states: 
+      absent:
+      present: 
+      removing:
+    actions: 
+      add:
+        preStates: [absent]
+        nextStates: [present]
+      remove:
+        preStates: [present]
+        nextStates: [removing]
+      finishRemoval:
+        preStates: [removing]
+        nextStates: [absent]
+
+  session:
+    states: 
+      ready:
+      working:
+      compacting:
+      archived:
+    actions:
+      interrupt:
+        preStates: [ready, working]
+        nextStates: [ready]
+      continue:
+        preStates: [ready, working]
+        nextStates: [ready]
+      compact:
+        preStates: [ready, working, compacting]
+        nextStates: [ready, working]
+      archive:
+        preStates: [ready, working]
+        nextStates: [archived]
