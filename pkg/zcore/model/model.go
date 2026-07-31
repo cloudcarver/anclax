@@ -119,7 +119,7 @@ func NewModel(cfg *config.Config, libCfg *config.LibConfig, cm *closer.CloserMan
 
 	config, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to parse pgxpool config: %s", utils.ReplaceSensitiveStringBySha256(dsn, cfg.Pg.Password))
+		return nil, errors.New("failed to parse database configuration")
 	}
 	config.MaxConns = libCfg.Pg.MaxConnections
 	config.MinConns = libCfg.Pg.MinConnections
@@ -138,16 +138,16 @@ func NewModel(cfg *config.Config, libCfg *config.LibConfig, cm *closer.CloserMan
 
 			pool, err := pgxpool.NewWithConfig(ctx, config)
 			if err != nil {
-				log.Warnf("failed to init pgxpool: %s", err.Error())
-				return errors.Wrapf(err, "failed to init pgxpool: %s", dsn)
+				log.Warn("failed to initialize database connection")
+				return errors.New("failed to initialize database connection")
 			}
 
 			p = pool
 
 			if err := pool.Ping(ctx); err != nil {
-				log.Warnf("failed to ping database: %s", err.Error())
+				log.Warn("failed to ping database")
 				pool.Close()
-				return errors.Wrap(err, "failed to ping db")
+				return errors.New("failed to ping database")
 			}
 			return nil
 		}()
@@ -168,7 +168,7 @@ func NewModel(cfg *config.Config, libCfg *config.LibConfig, cm *closer.CloserMan
 
 	dsnURL, err := url.Parse(dsn)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to parse dsn: %s", utils.ReplaceSensitiveStringBySha256(dsn, cfg.Pg.Password))
+		return nil, errors.New("failed to parse database configuration")
 	}
 	dsnURL.Scheme = "pgx5"
 	q := dsnURL.Query()
@@ -177,7 +177,7 @@ func NewModel(cfg *config.Config, libCfg *config.LibConfig, cm *closer.CloserMan
 
 	m, err := migrate.NewWithSourceInstance("iofs", d, dsnURL.String())
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to init migrate")
+		return nil, errors.New("failed to initialize database migrations")
 	}
 	if err := m.Up(); err != nil {
 		if !errors.Is(err, migrate.ErrNoChange) {
