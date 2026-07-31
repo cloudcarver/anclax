@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"fmt"
+	"net"
+	"strconv"
 	"strings"
 	"time"
 
@@ -233,7 +235,7 @@ func (s *Server) Listen() error {
 
 	// Start the server in a goroutine
 	go func() {
-		if err := s.app.Listen(fmt.Sprintf(":%d", s.port)); err != nil {
+		if err := s.app.Listen(s.listenAddress()); err != nil {
 			shutdownChan <- err
 		}
 	}()
@@ -246,6 +248,10 @@ func (s *Server) Listen() error {
 		log.Info("shutting down server due to context cancellation")
 		return s.app.Shutdown()
 	}
+}
+
+func (s *Server) listenAddress() string {
+	return net.JoinHostPort(s.host, strconv.Itoa(s.port))
 }
 
 func (s *Server) Shutdown() error {

@@ -2,9 +2,10 @@ package app
 
 import (
 	"context"
-	"fmt"
+	"net"
 	"net/http"
 	"net/http/pprof"
+	"strconv"
 	"time"
 
 	"github.com/cloudcarver/anclax/pkg/config"
@@ -17,14 +18,24 @@ var log = logger.NewLogAgent("debug-server")
 
 type DebugServer struct {
 	globalCtx *globalctx.GlobalContext
+	host      string
 	port      int
 	enable    bool
 }
 
 func NewDebugServer(cfg *config.Config, globalCtx *globalctx.GlobalContext) *DebugServer {
+	host := cfg.Debug.Host
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	port := cfg.Debug.Port
+	if port == 0 {
+		port = 8777
+	}
 	return &DebugServer{
 		globalCtx: globalCtx,
-		port:      cfg.Debug.Port,
+		host:      host,
+		port:      port,
 		enable:    cfg.Debug.Enable,
 	}
 }
@@ -33,24 +44,10 @@ func (d *DebugServer) Start() error {
 	if !d.enable {
 		return nil
 	}
-	if d.port == 0 {
-		d.port = 8777
-	}
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/debug/pprof/", pprof.Index)
-	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-
-	server := &http.Server{
-		Addr:    fmt.Sprintf(":%d", d.port),
-		Handler: mux,
-	}
+	server := d.newHTTPServer()
 
 	go func() {
-		log.Info("debug server is listening", zap.Int("port", d.port))
+		log.Info("debug server is listening", zap.String("address", server.Addr))
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Error("debug server exited", zap.Error(err))
 		}
@@ -66,4 +63,22 @@ func (d *DebugServer) Start() error {
 	}
 
 	return nil
+}
+
+func (d *DebugServer) newHTTPServer() *http.Server {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+
+	return &http.Server{
+		Addr:              net.JoinHostPort(d.host, strconv.Itoa(d.port)),
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      2 * time.Minute,
+		IdleTimeout:       60 * time.Second,
+	}
 }
