@@ -170,3 +170,19 @@ func (mr *MockAuthInterfaceMockRecorder) ParseRefreshToken(ctx, refreshToken any
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ParseRefreshToken", reflect.TypeOf((*MockAuthInterface)(nil).ParseRefreshToken), ctx, refreshToken)
 }
+
+// RotateRefreshToken mocks base method.
+func (m *MockAuthInterface) RotateRefreshToken(ctx context.Context, refreshToken string) (*macaroons.Macaroon, *macaroons.Macaroon, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RotateRefreshToken", ctx, refreshToken)
+	ret0, _ := ret[0].(*macaroons.Macaroon)
+	ret1, _ := ret[1].(*macaroons.Macaroon)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// RotateRefreshToken indicates an expected call of RotateRefreshToken.
+func (mr *MockAuthInterfaceMockRecorder) RotateRefreshToken(ctx, refreshToken any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RotateRefreshToken", reflect.TypeOf((*MockAuthInterface)(nil).RotateRefreshToken), ctx, refreshToken)
+}

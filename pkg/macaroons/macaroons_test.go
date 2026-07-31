@@ -81,6 +81,51 @@ func TestMacaroonManager_CreateMacaroon(t *testing.T) {
 	require.Equal(t, append(caveats, &TestCaveat{Data: "caveat3"}), parsed.Caveats)
 }
 
+func TestConsumeRejectsForgedTokenWithoutDeletingRealKey(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	keyStore := store.NewMockKeyStore(ctrl)
+	keyID := int64(9527)
+	realKey := []byte("real-secret-key")
+
+	forged, err := CreateMacaroon(keyID, []byte("attacker-key"), nil)
+	require.NoError(t, err)
+	keyStore.EXPECT().Get(ctx, keyID).Return(realKey, nil)
+
+	manager := &MacaroonsManager{keyStore: keyStore}
+	consumed, err := manager.Consume(ctx, forged.StringToken())
+	require.Nil(t, consumed)
+	require.ErrorIs(t, err, ErrInvalidSignature)
+
+	valid, err := CreateMacaroon(keyID, realKey, nil)
+	require.NoError(t, err)
+	keyStore.EXPECT().Get(ctx, keyID).Return(realKey, nil)
+	keyStore.EXPECT().Consume(ctx, keyID, realKey).Return(nil)
+
+	consumed, err = manager.Consume(ctx, valid.StringToken())
+	require.NoError(t, err)
+	require.Equal(t, valid.StringToken(), consumed.StringToken())
+}
+
+func TestParseRejectsExpiredKeySynchronously(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	keyStore := store.NewMockKeyStore(ctrl)
+	keyID := int64(9527)
+	token, err := CreateMacaroon(keyID, []byte("expired-key"), nil)
+	require.NoError(t, err)
+
+	keyStore.EXPECT().Get(ctx, keyID).Return(nil, store.ErrKeyNotFound)
+	manager := &MacaroonsManager{keyStore: keyStore}
+	parsed, err := manager.Parse(ctx, token.StringToken())
+	require.Nil(t, parsed)
+	require.ErrorIs(t, err, store.ErrKeyNotFound)
+}
+
 func TestInvalidateTokensByGroupDeletesGroupKeys(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

@@ -33,9 +33,13 @@ func TestCreate(t *testing.T) {
 	)
 
 	mockModel.EXPECT().CreateOpaqueKey(gomock.Any(), querier.CreateOpaqueKeyParams{
-		Group: &group,
-		Key:   key,
-	}).Return(keyID, nil)
+		Group:           &group,
+		Key:             key,
+		TtlMicroseconds: ttl.Microseconds(),
+	}).Return(&querier.CreateOpaqueKeyRow{
+		ID:        keyID,
+		ExpiresAt: currTime.Add(ttl),
+	}, nil)
 	taskRunner.EXPECT().RunDeleteOpaqueKeyWithTx(
 		ctx,
 		gomock.Any(),
@@ -48,7 +52,6 @@ func TestCreate(t *testing.T) {
 	store := &Store{
 		model:      mockModel,
 		taskRunner: taskRunner,
-		now:        func() time.Time { return currTime },
 	}
 
 	ret, err := store.Create(ctx, key, ttl, group)
@@ -74,7 +77,7 @@ func TestDelete(t *testing.T) {
 			err:  nil,
 		},
 		{
-			name: "no row",
+			name: "missing or expired key",
 			err:  pgx.ErrNoRows,
 		},
 		{
@@ -104,6 +107,45 @@ func TestDelete(t *testing.T) {
 				require.ErrorIs(t, err, ErrKeyNotFound)
 			} else {
 				require.Error(t, err)
+			}
+		})
+	}
+}
+
+func TestConsumeRequiresMatchingLiveKey(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	keyID := int64(101)
+	key := []byte("secret-key")
+
+	tests := []struct {
+		name     string
+		storeErr error
+		wantErr  error
+	}{
+		{name: "success"},
+		{name: "missing expired or mismatched key", storeErr: pgx.ErrNoRows, wantErr: ErrKeyNotFound},
+		{name: "database error", storeErr: errors.New("database error")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockModel := model.NewMockModelInterfaceWithTransaction(ctrl)
+			mockModel.EXPECT().ConsumeOpaqueKey(ctx, querier.ConsumeOpaqueKeyParams{
+				ID:  keyID,
+				Key: key,
+			}).Return(keyID, tt.storeErr)
+
+			keyStore := &Store{model: mockModel}
+			err := keyStore.Consume(ctx, keyID, key)
+			if tt.storeErr == nil {
+				require.NoError(t, err)
+			} else if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+			} else {
+				require.ErrorIs(t, err, tt.storeErr)
 			}
 		})
 	}

@@ -61,6 +61,10 @@ Anclax provides a small default auth surface in `api/openapi` and `pkg/controlle
 
 These endpoints are best treated as reference/default APIs. For production applications with custom signup rules, external identity providers, invitation flows, OTP, SSO, or custom response shapes, implement your own auth endpoints and reuse the same service/auth building blocks.
 
+Usernames are database-unique across active and soft-deleted users. The insert is
+the authoritative sign-up check, and the built-in endpoint returns `409` when
+that constraint rejects a concurrent or repeated registration.
+
 ## Macaroon bearer tokens
 
 Anclax uses bearer tokens backed by macaroons.
@@ -115,6 +119,21 @@ The built-in auth flow uses two caveat types:
   - allows the token to be used only on `POST .../auth/refresh`
 
 Reference: `pkg/auth/caveats.go`
+
+### Token lifetime and refresh rotation
+
+Every signing key has a database-backed `expires_at`. Token parsing checks that
+timestamp synchronously, so access and refresh expiry does not depend on the
+background worker. Scheduled key deletion is only storage cleanup.
+
+Use `AuthInterface.RotateRefreshToken` for custom refresh endpoints. It verifies
+and consumes the presented key exactly once, invalidates the prior token group,
+and creates the replacement access/refresh pair in one database transaction.
+Concurrent replays therefore have one winner, and replacement failures roll the
+original token consumption back.
+
+The migration that introduces synchronous expiry deliberately invalidates
+legacy opaque keys because they have no trustworthy expiry timestamp.
 
 ### Reading auth context in handlers/controllers
 

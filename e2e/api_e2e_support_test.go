@@ -75,9 +75,13 @@ func requireE2E(t *testing.T) {
 }
 
 func newE2EClient(t *testing.T) *apigen.ClientWithResponses {
+	return newE2EClientWithAuth(t, config.Auth{})
+}
+
+func newE2EClientWithAuth(t *testing.T, authConfig config.Auth) *apigen.ClientWithResponses {
 	t.Helper()
 
-	anclaxApp := newE2EApplication(t)
+	anclaxApp := newE2EApplication(t, authConfig)
 	client, err := apigen.NewClientWithResponses(
 		e2eBaseURL,
 		apigen.WithHTTPClient(fiberHTTPClient{app: anclaxApp.GetServer().GetApp()}),
@@ -86,12 +90,13 @@ func newE2EClient(t *testing.T) *apigen.ClientWithResponses {
 	return client
 }
 
-func newE2EApplication(t *testing.T) *app.Application {
+func newE2EApplication(t *testing.T, authConfig config.Auth) *app.Application {
 	t.Helper()
 
 	dsn := e2eDBDSN
 	cfg := &config.Config{
 		EnableSimpleAuth: true,
+		Auth:             authConfig,
 		Pg: config.Pg{
 			DSN: &dsn,
 		},

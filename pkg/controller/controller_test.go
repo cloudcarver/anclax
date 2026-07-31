@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -21,7 +22,6 @@ type stubService struct {
 	service.ServiceInterface
 	signInWithPassword func(context.Context, apigen.SignInRequest) (*apigen.Credentials, error)
 	refreshToken       func(context.Context, string) (*apigen.Credentials, error)
-	isUsernameExists   func(context.Context, string) (bool, error)
 	createNewUser      func(context.Context, string, string) (*service.UserMeta, error)
 	signIn             func(context.Context, int32) (*apigen.Credentials, error)
 }
@@ -32,10 +32,6 @@ func (s stubService) SignInWithPassword(ctx context.Context, params apigen.SignI
 
 func (s stubService) RefreshToken(ctx context.Context, refreshToken string) (*apigen.Credentials, error) {
 	return s.refreshToken(ctx, refreshToken)
-}
-
-func (s stubService) IsUsernameExists(ctx context.Context, username string) (bool, error) {
-	return s.isUsernameExists(ctx, username)
 }
 
 func (s stubService) CreateNewUser(ctx context.Context, username, password string) (*service.UserMeta, error) {
@@ -248,10 +244,6 @@ func TestControllerSignUpDisabledByDefault(t *testing.T) {
 	app := fiber.New(fiber.Config{ErrorHandler: utils.ErrorHandler})
 	controller := &Controller{
 		svc: stubService{
-			isUsernameExists: func(context.Context, string) (bool, error) {
-				t.Fatal("username lookup should not be called when simple auth is disabled")
-				return false, nil
-			},
 			createNewUser: func(context.Context, string, string) (*service.UserMeta, error) {
 				t.Fatal("user creation should not be called when simple auth is disabled")
 				return nil, nil
@@ -279,4 +271,65 @@ func TestControllerSignUpDisabledByDefault(t *testing.T) {
 	respBody, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "Cannot POST /api/v1/auth/sign-up", string(respBody))
+}
+
+func TestControllerSignUpUsesInsertConflictAsAuthority(t *testing.T) {
+	tests := []struct {
+		name           string
+		createErr      error
+		expectedStatus int
+		expectSignIn   bool
+	}{
+		{
+			name:           "username conflict",
+			createErr:      fmt.Errorf("wrapped: %w", service.ErrUsernameExists),
+			expectedStatus: fiber.StatusConflict,
+		},
+		{
+			name:           "success",
+			expectedStatus: fiber.StatusCreated,
+			expectSignIn:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := fiber.New(fiber.Config{ErrorHandler: utils.ErrorHandler})
+			controller := &Controller{
+				enableSimpleAuth: true,
+				svc: stubService{
+					createNewUser: func(_ context.Context, username, password string) (*service.UserMeta, error) {
+						require.Equal(t, "new-user", username)
+						require.Equal(t, "secret", password)
+						if tt.createErr != nil {
+							return nil, tt.createErr
+						}
+						return &service.UserMeta{UserID: 42, OrgID: 7}, nil
+					},
+					signIn: func(_ context.Context, userID int32) (*apigen.Credentials, error) {
+						if !tt.expectSignIn {
+							t.Fatal("sign-in must not run after a username conflict")
+						}
+						require.Equal(t, int32(42), userID)
+						return &apigen.Credentials{
+							AccessToken:  "access-token",
+							RefreshToken: "refresh-token",
+							TokenType:    apigen.Bearer,
+						}, nil
+					},
+				},
+			}
+			app.Post("/auth/sign-up", controller.SignUp)
+
+			body, err := json.Marshal(apigen.SignUpRequest{Name: "new-user", Password: "secret"})
+			require.NoError(t, err)
+			req := httptest.NewRequest(http.MethodPost, "/auth/sign-up", bytes.NewReader(body))
+			req.Header.Set("Content-Type", fiber.MIMEApplicationJSON)
+
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, tt.expectedStatus, resp.StatusCode)
+		})
+	}
 }

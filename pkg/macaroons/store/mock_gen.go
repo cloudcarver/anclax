@@ -41,6 +41,20 @@ func (m *MockKeyStore) EXPECT() *MockKeyStoreMockRecorder {
 	return m.recorder
 }
 
+// Consume mocks base method.
+func (m *MockKeyStore) Consume(ctx context.Context, keyID int64, key []byte) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Consume", ctx, keyID, key)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Consume indicates an expected call of Consume.
+func (mr *MockKeyStoreMockRecorder) Consume(ctx, keyID, key any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Consume", reflect.TypeOf((*MockKeyStore)(nil).Consume), ctx, keyID, key)
+}
+
 // Create mocks base method.
 func (m *MockKeyStore) Create(ctx context.Context, key []byte, ttl time.Duration, group string) (int64, error) {
 	m.ctrl.T.Helper()
@@ -97,4 +111,18 @@ func (m *MockKeyStore) Get(ctx context.Context, keyID int64) ([]byte, error) {
 func (mr *MockKeyStoreMockRecorder) Get(ctx, keyID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockKeyStore)(nil).Get), ctx, keyID)
+}
+
+// RunTransaction mocks base method.
+func (m *MockKeyStore) RunTransaction(ctx context.Context, f func(KeyStore) error) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RunTransaction", ctx, f)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RunTransaction indicates an expected call of RunTransaction.
+func (mr *MockKeyStoreMockRecorder) RunTransaction(ctx, f any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunTransaction", reflect.TypeOf((*MockKeyStore)(nil).RunTransaction), ctx, f)
 }

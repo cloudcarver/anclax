@@ -11,7 +11,13 @@ import (
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pkg/errors"
+)
+
+const (
+	postgresUniqueViolation  = "23505"
+	usernameUniqueConstraint = "users_name_unique"
 )
 
 func (s *Service) SignIn(ctx context.Context, userID int32) (*apigen.Credentials, error) {
@@ -58,34 +64,17 @@ func (s *Service) SignInWithPassword(ctx context.Context, params apigen.SignInRe
 }
 
 func (s *Service) RefreshToken(ctx context.Context, token string) (*apigen.Credentials, error) {
-	refreshToken, roc, err := s.auth.ParseRefreshToken(ctx, token)
+	accessToken, refreshToken, err := s.auth.RotateRefreshToken(ctx, token)
 	if err != nil {
-		return nil, fmt.Errorf("%w: failed to parse refresh token: %w", ErrRefreshTokenExpired, err)
-	}
-
-	if roc.Group != "" {
-		if err := s.auth.InvalidateTokensByGroup(ctx, roc.Group); err != nil {
-			return nil, errors.Wrapf(err, "failed to invalidate token group")
+		if errors.Is(err, auth.ErrInvalidRefreshToken) {
+			return nil, fmt.Errorf("%w: failed to rotate refresh token: %w", ErrRefreshTokenExpired, err)
 		}
-	}
-
-	if err := s.auth.InvalidateToken(ctx, refreshToken.KeyID()); err != nil {
-		return nil, errors.Wrapf(err, "failed to invalidate refresh token")
-	}
-
-	accessToken, err := s.auth.CreateToken(ctx, roc.Group, s.timeoutAccessToken, roc.AccessTokenCaveats...)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to create access token")
-	}
-
-	newRefreshToken, err := s.auth.CreateRefreshToken(ctx, roc.Group, accessToken, s.timeoutRefreshToken)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to create refresh token")
+		return nil, errors.Wrap(err, "failed to rotate refresh token")
 	}
 
 	return &apigen.Credentials{
 		AccessToken:  accessToken.StringToken(),
-		RefreshToken: newRefreshToken.StringToken(),
+		RefreshToken: refreshToken.StringToken(),
 		TokenType:    apigen.Bearer,
 	}, nil
 }
@@ -130,6 +119,9 @@ func (s *Service) CreateNewUserWithTx(ctx context.Context, tx core.Tx, username,
 		PasswordSalt: salt,
 	})
 	if err != nil {
+		if isUsernameUniqueViolation(err) {
+			return nil, fmt.Errorf("%w: failed to create user: %w", ErrUsernameExists, err)
+		}
 		return nil, errors.Wrapf(err, "failed to create user")
 	}
 
@@ -162,6 +154,13 @@ func (s *Service) CreateNewUserWithTx(ctx context.Context, tx core.Tx, username,
 		OrgID:  org.ID,
 		UserID: user.ID,
 	}, nil
+}
+
+func isUsernameUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) &&
+		pgErr.Code == postgresUniqueViolation &&
+		pgErr.ConstraintName == usernameUniqueConstraint
 }
 
 func (s *Service) DeleteUserByName(ctx context.Context, username string) error {

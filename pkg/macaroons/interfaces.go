@@ -22,9 +22,16 @@ type Caveat interface {
 }
 
 type MacaroonManagerInterface interface {
+	// RunTransaction executes f atomically against a transaction-bound manager.
+	RunTransaction(ctx context.Context, f func(MacaroonManagerInterface) error) error
+
 	CreateToken(ctx context.Context, caveats []Caveat, ttl time.Duration, group string) (*Macaroon, error)
 
 	Parse(ctx context.Context, token string) (*Macaroon, error)
+
+	// Consume verifies token and atomically deletes its live signing key. A
+	// forged token cannot consume a key merely by naming its ID.
+	Consume(ctx context.Context, token string) (*Macaroon, error)
 
 	// InvalidateTokensByGroup invalidates all tokens in the given group.
 	InvalidateTokensByGroup(ctx context.Context, group string) error
