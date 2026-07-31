@@ -344,8 +344,12 @@ func generateToolInterfaces(workdir, packageName, taskDefFile string, data map[s
 	var structDef string
 	functions := []Function{}
 	importSet := map[string]struct{}{}
+	hasDelay := false
 
 	onFunc := func(f Function) error {
+		if f.Delay != nil {
+			hasDelay = true
+		}
 		functions = append(functions, f)
 		return nil
 	}
@@ -395,6 +399,7 @@ func generateToolInterfaces(workdir, packageName, taskDefFile string, data map[s
 		StructDefs:  structDef,
 		Functions:   functions,
 		Imports:     sortedImportSlice(importSet),
+		HasDelay:    hasDelay,
 	}); err != nil {
 		return "", err
 	}

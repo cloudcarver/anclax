@@ -45,4 +45,5 @@ type CodeTemplateVars struct {
 	StructDefs  string
 	Functions   []Function
 	Imports     []string
+	HasDelay    bool
 }

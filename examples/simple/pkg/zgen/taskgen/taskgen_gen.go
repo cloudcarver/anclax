@@ -5,15 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"myexampleapp/pkg/zgen/schemas/counter"
 
 	"github.com/cloudcarver/anclax/core"
-	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	"github.com/cloudcarver/anclax/pkg/utils"
+	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/pkg/errors"
 )
 
@@ -21,38 +20,33 @@ func init() {
 	utils.Noop()
 }
 
-const ( 
-	AutoIncrementCounter = "AutoIncrementCounter" 
+const (
+	AutoIncrementCounter = "AutoIncrementCounter"
 
-	IncrementCounter = "IncrementCounter" 
+	IncrementCounter = "IncrementCounter"
 )
 
-
-
-type TaskRunner interface { 
-    // Increment the counter
+type TaskRunner interface {
+	// Increment the counter
 	RunAutoIncrementCounter(ctx context.Context, params *counter.IncrementCounterParams, overrides ...taskcore.TaskOverride) (int32, error)
-    // Increment the counter
+	// Increment the counter
 	RunAutoIncrementCounterWithTx(ctx context.Context, tx core.Tx, params *counter.IncrementCounterParams, overrides ...taskcore.TaskOverride) (int32, error)
 
-    // Increment the counter
+	// Increment the counter
 	RunIncrementCounter(ctx context.Context, params *counter.IncrementCounterParams, overrides ...taskcore.TaskOverride) (int32, error)
-    // Increment the counter
+	// Increment the counter
 	RunIncrementCounterWithTx(ctx context.Context, tx core.Tx, params *counter.IncrementCounterParams, overrides ...taskcore.TaskOverride) (int32, error)
 }
 
 type Client struct {
 	taskStore taskcore.TaskStoreInterface
-	now       func() time.Time
 }
 
 func NewTaskRunner(taskStore taskcore.TaskStoreInterface) TaskRunner {
 	return &Client{
 		taskStore: taskStore,
-		now:       time.Now,
 	}
 }
-
 
 func (c *Client) RunAutoIncrementCounter(ctx context.Context, params *counter.IncrementCounterParams, overrides ...taskcore.TaskOverride) (int32, error) {
 	return c.runAutoIncrementCounter(ctx, c.taskStore, nil, params, overrides...)
@@ -63,36 +57,9 @@ func (c *Client) RunAutoIncrementCounterWithTx(ctx context.Context, tx core.Tx, 
 }
 
 func (c *Client) runAutoIncrementCounter(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *counter.IncrementCounterParams, overrides ...taskcore.TaskOverride) (int32, error) {
-	payload, err := json.Marshal(params)
+	task, err := NewAutoIncrementCounterTask(params, overrides...)
 	if err != nil {
 		return 0, err
-	}
-
-	spec := apigen.TaskSpec{
-		Type:    AutoIncrementCounter,
-		Payload: payload,
-	}
-	attributes := apigen.TaskAttributes{}
-	
-	attributes.RetryPolicy = &apigen.TaskRetryPolicy{
-		Interval:    "30m",
-		MaxAttempts: -1,
-	}
-	attributes.Cronjob = &apigen.TaskCronjob{
-		CronExpression: "*/5 * * * * *",
-	}
-	
-	
-	task := &apigen.Task{
-		Attributes: attributes,
-		Spec:       spec,
-		Status:     apigen.Pending,
-	}
-	
-	for _, override := range overrides {
-		if err := override(task); err != nil {
-			return 0, errors.Wrap(err, "failed to apply task override")
-		}
 	}
 	var taskID int32
 	if tx == nil {
@@ -104,6 +71,40 @@ func (c *Client) runAutoIncrementCounter(ctx context.Context, taskstore taskcore
 		return 0, err
 	}
 	return taskID, nil
+}
+
+func NewAutoIncrementCounterTask(params *counter.IncrementCounterParams, overrides ...taskcore.TaskOverride) (*apigen.Task, error) {
+	payload, err := json.Marshal(params)
+	if err != nil {
+		return nil, err
+	}
+
+	spec := apigen.TaskSpec{
+		Type:    AutoIncrementCounter,
+		Payload: payload,
+	}
+	attributes := apigen.TaskAttributes{}
+
+	attributes.RetryPolicy = &apigen.TaskRetryPolicy{
+		Interval:    "30m",
+		MaxAttempts: -1,
+	}
+	attributes.Cronjob = &apigen.TaskCronjob{
+		CronExpression: "*/5 * * * * *",
+	}
+
+	task := &apigen.Task{
+		Attributes: attributes,
+		Spec:       spec,
+		Status:     apigen.Pending,
+	}
+
+	for _, override := range overrides {
+		if err := override(task); err != nil {
+			return nil, errors.Wrap(err, "failed to apply task override")
+		}
+	}
+	return task, nil
 }
 func (c *Client) RunIncrementCounter(ctx context.Context, params *counter.IncrementCounterParams, overrides ...taskcore.TaskOverride) (int32, error) {
 	return c.runIncrementCounter(ctx, c.taskStore, nil, params, overrides...)
@@ -114,34 +115,9 @@ func (c *Client) RunIncrementCounterWithTx(ctx context.Context, tx core.Tx, para
 }
 
 func (c *Client) runIncrementCounter(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *counter.IncrementCounterParams, overrides ...taskcore.TaskOverride) (int32, error) {
-	payload, err := json.Marshal(params)
+	task, err := NewIncrementCounterTask(params, overrides...)
 	if err != nil {
 		return 0, err
-	}
-
-	spec := apigen.TaskSpec{
-		Type:    IncrementCounter,
-		Payload: payload,
-	}
-	attributes := apigen.TaskAttributes{}
-	
-	attributes.RetryPolicy = &apigen.TaskRetryPolicy{
-		Interval:    "30m",
-		MaxAttempts: -1,
-	}
-	
-	
-	
-	task := &apigen.Task{
-		Attributes: attributes,
-		Spec:       spec,
-		Status:     apigen.Pending,
-	}
-	
-	for _, override := range overrides {
-		if err := override(task); err != nil {
-			return 0, errors.Wrap(err, "failed to apply task override")
-		}
 	}
 	var taskID int32
 	if tx == nil {
@@ -155,16 +131,43 @@ func (c *Client) runIncrementCounter(ctx context.Context, taskstore taskcore.Tas
 	return taskID, nil
 }
 
+func NewIncrementCounterTask(params *counter.IncrementCounterParams, overrides ...taskcore.TaskOverride) (*apigen.Task, error) {
+	payload, err := json.Marshal(params)
+	if err != nil {
+		return nil, err
+	}
 
+	spec := apigen.TaskSpec{
+		Type:    IncrementCounter,
+		Payload: payload,
+	}
+	attributes := apigen.TaskAttributes{}
 
-type ExecutorInterface interface { 
-     // Increment the counter
+	attributes.RetryPolicy = &apigen.TaskRetryPolicy{
+		Interval:    "30m",
+		MaxAttempts: -1,
+	}
+
+	task := &apigen.Task{
+		Attributes: attributes,
+		Spec:       spec,
+		Status:     apigen.Pending,
+	}
+
+	for _, override := range overrides {
+		if err := override(task); err != nil {
+			return nil, errors.Wrap(err, "failed to apply task override")
+		}
+	}
+	return task, nil
+}
+
+type ExecutorInterface interface {
+	// Increment the counter
 	ExecuteAutoIncrementCounter(ctx context.Context, task worker.Task, params *counter.IncrementCounterParams) error
- 
 
-     // Increment the counter
+	// Increment the counter
 	ExecuteIncrementCounter(ctx context.Context, task worker.Task, params *counter.IncrementCounterParams) error
- 
 }
 
 type TaskHandler struct {
@@ -194,21 +197,21 @@ func (f *TaskHandler) HandleTask(ctx context.Context, task worker.Task) error {
 		return nil
 	}
 
-	switch task.GetType() { 
+	switch task.GetType() {
 	case AutoIncrementCounter:
 		var params counter.IncrementCounterParams
 		if err := json.Unmarshal(task.GetPayload(), &params); err != nil {
 			return fmt.Errorf("failed to parse AutoIncrementCounter parameters: %w", err)
 		}
 		return f.executor.ExecuteAutoIncrementCounter(ctx, task, &params)
-		
+
 	case IncrementCounter:
 		var params counter.IncrementCounterParams
 		if err := json.Unmarshal(task.GetPayload(), &params); err != nil {
 			return fmt.Errorf("failed to parse IncrementCounter parameters: %w", err)
 		}
 		return f.executor.ExecuteIncrementCounter(ctx, task, &params)
-		
+
 	default:
 		return errors.Wrapf(worker.ErrUnknownTaskType, "unknown task type: %s", task.GetType())
 	}
@@ -226,7 +229,7 @@ func (f *TaskHandler) OnTaskFailed(ctx context.Context, tx core.Tx, failedTaskSp
 	}
 
 	// Call the appropriate OnXXXFailed hook method
-	switch failedTaskSpec.GetType() { 
+	switch failedTaskSpec.GetType() {
 	default:
 		return nil // No hook configured for this task type
 	}

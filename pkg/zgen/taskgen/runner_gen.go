@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -90,13 +89,11 @@ type TaskRunner interface {
 
 type Client struct {
 	taskStore taskcore.TaskStoreInterface
-	now       func() time.Time
 }
 
 func NewTaskRunner(taskStore taskcore.TaskStoreInterface) TaskRunner {
 	return &Client{
 		taskStore: taskStore,
-		now:       time.Now,
 	}
 }
 
@@ -109,9 +106,26 @@ func (c *Client) RunDeleteOpaqueKeyWithTx(ctx context.Context, tx core.Tx, param
 }
 
 func (c *Client) runDeleteOpaqueKey(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *DeleteOpaqueKeyParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	payload, err := json.Marshal(params)
+	task, err := NewDeleteOpaqueKeyTask(params, overrides...)
 	if err != nil {
 		return 0, err
+	}
+	var taskID int32
+	if tx == nil {
+		taskID, err = taskstore.PushTask(ctx, task)
+	} else {
+		taskID, err = taskstore.PushTaskWithTx(ctx, tx, task)
+	}
+	if err != nil {
+		return 0, err
+	}
+	return taskID, nil
+}
+
+func NewDeleteOpaqueKeyTask(params *DeleteOpaqueKeyParameters, overrides ...taskcore.TaskOverride) (*apigen.Task, error) {
+	payload, err := json.Marshal(params)
+	if err != nil {
+		return nil, err
 	}
 
 	spec := apigen.TaskSpec{
@@ -133,8 +147,23 @@ func (c *Client) runDeleteOpaqueKey(ctx context.Context, taskstore taskcore.Task
 
 	for _, override := range overrides {
 		if err := override(task); err != nil {
-			return 0, errors.Wrap(err, "failed to apply task override")
+			return nil, errors.Wrap(err, "failed to apply task override")
 		}
+	}
+	return task, nil
+}
+func (c *Client) RunBroadcastUpdateWorkerRuntimeConfig(ctx context.Context, params *BroadcastUpdateWorkerRuntimeConfigParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runBroadcastUpdateWorkerRuntimeConfig(ctx, c.taskStore, nil, params, overrides...)
+}
+
+func (c *Client) RunBroadcastUpdateWorkerRuntimeConfigWithTx(ctx context.Context, tx core.Tx, params *BroadcastUpdateWorkerRuntimeConfigParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runBroadcastUpdateWorkerRuntimeConfig(ctx, c.taskStore, tx, params, overrides...)
+}
+
+func (c *Client) runBroadcastUpdateWorkerRuntimeConfig(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *BroadcastUpdateWorkerRuntimeConfigParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	task, err := NewBroadcastUpdateWorkerRuntimeConfigTask(params, overrides...)
+	if err != nil {
+		return 0, err
 	}
 	var taskID int32
 	if tx == nil {
@@ -147,18 +176,11 @@ func (c *Client) runDeleteOpaqueKey(ctx context.Context, taskstore taskcore.Task
 	}
 	return taskID, nil
 }
-func (c *Client) RunBroadcastUpdateWorkerRuntimeConfig(ctx context.Context, params *BroadcastUpdateWorkerRuntimeConfigParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	return c.runBroadcastUpdateWorkerRuntimeConfig(ctx, c.taskStore, nil, params, overrides...)
-}
 
-func (c *Client) RunBroadcastUpdateWorkerRuntimeConfigWithTx(ctx context.Context, tx core.Tx, params *BroadcastUpdateWorkerRuntimeConfigParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	return c.runBroadcastUpdateWorkerRuntimeConfig(ctx, c.taskStore, tx, params, overrides...)
-}
-
-func (c *Client) runBroadcastUpdateWorkerRuntimeConfig(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *BroadcastUpdateWorkerRuntimeConfigParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+func NewBroadcastUpdateWorkerRuntimeConfigTask(params *BroadcastUpdateWorkerRuntimeConfigParameters, overrides ...taskcore.TaskOverride) (*apigen.Task, error) {
 	payload, err := json.Marshal(params)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	spec := apigen.TaskSpec{
@@ -181,8 +203,23 @@ func (c *Client) runBroadcastUpdateWorkerRuntimeConfig(ctx context.Context, task
 
 	for _, override := range overrides {
 		if err := override(task); err != nil {
-			return 0, errors.Wrap(err, "failed to apply task override")
+			return nil, errors.Wrap(err, "failed to apply task override")
 		}
+	}
+	return task, nil
+}
+func (c *Client) RunApplyWorkerRuntimeConfigToWorker(ctx context.Context, params *ApplyWorkerRuntimeConfigToWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runApplyWorkerRuntimeConfigToWorker(ctx, c.taskStore, nil, params, overrides...)
+}
+
+func (c *Client) RunApplyWorkerRuntimeConfigToWorkerWithTx(ctx context.Context, tx core.Tx, params *ApplyWorkerRuntimeConfigToWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runApplyWorkerRuntimeConfigToWorker(ctx, c.taskStore, tx, params, overrides...)
+}
+
+func (c *Client) runApplyWorkerRuntimeConfigToWorker(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *ApplyWorkerRuntimeConfigToWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	task, err := NewApplyWorkerRuntimeConfigToWorkerTask(params, overrides...)
+	if err != nil {
+		return 0, err
 	}
 	var taskID int32
 	if tx == nil {
@@ -195,18 +232,11 @@ func (c *Client) runBroadcastUpdateWorkerRuntimeConfig(ctx context.Context, task
 	}
 	return taskID, nil
 }
-func (c *Client) RunApplyWorkerRuntimeConfigToWorker(ctx context.Context, params *ApplyWorkerRuntimeConfigToWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	return c.runApplyWorkerRuntimeConfigToWorker(ctx, c.taskStore, nil, params, overrides...)
-}
 
-func (c *Client) RunApplyWorkerRuntimeConfigToWorkerWithTx(ctx context.Context, tx core.Tx, params *ApplyWorkerRuntimeConfigToWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	return c.runApplyWorkerRuntimeConfigToWorker(ctx, c.taskStore, tx, params, overrides...)
-}
-
-func (c *Client) runApplyWorkerRuntimeConfigToWorker(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *ApplyWorkerRuntimeConfigToWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+func NewApplyWorkerRuntimeConfigToWorkerTask(params *ApplyWorkerRuntimeConfigToWorkerParameters, overrides ...taskcore.TaskOverride) (*apigen.Task, error) {
 	payload, err := json.Marshal(params)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	spec := apigen.TaskSpec{
@@ -229,8 +259,23 @@ func (c *Client) runApplyWorkerRuntimeConfigToWorker(ctx context.Context, taskst
 
 	for _, override := range overrides {
 		if err := override(task); err != nil {
-			return 0, errors.Wrap(err, "failed to apply task override")
+			return nil, errors.Wrap(err, "failed to apply task override")
 		}
+	}
+	return task, nil
+}
+func (c *Client) RunBroadcastCancelTask(ctx context.Context, params *BroadcastCancelTaskParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runBroadcastCancelTask(ctx, c.taskStore, nil, params, overrides...)
+}
+
+func (c *Client) RunBroadcastCancelTaskWithTx(ctx context.Context, tx core.Tx, params *BroadcastCancelTaskParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runBroadcastCancelTask(ctx, c.taskStore, tx, params, overrides...)
+}
+
+func (c *Client) runBroadcastCancelTask(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *BroadcastCancelTaskParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	task, err := NewBroadcastCancelTaskTask(params, overrides...)
+	if err != nil {
+		return 0, err
 	}
 	var taskID int32
 	if tx == nil {
@@ -243,18 +288,11 @@ func (c *Client) runApplyWorkerRuntimeConfigToWorker(ctx context.Context, taskst
 	}
 	return taskID, nil
 }
-func (c *Client) RunBroadcastCancelTask(ctx context.Context, params *BroadcastCancelTaskParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	return c.runBroadcastCancelTask(ctx, c.taskStore, nil, params, overrides...)
-}
 
-func (c *Client) RunBroadcastCancelTaskWithTx(ctx context.Context, tx core.Tx, params *BroadcastCancelTaskParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	return c.runBroadcastCancelTask(ctx, c.taskStore, tx, params, overrides...)
-}
-
-func (c *Client) runBroadcastCancelTask(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *BroadcastCancelTaskParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+func NewBroadcastCancelTaskTask(params *BroadcastCancelTaskParameters, overrides ...taskcore.TaskOverride) (*apigen.Task, error) {
 	payload, err := json.Marshal(params)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	spec := apigen.TaskSpec{
@@ -277,8 +315,23 @@ func (c *Client) runBroadcastCancelTask(ctx context.Context, taskstore taskcore.
 
 	for _, override := range overrides {
 		if err := override(task); err != nil {
-			return 0, errors.Wrap(err, "failed to apply task override")
+			return nil, errors.Wrap(err, "failed to apply task override")
 		}
+	}
+	return task, nil
+}
+func (c *Client) RunCancelTaskOnWorker(ctx context.Context, params *CancelTaskOnWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runCancelTaskOnWorker(ctx, c.taskStore, nil, params, overrides...)
+}
+
+func (c *Client) RunCancelTaskOnWorkerWithTx(ctx context.Context, tx core.Tx, params *CancelTaskOnWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runCancelTaskOnWorker(ctx, c.taskStore, tx, params, overrides...)
+}
+
+func (c *Client) runCancelTaskOnWorker(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *CancelTaskOnWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	task, err := NewCancelTaskOnWorkerTask(params, overrides...)
+	if err != nil {
+		return 0, err
 	}
 	var taskID int32
 	if tx == nil {
@@ -291,18 +344,11 @@ func (c *Client) runBroadcastCancelTask(ctx context.Context, taskstore taskcore.
 	}
 	return taskID, nil
 }
-func (c *Client) RunCancelTaskOnWorker(ctx context.Context, params *CancelTaskOnWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	return c.runCancelTaskOnWorker(ctx, c.taskStore, nil, params, overrides...)
-}
 
-func (c *Client) RunCancelTaskOnWorkerWithTx(ctx context.Context, tx core.Tx, params *CancelTaskOnWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	return c.runCancelTaskOnWorker(ctx, c.taskStore, tx, params, overrides...)
-}
-
-func (c *Client) runCancelTaskOnWorker(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *CancelTaskOnWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+func NewCancelTaskOnWorkerTask(params *CancelTaskOnWorkerParameters, overrides ...taskcore.TaskOverride) (*apigen.Task, error) {
 	payload, err := json.Marshal(params)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	spec := apigen.TaskSpec{
@@ -325,8 +371,23 @@ func (c *Client) runCancelTaskOnWorker(ctx context.Context, taskstore taskcore.T
 
 	for _, override := range overrides {
 		if err := override(task); err != nil {
-			return 0, errors.Wrap(err, "failed to apply task override")
+			return nil, errors.Wrap(err, "failed to apply task override")
 		}
+	}
+	return task, nil
+}
+func (c *Client) RunBroadcastPauseTask(ctx context.Context, params *BroadcastPauseTaskParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runBroadcastPauseTask(ctx, c.taskStore, nil, params, overrides...)
+}
+
+func (c *Client) RunBroadcastPauseTaskWithTx(ctx context.Context, tx core.Tx, params *BroadcastPauseTaskParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runBroadcastPauseTask(ctx, c.taskStore, tx, params, overrides...)
+}
+
+func (c *Client) runBroadcastPauseTask(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *BroadcastPauseTaskParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	task, err := NewBroadcastPauseTaskTask(params, overrides...)
+	if err != nil {
+		return 0, err
 	}
 	var taskID int32
 	if tx == nil {
@@ -339,18 +400,11 @@ func (c *Client) runCancelTaskOnWorker(ctx context.Context, taskstore taskcore.T
 	}
 	return taskID, nil
 }
-func (c *Client) RunBroadcastPauseTask(ctx context.Context, params *BroadcastPauseTaskParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	return c.runBroadcastPauseTask(ctx, c.taskStore, nil, params, overrides...)
-}
 
-func (c *Client) RunBroadcastPauseTaskWithTx(ctx context.Context, tx core.Tx, params *BroadcastPauseTaskParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	return c.runBroadcastPauseTask(ctx, c.taskStore, tx, params, overrides...)
-}
-
-func (c *Client) runBroadcastPauseTask(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *BroadcastPauseTaskParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+func NewBroadcastPauseTaskTask(params *BroadcastPauseTaskParameters, overrides ...taskcore.TaskOverride) (*apigen.Task, error) {
 	payload, err := json.Marshal(params)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	spec := apigen.TaskSpec{
@@ -373,8 +427,23 @@ func (c *Client) runBroadcastPauseTask(ctx context.Context, taskstore taskcore.T
 
 	for _, override := range overrides {
 		if err := override(task); err != nil {
-			return 0, errors.Wrap(err, "failed to apply task override")
+			return nil, errors.Wrap(err, "failed to apply task override")
 		}
+	}
+	return task, nil
+}
+func (c *Client) RunPauseTaskOnWorker(ctx context.Context, params *PauseTaskOnWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runPauseTaskOnWorker(ctx, c.taskStore, nil, params, overrides...)
+}
+
+func (c *Client) RunPauseTaskOnWorkerWithTx(ctx context.Context, tx core.Tx, params *PauseTaskOnWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runPauseTaskOnWorker(ctx, c.taskStore, tx, params, overrides...)
+}
+
+func (c *Client) runPauseTaskOnWorker(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *PauseTaskOnWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	task, err := NewPauseTaskOnWorkerTask(params, overrides...)
+	if err != nil {
+		return 0, err
 	}
 	var taskID int32
 	if tx == nil {
@@ -387,18 +456,11 @@ func (c *Client) runBroadcastPauseTask(ctx context.Context, taskstore taskcore.T
 	}
 	return taskID, nil
 }
-func (c *Client) RunPauseTaskOnWorker(ctx context.Context, params *PauseTaskOnWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	return c.runPauseTaskOnWorker(ctx, c.taskStore, nil, params, overrides...)
-}
 
-func (c *Client) RunPauseTaskOnWorkerWithTx(ctx context.Context, tx core.Tx, params *PauseTaskOnWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	return c.runPauseTaskOnWorker(ctx, c.taskStore, tx, params, overrides...)
-}
-
-func (c *Client) runPauseTaskOnWorker(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *PauseTaskOnWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+func NewPauseTaskOnWorkerTask(params *PauseTaskOnWorkerParameters, overrides ...taskcore.TaskOverride) (*apigen.Task, error) {
 	payload, err := json.Marshal(params)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	spec := apigen.TaskSpec{
@@ -421,8 +483,23 @@ func (c *Client) runPauseTaskOnWorker(ctx context.Context, taskstore taskcore.Ta
 
 	for _, override := range overrides {
 		if err := override(task); err != nil {
-			return 0, errors.Wrap(err, "failed to apply task override")
+			return nil, errors.Wrap(err, "failed to apply task override")
 		}
+	}
+	return task, nil
+}
+func (c *Client) RunStressProbe(ctx context.Context, params *StressProbeParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runStressProbe(ctx, c.taskStore, nil, params, overrides...)
+}
+
+func (c *Client) RunStressProbeWithTx(ctx context.Context, tx core.Tx, params *StressProbeParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runStressProbe(ctx, c.taskStore, tx, params, overrides...)
+}
+
+func (c *Client) runStressProbe(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *StressProbeParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	task, err := NewStressProbeTask(params, overrides...)
+	if err != nil {
+		return 0, err
 	}
 	var taskID int32
 	if tx == nil {
@@ -435,18 +512,11 @@ func (c *Client) runPauseTaskOnWorker(ctx context.Context, taskstore taskcore.Ta
 	}
 	return taskID, nil
 }
-func (c *Client) RunStressProbe(ctx context.Context, params *StressProbeParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	return c.runStressProbe(ctx, c.taskStore, nil, params, overrides...)
-}
 
-func (c *Client) RunStressProbeWithTx(ctx context.Context, tx core.Tx, params *StressProbeParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	return c.runStressProbe(ctx, c.taskStore, tx, params, overrides...)
-}
-
-func (c *Client) runStressProbe(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *StressProbeParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+func NewStressProbeTask(params *StressProbeParameters, overrides ...taskcore.TaskOverride) (*apigen.Task, error) {
 	payload, err := json.Marshal(params)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	spec := apigen.TaskSpec{
@@ -468,8 +538,23 @@ func (c *Client) runStressProbe(ctx context.Context, taskstore taskcore.TaskStor
 
 	for _, override := range overrides {
 		if err := override(task); err != nil {
-			return 0, errors.Wrap(err, "failed to apply task override")
+			return nil, errors.Wrap(err, "failed to apply task override")
 		}
+	}
+	return task, nil
+}
+func (c *Client) RunCancelObservableProbe(ctx context.Context, params *CancelObservableProbeParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runCancelObservableProbe(ctx, c.taskStore, nil, params, overrides...)
+}
+
+func (c *Client) RunCancelObservableProbeWithTx(ctx context.Context, tx core.Tx, params *CancelObservableProbeParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runCancelObservableProbe(ctx, c.taskStore, tx, params, overrides...)
+}
+
+func (c *Client) runCancelObservableProbe(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *CancelObservableProbeParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	task, err := NewCancelObservableProbeTask(params, overrides...)
+	if err != nil {
+		return 0, err
 	}
 	var taskID int32
 	if tx == nil {
@@ -482,18 +567,11 @@ func (c *Client) runStressProbe(ctx context.Context, taskstore taskcore.TaskStor
 	}
 	return taskID, nil
 }
-func (c *Client) RunCancelObservableProbe(ctx context.Context, params *CancelObservableProbeParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	return c.runCancelObservableProbe(ctx, c.taskStore, nil, params, overrides...)
-}
 
-func (c *Client) RunCancelObservableProbeWithTx(ctx context.Context, tx core.Tx, params *CancelObservableProbeParameters, overrides ...taskcore.TaskOverride) (int32, error) {
-	return c.runCancelObservableProbe(ctx, c.taskStore, tx, params, overrides...)
-}
-
-func (c *Client) runCancelObservableProbe(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *CancelObservableProbeParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+func NewCancelObservableProbeTask(params *CancelObservableProbeParameters, overrides ...taskcore.TaskOverride) (*apigen.Task, error) {
 	payload, err := json.Marshal(params)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	spec := apigen.TaskSpec{
@@ -515,19 +593,10 @@ func (c *Client) runCancelObservableProbe(ctx context.Context, taskstore taskcor
 
 	for _, override := range overrides {
 		if err := override(task); err != nil {
-			return 0, errors.Wrap(err, "failed to apply task override")
+			return nil, errors.Wrap(err, "failed to apply task override")
 		}
 	}
-	var taskID int32
-	if tx == nil {
-		taskID, err = taskstore.PushTask(ctx, task)
-	} else {
-		taskID, err = taskstore.PushTaskWithTx(ctx, tx, task)
-	}
-	if err != nil {
-		return 0, err
-	}
-	return taskID, nil
+	return task, nil
 }
 
 type DeleteOpaqueKeyParameters struct {

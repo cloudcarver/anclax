@@ -12,7 +12,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+{{if .HasDelay}}
 	"time"
+{{end}}
 {{range .Imports}}
 	{{printf "%q" .}}
 {{end}}
@@ -43,13 +45,11 @@ type TaskRunner interface { {{range .Functions}}
 
 type Client struct {
 	taskStore taskcore.TaskStoreInterface
-	now       func() time.Time
 }
 
 func NewTaskRunner(taskStore taskcore.TaskStoreInterface) TaskRunner {
 	return &Client{
 		taskStore: taskStore,
-		now:       time.Now,
 	}
 }
 
@@ -63,9 +63,26 @@ func (c *Client) Run{{upperFirst .Name}}WithTx(ctx context.Context, tx core.Tx, 
 }
 
 func (c *Client) run{{upperFirst .Name}}(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *{{.ParameterType}}, overrides ...taskcore.TaskOverride) (int32, error) {
-	payload, err := json.Marshal(params)
+	task, err := New{{upperFirst .Name}}Task(params, overrides...)
 	if err != nil {
 		return 0, err
+	}
+	var taskID int32
+	if tx == nil {
+		taskID, err = taskstore.PushTask(ctx, task)
+	} else {
+		taskID, err = taskstore.PushTaskWithTx(ctx, tx, task)
+	}
+	if err != nil {
+		return 0, err
+	}
+	return taskID, nil
+}
+
+func New{{upperFirst .Name}}Task(params *{{.ParameterType}}, overrides ...taskcore.TaskOverride) (*apigen.Task, error) {
+	payload, err := json.Marshal(params)
+	if err != nil {
+		return nil, err
 	}
 
 	spec := apigen.TaskSpec{
@@ -91,24 +108,15 @@ func (c *Client) run{{upperFirst .Name}}(ctx context.Context, taskstore taskcore
 	}
 	{{if .Delay }}delay, err := time.ParseDuration("{{.Delay}}")
 	if err != nil {
-		return fmt.Errorf("failed to parse delay: %w", err)
+		return nil, fmt.Errorf("failed to parse delay: %w", err)
 	}
-	task.StartedAt = utils.Ptr(c.now().Add(delay)){{end}}
+	task.StartedAt = utils.Ptr(time.Now().Add(delay)){{end}}
 	for _, override := range overrides {
 		if err := override(task); err != nil {
-			return 0, errors.Wrap(err, "failed to apply task override")
+			return nil, errors.Wrap(err, "failed to apply task override")
 		}
 	}
-	var taskID int32
-	if tx == nil {
-		taskID, err = taskstore.PushTask(ctx, task)
-	} else {
-		taskID, err = taskstore.PushTaskWithTx(ctx, tx, task)
-	}
-	if err != nil {
-		return 0, err
-	}
-	return taskID, nil
+	return task, nil
 }{{end}}
 
 {{.StructDefs}}{{range .Functions}}{{if .HasLocalHelpers}}
