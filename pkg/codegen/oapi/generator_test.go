@@ -312,6 +312,54 @@ components:
 	}
 }
 
+func TestGenerateBoundsClientResponsesAndDefaultTimeout(t *testing.T) {
+	t.Parallel()
+
+	workdir := t.TempDir()
+	specPath := filepath.Join(workdir, "spec.yaml")
+	outPath := filepath.Join(workdir, "spec_gen.go")
+	mustWriteFile(t, specPath, `openapi: 3.0.3
+info:
+  title: test
+  version: 1.0.0
+paths:
+  /health:
+    get:
+      operationId: GetHealth
+      responses:
+        '200':
+          description: ok
+`)
+
+	if err := Generate(workdir, Config{
+		Path:    specPath,
+		Out:     outPath,
+		Package: "apigen",
+	}); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	raw, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("read generated client: %v", err)
+	}
+	out := string(raw)
+	for _, needle := range []string{
+		"const DefaultHTTPClientTimeout = 30 * time.Second",
+		"const MaxResponseBodyBytes int64 = 10 << 20",
+		"var ErrResponseBodyTooLarge = errors.New(\"response body exceeds maximum size\")",
+		"io.ReadAll(io.LimitReader(body, MaxResponseBodyBytes+1))",
+		"client.Client = &http.Client{Timeout: DefaultHTTPClientTimeout}",
+		"bodyBytes, err := readResponseBody(rsp.Body)",
+	} {
+		if !strings.Contains(out, needle) {
+			t.Fatalf("generated output missing %q", needle)
+		}
+	}
+	if strings.Contains(out, "io.ReadAll(rsp.Body)") {
+		t.Fatal("generated response parser still reads an unbounded body")
+	}
+}
+
 func mustWriteFile(t *testing.T, path string, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
