@@ -2,6 +2,7 @@ package codegen
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -311,6 +312,332 @@ components:
 		}
 	}
 }
+
+func TestBuildDocumentResolvesEffectiveSecurity(t *testing.T) {
+	t.Parallel()
+
+	workdir, specPath := writeEffectiveSecuritySpec(t)
+	spec, sourcePath, err := loadSwagger(workdir, specPath)
+	if err != nil {
+		t.Fatalf("load OpenAPI spec: %v", err)
+	}
+	schemaManager, err := schema_codegen.Load(workdir, schema_codegen.Config{})
+	if err != nil {
+		t.Fatalf("load schema manager: %v", err)
+	}
+	doc, err := buildDocument(spec, sourcePath, "securitytest", schemaManager)
+	if err != nil {
+		t.Fatalf("build document: %v", err)
+	}
+
+	operations := make(map[string]operationDef, len(doc.Operations))
+	for _, operation := range doc.Operations {
+		operations[operation.Name] = operation
+	}
+
+	inherited := operations["Inherited"]
+	if !inherited.NeedsAuth {
+		t.Fatal("inherited top-level security did not require authentication")
+	}
+	if got := len(inherited.SecurityAlternatives); got != 2 {
+		t.Fatalf("inherited alternatives = %d, want 2", got)
+	}
+	if got := len(inherited.SecurityAlternatives[0].Schemes); got != 2 {
+		t.Fatalf("first inherited alternative schemes = %d, want 2", got)
+	}
+	if got := inherited.SecurityAlternatives[0].Schemes[0].ConstName; got != "ApiKeyAuthScopes" {
+		t.Fatalf("first sorted inherited scheme = %q, want ApiKeyAuthScopes", got)
+	}
+	if got := inherited.SecurityAlternatives[0].Schemes[1].ConstName; got != "BearerAuthScopes" {
+		t.Fatalf("second sorted inherited scheme = %q, want BearerAuthScopes", got)
+	}
+	if got := inherited.SecurityAlternatives[1].Schemes[0].ConstName; got != "CookieAuthScopes" {
+		t.Fatalf("second inherited alternative scheme = %q, want CookieAuthScopes", got)
+	}
+	if got := inherited.SecurityAlternatives[0].Schemes[1].Scopes; len(got) != 1 || got[0] != "x.OperationPermit(c, operationID)" {
+		t.Fatalf("inherited x-check scopes = %#v", got)
+	}
+
+	if public := operations["Public"]; public.NeedsAuth || len(public.SecurityAlternatives) != 0 {
+		t.Fatalf("explicit empty security should be anonymous: %#v", public.SecurityAlternatives)
+	}
+	if anonymous := operations["Anonymous"]; anonymous.NeedsAuth || len(anonymous.SecurityAlternatives) != 1 || len(anonymous.SecurityAlternatives[0].Schemes) != 0 {
+		t.Fatalf("empty security requirement should be anonymous: %#v", anonymous.SecurityAlternatives)
+	}
+	if optional := operations["Optional"]; optional.NeedsAuth || len(optional.SecurityAlternatives) != 2 || len(optional.SecurityAlternatives[0].Schemes) != 0 {
+		t.Fatalf("anonymous alternative should make security optional: %#v", optional.SecurityAlternatives)
+	}
+
+	override := operations["Override"]
+	if !override.NeedsAuth || len(override.SecurityAlternatives) != 1 || len(override.SecurityAlternatives[0].Schemes) != 1 {
+		t.Fatalf("operation security override was not normalized: %#v", override.SecurityAlternatives)
+	}
+	if got := override.SecurityAlternatives[0].Schemes[0].ConstName; got != "ApiKeyAuthScopes" {
+		t.Fatalf("override scheme = %q, want ApiKeyAuthScopes", got)
+	}
+	if got := override.SecurityAlternatives[0].Schemes[0].Scopes; len(got) != 1 || got[0] != "x.OverridePermit(c)" {
+		t.Fatalf("override x-check scopes = %#v", got)
+	}
+}
+
+func TestGeneratedEffectiveSecurityFiberBehavior(t *testing.T) {
+	workdir, specPath := writeEffectiveSecuritySpec(t)
+	outPath := filepath.Join(workdir, "spec_gen.go")
+	if err := Generate(workdir, Config{
+		Path:    specPath,
+		Out:     outPath,
+		Package: "securitytest",
+	}); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	mustWriteFile(t, filepath.Join(workdir, "go.mod"), `module example.com/securitytest
+
+go 1.24.0
+
+require github.com/gofiber/fiber/v3 v3.3.0
+`)
+	mustWriteFile(t, filepath.Join(workdir, "security_test.go"), effectiveSecurityRuntimeTest)
+
+	cmd := exec.Command("go", "test", "-mod=mod", "-count=1", ".")
+	cmd.Dir = workdir
+	cmd.Env = append(os.Environ(), "GOWORK=off")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("test generated Fiber routes: %v\n%s", err, output)
+	}
+}
+
+func writeEffectiveSecuritySpec(t *testing.T) (string, string) {
+	t.Helper()
+
+	workdir := t.TempDir()
+	specPath := filepath.Join(workdir, "spec.yaml")
+	mustWriteFile(t, specPath, `openapi: 3.0.3
+info:
+  title: effective security test
+  version: 1.0.0
+security:
+  - BearerAuth:
+      - x.OperationPermit(c, operationID)
+    ApiKeyAuth: []
+  - CookieAuth: []
+paths:
+  /inherited:
+    get:
+      operationId: inherited
+      responses:
+        "204":
+          description: ok
+  /public:
+    get:
+      operationId: public
+      security: []
+      responses:
+        "204":
+          description: ok
+  /anonymous:
+    get:
+      operationId: anonymous
+      security:
+        - {}
+      responses:
+        "204":
+          description: ok
+  /optional:
+    get:
+      operationId: optional
+      security:
+        - {}
+        - BearerAuth:
+            - x.OperationPermit(c, operationID)
+      responses:
+        "204":
+          description: ok
+  /override:
+    get:
+      operationId: override
+      security:
+        - ApiKeyAuth:
+            - x.OverridePermit(c)
+      responses:
+        "204":
+          description: ok
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    CookieAuth:
+      type: apiKey
+      in: cookie
+      name: session
+x-check-rules:
+  OperationPermit:
+    useContext: true
+    parameters:
+      - name: operationID
+        schema:
+          type: string
+  OverridePermit:
+    useContext: true
+`)
+	return workdir, specPath
+}
+
+const effectiveSecurityRuntimeTest = `package securitytest
+
+import (
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/gofiber/fiber/v3"
+)
+
+type testHandler struct {
+	calls map[string]int
+}
+
+func (h *testHandler) Inherited(c fiber.Ctx) error {
+	h.calls["inherited"]++
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *testHandler) Public(c fiber.Ctx) error {
+	h.calls["public"]++
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *testHandler) Anonymous(c fiber.Ctx) error {
+	h.calls["anonymous"]++
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *testHandler) Optional(c fiber.Ctx) error {
+	h.calls["optional"]++
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *testHandler) Override(c fiber.Ctx) error {
+	h.calls["override"]++
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+type testValidator struct {
+	authErr       error
+	authCalls     int
+	preCalls      int
+	postCalls     int
+	operationIDs  []string
+	overrideCalls int
+	apiKeyScopes  []string
+	bearerScopes  []string
+	cookieScopes  []string
+}
+
+func (v *testValidator) AuthFunc(c fiber.Ctx) error {
+	v.authCalls++
+	v.apiKeyScopes, _ = fiber.ValueFromContext[[]string](c, ApiKeyAuthScopes)
+	v.bearerScopes, _ = fiber.ValueFromContext[[]string](c, BearerAuthScopes)
+	v.cookieScopes, _ = fiber.ValueFromContext[[]string](c, CookieAuthScopes)
+	return v.authErr
+}
+
+func (v *testValidator) PreValidate(fiber.Ctx) error {
+	v.preCalls++
+	return nil
+}
+
+func (v *testValidator) PostValidate(fiber.Ctx) error {
+	v.postCalls++
+	return nil
+}
+
+func (v *testValidator) OperationPermit(_ fiber.Ctx, operationID string) error {
+	v.operationIDs = append(v.operationIDs, operationID)
+	return nil
+}
+
+func (v *testValidator) OverridePermit(fiber.Ctx) error {
+	v.overrideCalls++
+	return nil
+}
+
+func TestSecurityInheritanceRejectsUnauthenticatedRequests(t *testing.T) {
+	handler := &testHandler{calls: map[string]int{}}
+	validator := &testValidator{authErr: errors.New("missing credentials")}
+	app := fiber.New()
+	RegisterHandlers(app, NewXMiddleware(handler, validator))
+
+	assertStatus(t, app, "/inherited", fiber.StatusUnauthorized)
+	assertStatus(t, app, "/override", fiber.StatusUnauthorized)
+	assertStatus(t, app, "/public", fiber.StatusNoContent)
+	assertStatus(t, app, "/anonymous", fiber.StatusNoContent)
+	assertStatus(t, app, "/optional", fiber.StatusNoContent)
+
+	if validator.authCalls != 2 {
+		t.Fatalf("AuthFunc calls = %d, want 2", validator.authCalls)
+	}
+	if handler.calls["inherited"] != 0 || handler.calls["override"] != 0 {
+		t.Fatalf("protected handlers were called: %#v", handler.calls)
+	}
+	if handler.calls["public"] != 1 || handler.calls["anonymous"] != 1 || handler.calls["optional"] != 1 {
+		t.Fatalf("anonymous handlers were not called exactly once: %#v", handler.calls)
+	}
+}
+
+func TestInheritedSecurityPreservesSchemesAndChecks(t *testing.T) {
+	handler := &testHandler{calls: map[string]int{}}
+	validator := &testValidator{}
+	app := fiber.New()
+	RegisterHandlers(app, NewXMiddleware(handler, validator))
+
+	assertStatus(t, app, "/inherited", fiber.StatusNoContent)
+	if len(validator.apiKeyScopes) != 0 {
+		t.Fatalf("inherited API key scopes = %#v, want empty", validator.apiKeyScopes)
+	}
+	if len(validator.bearerScopes) != 1 || validator.bearerScopes[0] != "x.OperationPermit(c, operationID)" {
+		t.Fatalf("inherited bearer scopes = %#v", validator.bearerScopes)
+	}
+	if len(validator.cookieScopes) != 0 {
+		t.Fatalf("inherited cookie scopes = %#v, want empty", validator.cookieScopes)
+	}
+
+	assertStatus(t, app, "/override", fiber.StatusNoContent)
+
+	if validator.authCalls != 2 || validator.preCalls != 2 || validator.postCalls != 2 {
+		t.Fatalf("validator calls = auth:%d pre:%d post:%d, want 2 each", validator.authCalls, validator.preCalls, validator.postCalls)
+	}
+	if len(validator.operationIDs) != 1 || validator.operationIDs[0] != "Inherited" {
+		t.Fatalf("OperationPermit calls = %#v, want [Inherited]", validator.operationIDs)
+	}
+	if validator.overrideCalls != 1 {
+		t.Fatalf("OverridePermit calls = %d, want 1", validator.overrideCalls)
+	}
+	if len(validator.apiKeyScopes) != 1 || validator.apiKeyScopes[0] != "x.OverridePermit(c)" {
+		t.Fatalf("last API key scopes = %#v", validator.apiKeyScopes)
+	}
+}
+
+func assertStatus(t *testing.T, app *fiber.App, path string, want int) {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("GET %s: %v", path, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != want {
+		t.Fatalf("GET %s status = %d, want %d", path, resp.StatusCode, want)
+	}
+}
+`
 
 func mustWriteFile(t *testing.T, path string, content string) {
 	t.Helper()
