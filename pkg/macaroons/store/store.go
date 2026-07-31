@@ -20,46 +20,66 @@ var (
 type Store struct {
 	model      model.ModelInterface
 	taskRunner runner.TaskRunner
-	now        func() time.Time
+	tx         core.Tx
+	inTx       bool
 }
 
 func NewStore(model model.ModelInterface, taskRunner runner.TaskRunner) KeyStore {
 	return &Store{
 		model:      model,
 		taskRunner: taskRunner,
-		now:        time.Now,
 	}
 }
 
-func (s *Store) Create(ctx context.Context, key []byte, ttl time.Duration, group string) (int64, error) {
-	var ret int64
-	if err := s.model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
-		var groupPtr *string
-		if group != "" {
-			groupPtr = &group
-		}
-		keyID, err := txm.CreateOpaqueKey(ctx, querier.CreateOpaqueKeyParams{
-			Group: groupPtr,
-			Key:   key,
-		})
-		if err != nil {
-			return errors.Wrap(err, "failed to create key")
-		}
-
-		ret = keyID
-
-		if ttl > 0 {
-			if _, err := s.taskRunner.RunDeleteOpaqueKeyWithTx(ctx, tx, &runner.DeleteOpaqueKeyParameters{
-				KeyID: keyID,
-			}, taskcore.WithStartedAt(s.now().Add(ttl))); err != nil {
-				return errors.Wrap(err, "failed to run task to delete key")
-			}
-		}
-		return nil
-	}); err != nil {
-		return 0, err
+func (s *Store) RunTransaction(ctx context.Context, f func(KeyStore) error) error {
+	if s.inTx {
+		return f(s)
 	}
-	return ret, nil
+
+	return s.model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
+		return f(&Store{
+			model:      txm,
+			taskRunner: s.taskRunner,
+			tx:         tx,
+			inTx:       true,
+		})
+	})
+}
+
+func (s *Store) Create(ctx context.Context, key []byte, ttl time.Duration, group string) (int64, error) {
+	if !s.inTx {
+		var keyID int64
+		if err := s.RunTransaction(ctx, func(txs KeyStore) error {
+			var err error
+			keyID, err = txs.Create(ctx, key, ttl, group)
+			return err
+		}); err != nil {
+			return 0, err
+		}
+		return keyID, nil
+	}
+
+	var groupPtr *string
+	if group != "" {
+		groupPtr = &group
+	}
+	created, err := s.model.CreateOpaqueKey(ctx, querier.CreateOpaqueKeyParams{
+		Group:           groupPtr,
+		Key:             key,
+		TtlMicroseconds: ttl.Microseconds(),
+	})
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to create key")
+	}
+
+	if ttl > 0 {
+		if _, err := s.taskRunner.RunDeleteOpaqueKeyWithTx(ctx, s.tx, &runner.DeleteOpaqueKeyParameters{
+			KeyID: created.ID,
+		}, taskcore.WithStartedAt(created.ExpiresAt)); err != nil {
+			return 0, errors.Wrap(err, "failed to run task to delete key")
+		}
+	}
+	return created.ID, nil
 }
 
 func (s *Store) Get(ctx context.Context, keyID int64) ([]byte, error) {
@@ -72,6 +92,19 @@ func (s *Store) Get(ctx context.Context, keyID int64) ([]byte, error) {
 	}
 
 	return key, nil
+}
+
+func (s *Store) Consume(ctx context.Context, keyID int64, key []byte) error {
+	if _, err := s.model.ConsumeOpaqueKey(ctx, querier.ConsumeOpaqueKeyParams{
+		ID:  keyID,
+		Key: key,
+	}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrKeyNotFound
+		}
+		return errors.Wrap(err, "failed to consume key")
+	}
+	return nil
 }
 
 func (s *Store) Delete(ctx context.Context, keyID int64) error {

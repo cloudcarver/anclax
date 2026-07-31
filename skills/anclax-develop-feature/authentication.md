@@ -54,6 +54,10 @@ Implementation lives in `pkg/controller/controller.go` and `pkg/service/auth_ser
 
 Treat sign-in/sign-up as reference endpoints. Prefer custom APIs when product requirements differ.
 
+The built-in sign-up flow treats the database username constraint as
+authoritative and maps its conflict to HTTP 409. Preflight existence checks must
+not be used as the concurrency control.
+
 ## Macaroon token reference
 
 OpenAPI security scheme:
@@ -108,8 +112,13 @@ Use `auth.AuthInterface` for advanced token control:
 - `CreateUserTokens`
 - `CreateToken`
 - `CreateRefreshToken`
+- `RotateRefreshToken` (use this for atomic, single-use refresh exchange)
 - `InvalidateUserTokens`
 - `InvalidateToken`
+
+Opaque signing keys persist an expiry timestamp that is checked synchronously
+during token parsing. The delete task is cleanup only; auth correctness must not
+depend on a worker executing it.
 
 ## Custom auth API patterns
 

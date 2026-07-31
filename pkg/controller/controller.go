@@ -99,16 +99,11 @@ func (controller *Controller) SignUp(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusBadRequest)
 	}
 
-	exists, err := controller.svc.IsUsernameExists(c.Context(), params.Name)
-	if err != nil {
-		return err
-	}
-	if exists {
-		return c.SendStatus(fiber.StatusConflict)
-	}
-
 	userMeta, err := controller.svc.CreateNewUser(c.Context(), params.Name, params.Password)
 	if err != nil {
+		if errors.Is(err, service.ErrUsernameExists) {
+			return c.SendStatus(fiber.StatusConflict)
+		}
 		return err
 	}
 

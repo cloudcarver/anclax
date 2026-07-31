@@ -8,6 +8,7 @@ import (
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/hooks"
 	"github.com/cloudcarver/anclax/pkg/macaroons"
+	macaroonstore "github.com/cloudcarver/anclax/pkg/macaroons/store"
 	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/gofiber/fiber/v3"
 	"github.com/pkg/errors"
@@ -49,6 +50,11 @@ type AuthInterface interface {
 
 	// ParseRefreshToken parses the given refresh token and returns the carrying info
 	ParseRefreshToken(ctx context.Context, refreshToken string) (*macaroons.Macaroon, *RefreshOnlyCaveat, error)
+
+	// RotateRefreshToken atomically consumes a refresh token and creates its
+	// replacement access/refresh pair. Concurrent calls for one token have at
+	// most one winner.
+	RotateRefreshToken(ctx context.Context, refreshToken string) (*macaroons.Macaroon, *macaroons.Macaroon, error)
 
 	// InvalidateUserTokens invalidates all tokens for the given user.
 	InvalidateUserTokens(ctx context.Context, userID int32) error
@@ -152,6 +158,10 @@ func (a *Auth) CreateToken(ctx context.Context, group string, ttl time.Duration,
 }
 
 func (a *Auth) CreateRefreshToken(ctx context.Context, group string, accessToken *macaroons.Macaroon, ttl time.Duration) (*macaroons.Macaroon, error) {
+	return a.createRefreshToken(ctx, a.macaroonManager, group, accessToken, ttl)
+}
+
+func (a *Auth) createRefreshToken(ctx context.Context, manager macaroons.MacaroonManagerInterface, group string, accessToken *macaroons.Macaroon, ttl time.Duration) (*macaroons.Macaroon, error) {
 	if accessToken == nil {
 		return nil, errors.New("access token is nil")
 	}
@@ -165,7 +175,7 @@ func (a *Auth) CreateRefreshToken(ctx context.Context, group string, accessToken
 		accessCaveats[i] = encoded
 	}
 
-	token, err := a.macaroonManager.CreateToken(ctx, []macaroons.Caveat{
+	token, err := manager.CreateToken(ctx, []macaroons.Caveat{
 		NewRefreshOnlyCaveat(group, accessCaveats),
 	}, ttl, group)
 	if err != nil {
@@ -177,29 +187,81 @@ func (a *Auth) CreateRefreshToken(ctx context.Context, group string, accessToken
 func (a *Auth) ParseRefreshToken(ctx context.Context, refreshToken string) (*macaroons.Macaroon, *RefreshOnlyCaveat, error) {
 	token, err := a.macaroonManager.Parse(ctx, refreshToken)
 	if err != nil {
-		return nil, nil, errors.Wrapf(err, "failed to parse macaroon token, token: %s", refreshToken)
+		return nil, nil, errors.Wrap(err, "failed to parse macaroon token")
 	}
+	roc, err := a.parseRefreshMacaroon(token)
+	return token, roc, err
+}
 
+func (a *Auth) parseRefreshMacaroon(token *macaroons.Macaroon) (*RefreshOnlyCaveat, error) {
+	if token == nil {
+		return nil, errors.Wrap(ErrInvalidRefreshToken, "refresh token is nil")
+	}
 	if len(token.Caveats) != 1 {
-		return nil, nil, errors.Wrap(ErrInvalidRefreshToken, "refresh token must have exactly one caveat")
+		return nil, errors.Wrap(ErrInvalidRefreshToken, "refresh token must have exactly one caveat")
 	}
 
 	roc, ok := token.Caveats[0].(*RefreshOnlyCaveat)
 	if !ok {
-		return nil, nil, errors.Wrapf(ErrInvalidRefreshToken, "caveat is not a RefreshOnlyCaveat even though it has type %s", CaveatRefreshOnly)
+		return nil, errors.Wrapf(ErrInvalidRefreshToken, "caveat is not a RefreshOnlyCaveat even though it has type %s", CaveatRefreshOnly)
 	}
 
 	parsedCaveats := make([]macaroons.Caveat, len(roc.AccessCaveats))
 	for i, encoded := range roc.AccessCaveats {
 		caveat, err := a.caveatParser.Parse(encoded)
 		if err != nil {
-			return nil, nil, errors.Wrap(ErrInvalidRefreshToken, "failed to parse access token caveat")
+			return nil, errors.Wrap(ErrInvalidRefreshToken, "failed to parse access token caveat")
 		}
 		parsedCaveats[i] = caveat
 	}
 	roc.AccessTokenCaveats = parsedCaveats
 
-	return token, roc, nil
+	return roc, nil
+}
+
+func (a *Auth) RotateRefreshToken(ctx context.Context, refreshToken string) (*macaroons.Macaroon, *macaroons.Macaroon, error) {
+	var accessToken, newRefreshToken *macaroons.Macaroon
+	err := a.macaroonManager.RunTransaction(ctx, func(manager macaroons.MacaroonManagerInterface) error {
+		consumed, err := manager.Consume(ctx, refreshToken)
+		if err != nil {
+			if isRejectedTokenError(err) {
+				return fmt.Errorf("%w: failed to consume refresh token: %w", ErrInvalidRefreshToken, err)
+			}
+			return errors.Wrap(err, "failed to consume refresh token")
+		}
+
+		roc, err := a.parseRefreshMacaroon(consumed)
+		if err != nil {
+			return err
+		}
+
+		if roc.Group != "" {
+			if err := manager.InvalidateTokensByGroup(ctx, roc.Group); err != nil {
+				return errors.Wrap(err, "failed to invalidate token group")
+			}
+		}
+
+		accessToken, err = manager.CreateToken(ctx, roc.AccessTokenCaveats, a.timeoutAccessToken, roc.Group)
+		if err != nil {
+			return errors.Wrap(err, "failed to create access token")
+		}
+
+		newRefreshToken, err = a.createRefreshToken(ctx, manager, roc.Group, accessToken, a.timeoutRefreshToken)
+		if err != nil {
+			return errors.Wrap(err, "failed to create refresh token")
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return accessToken, newRefreshToken, nil
+}
+
+func isRejectedTokenError(err error) bool {
+	return errors.Is(err, macaroons.ErrMalformedToken) ||
+		errors.Is(err, macaroons.ErrInvalidSignature) ||
+		errors.Is(err, macaroonstore.ErrKeyNotFound)
 }
 
 func (a *Auth) InvalidateUserTokens(ctx context.Context, userID int32) error {

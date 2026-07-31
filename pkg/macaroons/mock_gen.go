@@ -147,6 +147,21 @@ func (m *MockMacaroonManagerInterface) EXPECT() *MockMacaroonManagerInterfaceMoc
 	return m.recorder
 }
 
+// Consume mocks base method.
+func (m *MockMacaroonManagerInterface) Consume(ctx context.Context, token string) (*Macaroon, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Consume", ctx, token)
+	ret0, _ := ret[0].(*Macaroon)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Consume indicates an expected call of Consume.
+func (mr *MockMacaroonManagerInterfaceMockRecorder) Consume(ctx, token any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Consume", reflect.TypeOf((*MockMacaroonManagerInterface)(nil).Consume), ctx, token)
+}
+
 // CreateToken mocks base method.
 func (m *MockMacaroonManagerInterface) CreateToken(ctx context.Context, caveats []Caveat, ttl time.Duration, group string) (*Macaroon, error) {
 	m.ctrl.T.Helper()
@@ -203,4 +218,18 @@ func (m *MockMacaroonManagerInterface) Parse(ctx context.Context, token string) 
 func (mr *MockMacaroonManagerInterfaceMockRecorder) Parse(ctx, token any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Parse", reflect.TypeOf((*MockMacaroonManagerInterface)(nil).Parse), ctx, token)
+}
+
+// RunTransaction mocks base method.
+func (m *MockMacaroonManagerInterface) RunTransaction(ctx context.Context, f func(MacaroonManagerInterface) error) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RunTransaction", ctx, f)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RunTransaction indicates an expected call of RunTransaction.
+func (mr *MockMacaroonManagerInterfaceMockRecorder) RunTransaction(ctx, f any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunTransaction", reflect.TypeOf((*MockMacaroonManagerInterface)(nil).RunTransaction), ctx, f)
 }

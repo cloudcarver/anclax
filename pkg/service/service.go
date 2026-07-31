@@ -23,6 +23,7 @@ type (
 
 var (
 	ErrUserNotFound                  = errors.New("user not found")
+	ErrUsernameExists                = errors.New("username already exists")
 	ErrInvalidPassword               = errors.New("invalid password")
 	ErrRefreshTokenExpired           = errors.New("refresh token expired")
 	ErrDatabaseNotFound              = errors.New("database not found")
@@ -82,9 +83,6 @@ type Service struct {
 
 	singleSession bool
 
-	timeoutAccessToken  time.Duration
-	timeoutRefreshToken time.Duration
-
 	generateSaltAndHash func(password string) (string, string, error)
 	now                 func() time.Time
 }
@@ -102,7 +100,5 @@ func NewService(
 		now:                 time.Now,
 		generateSaltAndHash: utils.GenerateSaltAndHash,
 		singleSession:       cfg.Auth.SingleSession,
-		timeoutAccessToken:  utils.UnwrapOrDefault(cfg.Auth.AccessExpiry, auth.DefaultTimeoutAccessToken),
-		timeoutRefreshToken: utils.UnwrapOrDefault(cfg.Auth.RefreshExpiry, auth.DefaultTimeoutRefreshToken),
 	}
 }

@@ -72,6 +72,16 @@ func NewMacaroonManager(keyStore store.KeyStore, caveatParser CaveatParserInterf
 	}
 }
 
+func (m *MacaroonsManager) RunTransaction(ctx context.Context, f func(MacaroonManagerInterface) error) error {
+	return m.keyStore.RunTransaction(ctx, func(keyStore store.KeyStore) error {
+		return f(&MacaroonsManager{
+			keyStore:     keyStore,
+			caveatParser: m.caveatParser,
+			randomKey:    m.randomKey,
+		})
+	})
+}
+
 func (m *MacaroonsManager) CreateToken(ctx context.Context, caveats []Caveat, ttl time.Duration, group string) (*Macaroon, error) {
 	key, err := m.randomKey()
 	if err != nil {
@@ -118,9 +128,25 @@ func CreateMacaroon(keyID int64, key []byte, caveats []Caveat) (*Macaroon, error
 }
 
 func (m *MacaroonsManager) Parse(ctx context.Context, token string) (*Macaroon, error) {
+	macaroon, _, err := m.parse(ctx, token)
+	return macaroon, err
+}
+
+func (m *MacaroonsManager) Consume(ctx context.Context, token string) (*Macaroon, error) {
+	macaroon, key, err := m.parse(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+	if err := m.keyStore.Consume(ctx, macaroon.KeyID(), key); err != nil {
+		return nil, errors.Wrap(err, "failed to consume key")
+	}
+	return macaroon, nil
+}
+
+func (m *MacaroonsManager) parse(ctx context.Context, token string) (*Macaroon, []byte, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) < 2 {
-		return nil, errors.Wrap(ErrMalformedToken, "token must contain at least 2 parts")
+		return nil, nil, errors.Wrap(ErrMalformedToken, "token must contain at least 2 parts")
 	}
 	encodedKeyID := parts[0]
 	encodedCaveats := parts[1 : len(parts)-1]
@@ -129,30 +155,30 @@ func (m *MacaroonsManager) Parse(ctx context.Context, token string) (*Macaroon, 
 	// decode nounce and keyID
 	header, err := base64.StdEncoding.DecodeString(encodedKeyID)
 	if err != nil {
-		return nil, errors.Wrap(ErrMalformedToken, "failed to decode header")
+		return nil, nil, errors.Wrap(ErrMalformedToken, "failed to decode header")
 	}
 	keyID, err := strconv.ParseInt(string(header), 10, 64)
 	if err != nil {
-		return nil, errors.Wrap(ErrMalformedToken, "failed to convert keyID to int")
+		return nil, nil, errors.Wrap(ErrMalformedToken, "failed to convert keyID to int")
 	}
 	key, err := m.keyStore.Get(ctx, keyID)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get key")
+		return nil, nil, errors.Wrap(err, "failed to get key")
 	}
 
 	// decode signature
 	signature, err := base64.StdEncoding.DecodeString(encodedSignature)
 	if err != nil {
-		return nil, errors.Wrapf(ErrMalformedToken, "failed to decode signature: %s", err.Error())
+		return nil, nil, errors.Wrapf(ErrMalformedToken, "failed to decode signature: %s", err.Error())
 	}
 
 	// verify signature
 	calculatedSignature, err := chainedHmac(key, encodedKeyID, encodedCaveats)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to calculate signature")
+		return nil, nil, errors.Wrap(err, "failed to calculate signature")
 	}
 	if !hmac.Equal(signature, calculatedSignature) {
-		return nil, ErrInvalidSignature
+		return nil, nil, ErrInvalidSignature
 	}
 
 	// decode caveats
@@ -160,7 +186,7 @@ func (m *MacaroonsManager) Parse(ctx context.Context, token string) (*Macaroon, 
 	for i, part := range encodedCaveats {
 		caveat, err := m.caveatParser.Parse(part)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to parse caveat")
+			return nil, nil, errors.Wrap(err, "failed to parse caveat")
 		}
 		caveats[i] = caveat
 	}
@@ -171,7 +197,7 @@ func (m *MacaroonsManager) Parse(ctx context.Context, token string) (*Macaroon, 
 		signature:         signature,
 		encodedTokenNoSig: strings.TrimSuffix(token, "."+encodedSignature),
 		encodedToken:      token,
-	}, nil
+	}, key, nil
 }
 
 func (m *MacaroonsManager) InvalidateTokensByGroup(ctx context.Context, group string) error {

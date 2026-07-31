@@ -118,6 +118,21 @@ func (mr *MockModelInterfaceMockRecorder) Close() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockModelInterface)(nil).Close))
 }
 
+// ConsumeOpaqueKey mocks base method.
+func (m *MockModelInterface) ConsumeOpaqueKey(ctx context.Context, arg querier.ConsumeOpaqueKeyParams) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ConsumeOpaqueKey", ctx, arg)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ConsumeOpaqueKey indicates an expected call of ConsumeOpaqueKey.
+func (mr *MockModelInterfaceMockRecorder) ConsumeOpaqueKey(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConsumeOpaqueKey", reflect.TypeOf((*MockModelInterface)(nil).ConsumeOpaqueKey), ctx, arg)
+}
+
 // CreateKeyPair mocks base method.
 func (m *MockModelInterface) CreateKeyPair(ctx context.Context, arg querier.CreateKeyPairParams) (*querier.AnclaxAccessKeyPair, error) {
 	m.ctrl.T.Helper()
@@ -134,10 +149,10 @@ func (mr *MockModelInterfaceMockRecorder) CreateKeyPair(ctx, arg any) *gomock.Ca
 }
 
 // CreateOpaqueKey mocks base method.
-func (m *MockModelInterface) CreateOpaqueKey(ctx context.Context, arg querier.CreateOpaqueKeyParams) (int64, error) {
+func (m *MockModelInterface) CreateOpaqueKey(ctx context.Context, arg querier.CreateOpaqueKeyParams) (*querier.CreateOpaqueKeyRow, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateOpaqueKey", ctx, arg)
-	ret0, _ := ret[0].(int64)
+	ret0, _ := ret[0].(*querier.CreateOpaqueKeyRow)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
