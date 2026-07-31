@@ -71,21 +71,21 @@ type enumValue struct {
 }
 
 type operationDef struct {
-	Name          string
-	Summary       string
-	Method        string
-	Path          string
-	FiberPath     string
-	PathFormat    string
-	PathArgs      string
-	PathParams    []paramDef
-	QueryParams   []paramDef
-	RequestBody   *requestBodyDef
-	Responses     []responseDef
-	Securities    []operationSecurity
-	NeedsAuth     bool
-	NeedsBody     bool
-	NeedsResponse bool
+	Name                 string
+	Summary              string
+	Method               string
+	Path                 string
+	FiberPath            string
+	PathFormat           string
+	PathArgs             string
+	PathParams           []paramDef
+	QueryParams          []paramDef
+	RequestBody          *requestBodyDef
+	Responses            []responseDef
+	SecurityAlternatives []operationSecurityAlternative
+	NeedsAuth            bool
+	NeedsBody            bool
+	NeedsResponse        bool
 }
 
 type requestBodyDef struct {
@@ -106,6 +106,10 @@ type responseDef struct {
 type operationSecurity struct {
 	ConstName string
 	Scopes    []string
+}
+
+type operationSecurityAlternative struct {
+	Schemes []operationSecurity
 }
 
 type paramDef struct {
@@ -248,13 +252,16 @@ func buildDocument(spec *openapi3.T, specPath string, packageName string, schema
 				continue
 			}
 			for _, opItem := range orderedOperations(pathItem) {
-				op, err := buildOperation(specPath, path, pathItem, opItem.method, opItem.operation, enumMap, doc.SpecTypeImports, schemaManager)
+				effectiveSecurity := effectiveSecurityRequirements(spec.Security, opItem.operation.Security)
+				op, err := buildOperation(specPath, path, pathItem, opItem.method, opItem.operation, effectiveSecurity, enumMap, doc.SpecTypeImports, schemaManager)
 				if err != nil {
 					return nil, errors.Wrapf(err, "failed to build operation %s %s", opItem.method, path)
 				}
 				doc.Operations = append(doc.Operations, op)
-				for _, sec := range op.Securities {
-					securityMap[sec.ConstName] = securityConst{Name: sec.ConstName, Value: strings.TrimSuffix(sec.ConstName, "Scopes") + ".Scopes"}
+				for _, alternative := range op.SecurityAlternatives {
+					for _, sec := range alternative.Schemes {
+						securityMap[sec.ConstName] = securityConst{Name: sec.ConstName, Value: strings.TrimSuffix(sec.ConstName, "Scopes") + ".Scopes"}
+					}
 				}
 			}
 		}
@@ -347,7 +354,7 @@ func buildSchemaDef(currentFile, name string, ref *openapi3.SchemaRef, enumMap m
 	return schema, nil
 }
 
-func buildOperation(currentFile, path string, pathItem *openapi3.PathItem, method string, op *openapi3.Operation, enumMap map[string]*enumDef, imports map[string]struct{}, schemaManager *schema_codegen.Manager) (operationDef, error) {
+func buildOperation(currentFile, path string, pathItem *openapi3.PathItem, method string, op *openapi3.Operation, security openapi3.SecurityRequirements, enumMap map[string]*enumDef, imports map[string]struct{}, schemaManager *schema_codegen.Manager) (operationDef, error) {
 	name := exportName(op.OperationID)
 	if name == "" {
 		name = exportName(strings.Trim(path, "/")) + exportName(strings.ToLower(method))
@@ -422,19 +429,50 @@ func buildOperation(currentFile, path string, pathItem *openapi3.PathItem, metho
 	}
 	ret.NeedsResponse = true
 
-	if op.Security != nil {
-		for _, requirement := range *op.Security {
-			for scheme, scopes := range requirement {
-				ret.Securities = append(ret.Securities, operationSecurity{
-					ConstName: exportName(scheme) + "Scopes",
-					Scopes:    append([]string(nil), scopes...),
-				})
-			}
-		}
-	}
-	ret.NeedsAuth = len(ret.Securities) > 0
+	ret.SecurityAlternatives, ret.NeedsAuth = normalizeSecurityRequirements(security)
 
 	return ret, nil
+}
+
+func effectiveSecurityRequirements(global openapi3.SecurityRequirements, operation *openapi3.SecurityRequirements) openapi3.SecurityRequirements {
+	// A non-nil operation value, including an explicit empty array, overrides
+	// top-level security. Only an absent operation value inherits the global one.
+	if operation != nil {
+		return *operation
+	}
+	return global
+}
+
+func normalizeSecurityRequirements(requirements openapi3.SecurityRequirements) ([]operationSecurityAlternative, bool) {
+	if len(requirements) == 0 {
+		return nil, false
+	}
+
+	alternatives := make([]operationSecurityAlternative, 0, len(requirements))
+	needsAuth := true
+	for _, requirement := range requirements {
+		alternative := operationSecurityAlternative{}
+		// An empty requirement is the anonymous alternative. If one is present,
+		// callers may satisfy the operation without authentication.
+		if len(requirement) == 0 {
+			needsAuth = false
+		}
+
+		schemes := make([]string, 0, len(requirement))
+		for scheme := range requirement {
+			schemes = append(schemes, scheme)
+		}
+		sort.Strings(schemes)
+		for _, scheme := range schemes {
+			alternative.Schemes = append(alternative.Schemes, operationSecurity{
+				ConstName: exportName(scheme) + "Scopes",
+				Scopes:    append([]string(nil), requirement[scheme]...),
+			})
+		}
+		alternatives = append(alternatives, alternative)
+	}
+
+	return alternatives, needsAuth
 }
 
 func renderSpec(doc *document) (string, error) {
@@ -627,13 +665,15 @@ func renderMiddlewareDefinitions(b *strings.Builder, doc *document) {
 			b.WriteString(strconv.Quote(op.Name))
 			b.WriteString("\n")
 		}
-		for _, sec := range op.Securities {
-			for _, scope := range sec.Scopes {
-				b.WriteString("\tif err := ")
-				b.WriteString(scope)
-				b.WriteString("; err != nil {\n")
-				b.WriteString("\t\treturn c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())\n")
-				b.WriteString("\t}\n")
+		for _, alternative := range op.SecurityAlternatives {
+			for _, sec := range alternative.Schemes {
+				for _, scope := range sec.Scopes {
+					b.WriteString("\tif err := ")
+					b.WriteString(scope)
+					b.WriteString("; err != nil {\n")
+					b.WriteString("\t\treturn c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())\n")
+					b.WriteString("\t}\n")
+				}
 			}
 		}
 		b.WriteString("\tif err := x.PostValidate(c); err != nil {\n")
@@ -1003,17 +1043,19 @@ func renderServer(b *strings.Builder, doc *document) {
 			b.WriteString("\t\treturn fiber.NewError(fiber.StatusBadRequest, err.Error())\n")
 			b.WriteString("\t}\n\n")
 		}
-		for _, sec := range op.Securities {
-			b.WriteString("\tfiber.StoreInContext(c, ")
-			b.WriteString(sec.ConstName)
-			b.WriteString(", []string{")
-			for i, scope := range sec.Scopes {
-				if i > 0 {
-					b.WriteString(", ")
+		for _, alternative := range op.SecurityAlternatives {
+			for _, sec := range alternative.Schemes {
+				b.WriteString("\tfiber.StoreInContext(c, ")
+				b.WriteString(sec.ConstName)
+				b.WriteString(", []string{")
+				for i, scope := range sec.Scopes {
+					if i > 0 {
+						b.WriteString(", ")
+					}
+					b.WriteString(strconv.Quote(scope))
 				}
-				b.WriteString(strconv.Quote(scope))
+				b.WriteString("})\n\n")
 			}
-			b.WriteString("})\n\n")
 		}
 		b.WriteString("\treturn siw.Handler.")
 		b.WriteString(op.Name)
@@ -1996,10 +2038,12 @@ func scopeReceiver(useContext bool) string {
 }
 
 func operationNeedsOperationID(op operationDef) bool {
-	for _, sec := range op.Securities {
-		for _, scope := range sec.Scopes {
-			if strings.Contains(scope, "operationID") {
-				return true
+	for _, alternative := range op.SecurityAlternatives {
+		for _, sec := range alternative.Schemes {
+			for _, scope := range sec.Scopes {
+				if strings.Contains(scope, "operationID") {
+					return true
+				}
 			}
 		}
 	}
