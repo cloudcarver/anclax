@@ -19,9 +19,9 @@ services:
   db:
     image: "postgres:17"
     ports:
-      - 7432:7432
+      - "127.0.0.1:7432:7432"
     environment:
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: "${ANCLAX_E2E_POSTGRES_PASSWORD:?ANCLAX_E2E_POSTGRES_PASSWORD must be set}"
     command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
     volumes:
       - ../dev/e2e_postgres.conf:/etc/postgresql/postgresql.conf:ro

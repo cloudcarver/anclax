@@ -20,12 +20,24 @@ npx skills add cloudcarver/anclax
 ## Quick test
 
 ```bash
-docker compose up
+umask 077
+test -f .env || printf 'POSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 32)" > .env
+docker compose up -d
+
+printf 'Username: '
+read -r ANCLAX_USERNAME
+export ANCLAX_USERNAME
+export ANCLAX_PASSWORD="$(openssl rand -hex 24)"
+curl -X POST http://localhost:2910/api/v1/auth/sign-up -H "Content-Type: application/json" -d "{\"name\": \"${ANCLAX_USERNAME}\", \"password\": \"${ANCLAX_PASSWORD}\"}"
+
+# Copy accessToken from the sign-up response before making authenticated requests.
+export ANCLAX_ACCESS_TOKEN=your_access_token
 curl http://localhost:2910/api/v1/counter
-curl -X POST http://localhost:2910/api/v1/auth/sign-in -H "Content-Type: application/json" -d '{"name": "test", "password": "test"}'
-curl -X POST http://localhost:2910/api/v1/counter -H "Content-Type: application/json" -H "Authorization: your_access_token"
+curl -X POST http://localhost:2910/api/v1/counter -H "Content-Type: application/json" -H "Authorization: Bearer ${ANCLAX_ACCESS_TOKEN}"
 curl http://localhost:2910/api/v1/counter
 ```
+
+The generated `.env` file is ignored by Git. Keep it private; create a new value instead of committing it.
 
 ## Multi-service pattern
 

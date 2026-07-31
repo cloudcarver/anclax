@@ -5,6 +5,8 @@ package e2e_test
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"os"
@@ -24,17 +26,28 @@ import (
 const (
 	composeProject = "anclax_e2e"
 	composeFile    = "docker-compose.yaml"
-	e2eDBDSN       = "postgres://postgres:postgres@127.0.0.1:7432/postgres?sslmode=disable"
 	e2eBaseURL     = "http://anclax.test/api/v1"
 )
 
-var e2eSkipReason string
+var (
+	e2eDBDSN      string
+	e2eDBPassword string
+	e2eSkipReason string
+)
 
 func TestMain(m *testing.M) {
 	if !dockerAvailable() {
 		e2eSkipReason = "docker not available"
 		os.Exit(m.Run())
 	}
+
+	passwordBytes := make([]byte, 32)
+	if _, err := rand.Read(passwordBytes); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to generate e2e database password: %v\n", err)
+		os.Exit(1)
+	}
+	e2eDBPassword = hex.EncodeToString(passwordBytes)
+	e2eDBDSN = fmt.Sprintf("postgres://postgres:%s@127.0.0.1:7432/postgres?sslmode=disable", e2eDBPassword)
 
 	_ = compose("down", "--remove-orphans")
 	if err := compose("up", "-d", "db"); err != nil {
@@ -135,6 +148,7 @@ func dockerAvailable() bool {
 func compose(args ...string) error {
 	fullArgs := append([]string{"compose", "-p", composeProject, "-f", composeFile}, args...)
 	cmd := exec.Command("docker", fullArgs...)
+	cmd.Env = append(os.Environ(), "ANCLAX_E2E_POSTGRES_PASSWORD="+e2eDBPassword)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("docker %v failed: %w: %s", fullArgs, err, string(output))
