@@ -80,17 +80,24 @@ func (h *Hub) Unsubscribe(topic string, s *Session) error {
 	return nil
 }
 
-func (h *Hub) broadcastExcept(topic string, data any, exceptID string) {
+func (h *Hub) snapshotSessions(topic string) []*Session {
 	h.mu.RLock()
-	sessions, ok := h.topicRooms[topic]
-	h.mu.RUnlock()
+	defer h.mu.RUnlock()
 
+	room, ok := h.topicRooms[topic]
 	if !ok {
-		return
+		return nil
 	}
+	sessions := make([]*Session, 0, len(room))
+	for _, session := range room {
+		sessions = append(sessions, session)
+	}
+	return sessions
+}
 
-	for id, s := range sessions {
-		if id == exceptID {
+func (h *Hub) broadcastExcept(topic string, data any, exceptID string) {
+	for _, s := range h.snapshotSessions(topic) {
+		if s.id == exceptID {
 			continue
 		}
 		if err := s.WriteTextMessage(data); err != nil {
@@ -106,13 +113,7 @@ func (h *Hub) broadcastExcept(topic string, data any, exceptID string) {
 }
 
 func (h *Hub) Broadcast(topic string, data any) {
-	h.mu.RLock()
-	rooms, ok := h.topicRooms[topic]
-	h.mu.RUnlock()
-	if !ok {
-		return
-	}
-	for _, s := range rooms {
+	for _, s := range h.snapshotSessions(topic) {
 		if err := s.WriteTextMessage(data); err != nil {
 			broadcastErrorCounter.Inc()
 			wslog.Error(
@@ -128,16 +129,8 @@ func (h *Hub) Broadcast(topic string, data any) {
 // broadcastExceptBinary sends a binary payload to all subscribers of a topic
 // except the session identified by exceptID.
 func (h *Hub) broadcastExceptBinary(topic string, data []byte, exceptID string) {
-	h.mu.RLock()
-	sessions, ok := h.topicRooms[topic]
-	h.mu.RUnlock()
-
-	if !ok {
-		return
-	}
-
-	for id, s := range sessions {
-		if id == exceptID {
+	for _, s := range h.snapshotSessions(topic) {
+		if s.id == exceptID {
 			continue
 		}
 		s.WriteBinaryMessage(data)
@@ -146,13 +139,7 @@ func (h *Hub) broadcastExceptBinary(topic string, data []byte, exceptID string) 
 
 // BroadcastBinary sends a binary payload to all subscribers of a topic.
 func (h *Hub) BroadcastBinary(topic string, data []byte) {
-	h.mu.RLock()
-	rooms, ok := h.topicRooms[topic]
-	h.mu.RUnlock()
-	if !ok {
-		return
-	}
-	for _, s := range rooms {
+	for _, s := range h.snapshotSessions(topic) {
 		s.WriteBinaryMessage(data)
 	}
 }
