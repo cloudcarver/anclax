@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cloudcarver/anclax/pkg/codegen/codegenpath"
 	"github.com/cloudcarver/anclax/pkg/codegen/gotypes"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/pkg/errors"
@@ -27,6 +28,7 @@ type Manager struct {
 	modulePath string
 	rootPath   string
 	outputPath string
+	outputRel  string
 	files      map[string]*File
 }
 
@@ -78,23 +80,28 @@ func Load(workdir string, config Config) (*Manager, error) {
 	if config.Path == "" || config.Output == "" {
 		return nil, nil
 	}
-	modulePath, err := parseModulePath(filepath.Join(workdir, "go.mod"))
+	resolvedWorkdir, err := codegenpath.Resolve(workdir, ".")
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid schemas workdir")
+	}
+	modulePath, err := parseModulePath(filepath.Join(resolvedWorkdir, "go.mod"))
 	if err != nil {
 		return nil, err
 	}
-	rootPath := config.Path
-	if !filepath.IsAbs(rootPath) {
-		rootPath = filepath.Join(workdir, rootPath)
+	rootPath, err := codegenpath.ResolveRead(workdir, config.Path)
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid schemas input path")
 	}
-	outputPath := config.Output
-	if !filepath.IsAbs(outputPath) {
-		outputPath = filepath.Join(workdir, outputPath)
+	if _, err := codegenpath.ResolveSubpath(workdir, config.Output); err != nil {
+		return nil, errors.Wrap(err, "invalid schemas output")
 	}
+	outputRel := filepath.Clean(config.Output)
 	m := &Manager{
-		workdir:    workdir,
+		workdir:    resolvedWorkdir,
 		modulePath: modulePath,
 		rootPath:   filepath.Clean(rootPath),
-		outputPath: filepath.Clean(outputPath),
+		outputPath: filepath.Join(resolvedWorkdir, outputRel),
+		outputRel:  outputRel,
 		files:      map[string]*File{},
 	}
 	if _, err := os.Stat(m.rootPath); err != nil {
@@ -171,7 +178,7 @@ func (m *Manager) Generate() error {
 	if m == nil {
 		return nil
 	}
-	if err := os.RemoveAll(m.outputPath); err != nil && !os.IsNotExist(err) {
+	if err := codegenpath.RemoveAll(m.workdir, m.outputRel); err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	if len(m.files) == 0 {
@@ -187,11 +194,8 @@ func (m *Manager) Generate() error {
 		if err != nil {
 			return errors.Wrapf(err, "failed to render schema file %s", file.RelPath)
 		}
-		outPath := filepath.Join(m.outputPath, strings.TrimSuffix(file.RelPath, filepath.Ext(file.RelPath))+".go")
-		if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
-			return err
-		}
-		if err := os.WriteFile(outPath, []byte(code), 0644); err != nil {
+		outRel := filepath.Join(m.outputRel, strings.TrimSuffix(file.RelPath, filepath.Ext(file.RelPath))+".go")
+		if err := codegenpath.WriteFile(m.workdir, outRel, []byte(code), 0644); err != nil {
 			return err
 		}
 	}
