@@ -5,9 +5,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/cloudcarver/anclax"
 	dst_codegen "github.com/cloudcarver/anclax/lib/dst"
+	"github.com/cloudcarver/anclax/pkg/codegen/codegenpath"
 	oapi_codegen "github.com/cloudcarver/anclax/pkg/codegen/oapi"
 	schema_codegen "github.com/cloudcarver/anclax/pkg/codegen/schemas"
 	task_codegen "github.com/cloudcarver/anclax/pkg/codegen/task"
@@ -41,18 +44,18 @@ var cleanCmd = &cli.Command{
 	Action: runClean,
 }
 
-func copyEmbedDir(fs embed.FS, srcDir string, destDir string) error {
+func copyEmbedDir(fs embed.FS, srcDir, workdir, destDir string) error {
 	entries, err := fs.ReadDir(srcDir)
 	if err != nil {
 		return errors.Wrapf(err, "failed to read embedded directory %s", srcDir)
 	}
 
-	if err := os.MkdirAll(destDir, 0755); err != nil {
+	if err := codegenpath.MkdirAll(workdir, destDir, 0755); err != nil {
 		return errors.Wrapf(err, "failed to create directory %s", destDir)
 	}
 	for _, entry := range entries {
 		if entry.IsDir() {
-			if err := copyEmbedDir(fs, filepath.Join(srcDir, entry.Name()), filepath.Join(destDir, entry.Name())); err != nil {
+			if err := copyEmbedDir(fs, filepath.Join(srcDir, entry.Name()), workdir, filepath.Join(destDir, entry.Name())); err != nil {
 				return err
 			}
 		} else {
@@ -60,7 +63,7 @@ func copyEmbedDir(fs embed.FS, srcDir string, destDir string) error {
 			if err != nil {
 				return errors.Wrapf(err, "failed to read embedded file %s", filepath.Join(srcDir, entry.Name()))
 			}
-			if err := os.WriteFile(filepath.Join(destDir, entry.Name()), content, 0644); err != nil {
+			if err := codegenpath.WriteFile(workdir, filepath.Join(destDir, entry.Name()), content, 0644); err != nil {
 				return errors.Wrapf(err, "failed to write embedded file %s", filepath.Join(destDir, entry.Name()))
 			}
 		}
@@ -68,18 +71,21 @@ func copyEmbedDir(fs embed.FS, srcDir string, destDir string) error {
 	return nil
 }
 
-func writeAnclaxDef(outdir string) error {
-	if err := os.MkdirAll(outdir, 0755); err != nil {
+func writeAnclaxDef(workdir, outdir string) error {
+	if _, err := codegenpath.Resolve(workdir, outdir); err != nil {
+		return errors.Wrap(err, "invalid anclax def directory")
+	}
+	if err := codegenpath.MkdirAll(workdir, outdir, 0755); err != nil {
 		return errors.Wrap(err, "failed to create anclax def directory")
 	}
 
 	// write migrations files
-	if err := copyEmbedDir(anclax.Migrations, "sql", filepath.Join(outdir, "sql")); err != nil {
+	if err := copyEmbedDir(anclax.Migrations, "sql", workdir, filepath.Join(outdir, "sql")); err != nil {
 		return errors.Wrap(err, "failed to copy migrations files")
 	}
 
 	// write api spec files
-	if err := copyEmbedDir(anclax.API, "api", filepath.Join(outdir, "api")); err != nil {
+	if err := copyEmbedDir(anclax.API, "api", workdir, filepath.Join(outdir, "api")); err != nil {
 		return errors.Wrap(err, "failed to copy api spec files")
 	}
 
@@ -102,19 +108,16 @@ func runClean(c *cli.Context) error {
 		workdir = "."
 	}
 
-	tempDir, err := os.MkdirTemp("", "anclax-codegen-")
+	stagingDir, err := codegenpath.MkdirTemp(workdir, ".anclax-codegen-")
 	if err != nil {
 		return errors.Wrap(err, "failed to create temporary directory")
 	}
-	defer os.RemoveAll(tempDir)
+	defer codegenpath.RemoveAll(workdir, stagingDir)
 
-	return clean(tempDir, config, workdir)
+	return clean(stagingDir, config, workdir)
 }
 
 func genTaskHandler(workdir string, config *TaskHandlerConfig, schemasConfig *SchemasConfig) error {
-	if err := os.MkdirAll(filepath.Dir(filepath.Join(workdir, config.Out)), 0755); err != nil {
-		return errors.Wrap(err, "failed to create output directory")
-	}
 	var schemaCfg *schema_codegen.Config
 	if schemasConfig != nil {
 		schemaCfg = &schema_codegen.Config{Path: schemasConfig.Path, Output: schemasConfig.Output}
@@ -144,9 +147,12 @@ func genDST(workdir string, config *DSTConfig) error {
 		return errors.New("dst out is required")
 	}
 
-	specPath := config.Path
-	if !filepath.IsAbs(specPath) {
-		specPath = filepath.Join(workdir, config.Path)
+	specPath, err := codegenpath.ResolveRead(workdir, config.Path)
+	if err != nil {
+		return errors.Wrap(err, "invalid dst input path")
+	}
+	if _, err := codegenpath.Resolve(workdir, config.Out); err != nil {
+		return errors.Wrap(err, "invalid dst out")
 	}
 	spec, err := dst_codegen.LoadHybridSpecFromFile(specPath)
 	if err != nil {
@@ -160,14 +166,7 @@ func genDST(workdir string, config *DSTConfig) error {
 		return errors.Wrap(err, "failed to generate dst code")
 	}
 
-	outPath := config.Out
-	if !filepath.IsAbs(outPath) {
-		outPath = filepath.Join(workdir, config.Out)
-	}
-	if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
-		return errors.Wrap(err, "failed to create output directory")
-	}
-	if err := os.WriteFile(outPath, []byte(code), 0644); err != nil {
+	if err := codegenpath.WriteFile(workdir, config.Out, []byte(code), 0644); err != nil {
 		return errors.Wrap(err, "failed to write dst generated code")
 	}
 	return nil
@@ -183,40 +182,104 @@ func runGen(c *cli.Context) error {
 	if workdir == "" {
 		workdir = "."
 	}
-	return codegen(c.String("config"), c.Args().First())
+	return codegen(c.String("config"), workdir)
 }
 
-func clean(tempDir string, config *Config, workdir string) error {
+func clean(stagingDir string, config *Config, workdir string) error {
+	type pendingMove struct {
+		source   string
+		rel      string
+		target   string
+		identity string
+	}
+	pendingByIdentity := map[string]pendingMove{}
 	for _, pattern := range config.CleanItems {
-		matches, err := filepath.Glob(filepath.Join(workdir, pattern))
+		resolvedPattern, err := codegenpath.ResolvePattern(workdir, pattern)
+		if err != nil {
+			return errors.Wrapf(err, "invalid clean pattern %s", pattern)
+		}
+		matches, err := filepath.Glob(resolvedPattern)
 		if err != nil {
 			return errors.Wrapf(err, "failed to glob pattern %s", pattern)
 		}
 
 		for _, match := range matches {
-			// Create target directory in temp folder with the same relative structure
-			relPath, err := filepath.Rel(workdir, match)
+			relPath, err := codegenpath.RelEntry(workdir, match)
 			if err != nil {
-				return errors.Wrapf(err, "failed to get relative path for %s", match)
+				return errors.Wrapf(err, "clean match %s escapes workdir", match)
 			}
-
-			targetDir := filepath.Dir(filepath.Join(tempDir, relPath))
-			if err := os.MkdirAll(targetDir, 0755); err != nil {
-				return errors.Wrapf(err, "failed to create temp directory for %s", relPath)
+			resolvedParent, err := codegenpath.Resolve(workdir, filepath.Dir(relPath))
+			if err != nil {
+				return errors.Wrapf(err, "invalid clean parent for %s", relPath)
 			}
-
-			// Move the file to temp directory
-			targetPath := filepath.Join(tempDir, relPath)
-			if err := os.Rename(match, targetPath); err != nil {
-				return errors.Wrapf(err, "failed to move %s to temp directory", match)
+			identity := filepath.Join(resolvedParent, filepath.Base(relPath))
+			canonicalRel, err := codegenpath.RelEntry(workdir, identity)
+			if err != nil {
+				return errors.Wrapf(err, "invalid clean match %s", relPath)
+			}
+			if pathContains(stagingDir, canonicalRel) {
+				continue
+			}
+			pendingByIdentity[identity] = pendingMove{
+				source:   match,
+				rel:      canonicalRel,
+				target:   filepath.Join(stagingDir, canonicalRel),
+				identity: identity,
 			}
 		}
+	}
+
+	pending := make([]pendingMove, 0, len(pendingByIdentity))
+	for _, move := range pendingByIdentity {
+		pending = append(pending, move)
+	}
+	sort.Slice(pending, func(i, j int) bool {
+		if len(pending[i].identity) != len(pending[j].identity) {
+			return len(pending[i].identity) < len(pending[j].identity)
+		}
+		return pending[i].identity < pending[j].identity
+	})
+	selected := pending[:0]
+	for _, move := range pending {
+		covered := false
+		for _, parent := range selected {
+			if pathContains(parent.identity, move.identity) {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			selected = append(selected, move)
+		}
+	}
+
+	var moved []pendingMove
+	rollback := func(cause error) error {
+		for i := len(moved) - 1; i >= 0; i-- {
+			move := moved[i]
+			err := codegenpath.Rename(workdir, move.target, move.rel)
+			if err != nil {
+				return errors.Wrapf(cause, "also failed to roll back clean path %s: %v", move.rel, err)
+			}
+		}
+		return cause
+	}
+
+	for _, move := range selected {
+		if err := codegenpath.Rename(workdir, move.rel, move.target); err != nil {
+			return rollback(errors.Wrapf(err, "failed to move %s to temp directory", move.source))
+		}
+		moved = append(moved, move)
 	}
 	return nil
 }
 
-func restore(tempDir string, config *Config, workdir string) error {
-	return filepath.Walk(tempDir, func(path string, info os.FileInfo, err error) error {
+func restore(stagingDir string, _ *Config, workdir string) error {
+	stagingPath, err := codegenpath.Resolve(workdir, stagingDir)
+	if err != nil {
+		return errors.Wrap(err, "invalid restore staging directory")
+	}
+	return filepath.Walk(stagingPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -226,19 +289,12 @@ func restore(tempDir string, config *Config, workdir string) error {
 		}
 
 		// Get relative path from tempDir to properly restore
-		relPath, err := filepath.Rel(tempDir, path)
+		relPath, err := filepath.Rel(stagingPath, path)
 		if err != nil {
 			return errors.Wrapf(err, "failed to get relative path for %s", path)
 		}
 
-		// Create target directory if it doesn't exist
-		destPath := filepath.Join(workdir, relPath)
-		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
-			return errors.Wrapf(err, "failed to create directory for restoring %s", relPath)
-		}
-
-		// Move file back
-		if err := os.Rename(path, destPath); err != nil {
+		if err := codegenpath.Rename(workdir, filepath.Join(stagingDir, relPath), relPath); err != nil {
 			return errors.Wrapf(err, "failed to restore %s", relPath)
 		}
 
@@ -246,35 +302,14 @@ func restore(tempDir string, config *Config, workdir string) error {
 	})
 }
 
+func pathContains(parent, child string) bool {
+	rel, err := filepath.Rel(parent, child)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
 func codegen(configPath string, workdir string) error {
-	tempDir, err := os.MkdirTemp("", "anclax-codegen-")
-	if err != nil {
-		return errors.Wrap(err, "failed to create temporary directory")
-	}
-	defer os.RemoveAll(tempDir)
-
-	preCodegen := func(config *Config) error {
-		if len(config.CleanItems) == 0 {
-			return nil
-		}
-		if err := clean(tempDir, config, workdir); err != nil {
-			return errors.Wrap(err, "failed to clean")
-		}
-		return nil
-	}
-
-	postCodegen := func(config *Config, codegenErr error) error {
-		if len(config.CleanItems) == 0 {
-			return nil
-		}
-		if codegenErr == nil {
-			return nil
-		}
-		// If there was an error, restore the files from temp directory
-		if err := restore(tempDir, config, workdir); err != nil {
-			return err
-		}
-		return nil
+	if workdir == "" {
+		workdir = "."
 	}
 
 	// parse config
@@ -283,18 +318,34 @@ func codegen(configPath string, workdir string) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to parse config")
 	}
+	if err := validateCodegenPaths(workdir, config); err != nil {
+		return errors.Wrap(err, "failed to validate codegen paths")
+	}
+
+	stagingDir := ""
+	if len(config.CleanItems) > 0 {
+		stagingDir, err = codegenpath.MkdirTemp(workdir, ".anclax-codegen-")
+		if err != nil {
+			return errors.Wrap(err, "failed to create temporary directory")
+		}
+		defer codegenpath.RemoveAll(workdir, stagingDir)
+	}
 
 	// pre-codegen
-	if err := preCodegen(config); err != nil {
-		return errors.Wrap(err, "failed to pre-codegen")
+	if stagingDir != "" {
+		if err := clean(stagingDir, config, workdir); err != nil {
+			return errors.Wrap(err, "failed to pre-codegen")
+		}
 	}
 
 	// codegen
 	codegenErr := _codegen(config, workdir)
 
 	// post-codegen
-	if err := postCodegen(config, codegenErr); err != nil {
-		return errors.Wrap(err, "failed to post-codegen")
+	if stagingDir != "" && codegenErr != nil {
+		if err := restore(stagingDir, config, workdir); err != nil {
+			return errors.Wrap(err, "failed to post-codegen")
+		}
 	}
 
 	return codegenErr
@@ -344,14 +395,8 @@ func _codegen(config *Config, workdir string) error {
 	}
 
 	if config.AnclaxDef != "" {
-		if filepath.IsAbs(config.AnclaxDef) {
-			if err := writeAnclaxDef(config.AnclaxDef); err != nil {
-				return errors.Wrap(err, "failed to write anclax def")
-			}
-		} else {
-			if err := writeAnclaxDef(filepath.Join(workdir, config.AnclaxDef)); err != nil {
-				return errors.Wrap(err, "failed to write anclax def")
-			}
+		if err := writeAnclaxDef(workdir, config.AnclaxDef); err != nil {
+			return errors.Wrap(err, "failed to write anclax def")
 		}
 	}
 
@@ -376,7 +421,11 @@ func genOapi(workdir string, config *OapiCodegenConfig, schemasConfig *SchemasCo
 }
 
 func genWire(workdir string, config *WireConfig) error {
-	cmd := exec.Command(command("wire"), config.Path)
+	wireDir, err := resolveWireDir(workdir, config.Path)
+	if err != nil {
+		return errors.Wrap(err, "invalid wire path")
+	}
+	cmd := exec.Command(command("wire"), wireDir)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Dir = workdir
@@ -384,7 +433,14 @@ func genWire(workdir string, config *WireConfig) error {
 }
 
 func genSqlc(workdir string, config *SqlcConfig) error {
-	cmd := exec.Command(command("sqlc"), "generate", "--file", config.Path)
+	configPath, err := codegenpath.Resolve(workdir, config.Path)
+	if err != nil {
+		return errors.Wrap(err, "invalid sqlc path")
+	}
+	if err := validateSQLCOutputs(workdir, config.Path); err != nil {
+		return errors.Wrap(err, "invalid sqlc outputs")
+	}
+	cmd := exec.Command(command("sqlc"), "generate", "--file", configPath)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Dir = workdir
@@ -393,7 +449,15 @@ func genSqlc(workdir string, config *SqlcConfig) error {
 
 func genMock(workdir string, config *MockgenConfig) error {
 	for _, file := range config.Files {
-		cmd := exec.Command(command("mockgen"), "-source", file.Source, "-destination", file.Destination, "-package", file.Package)
+		source, err := codegenpath.ResolveRead(workdir, file.Source)
+		if err != nil {
+			return errors.Wrap(err, "invalid mockgen source")
+		}
+		destination, err := codegenpath.Resolve(workdir, file.Destination)
+		if err != nil {
+			return errors.Wrap(err, "invalid mockgen destination")
+		}
+		cmd := exec.Command(command("mockgen"), "-source", source, "-destination", destination, "-package", file.Package)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		cmd.Dir = workdir
