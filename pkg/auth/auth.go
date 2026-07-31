@@ -99,7 +99,7 @@ func NewAuth(cfg *config.Config, macaroonManager macaroons.MacaroonManagerInterf
 func (a *Auth) Authfunc(c fiber.Ctx) error {
 	authHeader := c.Get("Authorization")
 	if authHeader == "" {
-		return errors.Wrap(fiber.ErrUnauthorized, "missing authorization header")
+		return fiber.ErrUnauthorized
 	}
 
 	// Remove "Bearer " prefix if present
@@ -110,14 +110,14 @@ func (a *Auth) Authfunc(c fiber.Ctx) error {
 
 	token, err := a.macaroonManager.Parse(c.Context(), tokenString)
 	if err != nil {
-		return errors.Wrapf(fiber.ErrUnauthorized, "failed to parse macaroon token, token: %s, err: %v", tokenString, err)
+		return fiber.ErrUnauthorized
 	}
 
 	c.Locals(ContextKeyMacaroon, token)
 
 	for _, caveat := range token.Caveats {
 		if err := caveat.Validate(c); err != nil {
-			return errors.Wrapf(fiber.ErrUnauthorized, "failed to validate caveat, token: %s, err: %v", tokenString, err)
+			return fiber.ErrUnauthorized
 		}
 	}
 
@@ -177,7 +177,7 @@ func (a *Auth) CreateRefreshToken(ctx context.Context, group string, accessToken
 func (a *Auth) ParseRefreshToken(ctx context.Context, refreshToken string) (*macaroons.Macaroon, *RefreshOnlyCaveat, error) {
 	token, err := a.macaroonManager.Parse(ctx, refreshToken)
 	if err != nil {
-		return nil, nil, errors.Wrapf(err, "failed to parse macaroon token, token: %s", refreshToken)
+		return nil, nil, errors.Wrap(err, "failed to parse refresh token")
 	}
 
 	if len(token.Caveats) != 1 {

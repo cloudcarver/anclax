@@ -205,7 +205,6 @@ func (s *Server) registerMiddleware() {
 				zap.Int("status", c.Response().StatusCode()),
 				zap.String("method", c.Method()),
 				zap.String("path", c.Path()),
-				zap.String("token", fmt.Sprintf("%v", c.Get("Authorization"))),
 				zap.String("request-id", requestid.FromContext(c)),
 				zap.Float32("latency-ms", float32(end.Sub(start).Milliseconds())),
 				zap.Error(err),
