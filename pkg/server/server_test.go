@@ -1,14 +1,54 @@
 package server
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/cloudcarver/anclax/pkg/config"
+	"github.com/cloudcarver/anclax/pkg/globalctx"
+	"github.com/cloudcarver/anclax/pkg/logger"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 func stringPtr(s string) *string {
 	return &s
+}
+
+func TestResponseLogsExcludeAuthorizationAndDisabledBodies(t *testing.T) {
+	core, observed := observer.New(zapcore.InfoLevel)
+	previousLog := log
+	log = logger.NewLogAgentWithLogger("server", zap.New(core))
+	t.Cleanup(func() { log = previousLog })
+
+	globalCtx := globalctx.New()
+	t.Cleanup(globalCtx.Cancel)
+
+	s, err := NewServer(&config.Config{}, config.DefaultLibConfig(), globalCtx, nil, nil, nil)
+	require.NoError(t, err)
+	s.GetApp().Get("/credential-response", func(c fiber.Ctx) error {
+		DisableBodyLog(c)
+		return c.SendString("response-secret-canary")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/credential-response", nil)
+	req.Header.Set("Authorization", "Bearer request-secret-canary")
+	resp, err := s.GetApp().Test(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	entries := observed.FilterMessage("response").All()
+	require.Len(t, entries, 1)
+	fields, err := json.Marshal(entries[0].ContextMap())
+	require.NoError(t, err)
+	require.NotContains(t, string(fields), "request-secret-canary")
+	require.NotContains(t, string(fields), "response-secret-canary")
+	require.NotContains(t, entries[0].ContextMap(), "token")
 }
 
 func TestLogRules(t *testing.T) {

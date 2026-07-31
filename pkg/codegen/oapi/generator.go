@@ -617,10 +617,10 @@ func renderMiddlewareDefinitions(b *strings.Builder, doc *document) {
 		}
 		b.WriteString(") error {\n")
 		b.WriteString("\tif err := x.AuthFunc(c); err != nil {\n")
-		b.WriteString("\t\treturn c.Status(fiber.StatusUnauthorized).SendString(err.Error())\n")
+		b.WriteString("\t\treturn c.SendStatus(fiber.StatusUnauthorized)\n")
 		b.WriteString("\t}\n")
 		b.WriteString("\tif err := x.PreValidate(c); err != nil {\n")
-		b.WriteString("\t\treturn c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())\n")
+		b.WriteString("\t\treturn c.SendStatus(xCheckRuleStatusCode(err))\n")
 		b.WriteString("\t}\n")
 		if operationNeedsOperationID(op) {
 			b.WriteString("\toperationID := ")
@@ -632,12 +632,12 @@ func renderMiddlewareDefinitions(b *strings.Builder, doc *document) {
 				b.WriteString("\tif err := ")
 				b.WriteString(scope)
 				b.WriteString("; err != nil {\n")
-				b.WriteString("\t\treturn c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())\n")
+				b.WriteString("\t\treturn c.SendStatus(xCheckRuleStatusCode(err))\n")
 				b.WriteString("\t}\n")
 			}
 		}
 		b.WriteString("\tif err := x.PostValidate(c); err != nil {\n")
-		b.WriteString("\t\treturn c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())\n")
+		b.WriteString("\t\treturn c.SendStatus(xCheckRuleStatusCode(err))\n")
 		b.WriteString("\t}\n")
 		b.WriteString("\treturn x.ServerInterface.")
 		b.WriteString(op.Name)

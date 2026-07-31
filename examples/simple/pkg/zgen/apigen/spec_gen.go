@@ -400,17 +400,17 @@ func NewXMiddleware(handler ServerInterface, validator Validator) ServerInterfac
 // (POST /counter)
 func (x *XMiddleware) IncrementCounter(c fiber.Ctx) error {
 	if err := x.AuthFunc(c); err != nil {
-		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
+		return c.SendStatus(fiber.StatusUnauthorized)
 	}
 	if err := x.PreValidate(c); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return c.SendStatus(xCheckRuleStatusCode(err))
 	}
 	operationID := "IncrementCounter"
 	if err := x.OperationPermit(c, operationID); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return c.SendStatus(xCheckRuleStatusCode(err))
 	}
 	if err := x.PostValidate(c); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return c.SendStatus(xCheckRuleStatusCode(err))
 	}
 	return x.ServerInterface.IncrementCounter(c)
 }

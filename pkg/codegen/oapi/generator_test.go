@@ -239,12 +239,15 @@ func TestGenerateMiddlewareUsesWrappedFiberErrorStatus(t *testing.T) {
 		}
 	}
 
-	statusCall := "return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())"
+	statusCall := "return c.SendStatus(xCheckRuleStatusCode(err))"
 	if got := strings.Count(out, statusCall); got != 3 {
 		t.Fatalf("generated output contains %q %d times, want 3", statusCall, got)
 	}
-	if strings.Contains(out, "return c.Status(fiber.StatusForbidden).SendString(err.Error())") {
-		t.Fatal("generated output still returns fixed 403 for check-rule errors")
+	if strings.Contains(out, "SendString(err.Error())") {
+		t.Fatal("generated security middleware still returns raw errors")
+	}
+	if !strings.Contains(out, "return c.SendStatus(fiber.StatusUnauthorized)") {
+		t.Fatal("generated authentication middleware does not return a stable 401")
 	}
 }
 

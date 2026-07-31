@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	anclaxauth "github.com/cloudcarver/anclax/pkg/auth"
+	"github.com/cloudcarver/anclax/pkg/server"
 	"github.com/cloudcarver/anclax/pkg/service"
 	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
@@ -47,6 +48,39 @@ func (s stubService) SignIn(ctx context.Context, userID int32) (*apigen.Credenti
 }
 
 var _ service.ServiceInterface = stubService{}
+
+func TestSimpleAuthEndpointsDisableResponseBodyLogging(t *testing.T) {
+	testCases := []struct {
+		name string
+		path string
+		call func(*Controller, fiber.Ctx) error
+	}{
+		{name: "sign in", path: "/auth/sign-in", call: func(c *Controller, ctx fiber.Ctx) error { return c.SignIn(ctx) }},
+		{name: "refresh", path: "/auth/refresh", call: func(c *Controller, ctx fiber.Ctx) error { return c.RefreshToken(ctx) }},
+		{name: "sign up", path: "/auth/sign-up", call: func(c *Controller, ctx fiber.Ctx) error { return c.SignUp(ctx) }},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			app := fiber.New(fiber.Config{ErrorHandler: utils.ErrorHandler})
+			disabled := false
+			app.Use(func(c fiber.Ctx) error {
+				err := c.Next()
+				disabled = fiber.Locals[bool](c, server.ContextKeyDisableBodyLog)
+				return err
+			})
+
+			controller := &Controller{}
+			app.Post(tc.path, func(c fiber.Ctx) error { return tc.call(controller, c) })
+
+			req := httptest.NewRequest(http.MethodPost, tc.path, nil)
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.True(t, disabled)
+		})
+	}
+}
 
 type stubAuth struct {
 	anclaxauth.AuthInterface
