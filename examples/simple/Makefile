@@ -12,7 +12,7 @@ reload:
 	docker-compose restart dev
 
 db:
-	psql "postgresql://postgres:postgres@localhost:5432/postgres?sslmode=disable"
+	docker compose exec db psql -U postgres -d postgres
 
 test:
 	TEST_DIR=$(PROJECT_DIR)/e2e HOLD="$(HOLD)" ./scripts/run-local-test.sh "$(K)" 
