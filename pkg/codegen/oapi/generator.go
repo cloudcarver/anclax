@@ -172,6 +172,9 @@ func Generate(workdir string, config Config) error {
 	if config.Package == "" {
 		return errors.New("oapi-codegen package is required")
 	}
+	if err := gotypes.ValidateIdentifier(config.Package); err != nil {
+		return errors.Wrap(err, "invalid oapi-codegen package")
+	}
 
 	specPath := config.Path
 	if !filepath.IsAbs(specPath) {
@@ -189,6 +192,9 @@ func Generate(workdir string, config Config) error {
 	doc, err := buildDocument(swagger, sourcePath, config.Package, schemaManager)
 	if err != nil {
 		return errors.Wrap(err, "failed to build OpenAPI document")
+	}
+	if err := validateDocumentIdentifiers(doc); err != nil {
+		return errors.Wrap(err, "failed to validate generated OpenAPI identifiers")
 	}
 
 	specCode, err := renderSpec(doc)
@@ -281,6 +287,98 @@ func buildDocument(spec *openapi3.T, specPath string, packageName string, schema
 	sort.Slice(doc.Functions, func(i, j int) bool { return doc.Functions[i].Name < doc.Functions[j].Name })
 
 	return doc, nil
+}
+
+func validateDocumentIdentifiers(doc *document) error {
+	if err := validateIdentifier("package", doc.PackageName); err != nil {
+		return err
+	}
+	for _, security := range doc.SecurityConsts {
+		if err := validateIdentifier("security constant", security.Name); err != nil {
+			return err
+		}
+	}
+	for _, schema := range doc.Schemas {
+		if err := validateIdentifier("schema", schema.Name); err != nil {
+			return err
+		}
+		for _, field := range schema.Fields {
+			if err := validateIdentifier("schema field", field.Name); err != nil {
+				return err
+			}
+		}
+	}
+	for _, enum := range doc.Enums {
+		if err := validateIdentifier("enum", enum.Name); err != nil {
+			return err
+		}
+		for _, value := range enum.Values {
+			if err := validateIdentifier("enum value", value.Name); err != nil {
+				return err
+			}
+		}
+	}
+	for _, op := range doc.Operations {
+		if err := validateIdentifier("operation", op.Name); err != nil {
+			return err
+		}
+		if op.RequestBody != nil {
+			if err := validateIdentifier("request body", op.RequestBody.AliasName); err != nil {
+				return err
+			}
+		}
+		for _, param := range append(append([]paramDef(nil), op.PathParams...), op.QueryParams...) {
+			if err := validateIdentifier("parameter field", param.Name); err != nil {
+				return err
+			}
+			if err := validateIdentifier("parameter variable", param.VarName); err != nil {
+				return err
+			}
+			if err := validateIdentifier("parameter name", param.GoName); err != nil {
+				return err
+			}
+		}
+		for _, response := range op.Responses {
+			if response.FieldName != "" {
+				if err := validateIdentifier("response field", response.FieldName); err != nil {
+					return err
+				}
+			}
+		}
+		for _, security := range op.Securities {
+			if err := validateIdentifier("operation security constant", security.ConstName); err != nil {
+				return err
+			}
+		}
+	}
+	for _, rule := range doc.CheckRules {
+		if err := validateIdentifier("check rule", rule.Name); err != nil {
+			return err
+		}
+		for _, param := range rule.Params {
+			if err := validateIdentifier("check rule parameter", param.Name); err != nil {
+				return err
+			}
+		}
+	}
+	for _, fn := range doc.Functions {
+		if err := validateIdentifier("function", fn.Name); err != nil {
+			return err
+		}
+		for _, param := range fn.Params {
+			if err := validateIdentifier("function parameter", param.Name); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func validateIdentifier(context, name string) error {
+	if err := gotypes.ValidateIdentifier(name); err != nil {
+		return errors.Wrapf(err, "invalid %s", context)
+	}
+	return nil
 }
 
 func buildSchemaDef(currentFile, name string, ref *openapi3.SchemaRef, enumMap map[string]*enumDef, imports map[string]struct{}, schemaManager *schema_codegen.Manager) (schemaDef, error) {
@@ -686,9 +784,9 @@ func renderSchema(b *strings.Builder, schema schemaDef) {
 		b.WriteString(field.Name)
 		b.WriteString(" ")
 		b.WriteString(field.Type)
-		b.WriteString(" `json:")
-		b.WriteString(strconv.Quote(jsonTag(field.JSONName, field.Optional)))
-		b.WriteString("`\n")
+		b.WriteString(" ")
+		b.WriteString(goStructTag("json:" + strconv.Quote(jsonTag(field.JSONName, field.Optional))))
+		b.WriteString("\n")
 	}
 	b.WriteString("}\n\n")
 }
@@ -712,11 +810,12 @@ func renderOperationParamStructs(b *strings.Builder, doc *document) {
 			b.WriteString(param.Name)
 			b.WriteString(" ")
 			b.WriteString(paramStructFieldType(param))
-			b.WriteString(" `query:")
-			b.WriteString(strconv.Quote(queryTag(param)))
-			b.WriteString(" json:")
-			b.WriteString(strconv.Quote(jsonTag(param.SourceName, !param.Required)))
-			b.WriteString("`\n")
+			b.WriteString(" ")
+			b.WriteString(goStructTag(
+				"query:"+strconv.Quote(queryTag(param)),
+				"json:"+strconv.Quote(jsonTag(param.SourceName, !param.Required)),
+			))
+			b.WriteString("\n")
 		}
 		b.WriteString("}\n\n")
 	}
@@ -1688,7 +1787,11 @@ func resolveType(currentFile, currentPackage string, ref *openapi3.SchemaRef, hi
 	}
 	if ref.Ref != "" {
 		if name, ok := componentNameFromRef(ref.Ref); ok {
-			return resolvedType{GoType: exportName(name)}, nil
+			goType := exportName(name)
+			if err := gotypes.ValidateIdentifier(goType); err != nil {
+				return resolvedType{}, errors.Wrapf(err, "invalid component schema name %q", name)
+			}
+			return resolvedType{GoType: goType}, nil
 		}
 		if schemaManager != nil {
 			if goType, imports, ok, err := schemaManager.ResolveRef(currentFile, currentPackage, ref.Ref); err != nil {
@@ -1703,24 +1806,35 @@ func resolveType(currentFile, currentPackage string, ref *openapi3.SchemaRef, hi
 	}
 
 	schema := ref.Value
-	if customType, customImports := customGoType(schema); customType != "" {
+	customType, customImports, err := customGoType(schema)
+	if err != nil {
+		return resolvedType{}, err
+	}
+	if customType != "" {
 		return resolvedType{GoType: customType, Imports: customImports}, nil
 	}
 
 	if len(schema.Enum) > 0 {
-		baseType := primitiveType(schema)
+		baseType, err := primitiveType(schema)
+		if err != nil {
+			return resolvedType{}, err
+		}
 		enumName := exportName(hint)
 		if enumName == "" {
 			return resolvedType{GoType: baseType}, nil
 		}
-		ensureEnum(enumMap, enumName, baseType, schema.Description, schema.Enum)
+		if err := ensureEnum(enumMap, enumName, baseType, schema.Description, schema.Enum); err != nil {
+			return resolvedType{}, err
+		}
 		return resolvedType{GoType: enumName}, nil
 	}
 
 	if schema.Type == nil {
 		return resolvedType{GoType: "interface{}"}, nil
 	}
-	if goType, imports, ok := gotypes.ResolvePrimitive(schema); ok {
+	if goType, imports, ok, err := gotypes.ResolvePrimitive(schema); err != nil {
+		return resolvedType{}, err
+	} else if ok {
 		return resolvedType{GoType: goType, Imports: imports}, nil
 	}
 	switch {
@@ -1737,32 +1851,40 @@ func resolveType(currentFile, currentPackage string, ref *openapi3.SchemaRef, hi
 	}
 }
 
-func ensureEnum(enumMap map[string]*enumDef, name, baseType, description string, values []any) {
+func ensureEnum(enumMap map[string]*enumDef, name, baseType, description string, values []any) error {
 	if _, ok := enumMap[name]; ok {
-		return
+		return nil
 	}
 	enum := &enumDef{Name: name, Type: baseType, Description: description}
 	for _, value := range values {
-		enum.Values = append(enum.Values, enumValue{Name: name + exportName(fmt.Sprint(value)), Literal: enumLiteral(baseType, value)})
+		literal, err := gotypes.EnumLiteral(baseType, value)
+		if err != nil {
+			return err
+		}
+		enum.Values = append(enum.Values, enumValue{Name: name + exportName(fmt.Sprint(value)), Literal: literal})
 	}
 	enumMap[name] = enum
+	return nil
 }
 
-func primitiveType(schema *openapi3.Schema) string {
+func primitiveType(schema *openapi3.Schema) (string, error) {
 	return gotypes.Primitive(schema)
 }
 
-func customGoType(schema *openapi3.Schema) (string, []string) {
+func customGoType(schema *openapi3.Schema) (string, []string, error) {
 	if schema == nil || schema.Extensions == nil {
-		return "", nil
+		return "", nil, nil
 	}
 	value, ok := schema.Extensions["x-go-type"]
 	if !ok {
-		return "", nil
+		return "", nil, nil
 	}
 	goType, ok := value.(string)
 	if !ok {
-		return "", nil
+		return "", nil, errors.New("x-go-type must be a string")
+	}
+	if err := gotypes.ValidateTypeExpression(goType); err != nil {
+		return "", nil, errors.Wrap(err, "invalid x-go-type")
 	}
 	var imports []string
 	if rawImports, ok := schema.Extensions["x-go-type-imports"]; ok {
@@ -1777,7 +1899,7 @@ func customGoType(schema *openapi3.Schema) (string, []string) {
 			imports = append(imports, typed...)
 		}
 	}
-	return goType, imports
+	return goType, imports, nil
 }
 
 func orderedOperations(pathItem *openapi3.PathItem) []struct {
@@ -2047,20 +2169,19 @@ func pointerType(goType string) string {
 	return "*" + goType
 }
 
-func enumLiteral(goType string, value any) string {
-	switch goType {
-	case "string":
-		return strconv.Quote(fmt.Sprint(value))
-	default:
-		return fmt.Sprint(value)
-	}
-}
-
 func jsonTag(name string, optional bool) string {
 	if optional {
 		return name + ",omitempty"
 	}
 	return name
+}
+
+func goStructTag(parts ...string) string {
+	value := strings.Join(parts, " ")
+	if strings.Contains(value, "`") {
+		return strconv.Quote(value)
+	}
+	return "`" + value + "`"
 }
 
 func writeComment(b *strings.Builder, text, indent string) {
