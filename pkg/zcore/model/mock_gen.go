@@ -926,6 +926,21 @@ func (mr *MockModelInterfaceMockRecorder) UpdateWorkerHeartbeat(ctx, id any) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateWorkerHeartbeat", reflect.TypeOf((*MockModelInterface)(nil).UpdateWorkerHeartbeat), ctx, id)
 }
 
+// UpgradeUserPasswordHash mocks base method.
+func (m *MockModelInterface) UpgradeUserPasswordHash(ctx context.Context, arg querier.UpgradeUserPasswordHashParams) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpgradeUserPasswordHash", ctx, arg)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpgradeUserPasswordHash indicates an expected call of UpgradeUserPasswordHash.
+func (mr *MockModelInterfaceMockRecorder) UpgradeUserPasswordHash(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpgradeUserPasswordHash", reflect.TypeOf((*MockModelInterface)(nil).UpgradeUserPasswordHash), ctx, arg)
+}
+
 // UpsertWorker mocks base method.
 func (m *MockModelInterface) UpsertWorker(ctx context.Context, arg querier.UpsertWorkerParams) (*querier.AnclaxWorker, error) {
 	m.ctrl.T.Helper()
