@@ -77,6 +77,126 @@ func TestTaskTagConcurrencySmoke(t *testing.T) {
 			require.NoError(t, conn.QueryRow(ctx, "SELECT count(*) FROM anclax.task_tag_permits WHERE tag = $1", tag).Scan(&permits))
 			require.Equal(t, want, permits)
 		}
+		membership := func(t *testing.T, id int32, tags ...string) {
+			t.Helper()
+			var got []string
+			require.NoError(t, conn.QueryRow(ctx, "SELECT COALESCE(array_agg(tag ORDER BY tag), ARRAY[]::text[]) FROM anclax.task_tags WHERE task_id = $1", id).Scan(&got))
+			require.ElementsMatch(t, tags, got)
+		}
+
+		t.Run("terminal_finalization_removes_membership_and_preserves_history_and_rules", func(t *testing.T) {
+			for _, status := range []string{"completed", "failed", "cancelled"} {
+				t.Run(status, func(t *testing.T) {
+					reset(t)
+					require.NoError(t, control.SetTagConcurrencyLimit(ctx, "a", 1))
+					p := port(t, 9*time.Second)
+					id := enqueue(t, "a", "b")
+					task := claim(t, p, id)
+					var result error
+					switch status {
+					case "failed":
+						result = errors.New("executor failed")
+					case "cancelled":
+						require.NoError(t, s.CancelTask(ctx, id))
+						result = store.ErrTaskCancelled
+					}
+					membership(t, id, "a", "b")
+					usage(t, "a", 1)
+					require.NoError(t, p.FinalizeTask(ctx, *task, result))
+					membership(t, id)
+					usage(t, "a", 0)
+					usage(t, "b", 0)
+					row, err := m.GetTaskByID(ctx, id)
+					require.NoError(t, err)
+					require.Equal(t, status, row.Status)
+					require.Equal(t, []string{"a", "b"}, *row.Attributes.Tags)
+					ids, err := m.ListTaskIDsByTags(ctx, querier.ListTaskIDsByTagsParams{Tags: []string{"a", "b"}, ExceptTagSets: []byte("[]")})
+					require.NoError(t, err)
+					require.Equal(t, []int32{id}, ids)
+					state, err := control.GetTagConcurrency(ctx, "a")
+					require.NoError(t, err)
+					require.NotNil(t, state.MaxConcurrency)
+					require.Equal(t, int32(1), *state.MaxConcurrency)
+				})
+			}
+		})
+
+		t.Run("historical_insert_and_edit_skip_membership_and_restore_rebuilds_it", func(t *testing.T) {
+			reset(t)
+			tags := []string{"history"}
+			id, err := s.PushTask(ctx, &apigen.Task{Status: apigen.Completed, Spec: apigen.TaskSpec{Type: "tag-probe", Payload: []byte(`{}`)}, Attributes: apigen.TaskAttributes{Tags: &tags}})
+			require.NoError(t, err)
+			membership(t, id)
+			_, err = m.GetTaskTagConcurrency(ctx, "history")
+			require.ErrorIs(t, err, pgx.ErrNoRows)
+			_, err = conn.Exec(ctx, `UPDATE anclax.tasks SET attributes = jsonb_set(attributes, '{tags}', '["restored"]') WHERE id = $1`, id)
+			require.NoError(t, err)
+			membership(t, id)
+			_, err = m.GetTaskTagConcurrency(ctx, "restored")
+			require.ErrorIs(t, err, pgx.ErrNoRows)
+			require.NoError(t, control.SetTagConcurrencyLimit(ctx, "restored", 0))
+			// The public resume API intentionally rejects terminal tasks, but
+			// low-level restoration must still rebuild admission membership.
+			_, err = conn.Exec(ctx, "UPDATE anclax.tasks SET status = 'pending' WHERE id = $1", id)
+			require.NoError(t, err)
+			membership(t, id, "restored")
+			p := port(t, 9*time.Second)
+			blocked(t, p, id)
+			require.NoError(t, control.SetTagConcurrencyLimit(ctx, "restored", 1))
+			task := claim(t, p, id)
+			usage(t, "restored", 1)
+			require.NoError(t, p.FinalizeTask(ctx, *task, nil))
+			membership(t, id)
+		})
+
+		t.Run("terminal_lease_recovery_removes_membership", func(t *testing.T) {
+			for _, status := range []string{"completed", "failed", "cancelled"} {
+				t.Run(status, func(t *testing.T) {
+					reset(t)
+					p := port(t, 9*time.Second)
+					id := enqueue(t, "a", "b")
+					claim(t, p, id)
+					require.NoError(t, m.UpdateTaskStatus(ctx, querier.UpdateTaskStatusParams{ID: id, Status: status}))
+					membership(t, id, "a", "b")
+					usage(t, "a", 1)
+					_, err := conn.Exec(ctx, "UPDATE anclax.tasks SET lease_expires_at = statement_timestamp() - interval '1 second' WHERE id = $1", id)
+					require.NoError(t, err)
+					require.NoError(t, m.MaintainTaskConcurrency(ctx, 9000))
+					membership(t, id)
+					usage(t, "a", 0)
+					usage(t, "b", 0)
+				})
+			}
+		})
+
+		t.Run("pending_running_paused_retry_and_cron_keep_membership", func(t *testing.T) {
+			reset(t)
+			p := port(t, 9*time.Second)
+			for _, status := range []apigen.TaskStatus{apigen.Pending, apigen.TaskStatus("running"), apigen.Paused} {
+				tags := []string{"a", "b"}
+				id, err := s.PushTask(ctx, &apigen.Task{Status: status, Spec: apigen.TaskSpec{Type: "tag-probe", Payload: []byte(`{}`)}, Attributes: apigen.TaskAttributes{Tags: &tags}})
+				require.NoError(t, err)
+				membership(t, id, "a", "b")
+			}
+			id := enqueue(t, "a", "b")
+			require.NoError(t, s.PauseTask(ctx, id))
+			membership(t, id, "a", "b")
+			require.NoError(t, s.ResumeTask(ctx, id))
+			membership(t, id, "a", "b")
+			_, err := conn.Exec(ctx, `UPDATE anclax.tasks SET attributes = attributes || '{"retryPolicy":{"interval":"1h","maxAttempts":2}}'::jsonb WHERE id = $1`, id)
+			require.NoError(t, err)
+			task := claim(t, p, id)
+			require.NoError(t, p.FinalizeTask(ctx, *task, errors.New("retry")))
+			membership(t, id, "a", "b")
+			usage(t, "a", 0)
+			id = enqueue(t, "a", "b")
+			_, err = conn.Exec(ctx, `UPDATE anclax.tasks SET attributes = attributes || '{"cronjob":{"cronExpression":"0 0 * * * *"}}'::jsonb WHERE id = $1`, id)
+			require.NoError(t, err)
+			task = claim(t, p, id)
+			require.NoError(t, p.FinalizeTask(ctx, *task, nil))
+			membership(t, id, "a", "b")
+			usage(t, "a", 0)
+		})
 
 		t.Run("all_tags_or_none_and_no_retry_consumption", func(t *testing.T) {
 			reset(t)

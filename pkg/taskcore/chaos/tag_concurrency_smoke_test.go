@@ -84,8 +84,17 @@ func checkTagConcurrencyAudit(ctx context.Context, inspector *Inspector, report 
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
-	report.AddEvent("assert.tag_concurrency", "postgres", "all admissions within global and group limits; permits drained", map[string]any{
-		"observations": observations, "violations": violations, "globalPeak": peak,
+	var terminalMemberships int64
+	if err := inspector.pool.QueryRow(ctx, `SELECT count(*)
+        FROM anclax.task_tags tt JOIN anclax.tasks t ON t.id = tt.task_id
+        WHERE t.status NOT IN ('pending', 'running', 'paused') AND t.locked_at IS NULL`).Scan(&terminalMemberships); err != nil {
+		return err
+	}
+	if terminalMemberships != 0 {
+		return fmt.Errorf("terminal tasks retained tag membership: %d", terminalMemberships)
+	}
+	report.AddEvent("assert.tag_concurrency", "postgres", "all admissions within limits; permits drained; terminal membership cleaned", map[string]any{
+		"observations": observations, "violations": violations, "globalPeak": peak, "terminalMemberships": terminalMemberships,
 	})
 	return nil
 }

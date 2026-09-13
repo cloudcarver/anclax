@@ -48,7 +48,9 @@ This limits admitted database leases. Executors still need to observe context ca
 
 ## Claim performance
 
-The schema separates task membership (`task_tags`), per-tag counters/configuration (`task_tag_concurrency`), and per-attempt occupancy (`task_tag_permits`). It maintains usage even for unlimited tags, which makes online limit activation correct without scanning running tasks at configuration time. The cost is membership storage and counter writes for tagged attempts, including unlimited tags. Untagged tasks acquire no tag counters.
+The schema separates task membership (`task_tags`), per-tag counters/configuration (`task_tag_concurrency`), and per-attempt occupancy (`task_tag_permits`). Membership is retained only for pending/running/paused tasks or tasks that still hold a lease. Once a task is terminal and unlocked, its membership is removed in the same transaction; original `attributes.tags` remain available for historical queries. Restoring a task to an executable state rebuilds membership. Configured tag limits remain available for future tasks.
+
+The system maintains usage even for unlimited tags, which makes online limit activation correct without scanning running tasks at configuration time. The cost is membership storage for active tasks and counter writes for tagged attempts, including unlimited tags. Untagged tasks acquire no tag counters.
 
 Business claims inspect at most 32 eligible candidates, locking them on demand and stopping after one admission. Tag rows are locked in lexical order with `FOR NO KEY UPDATE SKIP LOCKED`; contention on a shared tag does not wait while occupying other tag places. PostgreSQL's volatile function snapshots provide current counter values after locks are acquired.
 
@@ -62,9 +64,9 @@ The PostgreSQL smoke suite exercises a backlog of 20,070 parked tasks and one re
 
 ## Storage compatibility and upgrade
 
-Migration `0014_task_tag_concurrency` preserves task IDs, payloads, attributes (including duplicate tags), status, attempts, business schedules, and lease versions. It backfills normalized tag membership and counts existing held business leases, including paused/cancelled attempts. Existing tasks have no limits until you configure their tags.
+Migration `0014_task_tag_concurrency` preserves task IDs, payloads, attributes (including duplicate tags), status, attempts, business schedules, and lease versions. Tag backfill includes only `status IN ('pending', 'running', 'paused') OR locked_at IS NOT NULL`. Completed, failed, and cancelled tasks without a lease do not create membership or tag-registry entries. Existing held business leases still count, including paused/cancelled attempts. Existing tasks have no limits until you configure their tags.
 
-Stop old workers, apply migrations, and start only the new workers. Mixed old/new worker versions are unsupported: old SQL does not acquire tag permits or renew the explicit expiry. Legacy leases lack an owner TTL; the first new worker recovers them using the previous `locked_at + configured TTL` rule. Once reclaimed, every new attempt records its own TTL. The migration creates tables and indexes inside a transaction, so allow a maintenance window for a large task table.
+Stop old workers, apply migrations, and start only the new workers. Mixed old/new worker versions are unsupported: old SQL does not acquire tag permits or renew the explicit expiry. Legacy leases lack an owner TTL; the first new worker recovers them using the previous `locked_at + configured TTL` rule. Once reclaimed, every new attempt records its own TTL. Filtering backfill avoids historical tag expansion and derived-row writes, but selecting the relevant tasks and building indexes can still scan the task table. The migration still runs inside one transaction and holds its DDL locks until commit, so allow a maintenance window for a large task table.
 
 Custom model implementations/mocks need the new generated queries and task fields. Business Runner/Executor contracts and persisted task JSON remain unchanged. Database helper functions are internal; execute tasks through the worker, and retain the transaction around generated claim/outcome queries. Treat `InUse` as admitted usage, including expired attempts not yet recovered, rather than a live count of handler goroutines.
 

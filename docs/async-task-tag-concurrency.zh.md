@@ -46,7 +46,9 @@ if err := controlPlane.SetTagConcurrencyLimit(ctx, "vendor:api", 10); err != nil
 
 ## 拉取性能
 
-数据库分别维护任务与 tag 的映射 `task_tags`、配置和计数 `task_tag_concurrency`、本次尝试的占用 `task_tag_permits`。未配置上限的 tag 也统计占用，因此在线启用规则不需要扫描运行任务。代价是带 tag 的任务都需要映射存储和计数更新；不带 tag 的任务不获取 tag 计数锁。
+数据库分别维护任务与 tag 的映射 `task_tags`、配置和计数 `task_tag_concurrency`、本次尝试的占用 `task_tag_permits`。映射只保留 pending/running/paused 或仍持有租约的任务。任务进入终态且释放租约时，在同一事务中删除映射；原始 `attributes.tags` 保留，历史查询不受影响。任务恢复到可执行状态时会重建映射。配置好的 tag 限制继续保留，供未来任务使用。
+
+未配置上限的 tag 也统计占用，因此在线启用规则不需要扫描运行任务。代价是活跃任务的映射存储和带 tag 尝试的计数更新；不带 tag 的任务不获取 tag 计数锁。
 
 一次业务领取最多检查 32 条合格候选，按需逐条加锁，成功领取一条便停止。tag 按固定顺序使用 `FOR NO KEY UPDATE SKIP LOCKED` 加锁；有竞争时不会拿着部分名额等待其他 tag。数据库函数在获得锁后读取当前计数。
 
@@ -60,9 +62,9 @@ PostgreSQL smoke 测试构造 20,070 条等待任务和 1 条就绪任务，通�
 
 ## 已入库任务与升级
 
-迁移 `0014_task_tag_concurrency` 保留已有任务的 ID、payload、attributes（包括重复 tags）、状态、attempts、业务调度时间和租约版本，补齐 tag 映射，并计入所有尚有租约的业务尝试，包括 paused/cancelled。未配置 tag 规则前，已有任务不受新的并发限制。
+迁移 `0014_task_tag_concurrency` 保留已有任务的 ID、payload、attributes（包括重复 tags）、状态、attempts、业务调度时间和租约版本。tag 回填仅覆盖 `status IN ('pending', 'running', 'paused') OR locked_at IS NOT NULL`；已完成、失败、取消且无租约的历史任务不生成映射或 tag 注册记录。仍计入所有尚有租约的业务尝试，包括 paused/cancelled。未配置 tag 规则前，已有任务不受新的并发限制。
 
-升级时停止旧 Worker，应用迁移，再启动新 Worker。不能混跑新旧版本：旧 SQL 不获取 tag 名额，也不更新绝对过期时间。旧租约没有记录领取者 TTL，新 Worker 沿用 `locked_at + 当前配置 TTL` 回收旧租约；之后的新尝试都记录自己的 TTL。迁移在事务内建表、建索引，大任务表应预留维护窗口。
+升级时停止旧 Worker，应用迁移，再启动新 Worker。不能混跑新旧版本：旧 SQL 不获取 tag 名额，也不更新绝对过期时间。旧租约没有记录领取者 TTL，新 Worker 沿用 `locked_at + 当前配置 TTL` 回收旧租约；之后的新尝试都记录自己的 TTL。过滤回填减少了历史 tags 的展开和派生记录写入，但筛选任务、建立索引仍可能扫描任务表。迁移仍在单个事务内执行，DDL 锁持续到提交，大任务表应预留维护窗口。
 
 自定义 model 和 mocks 需要适配新增的生成查询及任务字段；业务 Runner/Executor 合约和数据库任务 JSON 不变。SQL 辅助函数是内部实现，执行任务使用 Worker，并保留领取与结果查询的事务边界。`InUse` 是已领取的占用，包含尚未回收的过期租约，不等于实时 goroutine 数量。
 

@@ -51,14 +51,18 @@ CREATE INDEX idx_tasks_lease_expiry
 CREATE INDEX idx_tasks_legacy_lease
     ON anclax.tasks (locked_at, id) WHERE lease_expires_at IS NULL AND locked_at IS NOT NULL;
 
+-- Historical terminal tasks keep attributes.tags for queries/auditing, but
+-- need no scheduling membership once their lease has been released.
 INSERT INTO anclax.task_tag_concurrency (tag)
 SELECT DISTINCT tag
 FROM anclax.tasks t
-CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(NULLIF(t.attributes->'tags', 'null'::jsonb), '[]'::jsonb)) AS tags(tag);
+CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(NULLIF(t.attributes->'tags', 'null'::jsonb), '[]'::jsonb)) AS tags(tag)
+WHERE t.status IN ('pending', 'running', 'paused') OR t.locked_at IS NOT NULL;
 INSERT INTO anclax.task_tags (task_id, tag)
 SELECT DISTINCT t.id, tag
 FROM anclax.tasks t
-CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(NULLIF(t.attributes->'tags', 'null'::jsonb), '[]'::jsonb)) AS tags(tag);
+CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(NULLIF(t.attributes->'tags', 'null'::jsonb), '[]'::jsonb)) AS tags(tag)
+WHERE t.status IN ('pending', 'running', 'paused') OR t.locked_at IS NOT NULL;
 
 -- Legacy leases have no recorded TTL. Keep counting them until a new worker
 -- reclaims/reaps them using the legacy locked_at + configured TTL rule. Old
@@ -73,8 +77,20 @@ FROM (SELECT tag, count(*)::int AS n FROM anclax.task_tag_permits GROUP BY tag) 
 WHERE c.tag = p.tag;
 
 CREATE FUNCTION anclax.sync_task_tags() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+    needs_membership BOOLEAN := NEW.status IN ('pending', 'running', 'paused') OR NEW.locked_at IS NOT NULL;
 BEGIN
-    IF TG_OP = 'UPDATE' AND NEW.attributes->'tags' IS NOT DISTINCT FROM OLD.attributes->'tags' THEN
+    -- Status and lease transitions maintain membership too. Ordinary renewals
+    -- return before touching any tag rows, while restoring a historical task
+    -- rebuilds membership even when its tags did not change.
+    IF TG_OP = 'UPDATE' AND NEW.attributes->'tags' IS NOT DISTINCT FROM OLD.attributes->'tags'
+       AND needs_membership = (OLD.status IN ('pending', 'running', 'paused') OR OLD.locked_at IS NOT NULL) THEN
+        RETURN NEW;
+    END IF;
+    IF NOT needs_membership THEN
+        IF TG_OP = 'UPDATE' THEN
+            DELETE FROM anclax.task_tags WHERE task_id = NEW.id;
+        END IF;
         RETURN NEW;
     END IF;
     INSERT INTO anclax.task_tag_concurrency (tag)
@@ -88,7 +104,7 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-CREATE TRIGGER sync_task_tags AFTER INSERT OR UPDATE OF attributes ON anclax.tasks
+CREATE TRIGGER sync_task_tags AFTER INSERT OR UPDATE OF attributes, status, locked_at ON anclax.tasks
 FOR EACH ROW EXECUTE FUNCTION anclax.sync_task_tags();
 
 -- This is only an enqueue-time hint. Admission always rechecks under locks.
