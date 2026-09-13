@@ -149,7 +149,7 @@ go test -tags smoke ./pkg/taskcore/chaos -run TestContainerizedTaskcoreChaosSmok
 
 The test logs the artifact directory at the end of the run.
 
-`make test` includes `make chaos-smoke`, which runs the deterministic fault scenarios plus 10 random iterations. `make chaos` runs the same mandatory scenarios plus 200 random iterations with seed `424242` by default. The direct test command defaults to 28 iterations. Make targets require Docker; CI also sets `ANCLAX_REQUIRE_DOCKER=1` so direct tests cannot silently skip container coverage. Use the environment variables to select a reproducible run and locally available images:
+`make test` includes `make chaos-smoke`, which runs the deterministic fault scenarios plus 10 random iterations. `make chaos` runs the same mandatory scenarios plus 200 random iterations with seed `424242` by default. The direct test command defaults to 28 iterations. Make targets require Docker; set `ANCLAX_REQUIRE_DOCKER=1` for direct tests to fail instead of skip when Docker is unavailable. Use the environment variables to select a reproducible run and locally available images:
 
 ```bash
 ANCLAX_TASKCORE_CHAOS_SEED=424242 \
@@ -233,7 +233,7 @@ The deterministic `TAG-*` fixtures are reported through `assert.tag_wait_release
 
 The database-partition fixture extends the isolated owner's heartbeat interval to exercise lease-renewal expiry independently of heartbeat-triggered runtime shutdown. It does not disable lease renewal or restart the isolated process. The production heartbeat failure path has separate runtime tests.
 
-See [testing layers and performance runs](../../../docs/async-task-testing.md) for the PostgreSQL matrix, nightly workflow, load reports and migration compatibility checks.
+See [testing layers and performance runs](../../../docs/async-task-testing.md) for local PostgreSQL and seed selection, load reports and migration compatibility checks.
 
 ## Current limitations
 

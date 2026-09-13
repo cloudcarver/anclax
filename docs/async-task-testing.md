@@ -28,7 +28,7 @@ ANCLAX_TASKCORE_CHAOS_SEED=8675309 make chaos  # 200 random iterations
 
 `make test` runs unit/race tests, deterministic runtime scenarios, PostgreSQL smoke/stress and short container chaos sequentially. Docker is mandatory for these Make targets. `ANCLAX_REQUIRE_DOCKER=1` also makes direct smoke invocations fail instead of skip when Docker is unavailable.
 
-Use `ANCLAX_SMOKE_POSTGRES_IMAGE` and `ANCLAX_TASKCORE_CHAOS_POSTGRES_IMAGE` to select database images. `.github/workflows/taskcore-tests.yml` runs regular checks on PostgreSQL 15 and 17 for PRs and main pushes. Nightly/manual runs use seeds 424242 and 8675309 for each database version and preserve logs, reports and failure diagnostics. Branch-protection requirements remain repository settings; adding a workflow does not make its checks mandatory for merging.
+Use `ANCLAX_SMOKE_POSTGRES_IMAGE` and `ANCLAX_TASKCORE_CHAOS_POSTGRES_IMAGE` to select database images for local runs. PostgreSQL 15 and 17 can each be exercised with `ANCLAX_TASKCORE_CHAOS_SEED` set to 424242 or 8675309 for reproducible fault sequences. The chaos harness writes logs, reports and failure diagnostics to the artifact directory printed by the test.
 
 ## Performance runs
 

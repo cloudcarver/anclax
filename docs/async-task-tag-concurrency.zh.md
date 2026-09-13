@@ -83,4 +83,4 @@ ANCLAX_TASKCORE_CHAOS_POSTGRES_IMAGE=postgres:17 \
 
 容器 chaos 测试混合受限和无限制业务任务：约三分之一的批量任务带全局 tag（上限 3）和分组 tag（上限 2），按轮次轮换路由分组和暂停/取消场景，不消耗选择故障的随机数。其余任务继续使用 Worker 可用并发，不受这两个上限约束。测试跨数据库重启持久化每次计数增加，逐次检查上限和 permit/计数一致性，并检查恢复后全部名额归零；报告记录两类任务数量及全局、分组峰值。独立的 PostgreSQL smoke 测试覆盖限额耗尽和大量阻塞任务积压。
 
-每次 chaos 运行先用执行器阻塞信号确认“满额等待 → 释放 → 继续执行”，再杀掉明确的租约持有者，或仅切断其数据库连接，验证指定受限任务发生接管。初始化重试任务不能满足这些恢复断言。领取矩阵覆盖 tags 与 strict、normal、strict fallback、手动和通用 SQL 领取，以及 serial、labels、定时条件的组合。`make test` 包含短 chaos；夜间任务增加多 seed 和持续负载分位数。参见[测试覆盖与运行方式](async-task-testing.zh.md)。
+每次 chaos 运行先用执行器阻塞信号确认“满额等待 → 释放 → 继续执行”，再杀掉明确的租约持有者，或仅切断其数据库连接，验证指定受限任务发生接管。初始化重试任务不能满足这些恢复断言。领取矩阵覆盖 tags 与 strict、normal、strict fallback、手动和通用 SQL 领取，以及 serial、labels、定时条件的组合。`make test` 包含短 chaos；本地长跑可使用不同 seed 执行 `make chaos`，持续负载分位数通过 `make taskcore-perf` 测量。参见[测试覆盖与运行方式](async-task-testing.zh.md)。
