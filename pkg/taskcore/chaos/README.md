@@ -118,6 +118,8 @@ It is intentionally small, but already covers:
 - Postgres restart
 - runtime config update through control plane
 - user pause / resume / cancel operations through the control plane
+- mixed limited/unlimited batch traffic: roughly one third of tasks carry two concurrency tags (global limit 3, group limit 2), with rotating selection across routing groups and pause/cancel probes
+- durable admission audits across faults, permit cleanup after recovery, and reported workload counts/global and group peaks
 - eventual completion / cancellation assertions through DB inspection
 
 ## Naming and run IDs

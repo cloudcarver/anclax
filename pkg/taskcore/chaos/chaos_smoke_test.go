@@ -540,7 +540,7 @@ func submitChaosBatch(ctx context.Context, user *User, state *chaosState, iter i
 			SleepMs:  taskSleepMs,
 			Group:    group,
 			Labels:   labels,
-			Tags:     chaosConcurrencyTags(group),
+			Tags:     chaosConcurrencyTags(group, iter, j),
 		})
 		if err != nil {
 			return err
@@ -558,7 +558,7 @@ func submitChaosBatch(ctx context.Context, user *User, state *chaosState, iter i
 		SleepMs:  taskSleepMs,
 		Group:    group,
 		Labels:   labels,
-		Tags:     chaosConcurrencyTags(group),
+		Tags:     chaosConcurrencyTags(group, iter, batchSize),
 	})
 	if err != nil {
 		return err
@@ -579,7 +579,7 @@ func submitChaosBatch(ctx context.Context, user *User, state *chaosState, iter i
 		DelayMs:  pauseDelayMs,
 		Group:    group,
 		Labels:   labels,
-		Tags:     chaosConcurrencyTags(group),
+		Tags:     chaosConcurrencyTags(group, iter, batchSize+1),
 	})
 	if err != nil {
 		return err

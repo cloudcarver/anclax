@@ -83,4 +83,4 @@ ANCLAX_TASKCORE_CHAOS_POSTGRES_IMAGE=postgres:17 \
   -run TestContainerizedTaskcoreChaosSmoke -count=1 -v -timeout=30m
 ```
 
-The container chaos suite gives business tasks a global tag and a group tag, records every counter increase durably across database restarts, verifies limits and permit/counter agreement, and checks that all permits drain after recovery.
+The container chaos suite mixes limited and unlimited business tasks: approximately one third of batch tasks receive a global tag (limit 3) and a group tag (limit 2). Selection rotates across routing groups and pause/cancel probes without changing the fault RNG, so the remaining workload can exercise worker capacity independently of these caps. The suite records every counter increase durably across database restarts, verifies limits and permit/counter agreement, and checks that all permits drain after recovery. Its report includes both workload counts and observed global/group peaks. The dedicated PostgreSQL smoke suite separately exercises saturated limits and a large blocked backlog.

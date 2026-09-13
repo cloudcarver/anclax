@@ -10,7 +10,13 @@ import (
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 )
 
-func chaosConcurrencyTags(group string) []string {
+func chaosConcurrencyTags(group string, iter, slot int) []string {
+	// Limit one in three slots, rotating every three iterations so each routing
+	// group and the pause/cancel probes see both limited and unlimited traffic.
+	// Keep this independent of the RNG used to choose faults.
+	if (slot+(iter-1)/3)%3 != 0 {
+		return nil
+	}
 	return []string{"chaos:concurrency:global", "chaos:concurrency:group:" + group}
 }
 
@@ -49,11 +55,22 @@ func installTagConcurrencyAudit(ctx context.Context, inspector *Inspector) error
 }
 
 func checkTagConcurrencyAudit(ctx context.Context, inspector *Inspector, report *Report) error {
-	var observations, violations, peak int64
+	var limitedTasks, unlimitedTasks int64
+	if err := inspector.pool.QueryRow(ctx, `SELECT
+        count(*) FILTER (WHERE COALESCE(attributes->'tags' ? 'chaos:concurrency:global', false)),
+        count(*) FILTER (WHERE NOT COALESCE(attributes->'tags' ? 'chaos:concurrency:global', false))
+        FROM anclax.tasks WHERE unique_tag LIKE 'LONG-%' AND unique_tag NOT LIKE 'LONG-000-%'`).Scan(&limitedTasks, &unlimitedTasks); err != nil {
+		return err
+	}
+	if limitedTasks == 0 || unlimitedTasks == 0 {
+		return fmt.Errorf("expected mixed chaos workload: limited=%d unlimited=%d", limitedTasks, unlimitedTasks)
+	}
+	var observations, violations, peak, groupPeak int64
 	if err := inspector.pool.QueryRow(ctx, `SELECT count(*),
         count(*) FILTER (WHERE in_use > max_concurrency OR in_use <> permits),
-        COALESCE(max(in_use) FILTER (WHERE tag = 'chaos:concurrency:global'), 0)
-        FROM anclax.chaos_tag_admissions`).Scan(&observations, &violations, &peak); err != nil {
+        COALESCE(max(in_use) FILTER (WHERE tag = 'chaos:concurrency:global'), 0),
+        COALESCE(max(in_use) FILTER (WHERE tag LIKE 'chaos:concurrency:group:%'), 0)
+        FROM anclax.chaos_tag_admissions`).Scan(&observations, &violations, &peak, &groupPeak); err != nil {
 		return err
 	}
 	if observations == 0 || violations != 0 {
@@ -94,7 +111,9 @@ func checkTagConcurrencyAudit(ctx context.Context, inspector *Inspector, report 
 		return fmt.Errorf("terminal tasks retained tag membership: %d", terminalMemberships)
 	}
 	report.AddEvent("assert.tag_concurrency", "postgres", "all admissions within limits; permits drained; terminal membership cleaned", map[string]any{
-		"observations": observations, "violations": violations, "globalPeak": peak, "terminalMemberships": terminalMemberships,
+		"limitedTasks": limitedTasks, "unlimitedTasks": unlimitedTasks,
+		"observations": observations, "violations": violations, "globalPeak": peak, "groupPeak": groupPeak,
+		"terminalMemberships": terminalMemberships,
 	})
 	return nil
 }

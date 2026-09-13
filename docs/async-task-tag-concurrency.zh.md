@@ -81,4 +81,4 @@ ANCLAX_TASKCORE_CHAOS_POSTGRES_IMAGE=postgres:17 \
   -run TestContainerizedTaskcoreChaosSmoke -count=1 -v -timeout=30m
 ```
 
-容器 chaos 测试为业务任务设置全局、分组两个 tag，跨数据库重启持久化每次计数增加，逐次检查上限和 permit/计数一致性，并检查恢复后全部名额归零。
+容器 chaos 测试混合受限和无限制业务任务：约三分之一的批量任务带全局 tag（上限 3）和分组 tag（上限 2），按轮次轮换路由分组和暂停/取消场景，不消耗选择故障的随机数。其余任务继续使用 Worker 可用并发，不受这两个上限约束。测试跨数据库重启持久化每次计数增加，逐次检查上限和 permit/计数一致性，并检查恢复后全部名额归零；报告记录两类任务数量及全局、分组峰值。独立的 PostgreSQL smoke 测试覆盖限额耗尽和大量阻塞任务积压。
