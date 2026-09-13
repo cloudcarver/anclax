@@ -184,9 +184,8 @@ func (q *Queries) UpdateWorkerAppliedConfigVersion(ctx context.Context, arg Upda
 const updateWorkerHeartbeat = `-- name: UpdateWorkerHeartbeat :one
 UPDATE anclax.workers
 SET last_heartbeat = CURRENT_TIMESTAMP,
-    status = 'online',
     updated_at = CURRENT_TIMESTAMP
-WHERE id = $1
+WHERE id = $1 AND status = 'online'
 RETURNING id, labels, status, last_heartbeat, created_at, updated_at, applied_config_version
 `
 

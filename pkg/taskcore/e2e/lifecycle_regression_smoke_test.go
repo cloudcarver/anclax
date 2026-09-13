@@ -65,6 +65,9 @@ func (panickingHandler) OnTaskFailed(context.Context, core.Tx, worker.TaskSpec, 
 
 func TestTaskLifecycleRegressionsSmoke(t *testing.T) {
 	withSmokePostgres(t, func(ctx context.Context, m model.ModelInterface) {
+		t.Run("late_heartbeat_cannot_revive_offline_worker", func(t *testing.T) {
+			runLateWorkerHeartbeatScenario(t, ctx, m)
+		})
 		s := store.NewTaskStore(m)
 		reset := func(t *testing.T) {
 			t.Helper()
