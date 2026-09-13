@@ -1,13 +1,18 @@
 package worker
 
-import "sort"
+import (
+	"context"
+	"sort"
+)
 
 type Engine struct {
-	workerID  string
-	labels    []string
-	hasLabels bool
+	workerID string
+	labels   []string
 
-	concurrency int
+	concurrency        int
+	controlConcurrency int
+	controlInFlight    int
+	requests           []Event
 
 	stopped bool
 
@@ -32,11 +37,11 @@ func NewEngine(cfg EngineConfig) *Engine {
 	}
 
 	e := &Engine{
-		workerID:    cfg.WorkerID,
-		labels:      append([]string(nil), cfg.Labels...),
-		hasLabels:   len(cfg.Labels) > 0,
-		concurrency: concurrency,
-		cycles:      map[int64]*cycleState{},
+		workerID:           cfg.WorkerID,
+		labels:             append([]string(nil), cfg.Labels...),
+		concurrency:        concurrency,
+		controlConcurrency: max(0, cfg.ControlConcurrency),
+		cycles:             map[int64]*cycleState{},
 	}
 
 	defaultStrict := cfg.MaxStrictPercentage
@@ -68,6 +73,8 @@ func (e *Engine) CurrentRuntimeConfigVersion() int64 {
 // Caller must ensure single-owner access (same owner as Apply).
 func (e *Engine) Snapshot() Snapshot {
 	return Snapshot{
+		ControlInFlight:        e.controlInFlight,
+		PendingRequests:        len(e.requests),
 		WorkerID:               e.workerID,
 		Stopped:                e.stopped,
 		InFlight:               e.inFlight,
@@ -86,6 +93,24 @@ func (e *Engine) Snapshot() Snapshot {
 // (runtime event loop).
 func (e *Engine) Apply(event Event) []Command {
 	switch event.Type {
+	case EventControlPollTick:
+		return e.onControlPollTick()
+	case EventClaimControlResult, EventClaimByIDResult:
+		return e.onDirectClaimResult(event)
+	case EventRunTask:
+		if e.stopped {
+			return []Command{{Type: CmdTaskRequestDone, RequestID: event.RequestID, Err: context.Canceled}}
+		}
+		e.requests = append(e.requests, event)
+		return e.admitRequests()
+	case EventCancelTaskRequest:
+		for i, req := range e.requests {
+			if req.RequestID == event.RequestID {
+				e.requests = append(e.requests[:i], e.requests[i+1:]...)
+				return []Command{{Type: CmdTaskRequestDone, RequestID: event.RequestID, Err: context.Canceled}}
+			}
+		}
+		return nil
 	case EventPollTick:
 		return e.onPollTick()
 	case EventClaimStrictResult:
@@ -110,23 +135,30 @@ func (e *Engine) Apply(event Event) []Command {
 		if event.Err != nil {
 			return nil
 		}
+		var commands []Command
 		if event.Config != nil && event.Config.Version > e.runtimeConfigVersion {
 			e.applyRuntimeConfig(*event.Config)
+			commands = e.admitRequests()
 		}
 		if event.Config != nil || event.RequestID != "" {
-			return []Command{{
+			commands = append(commands, Command{
 				Type:           CmdAckRuntimeConfig,
 				RequestID:      event.RequestID,
 				AppliedVersion: e.runtimeConfigVersion,
-			}}
+			})
 		}
-		return nil
+		return commands
 	case EventStop:
 		if e.stopped {
 			return nil
 		}
 		e.stopped = true
-		return []Command{{Type: CmdMarkOffline}}
+		commands := []Command{{Type: CmdMarkOffline}}
+		for _, req := range e.requests {
+			commands = append(commands, Command{Type: CmdTaskRequestDone, RequestID: req.RequestID, Err: context.Canceled})
+		}
+		e.requests = nil
+		return commands
 	default:
 		return nil
 	}
@@ -173,16 +205,13 @@ func (e *Engine) onClaimStrictResult(event Event) []Command {
 	}
 
 	if event.Err != nil {
-		e.finishCycle(event.CycleID)
-		return nil
+		return e.finishCycleResult(event.CycleID, event.Err)
 	}
 
 	if event.Task == nil {
-		if e.strictInFlight > 0 {
-			e.strictInFlight--
-		}
 		groups, weighted := e.nextNormalClaimGroups()
-		cycle.Lane = LaneNormal
+		// Keep the strict reservation until the fallback claim completes. The
+		// database rechecks strict tasks that arrived after the first query.
 		cycle.Phase = PhaseClaimNormal
 		cycle.PendingGroups = groups
 		cycle.WeightedLabels = weighted
@@ -191,7 +220,7 @@ func (e *Engine) onClaimStrictResult(event Event) []Command {
 
 	cycle.Task = copyTask(event.Task)
 	cycle.Phase = PhaseExecuting
-	return []Command{{Type: CmdExecuteTask, CycleID: cycle.ID, Task: copyTask(cycle.Task)}}
+	return append([]Command{{Type: CmdExecuteTask, CycleID: cycle.ID, Task: copyTask(cycle.Task), RequestID: cycle.RequestID}}, e.admitRequests()...)
 }
 
 func (e *Engine) onClaimNormalResult(event Event) []Command {
@@ -203,15 +232,18 @@ func (e *Engine) onClaimNormalResult(event Event) []Command {
 		return nil
 	}
 	if event.Err != nil {
-		e.finishCycle(event.CycleID)
-		return nil
+		return e.finishCycleResult(event.CycleID, event.Err)
 	}
 	if event.Task == nil {
 		return e.issueNextNormalClaim(cycle)
 	}
+	if cycle.Lane == LaneStrict && event.Task.Priority == 0 {
+		cycle.Lane = LaneNormal
+		e.strictInFlight--
+	}
 	cycle.Task = copyTask(event.Task)
 	cycle.Phase = PhaseExecuting
-	return []Command{{Type: CmdExecuteTask, CycleID: cycle.ID, Task: copyTask(cycle.Task)}}
+	return append([]Command{{Type: CmdExecuteTask, CycleID: cycle.ID, Task: copyTask(cycle.Task), RequestID: cycle.RequestID}}, e.admitRequests()...)
 }
 
 func (e *Engine) onExecuteResult(event Event) []Command {
@@ -223,15 +255,15 @@ func (e *Engine) onExecuteResult(event Event) []Command {
 		return nil
 	}
 	if cycle.Task == nil {
-		e.finishCycle(event.CycleID)
-		return nil
+		return e.finishCycleResult(event.CycleID, event.Err)
 	}
 	cycle.Phase = PhaseFinalizing
 	return []Command{{
-		Type:    CmdFinalize,
-		CycleID: cycle.ID,
-		Task:    copyTask(cycle.Task),
-		ExecErr: event.ExecErr,
+		Type:      CmdFinalize,
+		CycleID:   cycle.ID,
+		Task:      copyTask(cycle.Task),
+		ExecErr:   event.ExecErr,
+		RequestID: cycle.RequestID,
 	}}
 }
 
@@ -243,37 +275,119 @@ func (e *Engine) onFinalizeResult(event Event) []Command {
 	if cycle.Phase != PhaseFinalizing {
 		return nil
 	}
-	e.finishCycle(event.CycleID)
-	return nil
+	return e.finishCycleResult(event.CycleID, event.Err)
 }
 
 func (e *Engine) issueNextNormalClaim(cycle *cycleState) []Command {
 	if len(cycle.PendingGroups) == 0 {
-		e.finishCycle(cycle.ID)
-		return nil
+		return e.finishCycleResult(cycle.ID, nil)
 	}
 	group := cycle.PendingGroups[0]
 	cycle.PendingGroups = cycle.PendingGroups[1:]
 	return []Command{{
 		Type:           CmdClaimNormal,
+		AllowStrict:    cycle.Lane == LaneStrict,
 		CycleID:        cycle.ID,
 		Group:          group,
 		WeightedLabels: append([]string(nil), cycle.WeightedLabels...),
 	}}
 }
 
-func (e *Engine) finishCycle(cycleID int64) {
+func (e *Engine) finishCycleResult(cycleID int64, err error) []Command {
 	cycle, ok := e.cycles[cycleID]
 	if !ok {
-		return
+		return nil
 	}
-	if cycle.Lane == LaneStrict && e.strictInFlight > 0 {
+	switch cycle.Lane {
+	case LaneControl:
+		e.controlInFlight--
+	case LaneStrict:
 		e.strictInFlight--
-	}
-	if e.inFlight > 0 {
+		e.inFlight--
+	default:
 		e.inFlight--
 	}
 	delete(e.cycles, cycleID)
+	var commands []Command
+	if cycle.RequestID != "" {
+		commands = append(commands, Command{Type: CmdTaskRequestDone, RequestID: cycle.RequestID, Err: err})
+	}
+	return append(commands, e.admitRequests()...)
+}
+
+func (e *Engine) onControlPollTick() []Command {
+	if e.stopped || e.controlInFlight >= e.controlConcurrency {
+		return nil
+	}
+	e.nextCycleID++
+	cycle := &cycleState{ID: e.nextCycleID, Lane: LaneControl, Phase: PhaseClaimControl}
+	e.cycles[cycle.ID] = cycle
+	e.controlInFlight++
+	return []Command{{Type: CmdClaimControl, CycleID: cycle.ID}}
+}
+
+func (e *Engine) onDirectClaimResult(event Event) []Command {
+	cycle := e.cycles[event.CycleID]
+	if cycle == nil || (cycle.Phase != PhaseClaimControl && cycle.Phase != PhaseClaimByID) {
+		return nil
+	}
+	if event.Err != nil || event.Task == nil {
+		return e.finishCycleResult(event.CycleID, event.Err)
+	}
+	if cycle.Lane == LaneStrict && event.Task.Priority == 0 {
+		cycle.Lane = LaneNormal
+		e.strictInFlight--
+	}
+	cycle.Task, cycle.Phase = copyTask(event.Task), PhaseExecuting
+	return append([]Command{{Type: CmdExecuteTask, CycleID: cycle.ID, Task: copyTask(cycle.Task), RequestID: cycle.RequestID}}, e.admitRequests()...)
+}
+
+func (e *Engine) admitRequests() []Command {
+	if e.stopped {
+		return nil
+	}
+	var commands []Command
+	pending := e.requests[:0]
+	for _, req := range e.requests {
+		lane := LaneNormal
+		if req.Task != nil && IsControlTask(req.Task.GetType()) && e.controlConcurrency > 0 {
+			lane = LaneControl
+			if e.controlInFlight >= e.controlConcurrency {
+				pending = append(pending, req)
+				continue
+			}
+		} else {
+			if e.inFlight >= e.concurrency {
+				pending = append(pending, req)
+				continue
+			}
+			if req.Task != nil && req.Task.Priority > 0 {
+				if e.strictCap == 0 {
+					commands = append(commands, Command{Type: CmdTaskRequestDone, RequestID: req.RequestID})
+					continue
+				}
+				if e.strictInFlight >= e.strictCap {
+					pending = append(pending, req)
+					continue
+				}
+				lane = LaneStrict
+			}
+		}
+		e.nextCycleID++
+		cycle := &cycleState{ID: e.nextCycleID, Lane: lane, Phase: PhaseClaimByID, RequestID: req.RequestID}
+		e.cycles[cycle.ID] = cycle
+		if lane == LaneControl {
+			e.controlInFlight++
+		} else {
+			e.inFlight++
+			if lane == LaneStrict {
+				e.strictInFlight++
+			}
+		}
+		commands = append(commands, Command{Type: CmdClaimByID, CycleID: cycle.ID, TaskID: req.TaskID, RequestID: req.RequestID, AllowStrict: lane != LaneNormal})
+	}
+	e.requests = pending
+	return commands
 }
 
 func (e *Engine) nextNormalClaimGroups() ([]string, []string) {

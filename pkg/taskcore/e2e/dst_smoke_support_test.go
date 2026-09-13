@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -49,12 +50,16 @@ func withSmokePostgres(t *testing.T, fn func(ctx context.Context, m model.ModelI
 	}
 
 	cleanupContainer(t)
+	postgresImage := os.Getenv("ANCLAX_SMOKE_POSTGRES_IMAGE")
+	if postgresImage == "" {
+		postgresImage = "postgres:15"
+	}
 	if err := runDocker(t, "run", "-d", "--name", smokeContainerName,
 		"-e", "POSTGRES_PASSWORD=postgres",
 		"-e", "POSTGRES_USER=postgres",
 		"-e", "POSTGRES_DB=postgres",
 		"-p", smokePort+":5432",
-		"postgres:15",
+		postgresImage,
 	); err != nil {
 		t.Fatalf("failed to start postgres container: %v", err)
 	}

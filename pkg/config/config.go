@@ -39,7 +39,8 @@ type Worker struct {
 
 	EnableHTTPTrigger bool `yaml:"enableHttpTrigger"`
 
-	// (Optional) Max number of tasks to run in parallel, default is 10
+	// (Optional) Max business tasks admitted through finalization, default is 10.
+	// Built-in worker control tasks have one additional independent slot.
 	Concurrency *int `yaml:"concurrency"`
 
 	// (Optional) The interval of the poll, default is 1 second

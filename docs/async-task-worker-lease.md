@@ -1,111 +1,76 @@
-# Async Task Worker Lease Design
+# Async Task Worker Leases
 
-This document describes the worker lease model for async tasks.
+Workers execute handlers outside database transactions. PostgreSQL stores task ownership, schedules, outcomes, and events; `Engine` decides admission, while `Runtime` owns asynchronous execution and shutdown.
 
-## Goals
+## Claim and ownership
 
-- Avoid long-lived database transactions during task execution.
-- Use lease-based task claiming with `locked_at` and `worker_id`.
-- Refresh locks while a task runs; reclaim tasks when locks expire.
-- Keep worker heartbeats for monitoring without join-heavy claim queries.
-- Allow workers to filter tasks by labels.
+Each task has `locked_at`, `worker_id`, and a monotonic `lease_version`. A short claim transaction:
 
-## Schema changes
+1. Selects a due `pending` task whose lease is absent or expired, respecting labels and serial ordering.
+2. Locks the candidate with `FOR UPDATE SKIP LOCKED`. A locked candidate does not block unrelated ready tasks; serial successors remain gated by their head task.
+3. Sets the owner and database lease timestamp, increments `lease_version` and `attempts`, and commits before execution.
 
-Tasks:
-- `locked_at TIMESTAMPTZ` (lease timestamp)
-- `worker_id UUID` (current owner)
+Expiry uses `statement_timestamp()` and the configured TTL. Every renewal, release, and attempt finalization checks both worker ID and lease version. Reusing a worker ID cannot give an old attempt permission to finalize a newer attempt.
 
-Workers:
-- `id UUID` (primary key)
-- `labels JSONB` (array of strings)
-- `status TEXT` (online/offline)
-- `last_heartbeat TIMESTAMPTZ`
-- `created_at`, `updated_at`
+The runtime registry is also keyed by `(task ID, lease version)`. A stale attempt's cleanup cannot remove or interrupt a newer attempt. Task-wide cancellation addresses all locally registered attempts for that ID.
 
-## Claim and lease
+## Renewal and finalization
 
-1) Claim task in a short transaction:
-- `status = 'pending'`
-- `started_at IS NULL OR started_at < now()`
-- `locked_at IS NULL OR locked_at < now() - lock_ttl`
-- Labels match or task has no labels
+Renewal runs while the executor is active. Temporary database errors may be retried within the last confirmed lease, but the executor context is cancelled when that lease deadline is reached. Renewal shutdown waits for its goroutine before finalization starts.
 
-2) Update row:
-- `locked_at = now()`
-- `worker_id = <worker>`
-- `attempts = attempts + 1`
+Finalization computes retry/cron/deferral policy, then uses a short transaction to update status, schedule, attempt count, and ownership atomically. Events share that transaction. Failure hooks use a savepoint so hook SQL errors or panics can roll back independently.
 
-3) Commit immediately, then execute task outside the transaction.
+A pause or cancellation already committed in storage wins over a late execution result. Resume is allowed only from `paused` and advances the lease version, invalidating the previous attempt. It retains any outstanding lease until expiry to gate immediate re-execution. Completed, failed, and cancelled tasks remain terminal.
 
-4) Refresh `locked_at` on an interval while executing.
+Lease fencing protects task state, not arbitrary external side effects. Executors must observe context cancellation and make repeated side effects idempotent; delivery remains at least once.
 
-5) On completion/failure, update status and release lock in a short transaction.
+## Admission and control tasks
 
-## Heartbeat
+`RunTask` and automatic polling use the same business concurrency and strict capacity. Capacity covers claiming, execution, and finalization. A strict-to-normal fallback retains its strict reservation and rechecks strict arrivals in the fallback SQL statement; normal-only capacity cannot claim strict work. Production polling fills idle slots and refills after completion; empty claims wait for the next polling tick.
 
-Workers upsert a registry row at startup and update `last_heartbeat` on a ticker.
-Heartbeat is for monitoring only; task claims use `locked_at` TTL only.
+Framework config, pause, cancel, and broadcast types have one additional control slot per worker, independent of business priority and strict capacity. Waiting for acknowledgement returns `taskcore.DeferTask(delay)`: it persists the next check and releases the slot without consuming retry attempts. Stable request IDs and unique child tags make repeated invocations idempotent.
 
-## Labels
+## Labels and worker membership
 
-- Task labels come from `api/tasks/tasks.yaml` and runtime overrides.
-- Worker labels come from config.
-- Task tags are separate metadata for control-plane selection (pause/cancel/resume by tags) and do not affect worker claiming.
-- Claiming uses **all-match** semantics:
-  - unlabeled task (`[]`) can be claimed by any worker.
-  - labeled task can be claimed only when **all task labels are contained in worker labels**.
-- Each worker always has an internal `worker:<workerID>` label for worker-targeted control tasks.
-- If a worker has no business labels (only internal `worker:<workerID>`), it can claim:
-  - unlabeled tasks, and
-  - tasks labeled with its own `worker:<workerID>`.
+Claims require all task labels to be present on the worker. Unlabelled tasks are eligible for every worker. Each worker adds `worker:<workerID>` to its configured business labels for targeted control messages. Task tags are control-plane selection metadata and do not affect claiming.
 
-Example:
-- Task labels: `["gpu", "arm"]`
-- Worker A labels: `["gpu"]` → cannot claim
-- Worker B labels: `["gpu", "arm"]` → can claim
+Worker registration and heartbeats track availability. Claims use task lease expiry directly. Applied config versions only advance, including during re-registration. Shutdown drains outstanding operations before marking the worker offline, so late registration or heartbeat cannot overwrite the offline marker during a successful drain.
 
-## Execution flow
+## Configuration and shutdown
 
-1) Claim task (short tx).
-2) Handle cron scheduling (short tx) if needed.
-3) Execute task without DB transaction.
-4) On success/failure, update task state and release lock (short tx).
+Relevant configuration is `worker.pollinterval`, `worker.concurrency`, `worker.heartbeatInterval`, `worker.lockTtl`, `worker.lockRefreshInterval`, `worker.labels`, and optional `worker.workerId`.
 
-## Config
+Defaults are one-second polling, business concurrency 10, three-second heartbeat/renewal, and a nine-second TTL. TTL must be at least one millisecond; renewal must be non-negative and less than TTL. Zero disables periodic renewal and is primarily useful for explicit lease-expiry tests.
 
-- `worker.pollinterval`
-- `worker.concurrency`
-- `worker.heartbeatInterval`
-- `worker.lockTtl`
-- `worker.lockRefreshInterval`
-- `worker.labels`
-- `worker.workerId` (optional)
-- `worker.useLegacyWorker` (optional, default `false`; set `true` to force legacy worker)
+`RuntimeOptions.OperationTimeout` and `ShutdownTimeout` default to five seconds. Shutdown stops admission and cancels running executors, while finalization uses a bounded context independent of caller cancellation. Uncooperative executors may outlive the drain deadline; their tasks recover through lease expiry.
 
-## Test plan (mock-based)
+## Migration and verification
 
-Regression:
-- Claim path uses short tx only and does not run executor in tx.
-- Status updates and events still occur for success/failure paths.
-- Retry scheduling still updates `started_at` and respects policy.
+Migration `0013_task_attempt_lifecycle` adds task lease versions, unique runtime-config request IDs, and claim/parent indexes. Existing rows begin at lease version zero. Apply the migration and replace all old worker processes before resuming execution: old binaries do not enforce the lease-version guards. Generated Runner/Executor interfaces are unchanged; direct users of generated query parameters must regenerate for the new lease fields.
 
-New feature tests:
-- Claim filters by lock TTL and labels.
-- Lock refresh updates `locked_at` while running.
-- Ownership guard prevents stale workers from updating status.
-- Heartbeat registration and periodic updates.
+### Compatibility boundaries
 
-## Smoke test (docker)
+This is not a fully backward-compatible or mixed-version rolling upgrade.
 
-Runs a Postgres-backed regression test that validates claim, refresh, and release flow with labels.
-Requires Docker and uses port 5499.
+| Surface | Compatibility and required action |
+| --- | --- |
+| Business task contracts | Generated Runner/Executor methods, `TaskHandler`, `WorkerInterface`, task payloads, and the OpenAPI contract retain their signatures/schema. Keyed `worker.Task` literals remain valid. |
+| Lifecycle extensions | `TaskLifeCycleHandlerInterface` now exposes `FinalizeAttempt`; `HandleAttributes`, `HandleFailed`, and `HandleCompleted` were removed. Custom callers/implementations must migrate. |
+| Generated queries and models | Claim parameters replace `LockExpiry`/`HasLabels` with `LockTtlMs` and add strict admission controls where applicable. Ownership operations require `LeaseVersion`. The model interface has new methods; custom adapters and mocks must be updated. Structs gained fields, so positional literals may no longer compile. |
+| Database | Existing rows and payloads are retained. New binaries require migration 0013. The new schema alone does not make old workers safe: their SQL still lacks attempt fencing. |
+| Manual execution | `RunTask` shares automatic business capacity and the strict cap. With strict capacity zero, a strict business task is left pending and `RunTask` returns without claiming it. Calling a stopped runtime no longer starts new work. |
+| Concurrency and scheduling | `worker.concurrency` limits business tasks through finalization; built-in control tasks have one extra slot. Polling fills available capacity and refills after completion. Multi-label normal tasks belong to one weighted group: the smallest matching label. |
+| Cron and status transitions | Cron attempts reset between occurrences, and an exhausted/failed occurrence does not stop future scheduling. Resume applies only to paused tasks; completed, failed, and cancelled rows remain terminal. Previously failed cron rows are not automatically revived by the migration. |
+| Failure hooks and shutdown | Hook errors roll back hook writes to a savepoint while preserving the task result. Executor panics become failures. Shutdown cancellation reschedules interrupted tasks without consuming attempts, and finalization has a separate bounded context. |
+| Validation | TTL must be at least 1 ms; renewal must be non-negative and below TTL. Task timeout and retry intervals must be positive. Configurations previously accepted without those checks need correction. |
+
+For an upgrade, stop old workers, apply migration 0013, update any low-level integrations, and start only the new workers. Check configurations and any application reliance on the changed behavior before rollout. A downgrade also needs a coordinated stop and schema rollback; do not mix worker versions against active tasks.
+
+The PostgreSQL regression suite covers control/result races, same-worker stale leases, cron retry budgets, concurrent unique enqueue, hook SQL failures, locked claim contention, config idempotence, and two-worker broadcasts at concurrency one. The migration test inserts tasks and runtime configs at schema version 12, upgrades to 13, verifies retained data, and claims/finalizes an expired legacy lease with the new implementation:
 
 ```bash
-go test -tags=smoke ./pkg/taskcore
+go test -race ./pkg/taskcore/worker ./pkg/taskcore/dtmtest
+ANCLAX_SMOKE_POSTGRES_IMAGE=postgres:17 go test -race -tags=smoke ./pkg/taskcore/e2e -run 'TestTaskLifecycle(Regressions|Migration)Smoke' -count=1
 ```
 
-Make target:
-```bash
-make smoke
-```
+Docker tests use port 5499. `make smoke` also runs the regression suite; the image defaults to `postgres:15` unless overridden.

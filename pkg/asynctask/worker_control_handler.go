@@ -3,6 +3,7 @@ package asynctask
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/cloudcarver/anclax/core"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
@@ -45,7 +46,7 @@ func (h *WorkerControlTaskHandler) HandleTask(ctx context.Context, task worker.T
 		}
 		taskIDs := workerControlTaskIDs(task.ID, params.TaskIDs)
 		h.worker.InterruptTasks(taskIDs, taskcore.ErrTaskCancelled)
-		return h.worker.WaitTaskRuntimes(ctx, taskIDs)
+		return waitOrDeferTaskRuntimes(ctx, h.worker, taskIDs, 100*time.Millisecond)
 	case taskgen.PauseTaskOnWorker:
 		var params taskgen.PauseTaskOnWorkerParameters
 		if err := json.Unmarshal(task.GetPayload(), &params); err != nil {
@@ -56,7 +57,7 @@ func (h *WorkerControlTaskHandler) HandleTask(ctx context.Context, task worker.T
 		}
 		taskIDs := workerControlTaskIDs(task.ID, params.TaskIDs)
 		h.worker.InterruptTasks(taskIDs, taskcore.ErrTaskPaused)
-		return h.worker.WaitTaskRuntimes(ctx, taskIDs)
+		return waitOrDeferTaskRuntimes(ctx, h.worker, taskIDs, 100*time.Millisecond)
 	default:
 		return worker.ErrUnknownTaskType
 	}
@@ -92,4 +93,19 @@ func workerControlTaskIDs(controlTaskID int32, taskIDs []int32) []int32 {
 		out = append(out, taskID)
 	}
 	return out
+}
+
+// Production workers expose a non-blocking observation so acknowledgements do
+// not occupy the control lane while the interrupted executor is unwinding.
+func waitOrDeferTaskRuntimes(ctx context.Context, w worker.WorkerInterface, taskIDs []int32, interval time.Duration) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if observer, ok := w.(worker.TaskRuntimesObserver); ok {
+		if observer.TaskRuntimesActive(taskIDs) {
+			return taskcore.DeferTask(interval)
+		}
+		return nil
+	}
+	return w.WaitTaskRuntimes(ctx, taskIDs)
 }

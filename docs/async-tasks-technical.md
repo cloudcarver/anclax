@@ -172,183 +172,53 @@ func (h *Handler) RegisterUser(c *fiber.Ctx) error {
 
 ## Underlying Architecture
 
-### Database Schema
+Task state lives in `anclax.tasks`; events, worker membership, and versioned scheduling configuration live in `anclax.events`, `anclax.workers`, and `anclax.worker_runtime_configs`. Cron metadata is stored in task attributes and `started_at`. The schema source is `sql/migrations`.
 
-The async task system uses several database tables:
+The worker has four boundaries:
 
-```sql
--- Core task table
-CREATE TABLE anclax_tasks (
-    id SERIAL PRIMARY KEY,
-    spec JSONB NOT NULL,           -- Task type and parameters
-    attributes JSONB NOT NULL,     -- Retry policy, timeout, etc.
-    status TEXT NOT NULL,          -- pending, running, completed, failed
-    started_at TIMESTAMP,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    unique_tag TEXT UNIQUE,        -- For preventing duplicates
-    parent_task_id INTEGER         -- Optional parent task for hierarchies
-);
+- `Engine` is a pure `Event -> []Command` state machine. It owns admission, strict capacity, weighted group rotation, and manual execution requests.
+- `Runtime` owns the event loop, timers, asynchronous operations, cancellation, and bounded shutdown. Automatic polling and `RunTask` share capacity through finalization.
+- `ModelPort` performs short database operations and invokes handlers outside transactions. The execution registry is keyed by `(task ID, lease version)`.
+- The lifecycle policy computes an outcome without I/O. The lifecycle handler persists that outcome, events, and failure hooks in one transaction.
 
--- Cron job scheduling
-CREATE TABLE anclax_cron_jobs (
-    id SERIAL PRIMARY KEY,
-    task_id INTEGER REFERENCES anclax_tasks(id),
-    cron_expression TEXT NOT NULL,
-    next_run TIMESTAMP NOT NULL,
-    enabled BOOLEAN DEFAULT true
-);
-```
-
-### Worker Architecture
-
-The worker system consists of several components:
-
-#### 1. Task Store Interface
-```go
-type TaskStoreInterface interface {
-    PushTask(ctx context.Context, task *apigen.Task) (int32, error)
-    PullTask(ctx context.Context) (*apigen.Task, error)
-    UpdateTaskStatus(ctx context.Context, taskID int32, status string) error
-    // ... other methods
-}
-```
-
-#### 2. Worker Pool
-- Workers run as goroutines within the main application process
-- Each worker polls for pending tasks every second
-- Configurable concurrency based on available system resources (default 10 via `worker.concurrency`)
-- Graceful shutdown handling
-
-#### 3. Task Execution Flow
-```
-1. Worker calls PullTask() to get next pending task
-2. Task status updated to "running"
-3. Worker deserializes task parameters
-4. Worker calls appropriate executor method
-5. On success: status updated to "completed"
-6. On failure: retry logic kicks in or failure hooks are triggered
-```
-
-### Retry Mechanism
-
-The retry system implements exponential backoff with jitter:
-
-```go
-type RetryPolicy struct {
-    Interval    string `json:"interval"`    // "5m" or "1m,2m,4m,8m"
-    MaxAttempts int    `json:"maxAttempts"` // -1 for unlimited
-}
-```
-
-**Retry Algorithm:**
-1. Parse interval string (simple duration or comma-separated list)
-2. Calculate next retry time based on attempt number
-3. Add jitter to prevent thundering herd
-4. Update task with next execution time
-5. Worker picks up task when retry time arrives
+A poll fills available business slots; completion triggers another fill. An empty claim waits for the next poll. The default business concurrency is 10. Framework control tasks have one additional independent slot per worker.
 
 ### Transaction Safety
 
-Tasks can be enqueued within database transactions:
-
-```go
-func (s *Service) CreateUserWithWelcomeEmail(ctx context.Context, userData UserData) error {
-    return s.model.WithTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
-        // Create user
-        user, err := s.model.CreateUser(ctx, userData)
-        if err != nil {
-            return err
-        }
-        
-        // Enqueue welcome email in same transaction
-        _, err = s.taskRunner.RunSendWelcomeEmailWithTx(ctx, tx, &taskgen.SendWelcomeEmailParameters{
-            UserId:     user.ID,
-            TemplateId: "welcome",
-        })
-        
-        return err
-    })
-}
-```
-
-**Transaction Guarantees:**
-- If user creation fails, welcome email task is not enqueued
-- If task enqueueing fails, user creation is rolled back
-- Both operations succeed or both fail atomically
+Use generated `Run*WithTx` methods with `model.RunTransactionWithTx` to commit business changes and task enqueueing together. The executor itself does not hold a framework database transaction. Failure hooks receive the finalization transaction through `core.Tx`.
 
 ## Task Lifecycle
 
-### State Transitions
+### Claim, execution, and finalization
 
-```
-pending → running → completed
-    ↓         ↓
-    ↓    → failed → pending (retry)
-    ↓              ↓
-    ↓         → failed (permanent)
-    ↓              ↓
-    ↓         → hook execution
-    ↓
-    → cancelled (manual intervention)
-```
+1. Claim a due `pending` task with `FOR UPDATE SKIP LOCKED`, respecting labels, serial order, priority, and group eligibility. Database time determines lease expiry.
+2. Set `worker_id` and `locked_at`; increment `lease_version` and `attempts`; commit before executing. A leased task remains `pending` in storage; the lease identifies active execution.
+3. Invoke the handler with a cancellable context and optional task timeout. Renew the lease while running. Executor panics enter the failure path.
+4. Atomically finalize using task ID, worker ID, and lease version. Clear the lease and record the applicable event. A committed pause/cancel wins over a late result; a stale lease cannot write back.
 
-### Detailed Lifecycle
+Normal success becomes `completed`. Failure remains `pending` with a later `started_at` while retries remain, otherwise it becomes `failed`. Completed, failed, and cancelled tasks are terminal. Resume applies only to paused tasks and invalidates the old attempt; an outstanding old lease may need to expire before the resumed task is claimable.
 
-1. **Task Creation**
-   - Task definition validated
-   - Parameters serialized
-   - Database record created with status `pending`
-   - Unique tag checked (if provided)
+### Retry and durable deferral
 
-2. **Task Pickup**
-   - Worker queries for oldest pending task
-   - Task status updated to `running`
-   - Worker process begins execution
+Retry intervals are fixed positive Go durations such as `5s` or `1m`. `maxAttempts` includes the initial attempt; a negative value allows unlimited attempts. `ErrFatalTask` bypasses retries. `ErrRetryTaskWithoutErrorEvent` suppresses the event while retrying.
 
-3. **Task Execution**
-   - Parameters deserialized and validated
-   - Executor method invoked with context and transaction
-   - Execution time monitored against timeout
+Returning `taskcore.DeferTask(delay)` schedules another invocation without consuming an attempt or emitting a failure event. It releases the execution slot and persists the next check time. Work done before deferring must be idempotent. Worker shutdown interruption uses the same rescheduling path. Ordinary task timeouts count as failures.
 
-4. **Success Path**
-   - Task status updated to `completed`
-   - Metrics updated
-   - Task removed from active processing
+### Cron lifecycle
 
-5. **Failure Path**
-   - Error logged and categorized
-   - Retry policy consulted
-   - If retries remaining: status → `pending`, next_run updated
-   - If retries exhausted: status → `failed`, failure hooks triggered
+A cron task reuses the same row and task ID. Retries belong to the current occurrence. After success or exhausted retries, schedule the next six-field cron occurrence and reset `attempts` to zero. A failed occurrence invokes the failure hook and records an error even when no retry policy exists; future occurrences remain scheduled. Pause and cancel stop future scheduling.
 
-6. **Failure Hook Execution**
-   - Hook method invoked within transaction
-   - Original task parameters passed to hook
-   - Hook success/failure affects final task status
+### Failure hooks and shutdown
 
-### Cron Job Lifecycle
+`OnTaskFailed` runs when an occurrence exhausts retries or returns a fatal error. A savepoint isolates hook SQL errors and panics: hook changes roll back, while the task outcome and event can commit. Database/commit failures still propagate.
 
-Scheduled tasks follow a different lifecycle:
-
-1. **Cron Job Registration**
-   - Cron expression parsed and validated
-   - Next execution time calculated
-   - Job registered in scheduler
-
-2. **Scheduled Execution**
-   - When next_run time arrives, new task instance created
-   - Task follows normal execution lifecycle
-   - Next execution time recalculated
-
-3. **Cron Job Management**
-   - Jobs can be paused/resumed
-   - Cron expressions can be updated
-   - Jobs can be deleted
+Shutdown stops admission, cancels executors, and drains their finalization using a context independent of the caller's cancellation. Database operations and the shutdown drain default to five-second bounds. Worker offline marking follows drained operations, including startup registration and heartbeat. An executor that ignores cancellation can outlive that bound; expired leases permit recovery. Delivery remains at least once, so external side effects must be idempotent.
 
 ## Scheduling: Priority, Weight, and Runtime Config
 
 ### Lane semantics
+
+Built-in config, pause, cancel, and broadcast tasks use an independent control lane. The priority rules below apply to business tasks.
 
 - **Strict lane**: tasks with `priority > 0`
   - claimed first when strict slots are available
@@ -376,7 +246,7 @@ strict_cap = ceil(concurrency * maxStrictPercentage / 100)
 The built-in task `broadcastUpdateWorkerRuntimeConfig` writes versioned config rows and fans worker-control command tasks out to the alive worker snapshot.
 
 Flow summary:
-1. Persist new version in `anclax.worker_runtime_configs`.
+1. Idempotently get or create a version in `anclax.worker_runtime_configs` by request ID.
 2. Enqueue `applyWorkerRuntimeConfigToWorker` for each remote target worker; local workers can be signaled directly.
 3. Workers claim their command tasks by `worker:<id>` label, refresh latest config, apply atomically, and update `workers.applied_config_version` monotonically.
 4. Convergence is determined from DB lagging-worker state.
@@ -389,7 +259,7 @@ For runnable examples and operational guidance, see:
 
 ### Worker control task requests
 
-Worker control-plane messages are normal async tasks with reserved task types:
+Worker control-plane messages are durable tasks with reserved types, claimed through the independent control lane:
 
 - `broadcastUpdateWorkerRuntimeConfig` fans out `applyWorkerRuntimeConfigToWorker`.
 - `broadcastCancelTask` fans out `cancelTaskOnWorker`.
@@ -397,13 +267,13 @@ Worker control-plane messages are normal async tasks with reserved task types:
 
 Broadcast tasks snapshot alive workers, enqueue one worker-targeted command task per remote worker, and wait for command tasks or DB convergence depending on the operation. Worker-targeted command tasks use `worker:<id>` labels and unique tags so each target worker claims its own command.
 
-Cancel and pause interrupt operations remain non-blocking at the runtime boundary. The blocking control-plane semantics come from the worker command task handler: after calling `InterruptTasks`, it waits for matching in-flight task runtime entries to close. Pending or already-finalized task IDs have no runtime entry and return immediately. Running tasks close their entries at the end of `FinalizeTask`, so control-plane cancel/pause returns after the worker has processed the interrupt through the task runtime lifecycle.
+After `InterruptTasks`, control handlers check whether the target executions have finalized. If any remain, they return `DeferTask`, persisting the next check and releasing the control slot. Broadcast acknowledgement checks use the same mechanism. Registry entries close at the end of `FinalizeTask` for the matching lease version. The control-plane caller still waits for convergence, while workers release capacity between checks. Deferred invocations reuse request IDs, configuration versions, and per-worker child unique tags.
 
 When adding a new worker-control request:
 1. **Define task schema** in `api/tasks/tasks.yaml`.
 2. **Regenerate** generated task code with `anclax gen`.
 3. **Add broadcast executor logic** that snapshots target workers and enqueues worker-targeted command tasks.
-4. **Handle in worker** via `WorkerControlTaskHandler`.
+4. **Handle in worker** via `WorkerControlTaskHandler`, updating the control type lists in `worker.IsControlTask` and the SQL claim queries together.
 5. **Add tests** for fanout, local-worker fast path, worker-target filtering, duplicate command behavior, and wait/convergence semantics.
 
 ## Advanced Features
@@ -470,9 +340,9 @@ tasks:
 ```
 
 **Hook Mechanism:**
-- Hooks are only triggered on permanent failures
+- Hooks run on permanent task failures or failed cron occurrences
 - Hooks receive original task parameters with full type safety
-- Hooks execute within the same transaction as status update
+- Hooks execute within the status-update transaction, isolated by a savepoint
 - Hook failures are logged but don't affect task status
 
 ### Unique Tasks

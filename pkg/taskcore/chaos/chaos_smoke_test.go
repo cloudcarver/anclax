@@ -62,6 +62,13 @@ func TestContainerizedTaskcoreChaosSmoke(t *testing.T) {
 	cfg := DefaultRunConfig()
 	cfg.Seed = readChaosInt64Env(t, "ANCLAX_TASKCORE_CHAOS_SEED", 424242)
 	cfg.KeepArtifacts = true
+	if image := os.Getenv("ANCLAX_TASKCORE_CHAOS_POSTGRES_IMAGE"); image != "" {
+		cfg.PostgresImage = image
+	}
+	if image := os.Getenv("ANCLAX_TASKCORE_CHAOS_RUNTIME_IMAGE"); image != "" {
+		cfg.RuntimeImage = image
+	}
+	t.Logf("chaos seed=%d postgres=%s runtime=%s", cfg.Seed, cfg.PostgresImage, cfg.RuntimeImage)
 
 	h, err := NewHarness(cfg)
 	require.NoError(t, err)
@@ -125,6 +132,9 @@ func TestContainerizedTaskcoreChaosSmoke(t *testing.T) {
 		}
 		must(runRandomAction(ctx, h, state, iter))
 		time.Sleep(interIterSleep)
+		if iter%10 == 0 || iter == iterations {
+			t.Logf("chaos progress=%d/%d tasks=%d worker disruptions=%d postgres restarts=%d control outages=%d", iter, iterations, state.tasksSubmitted, state.workerDisruptions, state.postgresRestarts, state.controlPlaneOutages)
+		}
 	}
 
 	must(restoreCluster(ctx, h, state, iterations+1))
@@ -383,10 +393,13 @@ func runInitialUserTagControl(ctx context.Context, user *User, state *chaosState
 			TaskName: item.name,
 			JobID:    item.jobID,
 			SleepMs:  50,
-			DelayMs:  2000,
-			Group:    "tag-control",
-			Labels:   item.labels,
-			Tags:     item.tags,
+			// Keep the probes pending until every tag-control assertion has run.
+			// Control broadcasts can outlast a short scheduling delay, in which
+			// case cancelling an already completed probe must be a no-op.
+			DelayMs: int32(time.Hour / time.Millisecond),
+			Group:   "tag-control",
+			Labels:  item.labels,
+			Tags:    item.tags,
 		})
 		if err != nil {
 			return err
@@ -417,11 +430,32 @@ func runInitialUserTagControl(ctx context.Context, user *User, state *chaosState
 	}
 	state.userCancels++
 
-	for _, name := range []string{
+	remaining := []string{
 		"LONG-000-tags-pause-target",
 		"LONG-000-tags-pause-except",
 		"LONG-000-tags-cancel-except",
-	} {
+	}
+	for _, name := range remaining {
+		if err := user.ExpectPending(ctx, name, 20*time.Second); err != nil {
+			return err
+		}
+	}
+	// Release the fixture's scheduling gate without changing task states.
+	result, err := user.DB.pool.Exec(ctx, `
+		update anclax.tasks
+		set started_at = statement_timestamp()
+		where unique_tag = any($1::text[]) and status = 'pending'
+	`, remaining)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() != int64(len(remaining)) {
+		return fmt.Errorf("tag-control fixture released %d tasks, want %d", result.RowsAffected(), len(remaining))
+	}
+	if user.Report != nil {
+		user.Report.AddEvent("fixture.release_tasks", commonTag, "tag-control assertions passed; scheduled probes are now due", map[string]any{"tasks": remaining})
+	}
+	for _, name := range remaining {
 		if err := user.ExpectCompleted(ctx, name, 30*time.Second); err != nil {
 			return err
 		}

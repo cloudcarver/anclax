@@ -1,41 +1,25 @@
 # worker
 
-`worker` is the task worker package designed for deterministic distributed-system testing.
+The task worker separates scheduling decisions from asynchronous effects while supporting deterministic distributed-system tests.
 
-## Architecture
+## Boundaries
 
-- `Engine`: pure state machine.
-  - Input: `Event`
-  - Output: `[]Command`
-- `Runtime`: trigger shell and side-effect executor.
-  - Drives periodic events (`poll`, `heartbeat`, `runtime config poll`)
-  - Executes commands through `Port`
-- `Port`: side-effect boundary (DB/queue/handler/runtime-config APIs).
-- `Worker`: production facade compatible with the task handler interface:
-  - `NewWorker(globalCtx, cfg, model, taskHandler)`
-  - `Start()`
-  - `RunTask(ctx, taskID)`
-  - `RegisterTaskHandler(handler)`
+- `Engine`: pure `Event -> []Command` state machine; owns business/strict/control capacity, weighted group selection, manual request admission, and execution phases.
+- `Runtime`: sole engine owner; drives timers and operations, routes `RunTask` through admission, and drains finalization on shutdown.
+- `Port`: side-effect boundary. `ModelPort` uses short PostgreSQL transactions and invokes task handlers outside them. Optional `ControlPort` and `TaskLookupPort` extend existing adapters.
+- `lifecycle_policy.go`: pure retry, cron, interruption, and deferral decisions.
+- `lifecycle_handler.go`: fenced atomic outcome/event persistence and savepoint-isolated failure hooks.
+- `task_execution.go`: per-attempt cancellation, lease renewal, and execution registry keyed by task ID and lease version.
+- `Worker`: public facade, constructed using `BuildWorkerComponents` and `NewWorker`, or `NewWorkerFromConfig`.
 
-## Why this split
+## Execution
 
-The old worker is loop-driven and timing-driven. This package makes phase boundaries explicit so tests can serialize interleavings across workers.
+A cycle advances through claim, execute, and finalize. Business slots remain reserved through finalization. Manual and polled tasks share that budget; the strict limit applies to both. Strict-to-normal fallback retains its reservation until the database rechecks task priority and selects a task. Built-in control tasks use one separate slot in production and yield durable deferrals while waiting for acknowledgements.
 
-A single cycle is broken into independent steps:
+Polling fills idle capacity and completion triggers refill. Empty claims wait for another poll. Stop rejects new admission, cancels execution, and gives finalization its own bounded context before marking the worker offline.
 
-1. `claim_strict` or `claim_normal`
-2. `execute_task`
-3. `finalize`
+## Deterministic tests
 
-Each step is an explicit command emitted by the engine and can be ordered deterministically in tests.
+Use `Engine.Apply(event)` directly to control event ordering. Use `Runtime.Step(ctx, event)` with a test `Port` to include side effects; `Step` submits a scheduling event but does not wait for all asynchronous effects. Production `Runtime.Start` additionally owns polling and automatic refill.
 
-## Deterministic testing model
-
-Use `Engine.Apply(event)` directly in tests to serialize event order across workers.
-
-Use `Runtime.Step(ctx, event)` when you want to include side-effect adapters (`Port`) while keeping deterministic event ordering.
-
-For production usage, `NewWorker(...)` wires:
-- `Engine` + `Runtime`
-- model-backed `Port` (`ModelPort`)
-- worker lifecycle handler semantics (retry/cron/failure logic)
+See [worker leases](../../../docs/async-task-worker-lease.md) for persistence invariants, migration requirements, configuration, and PostgreSQL regressions.
