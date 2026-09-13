@@ -144,6 +144,20 @@ go test -tags smoke ./pkg/taskcore/chaos -run TestContainerizedTaskcoreChaosSmok
 
 The test logs the artifact directory at the end of the run.
 
+`make chaos` runs 200 random iterations with seed `424242` by default. The direct test command defaults to 28 iterations. Use the environment variables to select a reproducible run and locally available images:
+
+```bash
+ANCLAX_TASKCORE_CHAOS_SEED=424242 \
+ANCLAX_TASKCORE_CHAOS_ITERATIONS=200 \
+ANCLAX_TASKCORE_CHAOS_POSTGRES_IMAGE=postgres:17 \
+ANCLAX_TASKCORE_CHAOS_RUNTIME_IMAGE=alpine:latest \
+go test -tags smoke ./pkg/taskcore/chaos -run TestContainerizedTaskcoreChaosSmoke -count=1 -v -timeout 60m
+```
+
+Images default to `postgres:15` and `alpine:3.20`. Helpers are built for Linux for use in containers, including when the test runner is on macOS. Docker and the build target must use compatible CPU architectures. Container-to-container test traffic bypasses inherited HTTP proxy settings. Progress is logged every ten iterations.
+
+The initial tag-control probes are scheduled in the future while pause/resume/cancel and exclusion rules are asserted. The fixture then makes the remaining pending probes due, without changing their states. This keeps the test independent of broadcast latency: a completed task cannot be retroactively cancelled.
+
 ## Artifact layout
 
 Each run writes artifacts into a unique directory, for example:

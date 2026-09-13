@@ -80,6 +80,15 @@ func (s *TaskStore) pushTask(ctx context.Context, txm model.ModelInterface, task
 		Priority:     priority,
 		Weight:       weight,
 	})
+	if errors.Is(err, pgx.ErrNoRows) && task.UniqueTag != nil {
+		// A concurrent insertion may win after the initial lookup. A second
+		// statement sees its committed row under READ COMMITTED, including WithTx.
+		existing, lookupErr := txm.GetTaskByUniqueTag(ctx, task.UniqueTag)
+		if lookupErr != nil {
+			return 0, errors.Wrap(lookupErr, "get concurrently enqueued task")
+		}
+		return existing.ID, nil
+	}
 	if err != nil {
 		return 0, errors.Wrap(err, "failed to push task")
 	}

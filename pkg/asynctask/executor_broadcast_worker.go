@@ -22,10 +22,9 @@ func (e *Executor) ExecuteBroadcastUpdateWorkerRuntimeConfig(ctx context.Context
 	if params == nil {
 		return errors.Wrap(taskcore.ErrFatalTask, "broadcast update worker runtime config params cannot be nil")
 	}
-	startAt := e.now()
 	requestID := optionalRequestID(params.RequestID)
 	if requestID == "" {
-		requestID = uuid.NewString()
+		requestID = fmt.Sprintf("task:%d", task.ID)
 	}
 
 	ackPollInterval, err := parseAckPollInterval(params.AckPollInterval)
@@ -46,7 +45,7 @@ func (e *Executor) ExecuteBroadcastUpdateWorkerRuntimeConfig(ctx context.Context
 	if err != nil {
 		return err
 	}
-	created, err := e.model.CreateWorkerRuntimeConfig(ctx, payloadRaw)
+	created, err := e.model.CreateWorkerRuntimeConfigForRequest(ctx, querier.CreateWorkerRuntimeConfigForRequestParams{RequestID: &requestID, Payload: payloadRaw})
 	if err != nil {
 		return errors.Wrap(err, "create worker runtime config")
 	}
@@ -71,53 +70,52 @@ func (e *Executor) ExecuteBroadcastUpdateWorkerRuntimeConfig(ctx context.Context
 	for _, workerID := range targetWorkers {
 		targetSet[workerID] = struct{}{}
 	}
-	for {
-		latest, err := e.model.GetLatestWorkerRuntimeConfig(ctx)
-		if err != nil {
-			return errors.Wrap(err, "get latest runtime config")
+	latest, err := e.model.GetLatestWorkerRuntimeConfig(ctx)
+	if err != nil {
+		return errors.Wrap(err, "get latest runtime config")
+	}
+	if latest.Version > targetVersion {
+		metrics.RuntimeConfigSupersededTotal.Inc()
+		return nil
+	}
+	laggingWorkers, err := e.model.ListLaggingAliveWorkers(ctx, querier.ListLaggingAliveWorkersParams{
+		HeartbeatCutoff: e.now().Add(-heartbeatTTL),
+		Version:         targetVersion,
+	})
+	if err != nil {
+		return errors.Wrap(err, "list lagging alive workers")
+	}
+	aliveWorkers, err := e.listAliveWorkers(ctx)
+	if err != nil {
+		return err
+	}
+	aliveSet := make(map[uuid.UUID]struct{}, len(aliveWorkers))
+	for _, workerID := range aliveWorkers {
+		aliveSet[workerID] = struct{}{}
+	}
+	for _, workerID := range targetWorkers {
+		if _, alive := aliveSet[workerID]; alive {
+			continue
 		}
-		if latest.Version > targetVersion {
-			metrics.RuntimeConfigSupersededTotal.Inc()
-			return nil
-		}
-		laggingWorkers, err := e.model.ListLaggingAliveWorkers(ctx, querier.ListLaggingAliveWorkersParams{
-			HeartbeatCutoff: e.now().Add(-heartbeatTTL),
-			Version:         targetVersion,
-		})
-		if err != nil {
-			return errors.Wrap(err, "list lagging alive workers")
-		}
-		aliveWorkers, err := e.listAliveWorkers(ctx)
-		if err != nil {
-			return err
-		}
-		aliveSet := make(map[uuid.UUID]struct{}, len(aliveWorkers))
-		for _, workerID := range aliveWorkers {
-			aliveSet[workerID] = struct{}{}
-		}
-		for _, workerID := range targetWorkers {
-			if _, alive := aliveSet[workerID]; alive {
-				continue
-			}
-			if err := e.cancelObsoleteWorkerCommandTask(ctx, applyRuntimeConfigUniqueTag(requestID, workerID, targetVersion)); err != nil {
-				return err
-			}
-		}
-		remaining := 0
-		for _, workerID := range laggingWorkers {
-			if _, ok := targetSet[workerID]; ok {
-				remaining++
-			}
-		}
-		metrics.RuntimeConfigLaggingWorkers.Set(float64(remaining))
-		if remaining == 0 {
-			metrics.RuntimeConfigConvergenceSeconds.Observe(e.now().Sub(startAt).Seconds())
-			return nil
-		}
-		if err := sleepOrDone(ctx, ackPollInterval); err != nil {
+		if err := e.cancelObsoleteWorkerCommandTask(ctx, applyRuntimeConfigUniqueTag(requestID, workerID, targetVersion)); err != nil {
 			return err
 		}
 	}
+	remaining := 0
+	for _, workerID := range laggingWorkers {
+		if _, ok := targetSet[workerID]; ok {
+			remaining++
+		}
+	}
+	metrics.RuntimeConfigLaggingWorkers.Set(float64(remaining))
+	if remaining == 0 {
+		metrics.RuntimeConfigConvergenceSeconds.Observe(e.now().Sub(created.CreatedAt).Seconds())
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return taskcore.DeferTask(ackPollInterval)
 }
 
 func (e *Executor) ExecuteApplyWorkerRuntimeConfigToWorker(ctx context.Context, _ taskworker.Task, params *taskgen.ApplyWorkerRuntimeConfigToWorkerParameters) error {
@@ -134,7 +132,7 @@ func (e *Executor) ExecuteBroadcastCancelTask(ctx context.Context, task taskwork
 	}
 	requestID := optionalRequestID(params.RequestID)
 	if requestID == "" {
-		requestID = uuid.NewString()
+		requestID = fmt.Sprintf("task:%d", task.ID)
 	}
 	ackPollInterval, err := parseAckPollInterval(params.AckPollInterval)
 	if err != nil {
@@ -151,12 +149,17 @@ func (e *Executor) ExecuteBroadcastCancelTask(ctx context.Context, task taskwork
 
 	localWorkerID := e.localWorkerID()
 	waitTargets := make([]uuid.UUID, 0, len(targetWorkers))
+	localPending := false
 	for _, workerID := range targetWorkers {
 		if localWorkerID != "" && workerID.String() == localWorkerID && e.localWorker != nil {
 			localTaskIDs := workerControlTaskIDs(task.ID, taskIDs)
 			e.localWorker.InterruptTasks(localTaskIDs, taskcore.ErrTaskCancelled)
-			if err := e.localWorker.WaitTaskRuntimes(ctx, localTaskIDs); err != nil {
-				return err
+			if err := waitOrDeferTaskRuntimes(ctx, e.localWorker, localTaskIDs, ackPollInterval); err != nil {
+				var deferred *taskcore.TaskDeferred
+				if !stdErrors.As(err, &deferred) {
+					return err
+				}
+				localPending = true
 			}
 			continue
 		}
@@ -166,12 +169,21 @@ func (e *Executor) ExecuteBroadcastCancelTask(ctx context.Context, task taskwork
 		waitTargets = append(waitTargets, workerID)
 	}
 	if len(waitTargets) == 0 {
+		if localPending {
+			return taskcore.DeferTask(ackPollInterval)
+		}
 		return nil
 	}
 
-	return e.waitForWorkerCommandTasks(ctx, waitTargets, ackPollInterval, func(workerID uuid.UUID) string {
+	if err := e.waitForWorkerCommandTasks(ctx, waitTargets, ackPollInterval, func(workerID uuid.UUID) string {
 		return cancelOnWorkerUniqueTag(requestID, workerID)
-	})
+	}); err != nil {
+		return err
+	}
+	if localPending {
+		return taskcore.DeferTask(ackPollInterval)
+	}
+	return nil
 }
 
 func (e *Executor) ExecuteCancelTaskOnWorker(ctx context.Context, _ taskworker.Task, params *taskgen.CancelTaskOnWorkerParameters) error {
@@ -188,7 +200,7 @@ func (e *Executor) ExecuteBroadcastPauseTask(ctx context.Context, task taskworke
 	}
 	requestID := optionalRequestID(params.RequestID)
 	if requestID == "" {
-		requestID = uuid.NewString()
+		requestID = fmt.Sprintf("task:%d", task.ID)
 	}
 	ackPollInterval, err := parseAckPollInterval(params.AckPollInterval)
 	if err != nil {
@@ -205,12 +217,17 @@ func (e *Executor) ExecuteBroadcastPauseTask(ctx context.Context, task taskworke
 
 	localWorkerID := e.localWorkerID()
 	waitTargets := make([]uuid.UUID, 0, len(targetWorkers))
+	localPending := false
 	for _, workerID := range targetWorkers {
 		if localWorkerID != "" && workerID.String() == localWorkerID && e.localWorker != nil {
 			localTaskIDs := workerControlTaskIDs(task.ID, taskIDs)
 			e.localWorker.InterruptTasks(localTaskIDs, taskcore.ErrTaskPaused)
-			if err := e.localWorker.WaitTaskRuntimes(ctx, localTaskIDs); err != nil {
-				return err
+			if err := waitOrDeferTaskRuntimes(ctx, e.localWorker, localTaskIDs, ackPollInterval); err != nil {
+				var deferred *taskcore.TaskDeferred
+				if !stdErrors.As(err, &deferred) {
+					return err
+				}
+				localPending = true
 			}
 			continue
 		}
@@ -220,12 +237,21 @@ func (e *Executor) ExecuteBroadcastPauseTask(ctx context.Context, task taskworke
 		waitTargets = append(waitTargets, workerID)
 	}
 	if len(waitTargets) == 0 {
+		if localPending {
+			return taskcore.DeferTask(ackPollInterval)
+		}
 		return nil
 	}
 
-	return e.waitForWorkerCommandTasks(ctx, waitTargets, ackPollInterval, func(workerID uuid.UUID) string {
+	if err := e.waitForWorkerCommandTasks(ctx, waitTargets, ackPollInterval, func(workerID uuid.UUID) string {
 		return pauseOnWorkerUniqueTag(requestID, workerID)
-	})
+	}); err != nil {
+		return err
+	}
+	if localPending {
+		return taskcore.DeferTask(ackPollInterval)
+	}
+	return nil
 }
 
 func (e *Executor) ExecutePauseTaskOnWorker(ctx context.Context, _ taskworker.Task, params *taskgen.PauseTaskOnWorkerParameters) error {
@@ -443,49 +469,48 @@ func (e *Executor) waitForWorkerCommandTasks(ctx context.Context, targetWorkers 
 	for _, workerID := range targetWorkers {
 		targets[workerID] = struct{}{}
 	}
-	for {
-		aliveWorkers, err := e.listAliveWorkers(ctx)
-		if err != nil {
-			return err
-		}
-		aliveSet := make(map[uuid.UUID]struct{}, len(aliveWorkers))
-		for _, workerID := range aliveWorkers {
-			aliveSet[workerID] = struct{}{}
-		}
+	aliveWorkers, err := e.listAliveWorkers(ctx)
+	if err != nil {
+		return err
+	}
+	aliveSet := make(map[uuid.UUID]struct{}, len(aliveWorkers))
+	for _, workerID := range aliveWorkers {
+		aliveSet[workerID] = struct{}{}
+	}
 
-		allAckedOrDead := true
-		for workerID := range targets {
-			uniqueTag := uniqueTagFn(workerID)
-			if _, alive := aliveSet[workerID]; !alive {
-				if err := e.cancelObsoleteWorkerCommandTask(ctx, uniqueTag); err != nil {
-					return err
-				}
-				continue
+	allAckedOrDead := true
+	for workerID := range targets {
+		uniqueTag := uniqueTagFn(workerID)
+		if _, alive := aliveSet[workerID]; !alive {
+			if err := e.cancelObsoleteWorkerCommandTask(ctx, uniqueTag); err != nil {
+				return err
 			}
-			task, err := e.model.GetTaskByUniqueTag(ctx, &uniqueTag)
-			if err != nil {
-				if stdErrors.Is(err, pgx.ErrNoRows) {
-					allAckedOrDead = false
-					continue
-				}
-				return errors.Wrapf(err, "get worker command task by unique tag %s", uniqueTag)
-			}
-			switch apigen.TaskStatus(task.Status) {
-			case apigen.Completed:
-				continue
-			case apigen.Failed:
-				return errors.Errorf("worker command task failed (worker=%s task_id=%d unique_tag=%s)", workerID, task.ID, uniqueTag)
-			default:
+			continue
+		}
+		task, err := e.model.GetTaskByUniqueTag(ctx, &uniqueTag)
+		if err != nil {
+			if stdErrors.Is(err, pgx.ErrNoRows) {
 				allAckedOrDead = false
+				continue
 			}
+			return errors.Wrapf(err, "get worker command task by unique tag %s", uniqueTag)
 		}
-		if allAckedOrDead {
-			return nil
-		}
-		if err := sleepOrDone(ctx, fanoutInterval); err != nil {
-			return err
+		switch apigen.TaskStatus(task.Status) {
+		case apigen.Completed:
+			continue
+		case apigen.Failed:
+			return errors.Errorf("worker command task failed (worker=%s task_id=%d unique_tag=%s)", workerID, task.ID, uniqueTag)
+		default:
+			allAckedOrDead = false
 		}
 	}
+	if allAckedOrDead {
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return taskcore.DeferTask(fanoutInterval)
 }
 
 func normalizeBroadcastTaskIDs(taskIDs []int32) ([]int32, error) {
@@ -557,13 +582,4 @@ func cancelOnWorkerUniqueTag(requestID string, workerID uuid.UUID) string {
 
 func pauseOnWorkerUniqueTag(requestID string, workerID uuid.UUID) string {
 	return fmt.Sprintf("broadcast:pause_task:%s:%s", requestID, workerID)
-}
-
-func sleepOrDone(ctx context.Context, d time.Duration) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(d):
-		return nil
-	}
 }

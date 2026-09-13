@@ -178,6 +178,8 @@ func (h *Harness) startControlPlane(ctx context.Context) error {
 	args = append(args, quotedEnv(map[string]string{
 		"CHAOS_DSN":       h.postgresInnerDSN,
 		"CHAOS_HTTP_ADDR": fmt.Sprintf(":%d", h.cfg.ControlPlanePort),
+		"NO_PROXY":        "*",
+		"no_proxy":        "*",
 	})...)
 	args = append(args, bindMount(h.binaries.Dir, "/mnt")...)
 	args = append(args, h.cfg.RuntimeImage)
@@ -242,6 +244,10 @@ func (h *Harness) StartWorker(ctx context.Context, name string, labels []string)
 	args = append(args, hostGatewayAlias("host.docker.internal")...)
 	signalBaseURL := fmt.Sprintf("http://%s:%d", h.controlPlaneName, h.cfg.ControlPlanePort)
 	args = append(args, quotedEnv(map[string]string{
+		// All probe traffic stays on the test network. Docker may otherwise
+		// inject host proxy settings that cannot resolve container names.
+		"NO_PROXY":                     "*",
+		"no_proxy":                     "*",
 		"CHAOS_DSN":                    h.postgresInnerDSN,
 		"CHAOS_WORKER_NAME":            name,
 		"CHAOS_WORKER_LABELS":          strings.Join(workerLabels, ","),

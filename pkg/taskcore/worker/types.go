@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 )
@@ -20,23 +21,31 @@ const (
 type Phase string
 
 const (
-	PhaseClaimStrict Phase = "claim_strict"
-	PhaseClaimNormal Phase = "claim_normal"
-	PhaseExecuting   Phase = "executing"
-	PhaseFinalizing  Phase = "finalizing"
+	PhaseClaimControl Phase = "claim_control"
+	PhaseClaimByID    Phase = "claim_by_id"
+	PhaseClaimStrict  Phase = "claim_strict"
+	PhaseClaimNormal  Phase = "claim_normal"
+	PhaseExecuting    Phase = "executing"
+	PhaseFinalizing   Phase = "finalizing"
 )
 
 type Lane string
 
 const (
-	LaneStrict Lane = "strict"
-	LaneNormal Lane = "normal"
+	LaneControl Lane = "control"
+	LaneStrict  Lane = "strict"
+	LaneNormal  Lane = "normal"
 )
 
 type EventType string
 
 const (
-	EventPollTick EventType = "poll_tick"
+	EventControlPollTick    EventType = "control_poll_tick"
+	EventClaimControlResult EventType = "claim_control_result"
+	EventRunTask            EventType = "run_task"
+	EventCancelTaskRequest  EventType = "cancel_task_request"
+	EventClaimByIDResult    EventType = "claim_by_id_result"
+	EventPollTick           EventType = "poll_tick"
 
 	EventClaimStrictResult EventType = "claim_strict_result"
 	EventClaimNormalResult EventType = "claim_normal_result"
@@ -55,10 +64,13 @@ const (
 type CommandType string
 
 const (
-	CmdClaimStrict CommandType = "claim_strict"
-	CmdClaimNormal CommandType = "claim_normal"
-	CmdExecuteTask CommandType = "execute_task"
-	CmdFinalize    CommandType = "finalize"
+	CmdClaimControl    CommandType = "claim_control"
+	CmdClaimByID       CommandType = "claim_by_id"
+	CmdTaskRequestDone CommandType = "task_request_done"
+	CmdClaimStrict     CommandType = "claim_strict"
+	CmdClaimNormal     CommandType = "claim_normal"
+	CmdExecuteTask     CommandType = "execute_task"
+	CmdFinalize        CommandType = "finalize"
 
 	CmdHeartbeat CommandType = "heartbeat"
 
@@ -68,11 +80,13 @@ const (
 )
 
 type Task struct {
-	ID         int32
-	Priority   int32
-	Attempts   int32
-	Attributes apigen.TaskAttributes
-	Spec       apigen.TaskSpec
+	ID           int32
+	LeaseVersion int64
+	claimedAt    time.Time
+	Priority     int32
+	Attempts     int32
+	Attributes   apigen.TaskAttributes
+	Spec         apigen.TaskSpec
 }
 
 func (t *Task) GetType() string {
@@ -96,6 +110,7 @@ type RuntimeConfig struct {
 }
 
 type Event struct {
+	TaskID    int32
 	Type      EventType
 	CycleID   int64
 	Task      *Task
@@ -106,6 +121,9 @@ type Event struct {
 }
 
 type Command struct {
+	TaskID         int32
+	AllowStrict    bool
+	Err            error
 	Type           CommandType
 	CycleID        int64
 	Task           *Task
@@ -117,9 +135,10 @@ type Command struct {
 }
 
 type ClaimRequest struct {
-	WorkerID  string
-	Labels    []string
-	HasLabels bool
+	AllowStrict bool
+	WorkerID    string
+	Labels      []string
+	HasLabels   bool
 }
 
 type ClaimNormalRequest struct {
@@ -152,6 +171,7 @@ type RuntimeConfigPayload struct {
 }
 
 type EngineConfig struct {
+	ControlConcurrency  int
 	WorkerID            string
 	Labels              []string
 	Concurrency         int
@@ -160,6 +180,8 @@ type EngineConfig struct {
 }
 
 type Snapshot struct {
+	ControlInFlight        int
+	PendingRequests        int
 	WorkerID               string
 	Stopped                bool
 	InFlight               int
@@ -174,10 +196,35 @@ type Snapshot struct {
 }
 
 type cycleState struct {
+	RequestID      string
 	ID             int64
 	Lane           Lane
 	Phase          Phase
 	Task           *Task
 	PendingGroups  []string
 	WeightedLabels []string
+}
+
+// These optional ports let existing deterministic adapters keep using the base
+// Port while production workers enable a separately budgeted control lane.
+type ControlPort interface {
+	ClaimControl(context.Context, ClaimRequest) (*Task, error)
+}
+type TaskLookupPort interface {
+	LookupTask(context.Context, int32) (*Task, error)
+}
+
+// TaskRuntimesObserver lets control handlers check convergence without occupying
+// an execution slot while waiting. WorkerInterface remains source compatible.
+type TaskRuntimesObserver interface{ TaskRuntimesActive([]int32) bool }
+
+// IsControlTask identifies the framework worker-control protocol. Keep this list
+// aligned with ClaimWorkerCommand and the built-in task spec.
+func IsControlTask(taskType string) bool {
+	switch taskType {
+	case "broadcastUpdateWorkerRuntimeConfig", "applyWorkerRuntimeConfigToWorker", "broadcastCancelTask", "cancelTaskOnWorker", "broadcastPauseTask", "pauseTaskOnWorker":
+		return true
+	default:
+		return false
+	}
 }

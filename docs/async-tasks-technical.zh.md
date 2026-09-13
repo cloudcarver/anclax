@@ -172,183 +172,53 @@ func (h *Handler) RegisterUser(c *fiber.Ctx) error {
 
 ## 底层架构
 
-### 数据库模式
+任务状态保存在 `anclax.tasks`，事件、Worker 注册信息和调度配置分别保存在 `anclax.events`、`anclax.workers`、`anclax.worker_runtime_configs`。Cron 元数据保存在任务属性和 `started_at` 中。数据库结构以 `sql/migrations` 为准。
 
-异步任务系统使用几个数据库表：
+Worker 分为四个职责边界：
 
-```sql
--- 核心任务表
-CREATE TABLE anclax_tasks (
-    id SERIAL PRIMARY KEY,
-    spec JSONB NOT NULL,           -- 任务类型和参数
-    attributes JSONB NOT NULL,     -- 重试策略、超时等
-    status TEXT NOT NULL,          -- pending、running、completed、failed
-    started_at TIMESTAMP,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    unique_tag TEXT UNIQUE,        -- 用于防止重复
-    parent_task_id INTEGER         -- 可选的父任务
-);
+- `Engine` 是纯 `Event -> []Command` 状态机，负责并发准入、严格通道容量、标签组加权轮转和手动执行请求。
+- `Runtime` 负责事件循环、定时器、异步操作、取消和有时限的停机收尾。自动拉取与 `RunTask` 共用并发预算，直到 finalization 完成才释放容量。
+- `ModelPort` 执行短数据库操作，并在事务外调用处理器。执行注册表以“任务 ID + 租约版本”为键。
+- 生命周期策略负责无 I/O 的结果计算；生命周期处理器在同一事务中持久化状态、事件并调用失败钩子。
 
--- Cron 作业调度
-CREATE TABLE anclax_cron_jobs (
-    id SERIAL PRIMARY KEY,
-    task_id INTEGER REFERENCES anclax_tasks(id),
-    cron_expression TEXT NOT NULL,
-    next_run TIMESTAMP NOT NULL,
-    enabled BOOLEAN DEFAULT true
-);
-```
-
-### 工作者架构
-
-工作者系统由几个组件组成：
-
-#### 1. 任务存储接口
-```go
-type TaskStoreInterface interface {
-    PushTask(ctx context.Context, task *apigen.Task) (int32, error)
-    PullTask(ctx context.Context) (*apigen.Task, error)
-    UpdateTaskStatus(ctx context.Context, taskID int32, status string) error
-    // ... 其他方法
-}
-```
-
-#### 2. 工作者池
-- 工作者作为主应用程序进程中的 goroutine 运行
-- 每个工作者每秒轮询待处理任务
-- 基于可用系统资源的可配置并发性
-- 优雅关闭处理
-
-#### 3. 任务执行流程
-```
-1. 工作者调用 PullTask() 获取下一个待处理任务
-2. 任务状态更新为 "running"
-3. 工作者反序列化任务参数
-4. 工作者调用适当的执行器方法
-5. 成功时：状态更新为 "completed"
-6. 失败时：重试逻辑启动或触发失败钩子
-```
-
-### 重试机制
-
-重试系统实现了带抖动的指数退避：
-
-```go
-type RetryPolicy struct {
-    Interval    string `json:"interval"`    // "5m" 或 "1m,2m,4m,8m"
-    MaxAttempts int    `json:"maxAttempts"` // -1 表示无限
-}
-```
-
-**重试算法：**
-1. 解析间隔字符串（简单持续时间或逗号分隔列表）
-2. 根据尝试次数计算下次重试时间
-3. 添加抖动以防止雷群效应
-4. 用下次执行时间更新任务
-5. 重试时间到达时工作者接收任务
+每次轮询会填满可用业务槽位，任务收尾后立即补位；领取不到任务时等待下一次轮询。默认业务并发为 10。框架控制任务每个 Worker 另有一个独立槽位。
 
 ### 事务安全
 
-任务可以在数据库事务中排队：
-
-```go
-func (s *Service) CreateUserWithWelcomeEmail(ctx context.Context, userData UserData) error {
-    return s.model.WithTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
-        // 创建用户
-        user, err := s.model.CreateUser(ctx, userData)
-        if err != nil {
-            return err
-        }
-        
-        // 在同一事务中排队欢迎邮件
-        _, err = s.taskRunner.RunSendWelcomeEmailWithTx(ctx, tx, &taskgen.SendWelcomeEmailParameters{
-            UserId:     user.ID,
-            TemplateId: "welcome",
-        })
-        
-        return err
-    })
-}
-```
-
-**事务保证：**
-- 如果用户创建失败，欢迎邮件任务不会排队
-- 如果任务排队失败，用户创建会回滚
-- 两个操作要么都成功要么都失败，原子性
+在 `model.RunTransactionWithTx` 中使用生成的 `Run*WithTx` 方法，可以让业务变更和任务入队一起提交。执行器运行期间不持有框架数据库事务；失败钩子通过 `core.Tx` 接收收尾事务。
 
 ## 任务生命周期
 
-### 状态转换
+### 领取、执行与收尾
 
-```
-pending → running → completed
-    ↓         ↓
-    ↓    → failed → pending (重试)
-    ↓              ↓
-    ↓         → failed (永久)
-    ↓              ↓
-    ↓         → 钩子执行
-    ↓
-    → cancelled (手动干预)
-```
+1. 使用 `FOR UPDATE SKIP LOCKED` 领取到期的 `pending` 任务，同时检查标签、串行顺序、优先级和标签组。租约过期判断使用数据库时间。
+2. 设置 `worker_id`、`locked_at`，递增 `lease_version` 和 `attempts`，提交后执行。持有租约的任务在数据库中仍为 `pending`，通过租约标识执行状态。
+3. 使用可取消的上下文和可选任务超时调用处理器，运行期间续租。执行器 panic 会进入失败处理路径。
+4. 根据任务 ID、Worker ID 和租约版本原子收尾，释放租约并记录相应事件。已经提交的暂停/取消优先于晚到的执行结果；旧租约不能写回。
 
-### 详细生命周期
+普通任务成功后变为 `completed`。失败且还有重试预算时，保持 `pending` 并推迟 `started_at`；否则变为 `failed`。`completed`、`failed`、`cancelled` 是终态。恢复只作用于暂停任务，并使旧执行失效；如果旧租约尚未释放，恢复后的任务可能需要等待租约过期才能重新领取。
 
-1. **任务创建**
-   - 任务定义验证
-   - 参数序列化
-   - 数据库记录创建，状态为 `pending`
-   - 检查唯一标签（如果提供）
+### 重试与持久化延期
 
-2. **任务接收**
-   - 工作者查询最旧的待处理任务
-   - 任务状态更新为 `running`
-   - 工作者进程开始执行
+重试间隔是固定的正 Go duration，例如 `5s`、`1m`。`maxAttempts` 包含首次执行，负数表示无限重试。`ErrFatalTask` 跳过重试；`ErrRetryTaskWithoutErrorEvent` 在继续重试时不记录错误事件。
 
-3. **任务执行**
-   - 参数反序列化和验证
-   - 使用上下文和事务调用执行器方法
-   - 根据超时监控执行时间
+返回 `taskcore.DeferTask(delay)` 会持久化下一次调用时间，释放执行槽位，不消耗尝试次数，也不产生失败事件。延期前已经执行的操作必须支持幂等。Worker 停机中断也使用此重新调度路径；普通任务超时仍按失败处理。
 
-4. **成功路径**
-   - 任务状态更新为 `completed`
-   - 指标更新
-   - 任务从活动处理中移除
+### Cron 生命周期
 
-5. **失败路径**
-   - 错误记录和分类
-   - 查询重试策略
-   - 如果还有重试：状态 → `pending`，更新 next_run
-   - 如果重试用尽：状态 → `failed`，触发失败钩子
+Cron 任务复用同一数据库行和任务 ID。重试预算属于当前这一轮执行。成功或重试耗尽后，按六字段 Cron 表达式安排下一轮，并将 `attempts` 归零。即使没有重试策略，单轮失败也会记录错误、调用失败钩子并保留后续调度。暂停和取消会停止后续调度。
 
-6. **失败钩子执行**
-   - 在事务中调用钩子方法
-   - 原始任务参数传递给钩子
-   - 钩子成功/失败影响最终任务状态
+### 失败钩子与停机
 
-### Cron 作业生命周期
+`OnTaskFailed` 在当前执行轮次重试耗尽或返回致命错误时调用。Savepoint 隔离钩子的 SQL 错误和 panic：回滚钩子变更后，任务结果和事件仍可提交。数据库或提交本身的错误仍会上报。
 
-定时任务遵循不同的生命周期：
-
-1. **Cron 作业注册**
-   - Cron 表达式解析和验证
-   - 计算下次执行时间
-   - 作业在调度器中注册
-
-2. **定时执行**
-   - 当 next_run 时间到达时，创建新任务实例
-   - 任务遵循正常执行生命周期
-   - 重新计算下次执行时间
-
-3. **Cron 作业管理**
-   - 作业可以暂停/恢复
-   - Cron 表达式可以更新
-   - 作业可以删除
+停机时停止接收任务、取消执行器，并使用不受调用方取消影响的上下文完成收尾。数据库操作与停机等待默认各有五秒时限。Worker 离线标记在已发出的操作结束后写入，包括启动注册和心跳。忽略取消信号的执行器可能超过该时限，任务依靠租约过期恢复。交付语义仍为至少一次，外部副作用需要幂等处理。
 
 ## 调度：Priority、Weight 与运行时配置
 
 ### 通道语义
+
+内置配置更新、暂停、取消及其广播任务使用独立控制通道；以下优先级规则适用于业务任务。
 
 - **严格通道（strict lane）**：`priority > 0`
   - 在 strict 槽可用时优先领取
@@ -376,7 +246,7 @@ strict_cap = ceil(concurrency * maxStrictPercentage / 100)
 内置任务 `broadcastUpdateWorkerRuntimeConfig` 会写入版本化配置，并向存活 worker 快照 fanout worker-control 命令任务。
 
 流程摘要：
-1. 在 `anclax.worker_runtime_configs` 中持久化新版本。
+1. 根据请求 ID 在 `anclax.worker_runtime_configs` 中幂等取得或创建版本。
 2. 为每个远端目标 worker 入队 `applyWorkerRuntimeConfigToWorker`；本地 worker 可直接触发。
 3. worker 通过 `worker:<id>` 标签领取自己的命令任务，刷新最新配置、原子应用，并单调更新 `workers.applied_config_version`。
 4. 收敛以 DB 的落后 worker 状态为准。
@@ -389,7 +259,7 @@ strict_cap = ceil(concurrency * maxStrictPercentage / 100)
 
 ### Worker 控制任务请求
 
-Worker 控制面消息是普通异步任务中的保留任务类型：
+Worker 控制面消息使用持久化任务中的保留类型，由独立控制通道领取：
 
 - `broadcastUpdateWorkerRuntimeConfig` fanout `applyWorkerRuntimeConfigToWorker`。
 - `broadcastCancelTask` fanout `cancelTaskOnWorker`。
@@ -397,13 +267,13 @@ Worker 控制面消息是普通异步任务中的保留任务类型：
 
 广播任务会快照存活 worker，为每个远端 worker 入队一个定向命令任务，并根据操作等待命令任务完成或 DB 收敛。定向命令任务使用 `worker:<id>` 标签和 unique tag，确保目标 worker 领取自己的命令。
 
-cancel 和 pause 的 runtime interrupt 操作本身保持非阻塞。阻塞语义属于控制面命令任务 handler：调用 `InterruptTasks` 后，它会等待匹配的 in-flight task runtime entry 关闭。pending 或已 finalize 的任务没有 runtime entry，会直接返回。运行中的任务会在 `FinalizeTask` 末尾关闭 entry，因此控制面 cancel/pause 会在 worker 已经通过任务运行时生命周期处理完中断后返回。
+调用 `InterruptTasks` 后，控制任务检查目标执行是否已经完成收尾。尚未完成时返回 `DeferTask`，持久化下次检查时间并释放控制槽位；广播等待远端确认也使用同样机制。执行注册表在 `FinalizeTask` 结束时移除相应租约版本。控制面调用方仍等待收敛，Worker 的控制槽位不会被等待占住。延期沿用稳定的请求 ID、配置版本和每个目标 Worker 的子任务 unique tag。
 
 新增 worker-control 请求时：
 1. **定义任务 schema**：修改 `api/tasks/tasks.yaml`。
 2. **重新生成**：运行 `anclax gen` 更新生成代码。
 3. **新增广播执行逻辑**：快照目标 worker 并入队 worker 定向命令任务。
-4. **Worker 处理**：在 `WorkerControlTaskHandler` 中路由处理。
+4. **Worker 处理**：在 `WorkerControlTaskHandler` 中路由处理，并同步 `worker.IsControlTask` 和 SQL 领取查询中的控制类型列表。
 5. **补充测试**：覆盖 fanout、本地 worker fast path、目标 worker 过滤、重复命令行为，以及等待/收敛语义。
 
 ## 高级功能
@@ -470,9 +340,9 @@ tasks:
 ```
 
 **钩子机制：**
-- 钩子仅在永久失败时触发
+- 钩子在普通任务永久失败或 Cron 当前轮次失败时触发
 - 钩子接收原始任务参数，具有完全的类型安全性
-- 钩子在与状态更新相同的事务中执行
+- 钩子在与状态更新相同的事务中执行，并通过 savepoint 隔离错误
 - 钩子失败会记录但不影响任务状态
 
 ### 唯一任务

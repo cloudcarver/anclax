@@ -16,8 +16,8 @@
 
 ## 快速概览
 
-- `priority > 0` => **严格通道（strict lane）**。
-- `priority == 0` => **普通通道（normal lane）**。
+- 业务任务 `priority > 0` => **严格通道（strict lane）**。
+- 业务任务 `priority == 0` => **普通通道（normal lane）**。
 - 严格通道受 `maxStrictPercentage` 与 worker 并发数共同限制。
 - 普通通道通过运行时标签组权重（`labelWeights`）实现加权公平。
 - 在选中的普通组内，任务按 `weight DESC`，再按 `created_at`、`id` 排序。
@@ -127,8 +127,8 @@ err := controlPlane.UpdateWorkerRuntimeConfig(ctx,
 ```
 
 推荐原因：
-- 控制面始终将配置更新任务设为保留最高严格优先级（`math.MaxInt32`）。
-- 避免控制面配置更新被低优先级业务任务长期阻塞。
+- 控制任务按保留类型进入独立通道，每个 Worker 有一个额外控制槽位。
+- 即使业务并发已满或严格比例为零，控制命令仍可被领取。
 - 调用方无需关心 worker 快照、request ID 和收敛轮询细节。
 
 ## 传播流程（任务 fanout + DB）
@@ -136,13 +136,11 @@ err := controlPlane.UpdateWorkerRuntimeConfig(ctx,
 ### 广播侧
 
 1. 校验并规范化参数。
-2. 向 `anclax.worker_runtime_configs` 插入新版本。
+2. 根据请求 ID 幂等取得或创建 `anclax.worker_runtime_configs` 版本。
 3. 快照当前存活的目标 worker。
 4. 为每个远端 worker 入队一个 `applyWorkerRuntimeConfigToWorker` 命令任务；本地 worker 可直接触发。
-5. 循环直到收敛或被新版本覆盖：
-   - 查询落后但仍存活的 worker（`applied_config_version < target_version`）
-   - 取消已离线 worker 对应的过期命令任务
-   - 轮询直到所有目标存活 worker 应用了目标版本
+5. 检查落后但仍存活的 Worker，取消离线 Worker 的过期命令。
+6. 尚未收敛时持久化延期并释放控制槽位，下次执行沿用同一请求 ID 和配置版本；收敛或被更新版本覆盖时结束。
 
 ### Worker 侧
 

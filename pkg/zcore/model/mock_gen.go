@@ -106,6 +106,21 @@ func (mr *MockModelInterfaceMockRecorder) ClaimTaskByID(ctx, arg any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClaimTaskByID", reflect.TypeOf((*MockModelInterface)(nil).ClaimTaskByID), ctx, arg)
 }
 
+// ClaimWorkerCommand mocks base method.
+func (m *MockModelInterface) ClaimWorkerCommand(ctx context.Context, arg querier.ClaimWorkerCommandParams) (*querier.AnclaxTask, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClaimWorkerCommand", ctx, arg)
+	ret0, _ := ret[0].(*querier.AnclaxTask)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ClaimWorkerCommand indicates an expected call of ClaimWorkerCommand.
+func (mr *MockModelInterfaceMockRecorder) ClaimWorkerCommand(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClaimWorkerCommand", reflect.TypeOf((*MockModelInterface)(nil).ClaimWorkerCommand), ctx, arg)
+}
+
 // Close mocks base method.
 func (m *MockModelInterface) Close() {
 	m.ctrl.T.Helper()
@@ -208,6 +223,21 @@ func (mr *MockModelInterfaceMockRecorder) CreateWorkerRuntimeConfig(ctx, payload
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateWorkerRuntimeConfig", reflect.TypeOf((*MockModelInterface)(nil).CreateWorkerRuntimeConfig), ctx, payload)
 }
 
+// CreateWorkerRuntimeConfigForRequest mocks base method.
+func (m *MockModelInterface) CreateWorkerRuntimeConfigForRequest(ctx context.Context, arg querier.CreateWorkerRuntimeConfigForRequestParams) (*querier.AnclaxWorkerRuntimeConfig, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateWorkerRuntimeConfigForRequest", ctx, arg)
+	ret0, _ := ret[0].(*querier.AnclaxWorkerRuntimeConfig)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateWorkerRuntimeConfigForRequest indicates an expected call of CreateWorkerRuntimeConfigForRequest.
+func (mr *MockModelInterfaceMockRecorder) CreateWorkerRuntimeConfigForRequest(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateWorkerRuntimeConfigForRequest", reflect.TypeOf((*MockModelInterface)(nil).CreateWorkerRuntimeConfigForRequest), ctx, arg)
+}
+
 // DeleteKeyPair mocks base method.
 func (m *MockModelInterface) DeleteKeyPair(ctx context.Context, accessKey string) error {
 	m.ctrl.T.Helper()
@@ -277,6 +307,21 @@ func (m *MockModelInterface) DeleteUserByNameReturningID(ctx context.Context, na
 func (mr *MockModelInterfaceMockRecorder) DeleteUserByNameReturningID(ctx, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteUserByNameReturningID", reflect.TypeOf((*MockModelInterface)(nil).DeleteUserByNameReturningID), ctx, name)
+}
+
+// FinalizeTaskAttempt mocks base method.
+func (m *MockModelInterface) FinalizeTaskAttempt(ctx context.Context, arg querier.FinalizeTaskAttemptParams) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FinalizeTaskAttempt", ctx, arg)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FinalizeTaskAttempt indicates an expected call of FinalizeTaskAttempt.
+func (mr *MockModelInterfaceMockRecorder) FinalizeTaskAttempt(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FinalizeTaskAttempt", reflect.TypeOf((*MockModelInterface)(nil).FinalizeTaskAttempt), ctx, arg)
 }
 
 // GetKeyPair mocks base method.
@@ -367,6 +412,21 @@ func (m *MockModelInterface) GetOrgByName(ctx context.Context, name string) (*qu
 func (mr *MockModelInterfaceMockRecorder) GetOrgByName(ctx, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOrgByName", reflect.TypeOf((*MockModelInterface)(nil).GetOrgByName), ctx, name)
+}
+
+// GetTaskAttemptStatus mocks base method.
+func (m *MockModelInterface) GetTaskAttemptStatus(ctx context.Context, arg querier.GetTaskAttemptStatusParams) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetTaskAttemptStatus", ctx, arg)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetTaskAttemptStatus indicates an expected call of GetTaskAttemptStatus.
+func (mr *MockModelInterfaceMockRecorder) GetTaskAttemptStatus(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTaskAttemptStatus", reflect.TypeOf((*MockModelInterface)(nil).GetTaskAttemptStatus), ctx, arg)
 }
 
 // GetTaskByID mocks base method.
