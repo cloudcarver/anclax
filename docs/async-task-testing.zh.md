@@ -26,7 +26,7 @@ make chaos-smoke  # 确定性场景 + 10 轮随机故障
 ANCLAX_TASKCORE_CHAOS_SEED=8675309 make chaos  # 200 轮随机故障
 ```
 
-`make test` 顺序执行 unit/race、确定性 runtime、数据库 smoke/stress 和短容器 chaos。这些 Make 入口要求 Docker 可用；直接运行 smoke 时设置 `ANCLAX_REQUIRE_DOCKER=1`，也会在缺少 Docker 时失败，避免跳过后误认为有覆盖。
+`make test` 顺序执行 unit/race、确定性 runtime、数据库 smoke/stress 和短容器 chaos。数据库和容器测试要求已安装并启动 Docker；无论通过 Make 入口还是直接运行 smoke，Docker 不可用都会报错。`make ut` 不需要 Docker。
 
 本地运行时，通过 `ANCLAX_SMOKE_POSTGRES_IMAGE` 和 `ANCLAX_TASKCORE_CHAOS_POSTGRES_IMAGE` 选择数据库镜像。可以分别使用 PostgreSQL 15 和 17，并将 `ANCLAX_TASKCORE_CHAOS_SEED` 设置为 424242 或 8675309，验证可复现的故障序列。chaos harness 将日志、报告和失败诊断写入测试输出中显示的产物目录。
 

@@ -26,7 +26,7 @@ make chaos-smoke  # deterministic scenarios + 10 random iterations
 ANCLAX_TASKCORE_CHAOS_SEED=8675309 make chaos  # 200 random iterations
 ```
 
-`make test` runs unit/race tests, deterministic runtime scenarios, PostgreSQL smoke/stress and short container chaos sequentially. Docker is mandatory for these Make targets. `ANCLAX_REQUIRE_DOCKER=1` also makes direct smoke invocations fail instead of skip when Docker is unavailable.
+`make test` runs unit/race tests, deterministic runtime scenarios, PostgreSQL smoke/stress and short container chaos sequentially. Docker must be installed and running for database and container tests. Both the Make targets and direct smoke invocations fail when Docker is unavailable. `make ut` does not require Docker.
 
 Use `ANCLAX_SMOKE_POSTGRES_IMAGE` and `ANCLAX_TASKCORE_CHAOS_POSTGRES_IMAGE` to select database images for local runs. PostgreSQL 15 and 17 can each be exercised with `ANCLAX_TASKCORE_CHAOS_SEED` set to 424242 or 8675309 for reproducible fault sequences. The chaos harness writes logs, reports and failure diagnostics to the artifact directory printed by the test.
 

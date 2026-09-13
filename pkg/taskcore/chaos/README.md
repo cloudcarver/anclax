@@ -149,7 +149,7 @@ go test -tags smoke ./pkg/taskcore/chaos -run TestContainerizedTaskcoreChaosSmok
 
 The test logs the artifact directory at the end of the run.
 
-`make test` includes `make chaos-smoke`, which runs the deterministic fault scenarios plus 10 random iterations. `make chaos` runs the same mandatory scenarios plus 200 random iterations with seed `424242` by default. The direct test command defaults to 28 iterations. Make targets require Docker; set `ANCLAX_REQUIRE_DOCKER=1` for direct tests to fail instead of skip when Docker is unavailable. Use the environment variables to select a reproducible run and locally available images:
+`make test` includes `make chaos-smoke`, which runs the deterministic fault scenarios plus 10 random iterations. `make chaos` runs the same mandatory scenarios plus 200 random iterations with seed `424242` by default. The direct test command defaults to 28 iterations. Both Make targets and direct tests fail when Docker is unavailable; install and start Docker before running them. Use the environment variables to select a reproducible run and locally available images:
 
 ```bash
 ANCLAX_TASKCORE_CHAOS_SEED=424242 \

@@ -56,10 +56,7 @@ type chaosState struct {
 
 func TestContainerizedTaskcoreChaosSmoke(t *testing.T) {
 	if !dockerAvailable() {
-		if os.Getenv("ANCLAX_REQUIRE_DOCKER") == "1" {
-			t.Fatal("Docker is required for this test run")
-		}
-		t.Skip("docker not available")
+		t.Fatal("Docker is unavailable; ensure Docker is installed and running")
 	}
 
 	cfg := DefaultRunConfig()

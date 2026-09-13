@@ -46,10 +46,7 @@ const (
 func withSmokePostgres(t *testing.T, fn func(ctx context.Context, m model.ModelInterface)) {
 	t.Helper()
 	if !dockerAvailable() {
-		if os.Getenv("ANCLAX_REQUIRE_DOCKER") == "1" {
-			t.Fatal("Docker is required for this test run")
-		}
-		t.Skip("docker not available")
+		t.Fatal("Docker is unavailable; ensure Docker is installed and running")
 	}
 
 	cleanupContainer(t)
