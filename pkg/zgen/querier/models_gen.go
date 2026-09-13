@@ -78,23 +78,44 @@ type AnclaxRoleAccessRule struct {
 }
 
 type AnclaxTask struct {
-	ID           int32
-	Attributes   apigen.TaskAttributes
-	Spec         apigen.TaskSpec
-	Status       string
-	UniqueTag    *string
-	StartedAt    *time.Time
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	Attempts     int32
-	LockedAt     *time.Time
-	WorkerID     uuid.NullUUID
-	SerialKey    *string
-	SerialID     *int32
-	Priority     int32
-	Weight       int32
-	ParentTaskID *int32
+	ID                 int32
+	Attributes         apigen.TaskAttributes
+	Spec               apigen.TaskSpec
+	Status             string
+	UniqueTag          *string
+	StartedAt          *time.Time
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	Attempts           int32
+	LockedAt           *time.Time
+	WorkerID           uuid.NullUUID
+	SerialKey          *string
+	SerialID           *int32
+	Priority           int32
+	Weight             int32
+	ParentTaskID       *int32
+	LeaseVersion       int64
+	LeaseExpiresAt     *time.Time
+	LeaseDurationMs    *int64
+	ConcurrencyWaitTag *string
+	ConcurrencyRetryAt *time.Time
+}
+
+type AnclaxTaskTag struct {
+	TaskID int32
+	Tag    string
+}
+
+type AnclaxTaskTagConcurrency struct {
+	Tag            string
+	MaxConcurrency *int32
+	InUse          int32
+}
+
+type AnclaxTaskTagPermit struct {
+	TaskID       int32
 	LeaseVersion int64
+	Tag          string
 }
 
 type AnclaxUser struct {

@@ -1,10 +1,11 @@
 -- name: ClaimTask :one
-WITH candidate AS (
+WITH candidate AS MATERIALIZED (
     SELECT t.id
     FROM anclax.tasks t
     WHERE t.status = 'pending'
+        AND t.concurrency_wait_tag IS NULL
         AND (t.started_at IS NULL OR t.started_at <= statement_timestamp())
-        AND (t.locked_at IS NULL OR t.locked_at < statement_timestamp() - sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond')
+        AND (t.locked_at IS NULL OR COALESCE(t.lease_expires_at, t.locked_at + sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond') <= statement_timestamp())
         AND NOT EXISTS (
             SELECT 1 FROM jsonb_array_elements_text(COALESCE(NULLIF(t.attributes->'labels', 'null'::jsonb), '[]'::jsonb)) AS task_label(value)
             WHERE NOT (task_label.value = ANY(COALESCE(sqlc.arg(labels)::text[], ARRAY[]::text[])))
@@ -13,7 +14,7 @@ WITH candidate AS (
             NOT EXISTS (
                 SELECT 1 FROM anclax.tasks active
                 WHERE active.serial_key = t.serial_key
-                    AND active.locked_at >= statement_timestamp() - sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond'
+                    AND COALESCE(active.lease_expires_at, active.locked_at + sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond') > statement_timestamp()
             )
             AND NOT EXISTS (
                 SELECT 1 FROM anclax.tasks head
@@ -23,26 +24,34 @@ WITH candidate AS (
             )
         ))
     ORDER BY t.priority DESC, t.created_at, t.id
-    LIMIT 1
+    LIMIT 32
     FOR UPDATE OF t SKIP LOCKED
+), admitted AS MATERIALIZED (
+    SELECT id FROM candidate
+    WHERE anclax.try_admit_task_tags(candidate.id)
+    LIMIT 1
 )
 UPDATE anclax.tasks AS t
 SET locked_at = statement_timestamp(), worker_id = sqlc.arg(worker_id),
+    lease_expires_at = statement_timestamp() + sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond',
+    lease_duration_ms = sqlc.arg(lock_ttl_ms)::bigint,
+    concurrency_wait_tag = NULL, concurrency_retry_at = NULL,
     lease_version = t.lease_version + 1, attempts = t.attempts + 1,
     updated_at = statement_timestamp()
-FROM candidate
-WHERE t.id = candidate.id
+FROM admitted
+WHERE t.id = admitted.id
 RETURNING t.*;
 
 -- name: ClaimStrictTask :one
-WITH candidate AS (
+WITH candidate AS MATERIALIZED (
     SELECT t.id
     FROM anclax.tasks t
     WHERE t.status = 'pending'
+        AND t.concurrency_wait_tag IS NULL
         AND t.priority > 0
         AND t.spec->>'type' NOT IN ('broadcastUpdateWorkerRuntimeConfig', 'applyWorkerRuntimeConfigToWorker', 'broadcastCancelTask', 'cancelTaskOnWorker', 'broadcastPauseTask', 'pauseTaskOnWorker')
         AND (t.started_at IS NULL OR t.started_at <= statement_timestamp())
-        AND (t.locked_at IS NULL OR t.locked_at < statement_timestamp() - sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond')
+        AND (t.locked_at IS NULL OR COALESCE(t.lease_expires_at, t.locked_at + sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond') <= statement_timestamp())
         AND NOT EXISTS (
             SELECT 1 FROM jsonb_array_elements_text(COALESCE(NULLIF(t.attributes->'labels', 'null'::jsonb), '[]'::jsonb)) AS task_label(value)
             WHERE NOT (task_label.value = ANY(COALESCE(sqlc.arg(labels)::text[], ARRAY[]::text[])))
@@ -51,7 +60,7 @@ WITH candidate AS (
             NOT EXISTS (
                 SELECT 1 FROM anclax.tasks active
                 WHERE active.serial_key = t.serial_key
-                    AND active.locked_at >= statement_timestamp() - sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond'
+                    AND COALESCE(active.lease_expires_at, active.locked_at + sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond') > statement_timestamp()
             )
             AND NOT EXISTS (
                 SELECT 1 FROM anclax.tasks head
@@ -61,22 +70,30 @@ WITH candidate AS (
             )
         ))
     ORDER BY t.priority DESC, t.created_at, t.id
-    LIMIT 1
+    LIMIT 32
     FOR UPDATE OF t SKIP LOCKED
+), admitted AS MATERIALIZED (
+    SELECT id FROM candidate
+    WHERE anclax.try_admit_task_tags(candidate.id)
+    LIMIT 1
 )
 UPDATE anclax.tasks AS t
 SET locked_at = statement_timestamp(), worker_id = sqlc.arg(worker_id),
+    lease_expires_at = statement_timestamp() + sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond',
+    lease_duration_ms = sqlc.arg(lock_ttl_ms)::bigint,
+    concurrency_wait_tag = NULL, concurrency_retry_at = NULL,
     lease_version = t.lease_version + 1, attempts = t.attempts + 1,
     updated_at = statement_timestamp()
-FROM candidate
-WHERE t.id = candidate.id
+FROM admitted
+WHERE t.id = admitted.id
 RETURNING t.*;
 
 -- name: ClaimNormalTaskByGroup :one
-WITH candidate AS (
+WITH candidate AS MATERIALIZED (
     SELECT t.id
     FROM anclax.tasks t
     WHERE t.status = 'pending'
+        AND t.concurrency_wait_tag IS NULL
         AND t.spec->>'type' NOT IN ('broadcastUpdateWorkerRuntimeConfig', 'applyWorkerRuntimeConfigToWorker', 'broadcastCancelTask', 'cancelTaskOnWorker', 'broadcastPauseTask', 'pauseTaskOnWorker')
         AND (
             (sqlc.arg(allow_strict)::boolean AND t.priority > 0)
@@ -86,7 +103,7 @@ WITH candidate AS (
             ), '__default__') = sqlc.arg(group_name)::text)
         )
         AND (t.started_at IS NULL OR t.started_at <= statement_timestamp())
-        AND (t.locked_at IS NULL OR t.locked_at < statement_timestamp() - sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond')
+        AND (t.locked_at IS NULL OR COALESCE(t.lease_expires_at, t.locked_at + sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond') <= statement_timestamp())
         AND NOT EXISTS (
             SELECT 1 FROM jsonb_array_elements_text(COALESCE(NULLIF(t.attributes->'labels', 'null'::jsonb), '[]'::jsonb)) AS task_label(value)
             WHERE NOT (task_label.value = ANY(COALESCE(sqlc.arg(labels)::text[], ARRAY[]::text[])))
@@ -95,7 +112,7 @@ WITH candidate AS (
             NOT EXISTS (
                 SELECT 1 FROM anclax.tasks active
                 WHERE active.serial_key = t.serial_key
-                    AND active.locked_at >= statement_timestamp() - sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond'
+                    AND COALESCE(active.lease_expires_at, active.locked_at + sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond') > statement_timestamp()
             )
             AND NOT EXISTS (
                 SELECT 1 FROM anclax.tasks head
@@ -105,26 +122,33 @@ WITH candidate AS (
             )
         ))
     ORDER BY t.priority DESC, CASE WHEN t.priority = 0 THEN t.weight END DESC, t.created_at, t.id
-    LIMIT 1
+    LIMIT 32
     FOR UPDATE OF t SKIP LOCKED
+), admitted AS MATERIALIZED (
+    SELECT id FROM candidate
+    WHERE anclax.try_admit_task_tags(candidate.id)
+    LIMIT 1
 )
 UPDATE anclax.tasks AS t
 SET locked_at = statement_timestamp(), worker_id = sqlc.arg(worker_id),
+    lease_expires_at = statement_timestamp() + sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond',
+    lease_duration_ms = sqlc.arg(lock_ttl_ms)::bigint,
+    concurrency_wait_tag = NULL, concurrency_retry_at = NULL,
     lease_version = t.lease_version + 1, attempts = t.attempts + 1,
     updated_at = statement_timestamp()
-FROM candidate
-WHERE t.id = candidate.id
+FROM admitted
+WHERE t.id = admitted.id
 RETURNING t.*;
 
 -- name: ClaimTaskByID :one
-WITH candidate AS (
+WITH candidate AS MATERIALIZED (
     SELECT t.id
     FROM anclax.tasks t
     WHERE t.status = 'pending'
         AND t.id = sqlc.arg(id)
         AND (t.priority = 0 OR sqlc.arg(allow_strict)::boolean)
         AND (t.started_at IS NULL OR t.started_at <= statement_timestamp())
-        AND (t.locked_at IS NULL OR t.locked_at < statement_timestamp() - sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond')
+        AND (t.locked_at IS NULL OR COALESCE(t.lease_expires_at, t.locked_at + sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond') <= statement_timestamp())
         AND NOT EXISTS (
             SELECT 1 FROM jsonb_array_elements_text(COALESCE(NULLIF(t.attributes->'labels', 'null'::jsonb), '[]'::jsonb)) AS task_label(value)
             WHERE NOT (task_label.value = ANY(COALESCE(sqlc.arg(labels)::text[], ARRAY[]::text[])))
@@ -133,7 +157,7 @@ WITH candidate AS (
             NOT EXISTS (
                 SELECT 1 FROM anclax.tasks active
                 WHERE active.serial_key = t.serial_key
-                    AND active.locked_at >= statement_timestamp() - sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond'
+                    AND COALESCE(active.lease_expires_at, active.locked_at + sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond') > statement_timestamp()
             )
             AND NOT EXISTS (
                 SELECT 1 FROM anclax.tasks head
@@ -145,23 +169,31 @@ WITH candidate AS (
     ORDER BY t.id
     LIMIT 1
     FOR UPDATE OF t SKIP LOCKED
+), admitted AS MATERIALIZED (
+    SELECT id FROM candidate
+    WHERE anclax.try_admit_task_tags(candidate.id)
+    LIMIT 1
 )
 UPDATE anclax.tasks AS t
 SET locked_at = statement_timestamp(), worker_id = sqlc.arg(worker_id),
+    lease_expires_at = statement_timestamp() + sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond',
+    lease_duration_ms = sqlc.arg(lock_ttl_ms)::bigint,
+    concurrency_wait_tag = NULL, concurrency_retry_at = NULL,
     lease_version = t.lease_version + 1, attempts = t.attempts + 1,
     updated_at = statement_timestamp()
-FROM candidate
-WHERE t.id = candidate.id
+FROM admitted
+WHERE t.id = admitted.id
 RETURNING t.*;
 
 -- name: ClaimWorkerCommand :one
-WITH candidate AS (
+WITH candidate AS MATERIALIZED (
     SELECT t.id
     FROM anclax.tasks t
     WHERE t.status = 'pending'
+        AND t.concurrency_wait_tag IS NULL
         AND t.spec->>'type' IN ('broadcastUpdateWorkerRuntimeConfig', 'applyWorkerRuntimeConfigToWorker', 'broadcastCancelTask', 'cancelTaskOnWorker', 'broadcastPauseTask', 'pauseTaskOnWorker')
         AND (t.started_at IS NULL OR t.started_at <= statement_timestamp())
-        AND (t.locked_at IS NULL OR t.locked_at < statement_timestamp() - sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond')
+        AND (t.locked_at IS NULL OR COALESCE(t.lease_expires_at, t.locked_at + sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond') <= statement_timestamp())
         AND NOT EXISTS (
             SELECT 1 FROM jsonb_array_elements_text(COALESCE(NULLIF(t.attributes->'labels', 'null'::jsonb), '[]'::jsonb)) AS task_label(value)
             WHERE NOT (task_label.value = ANY(COALESCE(sqlc.arg(labels)::text[], ARRAY[]::text[])))
@@ -170,7 +202,7 @@ WITH candidate AS (
             NOT EXISTS (
                 SELECT 1 FROM anclax.tasks active
                 WHERE active.serial_key = t.serial_key
-                    AND active.locked_at >= statement_timestamp() - sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond'
+                    AND COALESCE(active.lease_expires_at, active.locked_at + sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond') > statement_timestamp()
             )
             AND NOT EXISTS (
                 SELECT 1 FROM anclax.tasks head
@@ -182,13 +214,20 @@ WITH candidate AS (
     ORDER BY t.created_at, t.id
     LIMIT 1
     FOR UPDATE OF t SKIP LOCKED
+), admitted AS MATERIALIZED (
+    SELECT id FROM candidate
+    WHERE anclax.try_admit_task_tags(candidate.id)
+    LIMIT 1
 )
 UPDATE anclax.tasks AS t
 SET locked_at = statement_timestamp(), worker_id = sqlc.arg(worker_id),
+    lease_expires_at = statement_timestamp() + sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond',
+    lease_duration_ms = sqlc.arg(lock_ttl_ms)::bigint,
+    concurrency_wait_tag = NULL, concurrency_retry_at = NULL,
     lease_version = t.lease_version + 1, attempts = t.attempts + 1,
     updated_at = statement_timestamp()
-FROM candidate
-WHERE t.id = candidate.id
+FROM admitted
+WHERE t.id = admitted.id
 RETURNING t.*;
 
 -- name: ListAllPendingTasks :many
@@ -218,6 +257,7 @@ SET
     status = $2,
     locked_at = NULL,
     worker_id = NULL,
+    lease_expires_at = NULL, lease_duration_ms = NULL,
     updated_at = CURRENT_TIMESTAMP
 WHERE id = $1 AND worker_id = $3 AND lease_version = sqlc.arg(lease_version) AND status IN ('pending', 'running')
 RETURNING id;
@@ -248,13 +288,15 @@ RETURNING id;
 
 -- name: RefreshTaskLock :one
 UPDATE anclax.tasks
-SET locked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+SET locked_at = statement_timestamp(), updated_at = statement_timestamp(),
+    lease_expires_at = statement_timestamp() + lease_duration_ms * INTERVAL '1 millisecond'
 WHERE id = $1 AND worker_id = $2 AND lease_version = sqlc.arg(lease_version) AND status IN ('pending', 'running')
+    AND lease_expires_at > statement_timestamp()
 RETURNING id;
 
 -- name: ReleaseTaskLockByWorker :one
 UPDATE anclax.tasks
-SET locked_at = NULL, worker_id = NULL, updated_at = CURRENT_TIMESTAMP
+SET locked_at = NULL, worker_id = NULL, lease_expires_at = NULL, lease_duration_ms = NULL, updated_at = statement_timestamp()
 WHERE id = $1 AND worker_id = $2 AND lease_version = sqlc.arg(lease_version)
 RETURNING id;
 
@@ -385,6 +427,7 @@ SET
     attempts = CASE WHEN status IN ('pending', 'running') THEN sqlc.arg(attempts)::int ELSE attempts END,
     locked_at = NULL,
     worker_id = NULL,
+    lease_expires_at = NULL, lease_duration_ms = NULL,
     updated_at = statement_timestamp()
 WHERE id = sqlc.arg(id) AND worker_id = sqlc.arg(worker_id)
     AND lease_version = sqlc.arg(lease_version)

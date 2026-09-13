@@ -36,6 +36,9 @@ type ModelPort struct {
 
 	taskRuntimeMu      sync.Mutex
 	taskRuntimeEntries map[executionKey]*taskRuntimeEntry
+
+	concurrencyMaintenanceMu sync.Mutex
+	nextConcurrencySweep     time.Time
 }
 
 func NewModelPort(
@@ -90,6 +93,9 @@ func (p *ModelPort) MarkWorkerOffline(ctx context.Context, workerID string) erro
 }
 
 func (p *ModelPort) ClaimStrict(ctx context.Context, req ClaimRequest) (*Task, error) {
+	if err := p.maintainConcurrency(ctx); err != nil {
+		return nil, err
+	}
 	claimedAt := time.Now()
 	var out *Task
 	err := p.model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
@@ -118,6 +124,9 @@ func (p *ModelPort) ClaimStrict(ctx context.Context, req ClaimRequest) (*Task, e
 }
 
 func (p *ModelPort) ClaimNormalByGroup(ctx context.Context, req ClaimNormalRequest) (*Task, error) {
+	if err := p.maintainConcurrency(ctx); err != nil {
+		return nil, err
+	}
 	claimedAt := time.Now()
 	var out *Task
 	err := p.model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
@@ -149,6 +158,9 @@ func (p *ModelPort) ClaimNormalByGroup(ctx context.Context, req ClaimNormalReque
 }
 
 func (p *ModelPort) ClaimByID(ctx context.Context, taskID int32, req ClaimRequest) (*Task, error) {
+	if err := p.maintainConcurrency(ctx); err != nil {
+		return nil, err
+	}
 	claimedAt := time.Now()
 	var out *Task
 	err := p.model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
@@ -245,7 +257,7 @@ func (p *ModelPort) Heartbeat(ctx context.Context, workerID string) error {
 	if _, err := p.model.UpdateWorkerHeartbeat(ctx, p.workerID); err != nil {
 		return fmt.Errorf("update worker heartbeat: %w", err)
 	}
-	return nil
+	return p.maintainConcurrency(ctx)
 }
 
 func (p *ModelPort) RefreshRuntimeConfig(ctx context.Context, workerID string, requestID string) (*RuntimeConfig, error) {
@@ -318,6 +330,9 @@ func (p *ModelPort) LookupTask(ctx context.Context, id int32) (*Task, error) {
 }
 
 func (p *ModelPort) ClaimControl(ctx context.Context, req ClaimRequest) (*Task, error) {
+	if err := p.maintainConcurrency(ctx); err != nil {
+		return nil, err
+	}
 	claimedAt := time.Now()
 	var out *Task
 	err := p.model.RunTransactionWithTx(ctx, func(_ core.Tx, txm model.ModelInterface) error {
@@ -335,4 +350,22 @@ func (p *ModelPort) ClaimControl(ctx context.Context, req ClaimRequest) (*Task, 
 		return nil, ErrNoTask
 	}
 	return out, err
+}
+
+// Sweep outside the claim transaction. A busy or full queue must not prevent
+// recovery of dead attempts, including paused/cancelled ones. Concurrent
+// admission calls share one sweep at most every 250 ms per worker.
+func (p *ModelPort) maintainConcurrency(ctx context.Context) error {
+	if !p.concurrencyMaintenanceMu.TryLock() {
+		return nil
+	}
+	defer p.concurrencyMaintenanceMu.Unlock()
+	if time.Now().Before(p.nextConcurrencySweep) {
+		return nil
+	}
+	if err := p.model.MaintainTaskConcurrency(ctx, p.lockTTL.Milliseconds()); err != nil {
+		return fmt.Errorf("maintain task concurrency: %w", err)
+	}
+	p.nextConcurrencySweep = time.Now().Add(250 * time.Millisecond)
+	return nil
 }

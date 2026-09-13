@@ -4,13 +4,13 @@ Workers execute handlers outside database transactions. PostgreSQL stores task o
 
 ## Claim and ownership
 
-Each task has `locked_at`, `worker_id`, and a monotonic `lease_version`. A short claim transaction:
+Each task has `locked_at`, `worker_id`, a monotonic `lease_version`, and an owner-specific `lease_expires_at`. A short claim transaction:
 
 1. Selects a due `pending` task whose lease is absent or expired, respecting labels and serial ordering.
 2. Locks the candidate with `FOR UPDATE SKIP LOCKED`. A locked candidate does not block unrelated ready tasks; serial successors remain gated by their head task.
-3. Sets the owner and database lease timestamp, increments `lease_version` and `attempts`, and commits before execution.
+3. Acquires all tag permits, sets the owner and database lease expiry, increments `lease_version` and `attempts`, and commits before execution. A task blocked by a tag limit remains pending without consuming an attempt.
 
-Expiry uses `statement_timestamp()` and the configured TTL. Every renewal, release, and attempt finalization checks both worker ID and lease version. Reusing a worker ID cannot give an old attempt permission to finalize a newer attempt.
+Expiry uses `statement_timestamp()` and the TTL recorded at claim time. Legacy leases without an explicit expiry use `locked_at` and the configured TTL until recovered. Every renewal, release, and attempt finalization checks both worker ID and lease version. Reusing a worker ID cannot give an old attempt permission to finalize a newer attempt.
 
 The runtime registry is also keyed by `(task ID, lease version)`. A stale attempt's cleanup cannot remove or interrupt a newer attempt. Task-wide cancellation addresses all locally registered attempts for that ID.
 
@@ -32,7 +32,7 @@ Framework config, pause, cancel, and broadcast types have one additional control
 
 ## Labels and worker membership
 
-Claims require all task labels to be present on the worker. Unlabelled tasks are eligible for every worker. Each worker adds `worker:<workerID>` to its configured business labels for targeted control messages. Task tags are control-plane selection metadata and do not affect claiming.
+Claims require all task labels to be present on the worker. Unlabelled tasks are eligible for every worker. Each worker adds `worker:<workerID>` to its configured business labels for targeted control messages. Task tags remain control-plane selection metadata and can additionally carry [global concurrency limits](async-task-tag-concurrency.md). Unconfigured tags impose no limit.
 
 Worker registration and heartbeats track availability. Claims use task lease expiry directly. Applied config versions only advance, including during re-registration. Shutdown drains outstanding operations before marking the worker offline, so late registration or heartbeat cannot overwrite the offline marker during a successful drain.
 
@@ -45,6 +45,8 @@ Defaults are one-second polling, business concurrency 10, three-second heartbeat
 `RuntimeOptions.OperationTimeout` and `ShutdownTimeout` default to five seconds. Shutdown stops admission and cancels running executors, while finalization uses a bounded context independent of caller cancellation. Uncooperative executors may outlive the drain deadline; their tasks recover through lease expiry.
 
 ## Migration and verification
+
+Migration `0014_task_tag_concurrency` adds owner-specific lease expiry and global tag admission. See the [tag concurrency upgrade guide](async-task-tag-concurrency.md#storage-compatibility-and-upgrade) for data backfill, coordinated worker replacement, and rollback details. The compatibility notes below describe the earlier lifecycle refactor.
 
 Migration `0013_task_attempt_lifecycle` adds task lease versions, unique runtime-config request IDs, and claim/parent indexes. Existing rows begin at lease version zero. Apply the migration and replace all old worker processes before resuming execution: old binaries do not enforce the lease-version guards. Generated Runner/Executor interfaces are unchanged; direct users of generated query parameters must regenerate for the new lease fields.
 

@@ -27,6 +27,7 @@ type Harness struct {
 	controlPlaneURL  string
 	signalService    *SignalService
 	signalClient     *SignalClient
+	gateService      *GateService
 	inspector        *Inspector
 	controlClient    *ControlPlaneClient
 	mu               sync.Mutex
@@ -109,6 +110,10 @@ func (h *Harness) Start(ctx context.Context) error {
 		return err
 	}
 	h.report.AddEvent("harness.signal_service.start", "signals", "started signal service", map[string]any{"hostURL": h.signalService.HostURL(), "containerBaseURL": h.signalService.ContainerBaseURL()})
+	h.gateService, err = newGateService()
+	if err != nil {
+		return err
+	}
 
 	if _, err := dockerCommand(ctx, "network", "create", h.networkName); err != nil {
 		return err
@@ -130,6 +135,9 @@ func (h *Harness) Start(ctx context.Context) error {
 }
 
 func (h *Harness) Close(ctx context.Context) error {
+	if h.gateService != nil {
+		h.gateService.close()
+	}
 	if h.inspector != nil {
 		h.inspector.Close()
 	}
@@ -229,6 +237,10 @@ func (h *Harness) waitControlPlane(ctx context.Context, timeout time.Duration) e
 }
 
 func (h *Harness) StartWorker(ctx context.Context, name string, labels []string) error {
+	return h.startWorker(ctx, name, labels, nil)
+}
+
+func (h *Harness) startWorker(ctx context.Context, name string, labels []string, overrides map[string]string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if existing, ok := h.workers[name]; ok {
@@ -243,7 +255,7 @@ func (h *Harness) StartWorker(ctx context.Context, name string, labels []string)
 	args := []string{"run", "-d", "--name", containerName, "--network", h.networkName}
 	args = append(args, hostGatewayAlias("host.docker.internal")...)
 	signalBaseURL := fmt.Sprintf("http://%s:%d", h.controlPlaneName, h.cfg.ControlPlanePort)
-	args = append(args, quotedEnv(map[string]string{
+	env := map[string]string{
 		// All probe traffic stays on the test network. Docker may otherwise
 		// inject host proxy settings that cannot resolve container names.
 		"NO_PROXY":                     "*",
@@ -252,13 +264,18 @@ func (h *Harness) StartWorker(ctx context.Context, name string, labels []string)
 		"CHAOS_WORKER_NAME":            name,
 		"CHAOS_WORKER_LABELS":          strings.Join(workerLabels, ","),
 		"CHAOS_SIGNAL_BASE_URL":        signalBaseURL,
+		"CHAOS_GATE_BASE_URL":          h.gateService.containerURL(),
 		"CHAOS_WORKER_CONCURRENCY":     fmt.Sprintf("%d", h.cfg.WorkerConcurrency),
 		"CHAOS_POLL_INTERVAL_MS":       intToString(int(h.cfg.PollInterval / time.Millisecond)),
 		"CHAOS_HEARTBEAT_INTERVAL_MS":  intToString(int(h.cfg.HeartbeatInterval / time.Millisecond)),
 		"CHAOS_LOCK_TTL_MS":            intToString(int(h.cfg.LockTTL / time.Millisecond)),
 		"CHAOS_LOCK_REFRESH_MS":        intToString(int(h.cfg.LockRefresh / time.Millisecond)),
 		"CHAOS_RUNTIME_CONFIG_POLL_MS": intToString(int(h.cfg.RuntimeConfigPoll / time.Millisecond)),
-	})...)
+	}
+	for key, value := range overrides {
+		env[key] = value
+	}
+	args = append(args, quotedEnv(env)...)
 	args = append(args, bindMount(h.binaries.Dir, "/mnt")...)
 	args = append(args, h.cfg.RuntimeImage)
 	args = append(args, containerBinaryCommand("/mnt", filepath.Base(h.binaries.Worker))...)
@@ -327,7 +344,7 @@ func (h *Harness) CollectDiagnostics(ctx context.Context, failure error) error {
 		_ = dockerLogsToFile(ctx, name, filepath.Join(dockerDir, name+".log"))
 	}
 	if h.inspector != nil {
-		_ = h.inspector.DumpDiagnostics(ctx, h.artifactDir, "LONG-")
+		_ = h.inspector.DumpDiagnostics(ctx, h.artifactDir, "")
 	}
 	return h.report.Write()
 }

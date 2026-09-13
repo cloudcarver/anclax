@@ -65,11 +65,14 @@ func (panickingHandler) OnTaskFailed(context.Context, core.Tx, worker.TaskSpec, 
 
 func TestTaskLifecycleRegressionsSmoke(t *testing.T) {
 	withSmokePostgres(t, func(ctx context.Context, m model.ModelInterface) {
+		t.Run("late_heartbeat_cannot_revive_offline_worker", func(t *testing.T) {
+			runLateWorkerHeartbeatScenario(t, ctx, m)
+		})
 		s := store.NewTaskStore(m)
 		reset := func(t *testing.T) {
 			t.Helper()
 			if err := m.RunTransactionWithTx(ctx, func(tx core.Tx, _ model.ModelInterface) error {
-				_, err := tx.Exec(ctx, "TRUNCATE anclax.tasks, anclax.events, anclax.workers, anclax.worker_runtime_configs RESTART IDENTITY")
+				_, err := tx.Exec(ctx, "TRUNCATE anclax.task_tag_concurrency, anclax.task_tags, anclax.task_tag_permits, anclax.tasks, anclax.events, anclax.workers, anclax.worker_runtime_configs RESTART IDENTITY")
 				return err
 			}); err != nil {
 				t.Fatal(err)
@@ -166,7 +169,7 @@ func TestTaskLifecycleRegressionsSmoke(t *testing.T) {
 			old, err := p.ClaimByID(ctx, id, worker.ClaimRequest{})
 			require.NoError(t, err)
 			require.NoError(t, m.RunTransactionWithTx(ctx, func(tx core.Tx, _ model.ModelInterface) error {
-				_, err := tx.Exec(ctx, "UPDATE anclax.tasks SET locked_at = statement_timestamp() - interval '10 seconds' WHERE id = $1", id)
+				_, err := tx.Exec(ctx, "UPDATE anclax.tasks SET locked_at = statement_timestamp() - interval '10 seconds', lease_expires_at = statement_timestamp() - interval '1 second' WHERE id = $1", id)
 				return err
 			}))
 			current, err := p.ClaimByID(ctx, id, worker.ClaimRequest{})

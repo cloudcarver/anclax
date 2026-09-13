@@ -5,6 +5,8 @@ English | [中文](async-tasks-technical.zh.md)
 > 🚀 **New to async tasks?** Start with the [Tutorial Guide](async-tasks-tutorial.md) for step-by-step usage.
 >
 > ⚖️ **Need scheduling internals?** See [Scheduling & Runtime Config Guide](async-task-scheduling-runtime-config.md) for strict/normal lane semantics, `WithPriority`/`WithWeight`, and runtime propagation flow.
+>
+> For limits shared across workers and multiple task tags, see [Global tag concurrency](async-task-tag-concurrency.md).
 
 This document provides a comprehensive overview of Anclax's async task system, covering both the user experience flow and the underlying technical mechanisms.
 

@@ -56,7 +56,7 @@ type chaosState struct {
 
 func TestContainerizedTaskcoreChaosSmoke(t *testing.T) {
 	if !dockerAvailable() {
-		t.Skip("docker not available")
+		t.Fatal("Docker is unavailable; ensure Docker is installed and running")
 	}
 
 	cfg := DefaultRunConfig()
@@ -99,6 +99,7 @@ func TestContainerizedTaskcoreChaosSmoke(t *testing.T) {
 	}
 
 	must(h.Start(ctx))
+	must(installTagConcurrencyAudit(ctx, h.Inspector()))
 	state = &chaosState{
 		rng: rand.New(rand.NewSource(cfg.Seed)),
 		workers: []*chaosWorkerSlot{
@@ -118,6 +119,11 @@ func TestContainerizedTaskcoreChaosSmoke(t *testing.T) {
 	}
 
 	user := h.User()
+	if !t.Run("tag_concurrency_faults", func(t *testing.T) {
+		runTagConcurrencyFaultScenarios(t, ctx, h)
+	}) {
+		must(fmt.Errorf("deterministic tag concurrency fault scenario failed"))
+	}
 	must(runInitialUserCancel(ctx, user, state))
 	must(runInitialUserPauseResume(ctx, user, state))
 	must(runInitialUserTagControl(ctx, user, state))
@@ -151,15 +157,13 @@ func TestContainerizedTaskcoreChaosSmoke(t *testing.T) {
 	pending, err := h.Inspector().CountTasksByStatuses(ctx, []string{"pending", "running"}, "LONG-")
 	must(err)
 	require.Equal(t, int64(0), pending)
-	if state.workerDisruptions > 0 || state.postgresRestarts > 0 {
-		retried, err := h.Inspector().CountRetriedTasks(ctx, "LONG-")
-		must(err)
-		require.Greater(t, retried, int64(0))
-	}
+	// Recovery is asserted against the specific interrupted tasks above. The
+	// initial infinite-retry probes cannot stand in for fault-induced retries.
 	require.Greater(t, len(state.tasks), 0)
 	require.Greater(t, state.userPauses, 0)
 	require.Greater(t, state.userResumes, 0)
 	require.Greater(t, state.userCancels, 0)
+	must(checkTagConcurrencyAudit(ctx, h.Inspector(), h.Report()))
 }
 
 func buildSmokeSummary(ctx context.Context, h *Harness, state *chaosState) (*ReportSummary, error) {
@@ -538,6 +542,7 @@ func submitChaosBatch(ctx context.Context, user *User, state *chaosState, iter i
 			SleepMs:  taskSleepMs,
 			Group:    group,
 			Labels:   labels,
+			Tags:     chaosConcurrencyTags(group, iter, j),
 		})
 		if err != nil {
 			return err
@@ -555,6 +560,7 @@ func submitChaosBatch(ctx context.Context, user *User, state *chaosState, iter i
 		SleepMs:  taskSleepMs,
 		Group:    group,
 		Labels:   labels,
+		Tags:     chaosConcurrencyTags(group, iter, batchSize),
 	})
 	if err != nil {
 		return err
@@ -575,6 +581,7 @@ func submitChaosBatch(ctx context.Context, user *User, state *chaosState, iter i
 		DelayMs:  pauseDelayMs,
 		Group:    group,
 		Labels:   labels,
+		Tags:     chaosConcurrencyTags(group, iter, batchSize+1),
 	})
 	if err != nil {
 		return err

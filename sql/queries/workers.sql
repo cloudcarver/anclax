@@ -13,9 +13,8 @@ RETURNING *;
 -- name: UpdateWorkerHeartbeat :one
 UPDATE anclax.workers
 SET last_heartbeat = CURRENT_TIMESTAMP,
-    status = 'online',
     updated_at = CURRENT_TIMESTAMP
-WHERE id = $1
+WHERE id = $1 AND status = 'online'
 RETURNING *;
 
 -- name: MarkWorkerOffline :exec

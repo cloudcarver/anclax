@@ -347,11 +347,6 @@ func runStepStrictPriorityAndWeightedGroupsS1(parent context.Context, actors Act
 			cancel()
 			return
 		}
-		if err := actors.Runtime.StartWorker(ctx, "spwg_w1", "capture", "dst-taskstore", []string{"w1", "w2"}, 20, 20, 200, 20, 1, 50, false, ""); err != nil {
-			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"spwg_w1\", \"capture\", \"dst-taskstore\", []string{\"w1\", \"w2\"}, 20, 20, 200, 20, 1, 50, false, \"\")", err)
-			cancel()
-			return
-		}
 	}()
 
 	wg.Add(1)
@@ -407,6 +402,11 @@ func runStepStrictPriorityAndWeightedGroupsS2(parent context.Context, actors Act
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		if err := actors.Runtime.StartWorker(ctx, "spwg_w1", "capture", "dst-taskstore", []string{"w1", "w2"}, 20, 20, 200, 20, 1, 50, false, ""); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"spwg_w1\", \"capture\", \"dst-taskstore\", []string{\"w1\", \"w2\"}, 20, 20, 200, 20, 1, 50, false, \"\")", err)
+			cancel()
+			return
+		}
 		if err := actors.Runtime.WaitNoPendingTasks(ctx, 8000); err != nil {
 			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitNoPendingTasks(ctx, 8000)", err)
 			cancel()
@@ -2922,11 +2922,6 @@ func runStepSmokePriorityWeightS1(parent context.Context, actors Actors, vars *v
 			cancel()
 			return
 		}
-		if err := actors.Runtime.StartWorker(ctx, "spw_w1", "capture", "dst-taskstore", []string{"w1", "w2"}, 20, 20, 200, 20, 1, 50, false, ""); err != nil {
-			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"spw_w1\", \"capture\", \"dst-taskstore\", []string{\"w1\", \"w2\"}, 20, 20, 200, 20, 1, 50, false, \"\")", err)
-			cancel()
-			return
-		}
 	}()
 
 	wg.Add(1)
@@ -2977,6 +2972,11 @@ func runStepSmokePriorityWeightS2(parent context.Context, actors Actors, vars *v
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		if err := actors.Runtime.StartWorker(ctx, "spw_w1", "capture", "dst-taskstore", []string{"w1", "w2"}, 20, 20, 200, 20, 1, 50, false, ""); err != nil {
+			errCh <- fmt.Errorf("actor runtime call %s: %w", "StartWorker(ctx, \"spw_w1\", \"capture\", \"dst-taskstore\", []string{\"w1\", \"w2\"}, 20, 20, 200, 20, 1, 50, false, \"\")", err)
+			cancel()
+			return
+		}
 		if err := actors.Runtime.WaitNoPendingTasks(ctx, 8000); err != nil {
 			errCh <- fmt.Errorf("actor runtime call %s: %w", "WaitNoPendingTasks(ctx, 8000)", err)
 			cancel()

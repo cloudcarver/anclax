@@ -46,7 +46,7 @@ const (
 func withSmokePostgres(t *testing.T, fn func(ctx context.Context, m model.ModelInterface)) {
 	t.Helper()
 	if !dockerAvailable() {
-		t.Skip("docker not available")
+		t.Fatal("Docker is unavailable; ensure Docker is installed and running")
 	}
 
 	cleanupContainer(t)

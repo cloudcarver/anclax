@@ -41,6 +41,7 @@ type Querier interface {
 	GetTaskAttemptStatus(ctx context.Context, arg GetTaskAttemptStatusParams) (string, error)
 	GetTaskByID(ctx context.Context, id int32) (*AnclaxTask, error)
 	GetTaskByUniqueTag(ctx context.Context, uniqueTag *string) (*AnclaxTask, error)
+	GetTaskTagConcurrency(ctx context.Context, tag string) (*AnclaxTaskTagConcurrency, error)
 	GetTaskWaitStatusByID(ctx context.Context, id int32) (*GetTaskWaitStatusByIDRow, error)
 	GetUser(ctx context.Context, id int32) (*AnclaxUser, error)
 	GetUserByName(ctx context.Context, name string) (*AnclaxUser, error)
@@ -57,11 +58,15 @@ type Querier interface {
 	ListOrgs(ctx context.Context, userID int32) ([]*AnclaxOrg, error)
 	ListTaskDescendantIDs(ctx context.Context, parentTaskID *int32) ([]int32, error)
 	ListTaskIDsByTags(ctx context.Context, arg ListTaskIDsByTagsParams) ([]int32, error)
+	ListTaskTagConcurrencyLimits(ctx context.Context, arg ListTaskTagConcurrencyLimitsParams) ([]*AnclaxTaskTagConcurrency, error)
 	ListTerminalTaskWaitStatuses(ctx context.Context, ids []int32) ([]*ListTerminalTaskWaitStatusesRow, error)
+	MaintainTaskConcurrency(ctx context.Context, legacyTtlMs int64) error
 	MarkWorkerOffline(ctx context.Context, id uuid.UUID) error
 	RefreshTaskLock(ctx context.Context, arg RefreshTaskLockParams) (int32, error)
 	ReleaseTaskLockByWorker(ctx context.Context, arg ReleaseTaskLockByWorkerParams) (int32, error)
+	RemoveTaskTagConcurrencyLimit(ctx context.Context, tag string) error
 	RestoreUserByName(ctx context.Context, name string) error
+	SetTaskTagConcurrencyLimit(ctx context.Context, arg SetTaskTagConcurrencyLimitParams) error
 	SetUserDefaultOrg(ctx context.Context, arg SetUserDefaultOrgParams) error
 	UpdatePendingTaskPriorityByLabels(ctx context.Context, arg UpdatePendingTaskPriorityByLabelsParams) (int64, error)
 	UpdatePendingTaskWeightByLabels(ctx context.Context, arg UpdatePendingTaskWeightByLabelsParams) (int64, error)

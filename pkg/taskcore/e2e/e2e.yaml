@@ -73,7 +73,6 @@ scenarios:
           runtime:
             - ResetCaptured(ctx)
             - CreateRuntimeConfig(ctx, "SPWG_CFG", "req-spwg-1", 20, 1, 1, 3, false)
-            - StartWorker(ctx, "spwg_w1", "capture", "dst-taskstore", []string{"w1", "w2"}, 20, 20, 200, 20, 1, 50, false, "")
           taskStore:
             - Enqueue(ctx, "S_LOW", 1, 1, []string{})
             - Enqueue(ctx, "S_HIGH", 9, 1, []string{})
@@ -85,6 +84,7 @@ scenarios:
       - id: s2
         parallel:
           runtime:
+            - StartWorker(ctx, "spwg_w1", "capture", "dst-taskstore", []string{"w1", "w2"}, 20, 20, 200, 20, 1, 50, false, "")
             - WaitNoPendingTasks(ctx, 8000)
             - WaitCapturedCount(ctx, 6, 8000)
             - AssertCapturedContains(ctx, []string{"S_HIGH", "S_LOW", "N_W2_HIGH", "N_W2_LOW", "N_W1", "N_DEF"})
@@ -543,7 +543,6 @@ scenarios:
           runtime:
             - ResetCaptured(ctx)
             - CreateRuntimeConfig(ctx, "SPW_CFG", "req-spw-1", 20, 1, 1, 3, false)
-            - StartWorker(ctx, "spw_w1", "capture", "dst-taskstore", []string{"w1", "w2"}, 20, 20, 200, 20, 1, 50, false, "")
           taskStore:
             - Enqueue(ctx, "SPW_S_LOW", 1, 1, []string{})
             - Enqueue(ctx, "SPW_S_HIGH", 9, 1, []string{})
@@ -554,6 +553,7 @@ scenarios:
       - id: s2
         parallel:
           runtime:
+            - StartWorker(ctx, "spw_w1", "capture", "dst-taskstore", []string{"w1", "w2"}, 20, 20, 200, 20, 1, 50, false, "")
             - WaitNoPendingTasks(ctx, 8000)
             - WaitCapturedCount(ctx, 5, 8000)
             - AssertCapturedContains(ctx, []string{"SPW_S_HIGH", "SPW_S_LOW", "SPW_N_W2", "SPW_N_W1", "SPW_N_DEF"})
