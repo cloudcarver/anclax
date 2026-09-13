@@ -56,6 +56,9 @@ type chaosState struct {
 
 func TestContainerizedTaskcoreChaosSmoke(t *testing.T) {
 	if !dockerAvailable() {
+		if os.Getenv("ANCLAX_REQUIRE_DOCKER") == "1" {
+			t.Fatal("Docker is required for this test run")
+		}
 		t.Skip("docker not available")
 	}
 
@@ -119,6 +122,11 @@ func TestContainerizedTaskcoreChaosSmoke(t *testing.T) {
 	}
 
 	user := h.User()
+	if !t.Run("tag_concurrency_faults", func(t *testing.T) {
+		runTagConcurrencyFaultScenarios(t, ctx, h)
+	}) {
+		must(fmt.Errorf("deterministic tag concurrency fault scenario failed"))
+	}
 	must(runInitialUserCancel(ctx, user, state))
 	must(runInitialUserPauseResume(ctx, user, state))
 	must(runInitialUserTagControl(ctx, user, state))
@@ -152,11 +160,8 @@ func TestContainerizedTaskcoreChaosSmoke(t *testing.T) {
 	pending, err := h.Inspector().CountTasksByStatuses(ctx, []string{"pending", "running"}, "LONG-")
 	must(err)
 	require.Equal(t, int64(0), pending)
-	if state.workerDisruptions > 0 || state.postgresRestarts > 0 {
-		retried, err := h.Inspector().CountRetriedTasks(ctx, "LONG-")
-		must(err)
-		require.Greater(t, retried, int64(0))
-	}
+	// Recovery is asserted against the specific interrupted tasks above. The
+	// initial infinite-retry probes cannot stand in for fault-induced retries.
 	require.Greater(t, len(state.tasks), 0)
 	require.Greater(t, state.userPauses, 0)
 	require.Greater(t, state.userResumes, 0)

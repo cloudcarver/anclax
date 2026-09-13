@@ -41,16 +41,42 @@ func TestTaskTagConcurrencyMigrationSmoke(t *testing.T) {
 		}
 		_, err = conn.Exec(ctx, `UPDATE anclax.tasks SET locked_at = statement_timestamp(), worker_id = $1 WHERE status IN ('pending','paused','cancelled')`, uuid.New())
 		require.NoError(t, err)
-		const historyCount = 10000
+		historyCount := tagTestPositiveInt(t, "ANCLAX_TAG_MIGRATION_HISTORY_COUNT", 10000)
 		_, err = conn.Exec(ctx, `INSERT INTO anclax.tasks(attributes,spec,status,unique_tag)
             SELECT jsonb_build_object('tags', jsonb_build_array('history', 'history:' || n)),
                 '{"type":"history-probe","payload":{"history":true}}',
                 (ARRAY['completed','failed','cancelled'])[n % 3 + 1], 'history:' || n
             FROM generate_series(1,$1::int) AS history(n)`, historyCount)
 		require.NoError(t, err)
+		// A live reader holds the old schema. Prove that migration waits for
+		// that transaction, then completes after the blocker is released.
+		blocker, err := pgx.Connect(ctx, smokePostgresDSN())
+		require.NoError(t, err)
+		defer blocker.Close(ctx)
+		readTx, err := blocker.Begin(ctx)
+		require.NoError(t, err)
+		_, err = readTx.Exec(ctx, "SELECT id FROM anclax.tasks LIMIT 1")
+		require.NoError(t, err)
 		started := time.Now()
-		require.NoError(t, migration.Up())
-		t.Logf("migration with %d terminal historical tasks: %s", historyCount, time.Since(started))
+		upFinished := make(chan struct{})
+		var upErr error
+		go func() { upErr = migration.Up(); close(upFinished) }()
+		defer func() { _ = readTx.Rollback(ctx); <-upFinished }()
+		require.Eventually(t, func() bool {
+			var waiting bool
+			err := conn.QueryRow(ctx, `SELECT EXISTS (
+                    SELECT 1 FROM pg_locks l JOIN pg_class c ON c.oid=l.relation JOIN pg_namespace n ON n.oid=c.relnamespace
+                    WHERE n.nspname='anclax' AND c.relname='tasks' AND l.mode='AccessExclusiveLock' AND NOT l.granted)`).Scan(&waiting)
+			return err == nil && waiting
+		}, 5*time.Second, 10*time.Millisecond, "migration never waited for the existing reader")
+		lockWait := time.Since(started)
+		require.NoError(t, readTx.Commit(ctx))
+		<-upFinished
+		require.NoError(t, upErr)
+		writeTagTestReport(t, "tag-migration", map[string]any{
+			"historicalTasks": historyCount, "totalMs": float64(time.Since(started)) / float64(time.Millisecond),
+			"observedLockWaitMs": float64(lockWait) / float64(time.Millisecond), "completedAfterReaderReleased": true,
+		})
 		for status, id := range ids {
 			row, err := m.GetTaskByID(ctx, id)
 			require.NoError(t, err)

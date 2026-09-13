@@ -1,0 +1,119 @@
+name: Taskcore tests
+
+on:
+  pull_request:
+    paths:
+      - '**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'sql/**'
+      - 'api/**'
+      - 'anclax.yaml'
+      - 'pkg/taskcore/**/*.yaml'
+      - 'Makefile'
+      - '.github/workflows/taskcore-tests.yml'
+  push:
+    branches: [main]
+  schedule:
+    - cron: '23 18 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: taskcore-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  ANCLAX_REQUIRE_DOCKER: '1'
+  ANCLAX_TASKCORE_CHAOS_RUNTIME_IMAGE: alpine:3.20
+  NO_PROXY: '*'
+
+jobs:
+  checks:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ['15', '17']
+    env:
+      ANCLAX_SMOKE_POSTGRES_IMAGE: postgres:${{ matrix.postgres }}
+      ANCLAX_TASKCORE_CHAOS_POSTGRES_IMAGE: postgres:${{ matrix.postgres }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Unit, deterministic, database and short chaos tests
+        env:
+          TMPDIR: ${{ runner.temp }}
+          ANCLAX_TEST_REPORT_DIR: ${{ runner.temp }}/tag-reports
+        run: make SHELL=/bin/bash test 2>&1 | tee "$RUNNER_TEMP/taskcore-tests.log"
+      - name: Preserve test evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: taskcore-pg${{ matrix.postgres }}
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/taskcore-*.log
+            ${{ runner.temp }}/tag-reports/*.json
+            ${{ runner.temp }}/anclax-taskcore-chaos-*/report.json
+            ${{ runner.temp }}/anclax-taskcore-chaos-*/summary.txt
+            ${{ runner.temp }}/anclax-taskcore-chaos-*/docker/**
+            ${{ runner.temp }}/anclax-taskcore-chaos-*/db/**
+
+  longevity:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        postgres: ['15', '17']
+        seed: [424242, 8675309]
+    env:
+      ANCLAX_SMOKE_POSTGRES_IMAGE: postgres:${{ matrix.postgres }}
+      ANCLAX_TASKCORE_CHAOS_POSTGRES_IMAGE: postgres:${{ matrix.postgres }}
+      ANCLAX_TASKCORE_CHAOS_SEED: ${{ matrix.seed }}
+      ANCLAX_TASKCORE_CHAOS_ITERATIONS: '200'
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Multi-seed container chaos
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: make SHELL=/bin/bash chaos 2>&1 | tee "$RUNNER_TEMP/taskcore-chaos.log"
+      - name: Sustained load and million-row historical migration
+        if: matrix.seed == 424242
+        env:
+          TMPDIR: ${{ runner.temp }}
+          ANCLAX_TEST_REPORT_DIR: ${{ runner.temp }}/tag-reports
+          ANCLAX_TAG_LOAD_SECONDS: '10'
+          ANCLAX_TAG_MIGRATION_HISTORY_COUNT: '1000000'
+        run: make SHELL=/bin/bash taskcore-perf 2>&1 | tee "$RUNNER_TEMP/taskcore-perf.log"
+      - name: Preserve test evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: taskcore-nightly-pg${{ matrix.postgres }}-seed${{ matrix.seed }}
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/taskcore-*.log
+            ${{ runner.temp }}/tag-reports/*.json
+            ${{ runner.temp }}/anclax-taskcore-chaos-*/report.json
+            ${{ runner.temp }}/anclax-taskcore-chaos-*/summary.txt
+            ${{ runner.temp }}/anclax-taskcore-chaos-*/docker/**
+            ${{ runner.temp }}/anclax-taskcore-chaos-*/db/**

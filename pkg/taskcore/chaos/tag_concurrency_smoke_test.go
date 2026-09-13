@@ -76,6 +76,9 @@ func checkTagConcurrencyAudit(ctx context.Context, inspector *Inspector, report 
 	if observations == 0 || violations != 0 {
 		return fmt.Errorf("tag concurrency audit: observations=%d violations=%d", observations, violations)
 	}
+	if peak != 3 || groupPeak != 2 {
+		return fmt.Errorf("tag limits were not exercised: global peak=%d want=3, group peak=%d want=2", peak, groupPeak)
+	}
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		var remaining, mismatches int64

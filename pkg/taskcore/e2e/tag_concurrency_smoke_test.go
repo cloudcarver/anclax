@@ -120,6 +120,9 @@ func TestTaskTagConcurrencySmoke(t *testing.T) {
 				})
 			}
 		})
+		t.Run("claim_paths_with_tags_serial_and_schedules", func(t *testing.T) {
+			runTagClaimPathMatrix(t, ctx, m)
+		})
 
 		t.Run("historical_insert_and_edit_skip_membership_and_restore_rebuilds_it", func(t *testing.T) {
 			reset(t)
