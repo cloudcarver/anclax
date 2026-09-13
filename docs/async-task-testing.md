@@ -19,6 +19,7 @@ The database-partition test closes existing TCP connections and rejects new ones
 ## Regular runs
 
 ```bash
+go run ./cmd/anclax install  # first checkout or after changing tool versions
 make test
 make chaos-smoke  # deterministic scenarios + 10 random iterations
 ANCLAX_TASKCORE_CHAOS_SEED=8675309 make chaos  # 200 random iterations

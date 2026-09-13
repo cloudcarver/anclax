@@ -19,6 +19,7 @@
 ## 常规运行
 
 ```bash
+go run ./cmd/anclax install  # 首次检出或修改生成工具版本后执行
 make test
 make chaos-smoke  # 确定性场景 + 10 轮随机故障
 ANCLAX_TASKCORE_CHAOS_SEED=8675309 make chaos  # 200 轮随机故障

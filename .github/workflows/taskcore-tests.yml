@@ -52,6 +52,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
+      - name: Install pinned code generation tools
+        run: GOCACHE=/tmp/go-cache go run ./cmd/anclax install 2>&1 | tee "$RUNNER_TEMP/taskcore-tools.log"
       - name: Unit, deterministic, database and short chaos tests
         env:
           TMPDIR: ${{ runner.temp }}
