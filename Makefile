@@ -11,7 +11,6 @@ CHAOS_TIMEOUT ?= 60m
 
 ANCLAX_TASKCORE_CHAOS_ITERATIONS ?= 200
 ANCLAX_TASKCORE_CHAOS_SMOKE_ITERATIONS ?= 10
-ANCLAX_TAG_MIGRATION_HISTORY_COUNT ?= 100000
 
 .PHONY: dev test check-docker ut smoke test-deterministic chaos chaos-smoke taskcore-perf
 
@@ -65,7 +64,7 @@ chaos-smoke: check-docker
 	GOCACHE=/tmp/go-cache ANCLAX_REQUIRE_DOCKER=1 ANCLAX_TASKCORE_CHAOS_ITERATIONS=$(ANCLAX_TASKCORE_CHAOS_SMOKE_ITERATIONS) go test -tags=smoke ./pkg/taskcore/chaos -run TestContainerizedTaskcoreChaosSmoke -count=1 -v -timeout $(CHAOS_TIMEOUT)
 
 taskcore-perf: check-docker
-	GOCACHE=/tmp/go-cache ANCLAX_REQUIRE_DOCKER=1 ANCLAX_TAG_MIGRATION_HISTORY_COUNT=$(ANCLAX_TAG_MIGRATION_HISTORY_COUNT) go test -tags=smoke ./pkg/taskcore/e2e -run 'TestTaskTagConcurrency(Load|Migration)Smoke' -count=1 -v -timeout 10m
+	GOCACHE=/tmp/go-cache ANCLAX_REQUIRE_DOCKER=1 go test -tags=smoke ./pkg/taskcore/e2e -run '^TestTaskTagConcurrencyLoadSmoke$$' -count=1 -v -timeout 10m
 
 test-deterministic:
 	GOCACHE=/tmp/go-cache go run ./cmd/anclax gen

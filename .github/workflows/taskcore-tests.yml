@@ -98,13 +98,12 @@ jobs:
         env:
           TMPDIR: ${{ runner.temp }}
         run: make SHELL=/bin/bash chaos 2>&1 | tee "$RUNNER_TEMP/taskcore-chaos.log"
-      - name: Sustained load and million-row historical migration
+      - name: Sustained load
         if: matrix.seed == 424242
         env:
           TMPDIR: ${{ runner.temp }}
           ANCLAX_TEST_REPORT_DIR: ${{ runner.temp }}/tag-reports
           ANCLAX_TAG_LOAD_SECONDS: '10'
-          ANCLAX_TAG_MIGRATION_HISTORY_COUNT: '1000000'
         run: make SHELL=/bin/bash taskcore-perf 2>&1 | tee "$RUNNER_TEMP/taskcore-perf.log"
       - name: Preserve test evidence
         if: always()

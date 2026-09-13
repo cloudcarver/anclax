@@ -233,7 +233,7 @@ The deterministic `TAG-*` fixtures are reported through `assert.tag_wait_release
 
 The database-partition fixture extends the isolated owner's heartbeat interval to exercise lease-renewal expiry independently of heartbeat-triggered runtime shutdown. It does not disable lease renewal or restart the isolated process. The production heartbeat failure path has separate runtime tests.
 
-See [testing layers and performance runs](../../../docs/async-task-testing.md) for the PostgreSQL matrix, nightly workflow and load/migration reports.
+See [testing layers and performance runs](../../../docs/async-task-testing.md) for the PostgreSQL matrix, nightly workflow, load reports and migration compatibility checks.
 
 ## Current limitations
 

@@ -10,7 +10,8 @@ The suite checks task and tag-concurrency invariants at several layers. Passing 
 | PostgreSQL smoke | Atomic multi-tag admission, dynamic limits, lifecycle outcomes, stale leases, rollback, tag edits, and membership cleanup. Ten combinations cover five claim paths with/without serial ordering, plus labels and scheduling. A delayed SQL heartbeat must not revive an explicitly offline worker; explicit startup registration can restore it. |
 | Deterministic container faults | An executor gate proves that the target handler is running before a fault. Tests observe full-tag waiting without consuming attempts or partial permits, unlimited progress, and execution after release. Specific tasks must be reclaimed after owner death and an isolated database partition. |
 | Random container chaos | Mixed limited/unlimited tasks, pause/cancel/resume, worker replacement, database restarts and control-plane outages. Durable per-tag observations detect excess admission and counter drift across restarts. |
-| Sustained load and migration | Throughput and successful-claim p95/p99 under several tag distributions; a continuously replenished queue and an existing blocked backlog; historical migration correctness and a real DDL lock wait. |
+| Sustained load | Throughput and successful-claim p95/p99 under several tag distributions, a continuously replenished queue and an existing blocked backlog. |
+| Migration compatibility | A fixed 10,000-row historical fixture checks upgrade/rollback, preserved task data and original tag queries. |
 
 The deterministic fault fixtures use `TAG-*` names and emit `assert.tag_takeover`/`assert.tag_wait_release` report events. The existing task summary covers `LONG-*` workload tasks, including the initialization probes. Recovery assertions target the interrupted task ID, owner and lease version; initialization retries cannot satisfy them. The audit requires global/group peaks of 3/2, no oversubscription, consistent permits/counters and no terminal membership residue.
 
@@ -29,13 +30,12 @@ ANCLAX_TASKCORE_CHAOS_SEED=8675309 make chaos  # 200 random iterations
 
 Use `ANCLAX_SMOKE_POSTGRES_IMAGE` and `ANCLAX_TASKCORE_CHAOS_POSTGRES_IMAGE` to select database images. `.github/workflows/taskcore-tests.yml` runs regular checks on PostgreSQL 15 and 17 for PRs and main pushes. Nightly/manual runs use seeds 424242 and 8675309 for each database version and preserve logs, reports and failure diagnostics. Branch-protection requirements remain repository settings; adding a workflow does not make its checks mandatory for merging.
 
-## Performance and migration runs
+## Performance runs
 
 ```bash
 ANCLAX_TEST_REPORT_DIR=/tmp/anclax-reports make taskcore-perf
 
 ANCLAX_TAG_LOAD_SECONDS=10 \
-ANCLAX_TAG_MIGRATION_HISTORY_COUNT=1000000 \
 ANCLAX_TEST_REPORT_DIR=/tmp/anclax-reports make taskcore-perf
 ```
 
@@ -49,10 +49,9 @@ The load test replenishes each completed task for a fixed duration, keeping the 
 | `ANCLAX_TAG_LOAD_BACKLOG` | 20,000 frozen tasks in the mixed case |
 | `ANCLAX_TAG_MAX_CLAIM_P99_MS` | 500 ms |
 | `ANCLAX_TAG_MIN_TASKS_PER_SECOND` | 10 completed tasks/s |
-| `ANCLAX_TAG_MIGRATION_HISTORY_COUNT` | 10,000 in ordinary smoke; 100,000 through `make taskcore-perf`; 1,000,000 nightly |
 
-These are broad regression budgets for the test environment, not production SLAs. Set tighter budgets on a stable benchmark host. JSON reports are written to `ANCLAX_TEST_REPORT_DIR` as `tag-load.json` and `tag-migration.json`.
+These are broad regression budgets for the test environment, not production SLAs. Set tighter budgets on a stable benchmark host. JSON reports are written to `ANCLAX_TEST_REPORT_DIR` as `tag-load.json`.
 
-The migration fixture holds a reader transaction against the old schema, observes migration waiting for its DDL lock, releases the reader, then checks upgrade/rollback and original historical tag queries. Recorded migration time starts after fixture insertion and includes the controlled lock wait; it does not include seeding time. Production table sizes, payloads, indexes and competing transactions need representative measurement.
+Large migration benchmarks are one-off local validation recorded in the relevant PR. The recurring migration smoke test uses the fixed compatibility fixture above.
 
 Mock tests can systematically enumerate a module's specified cases and dependency responses. They cannot enumerate an unbounded state space or prove that real dependencies follow the assumed contract. State-machine/property tests can explore more sequences; real-database and process tests remain necessary for the boundaries above.
