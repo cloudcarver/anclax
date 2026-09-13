@@ -40,6 +40,7 @@ func TestModelPortClaimByIDNoTask(t *testing.T) {
 			return f(mockTx, mockTxModel)
 		},
 	).Times(1)
+	mockModel.EXPECT().MaintainTaskConcurrency(gomock.Any(), int64(5000)).Return(nil).Times(1)
 	mockTxModel.EXPECT().ClaimTaskByID(context.Background(), gomock.AssignableToTypeOf(querier.ClaimTaskByIDParams{})).
 		Return(nil, pgx.ErrNoRows).Times(1)
 
@@ -131,6 +132,7 @@ func TestClaimPathsLabelsAndTTLMatrix(t *testing.T) {
 				return f(mockTx, mockTxModel)
 			},
 		)
+		mockModel.EXPECT().MaintainTaskConcurrency(gomock.Any(), int64(5000)).Return(nil).Times(1)
 		mockTxModel.EXPECT().ClaimStrictTask(context.Background(), gomock.AssignableToTypeOf(querier.ClaimStrictTaskParams{})).DoAndReturn(
 			func(ctx context.Context, params querier.ClaimStrictTaskParams) (*querier.AnclaxTask, error) {
 				require.Equal(t, labels, params.Labels)
@@ -161,6 +163,7 @@ func TestClaimPathsLabelsAndTTLMatrix(t *testing.T) {
 				return f(mockTx, mockTxModel)
 			},
 		)
+		mockModel.EXPECT().MaintainTaskConcurrency(gomock.Any(), int64(5000)).Return(nil).Times(1)
 		mockTxModel.EXPECT().ClaimNormalTaskByGroup(context.Background(), gomock.AssignableToTypeOf(querier.ClaimNormalTaskByGroupParams{})).DoAndReturn(
 			func(ctx context.Context, params querier.ClaimNormalTaskByGroupParams) (*querier.AnclaxTask, error) {
 				require.Equal(t, labels, params.Labels)
@@ -191,6 +194,7 @@ func TestClaimPathsLabelsAndTTLMatrix(t *testing.T) {
 				return f(mockTx, mockTxModel)
 			},
 		)
+		mockModel.EXPECT().MaintainTaskConcurrency(gomock.Any(), int64(5000)).Return(nil).Times(1)
 		mockTxModel.EXPECT().ClaimTaskByID(context.Background(), gomock.AssignableToTypeOf(querier.ClaimTaskByIDParams{})).DoAndReturn(
 			func(ctx context.Context, params querier.ClaimTaskByIDParams) (*querier.AnclaxTask, error) {
 				require.Equal(t, labels, params.Labels)

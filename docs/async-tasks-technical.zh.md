@@ -5,6 +5,8 @@
 > 🚀 **异步任务新手？** 从[教程指南](async-tasks-tutorial.zh.md)开始，了解分步用法。
 >
 > ⚖️ **需要调度机制细节？** 查看[调度与运行时配置指南](async-task-scheduling-runtime-config.zh.md)，了解 strict/normal 通道语义、`WithPriority`/`WithWeight` 与运行时传播流程。
+>
+> 跨 Worker、多个 task tag 的并发限制，参见[按 tag 限制全局并发](async-task-tag-concurrency.zh.md)。
 
 本文档提供了 Anclax 异步任务系统的全面概述，涵盖用户体验流程和底层技术机制。
 

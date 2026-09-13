@@ -99,6 +99,7 @@ func TestContainerizedTaskcoreChaosSmoke(t *testing.T) {
 	}
 
 	must(h.Start(ctx))
+	must(installTagConcurrencyAudit(ctx, h.Inspector()))
 	state = &chaosState{
 		rng: rand.New(rand.NewSource(cfg.Seed)),
 		workers: []*chaosWorkerSlot{
@@ -160,6 +161,7 @@ func TestContainerizedTaskcoreChaosSmoke(t *testing.T) {
 	require.Greater(t, state.userPauses, 0)
 	require.Greater(t, state.userResumes, 0)
 	require.Greater(t, state.userCancels, 0)
+	must(checkTagConcurrencyAudit(ctx, h.Inspector(), h.Report()))
 }
 
 func buildSmokeSummary(ctx context.Context, h *Harness, state *chaosState) (*ReportSummary, error) {
@@ -538,6 +540,7 @@ func submitChaosBatch(ctx context.Context, user *User, state *chaosState, iter i
 			SleepMs:  taskSleepMs,
 			Group:    group,
 			Labels:   labels,
+			Tags:     chaosConcurrencyTags(group),
 		})
 		if err != nil {
 			return err
@@ -555,6 +558,7 @@ func submitChaosBatch(ctx context.Context, user *User, state *chaosState, iter i
 		SleepMs:  taskSleepMs,
 		Group:    group,
 		Labels:   labels,
+		Tags:     chaosConcurrencyTags(group),
 	})
 	if err != nil {
 		return err
@@ -575,6 +579,7 @@ func submitChaosBatch(ctx context.Context, user *User, state *chaosState, iter i
 		DelayMs:  pauseDelayMs,
 		Group:    group,
 		Labels:   labels,
+		Tags:     chaosConcurrencyTags(group),
 	})
 	if err != nil {
 		return err
