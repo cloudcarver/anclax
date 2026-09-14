@@ -59,10 +59,12 @@ type Querier interface {
 	ListTaskDescendantIDs(ctx context.Context, parentTaskID *int32) ([]int32, error)
 	ListTaskIDsByTags(ctx context.Context, arg ListTaskIDsByTagsParams) ([]int32, error)
 	ListTaskTagConcurrencyLimits(ctx context.Context, arg ListTaskTagConcurrencyLimitsParams) ([]*AnclaxTaskTagConcurrency, error)
+	ListTaskWaitStatuses(ctx context.Context, ids []int32) ([]*ListTaskWaitStatusesRow, error)
 	ListTerminalTaskWaitStatuses(ctx context.Context, ids []int32) ([]*ListTerminalTaskWaitStatusesRow, error)
 	MaintainTaskConcurrency(ctx context.Context, legacyTtlMs int64) error
 	MarkWorkerOffline(ctx context.Context, id uuid.UUID) error
 	RefreshTaskLock(ctx context.Context, arg RefreshTaskLockParams) (int32, error)
+	RefreshTaskLocks(ctx context.Context, arg RefreshTaskLocksParams) ([]*RefreshTaskLocksRow, error)
 	ReleaseTaskLockByWorker(ctx context.Context, arg ReleaseTaskLockByWorkerParams) (int32, error)
 	RemoveTaskTagConcurrencyLimit(ctx context.Context, tag string) error
 	RestoreUserByName(ctx context.Context, name string) error

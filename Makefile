@@ -12,7 +12,7 @@ CHAOS_TIMEOUT ?= 60m
 ANCLAX_TASKCORE_CHAOS_ITERATIONS ?= 200
 ANCLAX_TASKCORE_CHAOS_SMOKE_ITERATIONS ?= 10
 
-.PHONY: dev test check-docker ut smoke test-deterministic chaos chaos-smoke taskcore-perf
+.PHONY: dev test check-docker ut smoke test-deterministic chaos chaos-smoke taskcore-perf taskcore-capacity
 
 
 ###################################################
@@ -65,6 +65,9 @@ chaos-smoke: check-docker
 
 taskcore-perf: check-docker
 	GOCACHE=/tmp/go-cache go test -tags=smoke ./pkg/taskcore/e2e -run '^TestTaskTagConcurrencyLoadSmoke$$' -count=1 -v -timeout 10m
+
+taskcore-capacity: check-docker
+	go test -tags=smoke ./pkg/taskcore/e2e -run '^TestAsyncTaskConnectionCapacitySmoke$$' -count=1 -v -timeout 30m
 
 test-deterministic:
 	GOCACHE=/tmp/go-cache go run ./cmd/anclax gen

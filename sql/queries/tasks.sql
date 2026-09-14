@@ -300,6 +300,21 @@ SET locked_at = NULL, worker_id = NULL, lease_expires_at = NULL, lease_duration_
 WHERE id = $1 AND worker_id = $2 AND lease_version = sqlc.arg(lease_version)
 RETURNING id;
 
+-- name: RefreshTaskLocks :many
+WITH attempts AS (
+    SELECT unnest(sqlc.arg(ids)::int[]) AS id,
+           unnest(sqlc.arg(lease_versions)::bigint[]) AS lease_version
+)
+UPDATE anclax.tasks AS t
+SET locked_at = statement_timestamp(), updated_at = statement_timestamp(),
+    lease_expires_at = statement_timestamp() + t.lease_duration_ms * INTERVAL '1 millisecond'
+FROM attempts AS a
+WHERE t.id = a.id AND t.lease_version = a.lease_version
+    AND t.worker_id = sqlc.arg(worker_id)
+    AND t.status IN ('pending', 'running')
+    AND t.lease_expires_at > statement_timestamp()
+RETURNING t.id, t.lease_version;
+
 -- name: CreateTask :one
 INSERT INTO anclax.tasks (attributes, spec, status, started_at, unique_tag, parent_task_id, serial_key, serial_id, priority, weight)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (unique_tag) DO NOTHING RETURNING *;
@@ -334,6 +349,11 @@ SELECT id, status
 FROM anclax.tasks
 WHERE id = ANY(sqlc.arg(ids)::int[])
   AND status IN ('completed', 'failed', 'cancelled');
+
+-- name: ListTaskWaitStatuses :many
+SELECT id, status
+FROM anclax.tasks
+WHERE id = ANY(sqlc.arg(ids)::int[]);
 
 -- name: ListTaskDescendantIDs :many
 WITH RECURSIVE descendants AS (

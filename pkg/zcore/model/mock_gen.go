@@ -742,6 +742,21 @@ func (mr *MockModelInterfaceMockRecorder) ListTaskTagConcurrencyLimits(ctx, arg 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTaskTagConcurrencyLimits", reflect.TypeOf((*MockModelInterface)(nil).ListTaskTagConcurrencyLimits), ctx, arg)
 }
 
+// ListTaskWaitStatuses mocks base method.
+func (m *MockModelInterface) ListTaskWaitStatuses(ctx context.Context, ids []int32) ([]*querier.ListTaskWaitStatusesRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListTaskWaitStatuses", ctx, ids)
+	ret0, _ := ret[0].([]*querier.ListTaskWaitStatusesRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListTaskWaitStatuses indicates an expected call of ListTaskWaitStatuses.
+func (mr *MockModelInterfaceMockRecorder) ListTaskWaitStatuses(ctx, ids any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTaskWaitStatuses", reflect.TypeOf((*MockModelInterface)(nil).ListTaskWaitStatuses), ctx, ids)
+}
+
 // ListTerminalTaskWaitStatuses mocks base method.
 func (m *MockModelInterface) ListTerminalTaskWaitStatuses(ctx context.Context, ids []int32) ([]*querier.ListTerminalTaskWaitStatusesRow, error) {
 	m.ctrl.T.Helper()
@@ -798,6 +813,21 @@ func (m *MockModelInterface) RefreshTaskLock(ctx context.Context, arg querier.Re
 func (mr *MockModelInterfaceMockRecorder) RefreshTaskLock(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RefreshTaskLock", reflect.TypeOf((*MockModelInterface)(nil).RefreshTaskLock), ctx, arg)
+}
+
+// RefreshTaskLocks mocks base method.
+func (m *MockModelInterface) RefreshTaskLocks(ctx context.Context, arg querier.RefreshTaskLocksParams) ([]*querier.RefreshTaskLocksRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RefreshTaskLocks", ctx, arg)
+	ret0, _ := ret[0].([]*querier.RefreshTaskLocksRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RefreshTaskLocks indicates an expected call of RefreshTaskLocks.
+func (mr *MockModelInterfaceMockRecorder) RefreshTaskLocks(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RefreshTaskLocks", reflect.TypeOf((*MockModelInterface)(nil).RefreshTaskLocks), ctx, arg)
 }
 
 // ReleaseTaskLockByWorker mocks base method.

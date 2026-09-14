@@ -19,6 +19,8 @@ type TaskTerminalEvent struct {
 }
 
 type TaskEventListener interface {
+	// WaitTask registers without querying storage. Results, including missing
+	// tasks, arrive asynchronously; cancellation removes the subscription.
 	WaitTask(ctx context.Context, taskID int32) (<-chan TaskTerminalEvent, error)
 }
 

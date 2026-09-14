@@ -92,7 +92,7 @@ var RuntimeConfigSupersededTotal = promauto.NewCounter(
 var TaskListenerPollDurationSeconds = promauto.NewHistogram(
 	prometheus.HistogramOpts{
 		Name:    "anclax_task_listener_poll_duration_seconds",
-		Help:    "Time spent querying terminal task statuses in the polling task listener.",
+		Help:    "Time spent querying a batch of task statuses in the polling task listener.",
 		Buckets: prometheus.DefBuckets,
 	},
 )

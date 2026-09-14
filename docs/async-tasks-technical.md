@@ -317,12 +317,15 @@ err := controlPlane.WaitForTask(ctx, taskID)
 
 **How it works:**
 - Waits until the task reaches `completed`, `failed`, or `cancelled`.
+- Registration does not query the database. A shared listener checks task existence and status in batches of up to 256 IDs on its next one-second polling round. An already-terminal or missing task is reported asynchronously.
+- Each batch query has a five-second timeout. Temporary database errors preserve subscriptions and use exponential backoff, capped at 30 seconds; permanent PostgreSQL errors reach the waiter. No subscriptions means no queries.
 - On failure, reads the most recent TaskError event and returns a message that includes:
   - the task attempt count
   - the retry policy max attempts
   - the last error message from the TaskError event
 - On cancellation, returns an error wrapping `ErrTaskCancelled`.
 - On timeout or context cancellation, returns the context error.
+- Waiting inside a task handler retains its worker execution slot. Commit business transactions before waiting for tasks created in them; waiting does not commit transactions automatically.
 
 **Implementation references:**
 - `pkg/taskcore/ctrl/ctrl.go` implements the public wait helper.

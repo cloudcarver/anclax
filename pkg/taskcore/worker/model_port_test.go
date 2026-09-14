@@ -72,27 +72,6 @@ func TestModelPortRefreshRuntimeConfigDecode(t *testing.T) {
 	require.Equal(t, int32(3), cfg.LabelWeights["w1"])
 }
 
-func TestModelPortTaskInterruptCauseFromStore(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	workerID := uuid.New()
-	mockModel := model.NewMockModelInterface(ctrl)
-	port, err := NewModelPort(mockModel, workerID, nil, nil, 5*time.Second, 0)
-	require.NoError(t, err)
-
-	taskID := int32(9)
-
-	mockModel.EXPECT().GetTaskByID(context.Background(), taskID).Return(&querier.AnclaxTask{Status: string(apigen.Paused)}, nil)
-	require.ErrorIs(t, port.taskInterruptCauseFromStore(context.Background(), taskID), taskcore.ErrTaskPaused)
-
-	mockModel.EXPECT().GetTaskByID(context.Background(), taskID).Return(&querier.AnclaxTask{Status: string(apigen.Cancelled)}, nil)
-	require.ErrorIs(t, port.taskInterruptCauseFromStore(context.Background(), taskID), taskcore.ErrTaskCancelled)
-
-	mockModel.EXPECT().GetTaskByID(context.Background(), taskID).Return(nil, pgx.ErrNoRows)
-	require.ErrorIs(t, port.taskInterruptCauseFromStore(context.Background(), taskID), taskcore.ErrTaskLockLost)
-}
-
 func TestModelPortAckRuntimeConfigApplied(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -223,7 +202,7 @@ func TestStartLockRefreshTransientErrorsDoNotInterrupt(t *testing.T) {
 	port.registerTaskRuntime(Task{ID: taskID}, cancel)
 	defer port.completeTaskRuntime(Task{ID: taskID})
 
-	mockModel.EXPECT().RefreshTaskLock(gomock.Any(), gomock.AssignableToTypeOf(querier.RefreshTaskLockParams{})).Return(int32(0), stdErrors.New("transient db error")).MinTimes(1)
+	mockModel.EXPECT().RefreshTaskLocks(gomock.Any(), gomock.AssignableToTypeOf(querier.RefreshTaskLocksParams{})).Return(nil, stdErrors.New("transient db error")).MinTimes(1)
 
 	stopRefresh := port.startLockRefresh(ctx, Task{ID: taskID})
 	defer stopRefresh()
@@ -245,7 +224,7 @@ func TestLockRefreshStopsAtLeaseDeadlineAfterTransientErrors(t *testing.T) {
 	defer cancel(nil)
 	p.registerTaskRuntime(task, cancel)
 	defer p.completeTaskRuntime(task)
-	m.EXPECT().RefreshTaskLock(gomock.Any(), gomock.Any()).Return(int32(0), stdErrors.New("database unavailable")).MinTimes(1)
+	m.EXPECT().RefreshTaskLocks(gomock.Any(), gomock.Any()).Return(nil, stdErrors.New("database unavailable")).MinTimes(1)
 	stop := p.startLockRefresh(ctx, task)
 	defer stop()
 	select {
@@ -292,9 +271,9 @@ func TestStartLockRefreshInterruptsOnLockLossAfterTransientError(t *testing.T) {
 	defer port.completeTaskRuntime(Task{ID: taskID})
 
 	gomock.InOrder(
-		mockModel.EXPECT().RefreshTaskLock(gomock.Any(), gomock.AssignableToTypeOf(querier.RefreshTaskLockParams{})).Return(int32(0), stdErrors.New("transient db error")),
-		mockModel.EXPECT().RefreshTaskLock(gomock.Any(), gomock.AssignableToTypeOf(querier.RefreshTaskLockParams{})).Return(int32(0), pgx.ErrNoRows),
-		mockModel.EXPECT().GetTaskByID(gomock.Any(), taskID).Return(&querier.AnclaxTask{Status: string(apigen.Cancelled)}, nil),
+		mockModel.EXPECT().RefreshTaskLocks(gomock.Any(), gomock.AssignableToTypeOf(querier.RefreshTaskLocksParams{})).Return(nil, stdErrors.New("transient db error")),
+		mockModel.EXPECT().RefreshTaskLocks(gomock.Any(), gomock.AssignableToTypeOf(querier.RefreshTaskLocksParams{})).Return(nil, nil),
+		mockModel.EXPECT().ListTaskWaitStatuses(gomock.Any(), []int32{taskID}).Return([]*querier.ListTaskWaitStatusesRow{{ID: taskID, Status: string(apigen.Cancelled)}}, nil),
 	)
 
 	stopRefresh := port.startLockRefresh(ctx, Task{ID: taskID})
