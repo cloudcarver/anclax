@@ -99,6 +99,7 @@ type AnclaxTask struct {
 	LeaseDurationMs    *int64
 	ConcurrencyWaitTag *string
 	ConcurrencyRetryAt *time.Time
+	LeaseTags          []string
 }
 
 type AnclaxTaskTag struct {

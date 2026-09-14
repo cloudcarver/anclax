@@ -93,7 +93,11 @@ func runTagConcurrencyFaultScenarios(t *testing.T, ctx context.Context, h *Harne
 		}
 		var permitVersions []int64
 		require.NoError(t, h.inspector.pool.QueryRow(ctx, "SELECT array_agg(lease_version ORDER BY tag) FROM anclax.task_tag_permits WHERE task_id=$1", old.ID).Scan(&permitVersions))
-		require.Equal(t, []int64{r.LeaseVersion, r.LeaseVersion}, permitVersions)
+		wantVersions := make([]int64, len(tags))
+		for i := range wantVersions {
+			wantVersions[i] = r.LeaseVersion
+		}
+		require.Equal(t, wantVersions, permitVersions)
 		h.report.AddEvent("assert.tag_takeover", "TAG-"+name, "specific interrupted task reclaimed; stale owner fenced", map[string]any{
 			"taskID": old.ID, "oldLeaseVersion": old.LeaseVersion, "newLeaseVersion": r.LeaseVersion, "attempts": r.Attempts, "newWorker": newWorker,
 		})
@@ -163,7 +167,13 @@ func runTagConcurrencyFaultScenarios(t *testing.T, ctx context.Context, h *Harne
 		require.NoError(t, q.RemoveTaskTagConcurrencyLimit(ctx, tags[0]))
 		waitBlocked(t, id, tags[1], 1)
 		setLimit(t, tags[1], 1)
-		assertTakeover(t, old, "takeover", "tag-replacement", tags)
+		assertTakeover(t, old, "takeover", "tag-replacement", tags[1:])
+		usage(t, tags[0], 0)
+		// Re-enabling the removed limit backfills the replacement's live
+		// attempt without requiring the handler to restart.
+		setLimit(t, tags[0], 1)
+		usage(t, tags[0], 1)
+		require.Equal(t, old.Attempts+1, row(t, id).Attempts)
 		finish(t, "takeover")
 		for _, tag := range tags {
 			usage(t, tag, 0)

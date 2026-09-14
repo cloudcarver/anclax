@@ -156,6 +156,7 @@ func TestTaskTagConcurrencySmoke(t *testing.T) {
 			for _, status := range []string{"completed", "failed", "cancelled"} {
 				t.Run(status, func(t *testing.T) {
 					reset(t)
+					require.NoError(t, control.SetTagConcurrencyLimit(ctx, "a", 10))
 					p := port(t, 9*time.Second)
 					id := enqueue(t, "a", "b")
 					claim(t, p, id)
@@ -220,7 +221,8 @@ func TestTaskTagConcurrencySmoke(t *testing.T) {
 			require.NoError(t, p.FinalizeTask(ctx, *a, nil))
 			row, err = m.GetTaskByID(ctx, id)
 			require.NoError(t, err)
-			require.Nil(t, row.ConcurrencyWaitTag, "release should wake the waiter immediately")
+			require.NotNil(t, row.ConcurrencyWaitTag, "release leaves task wakeups to maintenance")
+			require.NoError(t, m.MaintainTaskConcurrency(ctx, 9000))
 			both := claim(t, p, id)
 			usage(t, "a", 1)
 			usage(t, "b", 1)
@@ -234,7 +236,7 @@ func TestTaskTagConcurrencySmoke(t *testing.T) {
 			p := port(t, 9*time.Second)
 			first := claim(t, p, enqueue(t, "tenant:1"))
 			second := claim(t, p, enqueue(t, "tenant:1"))
-			usage(t, "tenant:1", 2)
+			usage(t, "tenant:1", 0)
 			require.NoError(t, control.SetTagConcurrencyLimit(ctx, "tenant:1", 1))
 			id := enqueue(t, "tenant:1")
 			blocked(t, p, id)
@@ -256,6 +258,8 @@ func TestTaskTagConcurrencySmoke(t *testing.T) {
 
 		t.Run("tag_changes_keep_attempt_snapshot_and_stale_finalize_is_fenced", func(t *testing.T) {
 			reset(t)
+			require.NoError(t, control.SetTagConcurrencyLimit(ctx, "old", 10))
+			require.NoError(t, control.SetTagConcurrencyLimit(ctx, "new", 10))
 			p := port(t, 9*time.Second)
 			id := enqueue(t, "old")
 			old := claim(t, p, id)
@@ -323,6 +327,8 @@ func TestTaskTagConcurrencySmoke(t *testing.T) {
 
 		t.Run("renewal_and_reaping_share_task_lock", func(t *testing.T) {
 			reset(t)
+			require.NoError(t, control.SetTagConcurrencyLimit(ctx, "a", 10))
+			require.NoError(t, control.SetTagConcurrencyLimit(ctx, "b", 10))
 			p := port(t, 9*time.Second)
 			id := enqueue(t, "a", "b")
 			task := claim(t, p, id)

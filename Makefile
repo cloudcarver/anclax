@@ -52,7 +52,7 @@ ut:
 
 smoke: check-docker
 	GOCACHE=/tmp/go-cache go run ./cmd/anclax gen
-	GOCACHE=/tmp/go-cache go test -tags=smoke ./pkg/taskcore/e2e -run 'TestDSTTaskStoreScenariosSmoke|TestTaskLifecycle(Regressions|Migration)Smoke|TestTaskTagConcurrency(Migration)?Smoke' -count=1 -v -timeout $(SMOKE_TIMEOUT)
+	GOCACHE=/tmp/go-cache go test -tags=smoke ./pkg/taskcore/e2e -run 'TestDSTTaskStoreScenariosSmoke|TestTaskLifecycle(Regressions|Migration)Smoke|TestTaskTagConcurrency(Migration)?Smoke|TestTaskAdmission(Migration)?Smoke|TestBatchedTaskLeaseRenewalSmoke' -count=1 -v -timeout $(SMOKE_TIMEOUT)
 	GOCACHE=/tmp/go-cache go test -tags=smoke ./pkg/taskcore/e2e -run TestDSTTaskStoreScenariosStressSmoke -count=1 -v -timeout $(SMOKE_STRESS_TIMEOUT)
 
 smoke-worker: smoke

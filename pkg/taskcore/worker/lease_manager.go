@@ -26,6 +26,7 @@ type leaseRenewal struct {
 	deadline time.Time
 	nextDue  time.Time
 	batch    *leaseBatch
+	paused   bool
 }
 
 type leaseBatch struct {
@@ -159,7 +160,7 @@ func (m *leaseManager) prepare() (batches []*leaseBatch, expired []*leaseRenewal
 		delay = min(delay, e.deadline.Sub(now))
 		// A completed query only drains work already due in this sweep. Newly
 		// due tasks join the next window instead of causing tiny query cascades.
-		if e.batch == nil && !m.dueBefore.Before(e.nextDue) {
+		if !e.paused && e.batch == nil && !m.dueBefore.Before(e.nextDue) {
 			due = append(due, e)
 		}
 	}

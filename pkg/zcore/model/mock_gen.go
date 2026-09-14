@@ -91,6 +91,21 @@ func (mr *MockModelInterfaceMockRecorder) ClaimTask(ctx, arg any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClaimTask", reflect.TypeOf((*MockModelInterface)(nil).ClaimTask), ctx, arg)
 }
 
+// ClaimTaskBatch mocks base method.
+func (m *MockModelInterface) ClaimTaskBatch(ctx context.Context, arg querier.ClaimTaskBatchParams) ([]*querier.AnclaxTask, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClaimTaskBatch", ctx, arg)
+	ret0, _ := ret[0].([]*querier.AnclaxTask)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ClaimTaskBatch indicates an expected call of ClaimTaskBatch.
+func (mr *MockModelInterfaceMockRecorder) ClaimTaskBatch(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClaimTaskBatch", reflect.TypeOf((*MockModelInterface)(nil).ClaimTaskBatch), ctx, arg)
+}
+
 // ClaimTaskByID mocks base method.
 func (m *MockModelInterface) ClaimTaskByID(ctx context.Context, arg querier.ClaimTaskByIDParams) (*querier.AnclaxTask, error) {
 	m.ctrl.T.Helper()

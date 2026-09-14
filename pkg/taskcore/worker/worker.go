@@ -71,6 +71,13 @@ func BuildWorkerComponents(cfg *config.Config, m model.ModelInterface, taskHandl
 	if concurrency < 1 {
 		concurrency = 1
 	}
+	batchSize := DefaultClaimBatchSize
+	if cfg.Worker.ClaimBatchSize != nil {
+		batchSize = *cfg.Worker.ClaimBatchSize
+	}
+	if batchSize < 1 || batchSize > 256 {
+		return nil, fmt.Errorf("worker.claimBatchSize must be between 1 and 256")
+	}
 
 	workerID := uuid.New()
 	if cfg.Worker.WorkerID != nil {
@@ -94,6 +101,7 @@ func BuildWorkerComponents(cfg *config.Config, m model.ModelInterface, taskHandl
 	}
 
 	engine := NewEngine(EngineConfig{
+		ClaimBatchSize:      batchSize,
 		ControlConcurrency:  1,
 		WorkerID:            workerID.String(),
 		Labels:              labels,

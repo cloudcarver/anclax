@@ -335,6 +335,9 @@ func (r *Runtime) processEvent(ctx context.Context, event Event) {
 		}
 	}
 	s := r.engine.Snapshot()
+	metrics.WorkerTaskPhases.WithLabelValues("claiming").Set(float64(s.Claiming))
+	metrics.WorkerTaskPhases.WithLabelValues("executing").Set(float64(s.Executing))
+	metrics.WorkerTaskPhases.WithLabelValues("finalizing").Set(float64(s.Finalizing))
 	metrics.WorkerGoroutines.Set(float64(s.InFlight + s.ControlInFlight))
 	metrics.WorkerStrictInFlight.Set(float64(s.StrictInFlight))
 	metrics.WorkerStrictCap.Set(float64(s.StrictCap))
@@ -438,6 +441,20 @@ func (r *Runtime) execCommand(ctx context.Context, cmd Command) []Event {
 			req.result <- cmd.Err
 			delete(r.requests, cmd.RequestID)
 		}
+	case CmdClaimBatch:
+		r.spawn(ctx, false, r.opts.OperationTimeout, func(ctx context.Context) []Event {
+			port, ok := r.port.(BatchPort)
+			if !ok {
+				err := errors.New("batch admission requires a BatchPort")
+				r.handleError(err)
+				return []Event{{Type: EventClaimBatchResult, CycleID: cmd.CycleID, Err: err}}
+			}
+			tasks, err := port.ClaimBatch(ctx, ClaimBatchRequest{BatchSize: cmd.BatchSize,
+				StrictSlots: cmd.StrictSlots, Groups: cmd.Groups, WeightedLabels: cmd.WeightedLabels})
+			r.handleError(err)
+			metrics.PulledTasks.Add(float64(len(tasks)))
+			return []Event{{Type: EventClaimBatchResult, CycleID: cmd.CycleID, Tasks: tasks, Err: err}}
+		})
 	case CmdClaimStrict, CmdClaimNormal, CmdClaimControl, CmdClaimByID:
 		req := ClaimRequest{WorkerID: r.engine.WorkerID(), Labels: r.engine.Labels(), AllowStrict: cmd.AllowStrict}
 		req.HasLabels = len(req.Labels) > 0

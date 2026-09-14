@@ -1,0 +1,181 @@
+BEGIN;
+DROP TRIGGER lock_task_tag_configuration ON anclax.task_tag_concurrency;
+DROP FUNCTION anclax.lock_task_tag_configuration();
+DROP TRIGGER snapshot_task_lease_tags ON anclax.tasks;
+DROP FUNCTION anclax.snapshot_task_lease_tags();
+DROP TRIGGER task_tag_limit_changed ON anclax.task_tag_concurrency;
+-- Restore v1.4 accounting before restoring its trigger implementations.
+INSERT INTO anclax.task_tag_concurrency(tag)
+SELECT tag FROM anclax.task_tags UNION SELECT unnest(lease_tags) FROM anclax.tasks
+ON CONFLICT DO NOTHING;
+INSERT INTO anclax.task_tag_permits(task_id, lease_version, tag)
+SELECT t.id, t.lease_version, tags.tag FROM anclax.tasks t CROSS JOIN LATERAL unnest(t.lease_tags) AS tags(tag)
+WHERE t.locked_at IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM anclax.task_tag_permits p WHERE p.task_id = t.id AND p.tag = tags.tag)
+ON CONFLICT DO NOTHING;
+UPDATE anclax.task_tag_concurrency c SET in_use = (SELECT count(*) FROM anclax.task_tag_permits p WHERE p.tag = c.tag);
+ALTER TABLE anclax.task_tags ADD CONSTRAINT task_tags_tag_fkey FOREIGN KEY(tag) REFERENCES anclax.task_tag_concurrency(tag);
+DROP INDEX anclax.idx_tasks_serial_leased;
+DROP INDEX anclax.idx_tasks_serial_pending_head;
+ALTER TABLE anclax.tasks DROP COLUMN lease_tags;
+
+CREATE OR REPLACE FUNCTION anclax.sync_task_tags() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+    needs_membership BOOLEAN := NEW.status IN ('pending', 'running', 'paused') OR NEW.locked_at IS NOT NULL;
+BEGIN
+    -- Status and lease transitions maintain membership too. Ordinary renewals
+    -- return before touching any tag rows, while restoring a historical task
+    -- rebuilds membership even when its tags did not change.
+    IF TG_OP = 'UPDATE' AND NEW.attributes->'tags' IS NOT DISTINCT FROM OLD.attributes->'tags'
+       AND needs_membership = (OLD.status IN ('pending', 'running', 'paused') OR OLD.locked_at IS NOT NULL) THEN
+        RETURN NEW;
+    END IF;
+    IF NOT needs_membership THEN
+        IF TG_OP = 'UPDATE' THEN
+            DELETE FROM anclax.task_tags WHERE task_id = NEW.id;
+        END IF;
+        RETURN NEW;
+    END IF;
+    INSERT INTO anclax.task_tag_concurrency (tag)
+    SELECT DISTINCT tag
+    FROM jsonb_array_elements_text(COALESCE(NULLIF(NEW.attributes->'tags', 'null'::jsonb), '[]'::jsonb)) AS tags(tag)
+    ORDER BY tag ON CONFLICT DO NOTHING;
+    DELETE FROM anclax.task_tags WHERE task_id = NEW.id;
+    INSERT INTO anclax.task_tags (task_id, tag)
+    SELECT DISTINCT NEW.id, tag
+    FROM jsonb_array_elements_text(COALESCE(NULLIF(NEW.attributes->'tags', 'null'::jsonb), '[]'::jsonb)) AS tags(tag);
+    RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION anclax.release_task_tag_permits(p_task_id INT) RETURNS VOID LANGUAGE plpgsql AS $$
+DECLARE
+    c RECORD;
+    released INT;
+BEGIN
+    -- The task row must already be locked. Never release by a caller's tags:
+    -- the durable permit snapshot, including an invalidated resume lease,
+    -- is the authoritative set to release.
+    FOR c IN
+        SELECT s.tag FROM anclax.task_tag_concurrency s
+        WHERE s.tag IN (SELECT p.tag FROM anclax.task_tag_permits p WHERE p.task_id = p_task_id)
+        ORDER BY s.tag FOR NO KEY UPDATE
+    LOOP
+        DELETE FROM anclax.task_tag_permits WHERE task_id = p_task_id AND tag = c.tag;
+        GET DIAGNOSTICS released = ROW_COUNT;
+        UPDATE anclax.task_tag_concurrency SET in_use = in_use - released WHERE tag = c.tag;
+        PERFORM anclax.wake_task_tag_waiters(c.tag, p_task_id);
+    END LOOP;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION anclax.try_admit_task_tags(v_task_id INT) RETURNS BOOLEAN LANGUAGE plpgsql VOLATILE AS $$
+DECLARE
+    task_version BIGINT;
+    task_type TEXT;
+    wanted TEXT[];
+    all_tags TEXT[];
+    locked_tags TEXT[];
+    blocked_tag TEXT;
+    retry_delay INTERVAL;
+BEGIN
+    SELECT t.lease_version, t.spec->>'type' INTO task_version, task_type
+    FROM anclax.tasks t WHERE t.id = v_task_id FOR UPDATE;
+    SELECT COALESCE(array_agg(tt.tag ORDER BY tt.tag), ARRAY[]::text[]) INTO wanted
+    FROM anclax.task_tags tt WHERE tt.task_id = v_task_id
+      AND task_type NOT IN ('broadcastUpdateWorkerRuntimeConfig', 'applyWorkerRuntimeConfigToWorker', 'broadcastCancelTask', 'cancelTaskOnWorker', 'broadcastPauseTask', 'pauseTaskOnWorker');
+    SELECT COALESCE(array_agg(tag ORDER BY tag), ARRAY[]::text[]) INTO all_tags FROM (
+        SELECT unnest(wanted) AS tag UNION SELECT p.tag FROM anclax.task_tag_permits p WHERE p.task_id = v_task_id
+    ) tags;
+    IF cardinality(all_tags) = 0 THEN
+        RETURN TRUE;
+    END IF;
+
+    SELECT COALESCE(array_agg(tag), ARRAY[]::text[]) INTO locked_tags FROM (
+        SELECT c.tag FROM anclax.task_tag_concurrency c WHERE c.tag = ANY(all_tags)
+        ORDER BY c.tag FOR NO KEY UPDATE SKIP LOCKED
+    ) locked;
+    SELECT tag INTO blocked_tag FROM unnest(all_tags) AS tags(tag)
+    WHERE NOT (tag = ANY(locked_tags)) ORDER BY tag LIMIT 1;
+    retry_delay := interval '100 milliseconds';
+    IF blocked_tag IS NULL THEN
+        -- Any previous attempt was already found expired by the claim
+        -- query. Task + all old/new tag rows are locked before reclaim.
+        PERFORM anclax.release_task_tag_permits(v_task_id);
+        SELECT c.tag INTO blocked_tag FROM anclax.task_tag_concurrency c
+        WHERE c.tag = ANY(wanted) AND c.in_use >= c.max_concurrency
+        ORDER BY c.tag LIMIT 1;
+        retry_delay := interval '5 seconds';
+    END IF;
+    IF blocked_tag IS NOT NULL THEN
+        UPDATE anclax.tasks t SET concurrency_wait_tag = blocked_tag,
+            concurrency_retry_at = statement_timestamp() + retry_delay
+        WHERE t.id = v_task_id;
+        RETURN FALSE;
+    END IF;
+
+    INSERT INTO anclax.task_tag_permits (task_id, lease_version, tag)
+    SELECT v_task_id, task_version + 1, unnest(wanted);
+    UPDATE anclax.task_tag_concurrency SET in_use = in_use + 1 WHERE tag = ANY(wanted);
+    RETURN TRUE;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION anclax.task_tag_limit_changed() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.max_concurrency IS NULL OR NEW.max_concurrency > OLD.max_concurrency THEN
+        PERFORM anclax.wake_task_tag_waiters(NEW.tag);
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION anclax.maintain_task_concurrency(p_legacy_ttl_ms BIGINT) RETURNS VOID LANGUAGE plpgsql AS $$
+DECLARE
+    expired_task RECORD;
+    held_tags TEXT[];
+BEGIN
+    -- Bounded maintenance runs separately from claims, so it never holds
+    -- candidate locks while searching for expired attempts or retry waiters.
+    FOR expired_task IN
+        WITH expired AS (
+            SELECT id FROM anclax.tasks WHERE lease_expires_at <= statement_timestamp()
+            ORDER BY lease_expires_at, id LIMIT 64
+        ), legacy AS (
+            SELECT id FROM anclax.tasks
+            WHERE lease_expires_at IS NULL AND locked_at < statement_timestamp() - p_legacy_ttl_ms * interval '1 millisecond'
+            ORDER BY locked_at, id LIMIT 64
+        )
+        SELECT t.id FROM anclax.tasks t
+        WHERE t.id IN (SELECT id FROM expired UNION ALL SELECT id FROM legacy)
+          AND (t.lease_expires_at <= statement_timestamp() OR
+              (t.lease_expires_at IS NULL AND t.locked_at < statement_timestamp() - p_legacy_ttl_ms * interval '1 millisecond'))
+        FOR UPDATE OF t SKIP LOCKED
+    LOOP
+        -- A sweep retains locks for several tasks. Try-lock their tag rows
+        -- so concurrent sweeps cannot form a cycle across different tasks.
+        SELECT COALESCE(array_agg(tag), ARRAY[]::text[]) INTO held_tags FROM (
+            SELECT c.tag FROM anclax.task_tag_concurrency c
+            WHERE c.tag IN (SELECT p.tag FROM anclax.task_tag_permits p WHERE p.task_id = expired_task.id)
+            ORDER BY c.tag FOR NO KEY UPDATE SKIP LOCKED
+        ) locked;
+        IF NOT EXISTS (SELECT 1 FROM anclax.task_tag_permits p WHERE p.task_id = expired_task.id AND NOT (p.tag = ANY(held_tags))) THEN
+            UPDATE anclax.tasks SET locked_at = NULL, worker_id = NULL,
+                lease_expires_at = NULL, lease_duration_ms = NULL WHERE id = expired_task.id;
+        END IF;
+    END LOOP;
+    WITH retry AS (
+        SELECT id FROM anclax.tasks
+        WHERE status = 'pending' AND concurrency_wait_tag IS NOT NULL
+          AND concurrency_retry_at <= statement_timestamp()
+        ORDER BY concurrency_retry_at, id LIMIT 64 FOR UPDATE SKIP LOCKED
+    )
+    UPDATE anclax.tasks t SET
+        concurrency_wait_tag = CASE WHEN c.max_concurrency IS NULL OR c.in_use < c.max_concurrency THEN NULL ELSE t.concurrency_wait_tag END,
+        concurrency_retry_at = CASE WHEN c.max_concurrency IS NULL OR c.in_use < c.max_concurrency THEN NULL ELSE statement_timestamp() + interval '5 seconds' END
+    FROM retry r, anclax.task_tag_concurrency c
+    WHERE t.id = r.id AND c.tag = t.concurrency_wait_tag;
+END;
+$$;
+CREATE TRIGGER task_tag_limit_changed AFTER UPDATE OF max_concurrency ON anclax.task_tag_concurrency FOR EACH ROW EXECUTE FUNCTION anclax.task_tag_limit_changed();
+COMMIT;

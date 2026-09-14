@@ -17,8 +17,9 @@ type executionKey struct {
 func (t Task) executionKey() executionKey { return executionKey{t.ID, t.LeaseVersion} }
 
 type taskRuntimeEntry struct {
-	cancel context.CancelCauseFunc
-	done   chan struct{}
+	cancel    context.CancelCauseFunc
+	done      chan struct{}
+	stopLease func()
 }
 
 func newTaskRuntimeEntry(cancel context.CancelCauseFunc) *taskRuntimeEntry {
@@ -51,12 +52,26 @@ func (p *ModelPort) registerTaskRuntime(task Task, cancel context.CancelCauseFun
 
 func (p *ModelPort) completeTaskRuntime(task Task) {
 	p.taskRuntimeMu.Lock()
-	defer p.taskRuntimeMu.Unlock()
 	key := task.executionKey()
-	if entry := p.taskRuntimeEntries[key]; entry != nil {
+	entry := p.taskRuntimeEntries[key]
+	delete(p.taskRuntimeEntries, key)
+	p.taskRuntimeMu.Unlock()
+	if entry != nil {
+		if entry.stopLease != nil {
+			entry.stopLease()
+		}
 		close(entry.done)
-		delete(p.taskRuntimeEntries, key)
 	}
+}
+
+func (p *ModelPort) renewThroughFinalization(ctx context.Context, task Task) {
+	// Handler cancellation/timeouts do not abandon the result-commit lease.
+	// FinalizeTask always releases this registration, including on failure.
+	leaseCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	stop := p.startLockRefresh(leaseCtx, task)
+	p.taskRuntimeMu.Lock()
+	p.taskRuntimeEntries[task.executionKey()].stopLease = func() { cancel(); stop() }
+	p.taskRuntimeMu.Unlock()
 }
 
 func (p *ModelPort) taskRuntimeEntriesFor(taskIDs []int32) []*taskRuntimeEntry {

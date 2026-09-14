@@ -89,3 +89,9 @@ ANCLAX_SMOKE_POSTGRES_IMAGE=postgres:17 go test -race -tags=smoke ./pkg/taskcore
 Docker tests use port 5499. `make smoke` also runs the regression suite; the image defaults to `postgres:15` unless overridden.
 
 `TestBatchedTaskLeaseRenewalSmoke` verifies batch fencing and renewal/cancellation while the business pool is fully occupied. For sustained concurrency measurements with constrained pools, run `make taskcore-capacity`; see [connection capacity methodology and results](async-task-connection-capacity.md).
+
+## Finalization retries
+
+Lease renewal continues after the executor returns until finalization finishes. Each outcome transaction first suspends/drains that attempt's in-flight renewal and is bounded by its last confirmed lease deadline. If PostgreSQL explicitly rolls the transaction back with `40P01`, `40001`, or `55P03`, renewal resumes and the worker retries only the outcome transaction, with jittered backoff and a five-second overall ceiling (or the caller's earlier deadline). The business handler is not rerun, and the local execution slot remains occupied through finalization.
+
+Network/commit-acknowledgement errors are not automatically retried because commit status is uncertain. Exhausted retries remain visible as errors and eventually rely on normal fenced lease recovery. Executors and failure hooks must still respect at-least-once delivery and avoid nontransactional duplicate effects.

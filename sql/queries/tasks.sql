@@ -14,6 +14,7 @@ WITH candidate AS MATERIALIZED (
             NOT EXISTS (
                 SELECT 1 FROM anclax.tasks active
                 WHERE active.serial_key = t.serial_key
+                    AND (active.lease_expires_at IS NOT NULL OR active.locked_at IS NOT NULL)
                     AND COALESCE(active.lease_expires_at, active.locked_at + sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond') > statement_timestamp()
             )
             AND NOT EXISTS (
@@ -60,6 +61,7 @@ WITH candidate AS MATERIALIZED (
             NOT EXISTS (
                 SELECT 1 FROM anclax.tasks active
                 WHERE active.serial_key = t.serial_key
+                    AND (active.lease_expires_at IS NOT NULL OR active.locked_at IS NOT NULL)
                     AND COALESCE(active.lease_expires_at, active.locked_at + sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond') > statement_timestamp()
             )
             AND NOT EXISTS (
@@ -112,6 +114,7 @@ WITH candidate AS MATERIALIZED (
             NOT EXISTS (
                 SELECT 1 FROM anclax.tasks active
                 WHERE active.serial_key = t.serial_key
+                    AND (active.lease_expires_at IS NOT NULL OR active.locked_at IS NOT NULL)
                     AND COALESCE(active.lease_expires_at, active.locked_at + sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond') > statement_timestamp()
             )
             AND NOT EXISTS (
@@ -157,6 +160,7 @@ WITH candidate AS MATERIALIZED (
             NOT EXISTS (
                 SELECT 1 FROM anclax.tasks active
                 WHERE active.serial_key = t.serial_key
+                    AND (active.lease_expires_at IS NOT NULL OR active.locked_at IS NOT NULL)
                     AND COALESCE(active.lease_expires_at, active.locked_at + sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond') > statement_timestamp()
             )
             AND NOT EXISTS (
@@ -202,6 +206,7 @@ WITH candidate AS MATERIALIZED (
             NOT EXISTS (
                 SELECT 1 FROM anclax.tasks active
                 WHERE active.serial_key = t.serial_key
+                    AND (active.lease_expires_at IS NOT NULL OR active.locked_at IS NOT NULL)
                     AND COALESCE(active.lease_expires_at, active.locked_at + sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond') > statement_timestamp()
             )
             AND NOT EXISTS (

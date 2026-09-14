@@ -46,6 +46,9 @@ type Worker struct {
 	// Built-in worker control tasks have one additional independent slot.
 	Concurrency *int `yaml:"concurrency"`
 
+	// (Optional) Tasks per automatic claim, 1..256, default 32. One batch is in flight per worker.
+	ClaimBatchSize *int `yaml:"claimBatchSize"`
+
 	// (Optional) The interval of the poll, default is 1 second
 	PollInterval *time.Duration `yaml:"pollinterval"`
 

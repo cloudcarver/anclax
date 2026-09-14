@@ -242,8 +242,7 @@ func (p *ModelPort) ExecuteTask(ctx context.Context, task Task) (execErr error) 
 	if !task.claimedAt.IsZero() && time.Since(task.claimedAt) >= p.lockTTL {
 		return taskcore.ErrTaskLockLost
 	}
-	stopRefresh := p.startLockRefresh(execCtx, task)
-	defer stopRefresh()
+	p.renewThroughFinalization(execCtx, task)
 	if p.taskHandler != nil {
 		execErr = p.taskHandler.HandleTask(execCtx, task)
 	}
@@ -253,14 +252,14 @@ func (p *ModelPort) ExecuteTask(ctx context.Context, task Task) (execErr error) 
 	return execErr
 }
 
-func (p *ModelPort) FinalizeTask(ctx context.Context, task Task, execErr error) error {
+func (p *ModelPort) FinalizeTask(ctx context.Context, task Task, execErr error) (resultErr error) {
+	started := time.Now()
+	defer func() { observeScheduler("finalize", started, resultErr) }()
 	defer p.completeTaskRuntime(task)
 	if errors.Is(execErr, errSkipFinalize) || errors.Is(execErr, taskcore.ErrTaskLockLost) {
 		return nil
 	}
-	err := p.model.RunTransactionWithTx(ctx, func(tx core.Tx, _ model.ModelInterface) error {
-		return p.lifeCycleHandler.FinalizeAttempt(ctx, tx, task, execErr)
-	})
+	err := p.finalizeWithRetry(ctx, task, execErr)
 	if errors.Is(err, taskcore.ErrTaskLockLost) {
 		return nil
 	}
