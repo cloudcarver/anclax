@@ -317,12 +317,20 @@ err := controlPlane.WaitForTask(ctx, taskID)
 
 **工作机制：**
 - 等待任务进入 `completed`、`failed` 或 `cancelled`。
+- 注册等待时不查询数据库。共享 listener 在下一轮查询中统一检查任务存在性及状态，每批最多 256 个 ID，正常轮询间隔为一秒。任务已经完成或不存在，也通过 channel 异步返回。
+- 每批查询超时为五秒；瞬时数据库错误保留订阅并指数退避重试，最长间隔 30 秒；永久性 PostgreSQL 错误返回给等待者。没有订阅时不查询。
 - 失败时读取最新的 TaskError 事件，并返回包含以下信息的错误消息：
   - 任务尝试次数
   - 重试策略的最大尝试次数
   - TaskError 事件中的最新错误消息
 - 取消时返回包装了 `ErrTaskCancelled` 的错误。
 - 超时或上下文取消时，直接返回上下文错误。
+- 在任务 handler 内等待仍占用 worker 执行槽位。应在业务事务提交后等待其中创建的任务，框架不会自动提交事务。
+
+**续租连接池：**
+- 每个 worker 统一调度续租，每批最多 256 个任务，保留逐任务租约版本校验和失租中断。
+- 标准 model 使用独立的续租连接池，续租及失败后的状态核查均走该池；共享同一 model 的 worker 共用此池。
+- `worker.leaseRenewalMaxConnections` 设置续租池最大连接数，默认 10，必须大于零。连接按需建立，额度独立于业务池的 `LibConfig.Pg.MaxConnections`。
 
 **实现参考：**
 - `pkg/taskcore/ctrl/ctrl.go` 实现公开等待辅助方法。

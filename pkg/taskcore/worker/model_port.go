@@ -17,6 +17,7 @@ import (
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var errSkipFinalize = errors.New("skip finalize")
@@ -33,6 +34,7 @@ type ModelPort struct {
 	lockRefreshInterval time.Duration
 	lifeCycleHandler    TaskLifeCycleHandlerInterface
 	taskHandler         TaskHandler
+	leases              *leaseManager
 
 	taskRuntimeMu      sync.Mutex
 	taskRuntimeEntries map[executionKey]*taskRuntimeEntry
@@ -59,7 +61,7 @@ func NewModelPort(
 	if err != nil {
 		return nil, fmt.Errorf("marshal worker labels: %w", err)
 	}
-	return &ModelPort{
+	p := &ModelPort{
 		model:               m,
 		workerID:            workerID,
 		workerIDParam:       uuid.NullUUID{UUID: workerID, Valid: true},
@@ -70,7 +72,22 @@ func NewModelPort(
 		lifeCycleHandler:    NewTaskLifeCycleHandler(m, taskHandler, workerID),
 		taskHandler:         taskHandler,
 		taskRuntimeEntries:  make(map[executionKey]*taskRuntimeEntry),
-	}, nil
+	}
+	if lockRefreshInterval > 0 {
+		var q leaseQueries = m
+		concurrency := 10
+		if provider, ok := m.(interface{ TaskLeaseQueries() querier.Querier }); ok {
+			q = provider.TaskLeaseQueries()
+			if q == nil {
+				return nil, fmt.Errorf("task lease renewal requires a pool-backed model")
+			}
+		}
+		if provider, ok := m.(interface{ TaskLeasePoolStats() *pgxpool.Stat }); ok {
+			concurrency = int(provider.TaskLeasePoolStats().MaxConns())
+		}
+		p.leases = newLeaseManager(q, p.workerIDParam, lockTTL, lockRefreshInterval, concurrency, p.interruptAttempt)
+	}
+	return p, nil
 }
 
 func (p *ModelPort) RegisterWorker(ctx context.Context, workerID string, labels []string, appliedConfigVersion int64) error {

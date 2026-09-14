@@ -16,7 +16,9 @@ The runtime registry is also keyed by `(task ID, lease version)`. A stale attemp
 
 ## Renewal and finalization
 
-Renewal runs while the executor is active. Temporary database errors may be retried within the last confirmed lease, but the executor context is cancelled when that lease deadline is reached. Renewal shutdown waits for its goroutine before finalization starts.
+Each worker has one renewal scheduler while executors are active. It renews up to 256 attempts per query, prioritizing the earliest lease deadlines. Query concurrency is bounded by the dedicated renewal pool's connection limit. The scheduler stops when there are no active renewals.
+
+Temporary database errors may be retried within each attempt's last confirmed lease, but the executor context is cancelled when that deadline is reached, even if a database query is blocked. Successful rows are confirmed independently; rejected renewals check pause/cancellation through the same dedicated pool. Removing an attempt drains any batch already containing it before finalization starts; removing every remaining member cancels that batch's query.
 
 Finalization computes retry/cron/deferral policy, then uses a short transaction to update status, schedule, attempt count, and ownership atomically. Events share that transaction. Failure hooks use a savepoint so hook SQL errors or panics can roll back independently.
 
@@ -38,9 +40,18 @@ Worker registration and heartbeats track availability. Claims use task lease exp
 
 ## Configuration and shutdown
 
-Relevant configuration is `worker.pollinterval`, `worker.concurrency`, `worker.heartbeatInterval`, `worker.lockTtl`, `worker.lockRefreshInterval`, `worker.labels`, and optional `worker.workerId`.
+Relevant configuration is `worker.pollinterval`, `worker.concurrency`, `worker.heartbeatInterval`, `worker.lockTtl`, `worker.lockRefreshInterval`, `worker.leaseRenewalMaxConnections`, `worker.labels`, and optional `worker.workerId`.
 
 Defaults are one-second polling, business concurrency 10, three-second heartbeat/renewal, and a nine-second TTL. TTL must be at least one millisecond; renewal must be non-negative and less than TTL. Zero disables periodic renewal and is primarily useful for explicit lease-expiry tests.
+
+```yaml
+worker:
+  leaseRenewalMaxConnections: 10
+```
+
+`leaseRenewalMaxConnections` must be positive and defaults to 10. The standard model creates a separate, lazily populated renewal pool using the same PostgreSQL settings. All workers sharing that model share the renewal pool. This limit is additional to `LibConfig.Pg.MaxConnections`, which controls the business pool. Both pools close with the model; migration connections close after initialization. Custom model adapters can supply their isolated renewal querier through `TaskLeaseQueries() querier.Querier`; adapters without that optional method use their existing query implementation.
+
+The shared task listener continues to use the business pool. `WaitTask` registers without a database query; the next polling round checks up to 256 distinct IDs per query, including existence and already-terminal status. Each query has a five-second timeout. Temporary failures retain subscriptions and back off from two seconds up to 30 seconds; successful rounds return to one-second polling. Cancellation and listener shutdown clean up subscriptions. Calling Wait inside a handler still occupies its execution slot. Business transactions should commit before waiting for tasks they enqueue; the framework does not commit caller transactions.
 
 `RuntimeOptions.OperationTimeout` and `ShutdownTimeout` default to five seconds. Shutdown stops admission and cancels running executors, while finalization uses a bounded context independent of caller cancellation. Uncooperative executors may outlive the drain deadline; their tasks recover through lease expiry.
 
@@ -76,3 +87,5 @@ ANCLAX_SMOKE_POSTGRES_IMAGE=postgres:17 go test -race -tags=smoke ./pkg/taskcore
 ```
 
 Docker tests use port 5499. `make smoke` also runs the regression suite; the image defaults to `postgres:15` unless overridden.
+
+`TestBatchedTaskLeaseRenewalSmoke` verifies batch fencing and renewal/cancellation while the business pool is fully occupied. For sustained concurrency measurements with constrained pools, run `make taskcore-capacity`; see [connection capacity methodology and results](async-task-connection-capacity.md).

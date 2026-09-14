@@ -10,6 +10,7 @@ The task worker separates scheduling decisions from asynchronous effects while s
 - `lifecycle_policy.go`: pure retry, cron, interruption, and deferral decisions.
 - `lifecycle_handler.go`: fenced atomic outcome/event persistence and savepoint-isolated failure hooks.
 - `task_execution.go`: per-attempt cancellation, lease renewal, and execution registry keyed by task ID and lease version.
+- `lease_manager.go`: shared deadline scheduler and bounded batch renewal through the model's isolated renewal pool.
 - `Worker`: public facade, constructed using `BuildWorkerComponents` and `NewWorker`, or `NewWorkerFromConfig`.
 
 ## Execution

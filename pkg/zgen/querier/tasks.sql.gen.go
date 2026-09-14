@@ -819,6 +819,37 @@ func (q *Queries) ListTaskIDsByTags(ctx context.Context, arg ListTaskIDsByTagsPa
 	return items, nil
 }
 
+const listTaskWaitStatuses = `-- name: ListTaskWaitStatuses :many
+SELECT id, status
+FROM anclax.tasks
+WHERE id = ANY($1::int[])
+`
+
+type ListTaskWaitStatusesRow struct {
+	ID     int32
+	Status string
+}
+
+func (q *Queries) ListTaskWaitStatuses(ctx context.Context, ids []int32) ([]*ListTaskWaitStatusesRow, error) {
+	rows, err := q.db.Query(ctx, listTaskWaitStatuses, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*ListTaskWaitStatusesRow
+	for rows.Next() {
+		var i ListTaskWaitStatusesRow
+		if err := rows.Scan(&i.ID, &i.Status); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTerminalTaskWaitStatuses = `-- name: ListTerminalTaskWaitStatuses :many
 SELECT id, status
 FROM anclax.tasks
@@ -871,6 +902,53 @@ func (q *Queries) RefreshTaskLock(ctx context.Context, arg RefreshTaskLockParams
 	var id int32
 	err := row.Scan(&id)
 	return id, err
+}
+
+const refreshTaskLocks = `-- name: RefreshTaskLocks :many
+WITH attempts AS (
+    SELECT unnest($2::int[]) AS id,
+           unnest($3::bigint[]) AS lease_version
+)
+UPDATE anclax.tasks AS t
+SET locked_at = statement_timestamp(), updated_at = statement_timestamp(),
+    lease_expires_at = statement_timestamp() + t.lease_duration_ms * INTERVAL '1 millisecond'
+FROM attempts AS a
+WHERE t.id = a.id AND t.lease_version = a.lease_version
+    AND t.worker_id = $1
+    AND t.status IN ('pending', 'running')
+    AND t.lease_expires_at > statement_timestamp()
+RETURNING t.id, t.lease_version
+`
+
+type RefreshTaskLocksParams struct {
+	WorkerID      uuid.NullUUID
+	Ids           []int32
+	LeaseVersions []int64
+}
+
+type RefreshTaskLocksRow struct {
+	ID           int32
+	LeaseVersion int64
+}
+
+func (q *Queries) RefreshTaskLocks(ctx context.Context, arg RefreshTaskLocksParams) ([]*RefreshTaskLocksRow, error) {
+	rows, err := q.db.Query(ctx, refreshTaskLocks, arg.WorkerID, arg.Ids, arg.LeaseVersions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*RefreshTaskLocksRow
+	for rows.Next() {
+		var i RefreshTaskLocksRow
+		if err := rows.Scan(&i.ID, &i.LeaseVersion); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const releaseTaskLockByWorker = `-- name: ReleaseTaskLockByWorker :one

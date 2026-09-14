@@ -7,9 +7,6 @@ import (
 	"time"
 
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
-	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
-	"github.com/cloudcarver/anclax/pkg/zgen/querier"
-	"github.com/jackc/pgx/v5"
 )
 
 type executionKey struct {
@@ -118,79 +115,13 @@ func (p *ModelPort) withTaskTimeout(ctx context.Context, task Task) (context.Con
 	return c, cancel, nil
 }
 
-// Renewals are bounded by the last confirmed lease, including transient DB
-// failures. Stopping renewal waits for its goroutine before finalization starts.
+// The shared manager renews in bounded batches and enforces each attempt's
+// last confirmed deadline. Removing an attempt drains any in-flight renewal.
 func (p *ModelPort) startLockRefresh(ctx context.Context, task Task) context.CancelFunc {
-	if p.lockRefreshInterval <= 0 {
+	if p.leases == nil {
 		return func() {}
 	}
-	refreshCtx, cancel := context.WithCancel(ctx)
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		ticker := time.NewTicker(p.lockRefreshInterval)
-		defer ticker.Stop()
-		lastConfirmed := task.claimedAt
-		if lastConfirmed.IsZero() {
-			lastConfirmed = time.Now()
-		}
-		leaseDeadline := time.NewTimer(max(0, p.lockTTL-time.Since(lastConfirmed)))
-		defer leaseDeadline.Stop()
-		for {
-			select {
-			case <-refreshCtx.Done():
-				return
-			case <-leaseDeadline.C:
-				p.interruptAttempt(task, taskcore.ErrTaskLockLost)
-				return
-			case <-ticker.C:
-				remaining := p.lockTTL - time.Since(lastConfirmed)
-				if remaining <= 0 {
-					p.interruptAttempt(task, taskcore.ErrTaskLockLost)
-					return
-				}
-				callCtx, callCancel := context.WithTimeout(refreshCtx, remaining)
-				started := time.Now()
-				_, err := p.model.RefreshTaskLock(callCtx, querier.RefreshTaskLockParams{ID: task.ID, WorkerID: p.workerIDParam, LeaseVersion: task.LeaseVersion})
-				callCancel()
-				if err == nil {
-					lastConfirmed = started
-					leaseDeadline.Reset(max(0, p.lockTTL-time.Since(lastConfirmed)))
-					continue
-				}
-				if refreshCtx.Err() != nil {
-					return
-				}
-				if errors.Is(err, pgx.ErrNoRows) {
-					lookupCtx, lookupCancel := context.WithTimeout(refreshCtx, p.lockRefreshInterval)
-					cause := p.taskInterruptCauseFromStore(lookupCtx, task.ID)
-					lookupCancel()
-					p.interruptAttempt(task, cause)
-					return
-				}
-				if time.Since(lastConfirmed) >= p.lockTTL {
-					p.interruptAttempt(task, taskcore.ErrTaskLockLost)
-					return
-				}
-			}
-		}
-	}()
-	return func() { cancel(); <-done }
-}
-
-func (p *ModelPort) taskInterruptCauseFromStore(ctx context.Context, taskID int32) error {
-	task, err := p.model.GetTaskByID(ctx, taskID)
-	if err != nil {
-		return taskcore.ErrTaskLockLost
-	}
-	switch apigen.TaskStatus(task.Status) {
-	case apigen.Paused:
-		return taskcore.ErrTaskPaused
-	case apigen.Cancelled:
-		return taskcore.ErrTaskCancelled
-	default:
-		return taskcore.ErrTaskLockLost
-	}
+	return p.leases.register(ctx, task)
 }
 
 func (p *ModelPort) taskInterruptCause(ctx context.Context) error {
