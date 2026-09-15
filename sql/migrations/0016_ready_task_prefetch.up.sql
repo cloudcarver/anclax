@@ -299,13 +299,14 @@ BEGIN
         ), unavailable AS MATERIALIZED (
             SELECT COALESCE(array_agg(tag),'{}'::text[]) tags FROM capacities WHERE free_slots=0
         ), candidates AS MATERIALIZED (
-            SELECT t.id,t.priority,t.weight,t.created_at,
+            SELECT t.id,t.priority,t.weight,t.created_at,t.candidate_xmin,
                 CASE WHEN t.priority=0 THEN array_position(ordered_groups,COALESCE(
                     (SELECT min(label) FROM unnest(g.labels) label WHERE label=ANY(weighted_labels)),
                     '__default__')) ELSE 0 END AS group_order
             FROM anclax.task_admission_groups g CROSS JOIN unavailable u
             CROSS JOIN LATERAL (
-                SELECT t.id,t.priority,CASE WHEN t.priority=0 THEN t.weight ELSE 0 END AS weight,t.created_at FROM anclax.tasks t
+                SELECT t.id,t.priority,CASE WHEN t.priority=0 THEN t.weight ELSE 0 END AS weight,t.created_at,
+                    t.xmin::text AS candidate_xmin FROM anclax.tasks t
                 WHERE t.admission_group_id=g.id AND t.status='pending'
                   AND (t.started_at IS NULL OR t.started_at<=statement_timestamp())
                   AND (t.locked_at IS NULL OR COALESCE(t.lease_expires_at,t.locked_at+p_lock_ttl_ms*interval '1 millisecond')<=statement_timestamp())
@@ -322,9 +323,14 @@ BEGIN
                 AND w.last_heartbeat>statement_timestamp()-w.prefetch_heartbeat_ttl_ms*interval '1 millisecond'
                 AND w.labels @> to_jsonb(g.labels) AND (t.priority=0 OR w.prefetch_strict_percentage>0))
         )
-        SELECT t.id,t.priority FROM candidates c JOIN anclax.tasks t ON t.id=c.id
-        WHERE t.status='pending' ORDER BY c.priority DESC,c.group_order,c.weight DESC,c.created_at,c.id
-        LIMIT p_batch FOR UPDATE OF t SKIP LOCKED
+        -- Bound the locking phase too. A flattened join can otherwise choose a
+        -- sequential scan of the entire task table to retrieve a small batch.
+        SELECT t.id,t.priority FROM (
+            SELECT * FROM candidates ORDER BY priority DESC,group_order,weight DESC,created_at,id LIMIT p_batch
+        ) c CROSS JOIN LATERAL (
+            SELECT t.id,t.priority FROM anclax.tasks t WHERE t.id=c.id AND t.status='pending'
+                AND t.xmin::text=c.candidate_xmin FOR UPDATE SKIP LOCKED
+        ) t ORDER BY c.priority DESC,c.group_order,c.weight DESC,c.created_at,c.id
     LOOP
         EXIT WHEN n>=target;
         CONTINUE WHEN selected_task.priority>0 AND current_strict>=strict_target;
