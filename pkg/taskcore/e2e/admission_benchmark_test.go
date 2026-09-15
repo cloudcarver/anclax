@@ -135,10 +135,25 @@ func TestTaskAdmissionBenchmark(t *testing.T) {
 				done := make(chan struct{})
 				go func() { defer close(done); components.Runtime.Start(runCtx) }()
 				defer func() { cancel(); <-done }()
-				completed := 0
+				completed, ready, running, pending := 0, 0, 0, 0
+				steadySamples, emptyReadySamples, supplyGapSamples := 0, 0, 0
 				var peak int32
 				for time.Since(start) < timeout {
-					require.NoError(t, conn.QueryRow(ctx, "SELECT count(*) FROM anclax.tasks WHERE id>$1 AND id<=$2 AND status='completed'", workStartID, workStartID+tasks).Scan(&completed))
+					require.NoError(t, conn.QueryRow(ctx, `SELECT count(*) FILTER(WHERE status='completed'),count(*) FILTER(WHERE status='ready'),
+                        count(*) FILTER(WHERE status='running'),count(*) FILTER(WHERE status='pending')
+                        FROM anclax.tasks WHERE id>$1 AND id<=$2`, workStartID, workStartID+tasks).Scan(&completed, &ready, &running, &pending))
+					// Exclude startup and tail. This is a sampled supply-gap
+					// indicator, not proof of runnable eligibility for tagged
+					// or serial work; concurrent transactions can be in flight.
+					if completed >= concurrency && completed < tasks-concurrency {
+						steadySamples++
+						if ready == 0 {
+							emptyReadySamples++
+							if pending > 0 && running < concurrency {
+								supplyGapSamples++
+							}
+						}
+					}
 					peak = max(peak, base.(*model.Model).PoolStats().AcquiredConns())
 					if completed == tasks {
 						break
@@ -155,6 +170,7 @@ func TestTaskAdmissionBenchmark(t *testing.T) {
 				cpuSeconds := admissionBenchCPU(t, name) - cpuStart
 				afterPool := base.(*model.Model).PoolStats()
 				result := admissionBenchResult{Revision: os.Getenv("ANCLAX_ADMISSION_BENCH_REVISION"), Postgres: postgres, Schema: schema,
+					SteadySamples: steadySamples, EmptyReadySamples: emptyReadySamples, SupplyGapSamples: supplyGapSamples,
 					Scenario: scenario, Concurrency: concurrency, Tasks: tasks, History: historyRows, Blocked: blockedRows, EnqueueSeconds: enqueueSeconds, EnqueueCPUSeconds: enqueueCPU, HandlerMs: delay.Milliseconds(), GOMAXPROCS: runtime.GOMAXPROCS(0),
 					ElapsedSeconds: elapsed.Seconds(), CPUSeconds: cpuSeconds, PoolPeak: peak,
 					PoolWaits: afterPool.EmptyAcquireCount() - beforePool.EmptyAcquireCount(), PoolWaitSeconds: (afterPool.AcquireDuration() - beforePool.AcquireDuration()).Seconds(),
@@ -200,6 +216,7 @@ func TestTaskAdmissionBenchmark(t *testing.T) {
 }
 
 type admissionBenchResult struct {
+	SteadySamples, EmptyReadySamples, SupplyGapSamples                                               int
 	ConsumptionSQLCalls                                                                              int64
 	ConsumptionSQLMs                                                                                 float64
 	EnqueueSeconds, EnqueueCPUSeconds                                                                float64
