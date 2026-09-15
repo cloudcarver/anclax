@@ -1299,7 +1299,7 @@ scenarios:
 
       - id: s4
         script: |
-          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','running')", []any{})
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type' <> 'prefetchTasks'", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 
