@@ -78,7 +78,7 @@ For rollback, stop new workers before applying the down migration. Reverting 15 
 
 ## Verification
 
-The [recorded automatic admission comparison](async-task-admission-benchmark.md) includes three before/after repetitions at 100/200 slots, the baseline PostgreSQL deadlock log, and the completed 200-iteration chaos result.
+The [slot admission measurements](async-task-slot-benchmark.md) compare the shared-counter and slot implementations in three alternating runs at 100/200 execution slots and record the slot implementation's separate 200-iteration chaos run. The [historical v1.4.1 comparison](async-task-admission-benchmark.md) retains the baseline PostgreSQL deadlock log.
 
 ```bash
 go test -race -tags ut ./... -timeout=6m

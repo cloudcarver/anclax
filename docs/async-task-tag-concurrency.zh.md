@@ -76,7 +76,7 @@ if err := controlPlane.SetTagConcurrencyLimit(ctx, "vendor:api", 10); err != nil
 
 ## 验证
 
-已完成的[自动领取前后对比](async-task-admission-benchmark.md)包含 100/200 槽位各三次重复、旧版 PostgreSQL 死锁日志和 200 轮 chaos 结果。
+已完成的[独立名额测试记录](async-task-slot-benchmark.md)包含共享计数版与独立名额版在 100/200 执行槽位下各三次交替对比，以及名额版重新运行的 200 轮 chaos。[历史 v1.4.1 对比](async-task-admission-benchmark.md)保留旧版 PostgreSQL 死锁日志。
 
 ```bash
 go test -race -tags ut ./... -timeout=6m

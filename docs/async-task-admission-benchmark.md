@@ -1,4 +1,6 @@
-# Automatic task admission comparison
+# Historical automatic task admission comparison
+
+This records the earlier shared-counter implementation at `caf7332`. The final slot implementation, its fresh three-run comparison and its separate 200-iteration chaos run are documented in [Task slot admission measurements](async-task-slot-benchmark.md). References to the PR below mean `caf7332`, not the current PR head.
 
 This compares framework revision `1681140` (v1.4.1) with `caf7332` (PR #71) using the same `admission_benchmark_test.go` in both checkouts. It exercises `BuildWorkerComponents` and automatic polling, including handler execution, renewal and committed finalization. The existing LIMIT 1 load loop and manual `Runtime.RunTask` capacity test do not measure the automatic batch change.
 
