@@ -95,7 +95,7 @@ scenarios:
 
       - id: s3
         script: |
-          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type'<>'prefetchTasks'", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 
@@ -139,7 +139,7 @@ scenarios:
           rows, err := actors.Validator.Query(ctx, "select status from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"K2"})
           require.NoError(t, err)
           require.Equal(t, [][]any{{"failed"}}, rows)
-          rows, err = actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          rows, err = actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type'<>'prefetchTasks'", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 
@@ -167,7 +167,7 @@ scenarios:
 
       - id: s3
         script: |
-          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type'<>'prefetchTasks'", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 
@@ -220,7 +220,7 @@ scenarios:
 
       - id: s8
         script: |
-          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type'<>'prefetchTasks'", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 
@@ -263,7 +263,7 @@ scenarios:
 
       - id: s6
         script: |
-          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type'<>'prefetchTasks'", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 
@@ -293,7 +293,7 @@ scenarios:
 
       - id: s4
         script: |
-          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type'<>'prefetchTasks'", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 
@@ -335,7 +335,7 @@ scenarios:
 
       - id: s5
         script: |
-          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type'<>'prefetchTasks'", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 
@@ -365,7 +365,7 @@ scenarios:
 
       - id: s4
         script: |
-          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type'<>'prefetchTasks'", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 
@@ -404,7 +404,7 @@ scenarios:
 
       - id: s5
         script: |
-          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type'<>'prefetchTasks'", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 
@@ -466,7 +466,7 @@ scenarios:
 
       - id: s9
         script: |
-          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type'<>'prefetchTasks'", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 
@@ -531,7 +531,7 @@ scenarios:
 
       - id: s5
         script: |
-          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type'<>'prefetchTasks'", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 
@@ -903,7 +903,7 @@ scenarios:
           require.NoError(t, err)
           require.Equal(t, [][]any{{"cancelled"}}, rows)
 
-          rows, err = actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type' in ('broadcastPauseTask','broadcastCancelTask','pauseTaskOnWorker','cancelTaskOnWorker')", []any{})
+          rows, err = actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type'<>'prefetchTasks' and spec->>'type' in ('broadcastPauseTask','broadcastCancelTask','pauseTaskOnWorker','cancelTaskOnWorker')", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 
@@ -1255,7 +1255,7 @@ scenarios:
 
       - id: s12
         script: |
-          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type'<>'prefetchTasks'", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 

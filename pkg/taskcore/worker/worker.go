@@ -100,6 +100,10 @@ func BuildWorkerComponents(cfg *config.Config, m model.ModelInterface, taskHandl
 		return nil, err
 	}
 
+	port.prefetchCapacity = int32(concurrency)
+	port.prefetchStrictPercentage = maxStrictPercentage
+	port.prefetchHeartbeatTTL = max(9*time.Second, heartbeatInterval*3).Milliseconds()
+
 	engine := NewEngine(EngineConfig{
 		ClaimBatchSize:      batchSize,
 		ControlConcurrency:  1,

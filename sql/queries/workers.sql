@@ -26,6 +26,8 @@ WHERE id = $1;
 UPDATE anclax.workers
 SET
     applied_config_version = GREATEST(applied_config_version, sqlc.arg(applied_config_version)),
+    prefetch_strict_percentage = COALESCE((SELECT (payload->>'maxStrictPercentage')::int
+        FROM anclax.worker_runtime_configs ORDER BY version DESC LIMIT 1),prefetch_strict_percentage),
     updated_at = CURRENT_TIMESTAMP
 WHERE id = sqlc.arg(id);
 

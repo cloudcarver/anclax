@@ -154,7 +154,7 @@ func TestContainerizedTaskcoreChaosSmoke(t *testing.T) {
 		}
 	}
 
-	pending, err := h.Inspector().CountTasksByStatuses(ctx, []string{"pending", "running"}, "LONG-")
+	pending, err := h.Inspector().CountTasksByStatuses(ctx, []string{"pending", "ready", "running"}, "LONG-")
 	must(err)
 	require.Equal(t, int64(0), pending)
 	// Recovery is asserted against the specific interrupted tasks above. The
@@ -180,6 +180,10 @@ func buildSmokeSummary(ctx context.Context, h *Harness, state *chaosState) (*Rep
 		return nil, err
 	}
 	pending, err := inspector.CountTasksByStatuses(ctx, []string{"pending"}, "LONG-")
+	if err != nil {
+		return nil, err
+	}
+	ready, err := inspector.CountTasksByStatuses(ctx, []string{"ready"}, "LONG-")
 	if err != nil {
 		return nil, err
 	}
@@ -222,6 +226,7 @@ func buildSmokeSummary(ctx context.Context, h *Harness, state *chaosState) (*Rep
 			Processed: processed,
 			Completed: completed,
 			Pending:   pending,
+			Ready:     ready,
 			Running:   running,
 			Failed:    failed,
 			Cancelled: cancelled,

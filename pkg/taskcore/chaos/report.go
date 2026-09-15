@@ -41,6 +41,7 @@ type TaskSummary struct {
 	Processed int64 `json:"processed"`
 	Completed int64 `json:"completed"`
 	Pending   int64 `json:"pending"`
+	Ready     int64 `json:"ready"`
 	Running   int64 `json:"running"`
 	Failed    int64 `json:"failed"`
 	Cancelled int64 `json:"cancelled"`
@@ -191,6 +192,7 @@ func renderHumanSummary(r *Report) string {
 	fmt.Fprintf(&b, "  processed: %d\n", r.Summary.Tasks.Processed)
 	fmt.Fprintf(&b, "  completed: %d\n", r.Summary.Tasks.Completed)
 	fmt.Fprintf(&b, "  pending: %d\n", r.Summary.Tasks.Pending)
+	fmt.Fprintf(&b, "  ready: %d\n", r.Summary.Tasks.Ready)
 	fmt.Fprintf(&b, "  running: %d\n", r.Summary.Tasks.Running)
 	fmt.Fprintf(&b, "  failed: %d\n", r.Summary.Tasks.Failed)
 	fmt.Fprintf(&b, "  cancelled: %d\n", r.Summary.Tasks.Cancelled)

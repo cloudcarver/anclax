@@ -167,6 +167,8 @@ const updateWorkerAppliedConfigVersion = `-- name: UpdateWorkerAppliedConfigVers
 UPDATE anclax.workers
 SET
     applied_config_version = GREATEST(applied_config_version, $1),
+    prefetch_strict_percentage = COALESCE((SELECT (payload->>'maxStrictPercentage')::int
+        FROM anclax.worker_runtime_configs ORDER BY version DESC LIMIT 1),prefetch_strict_percentage),
     updated_at = CURRENT_TIMESTAMP
 WHERE id = $2
 `
@@ -186,7 +188,7 @@ UPDATE anclax.workers
 SET last_heartbeat = CURRENT_TIMESTAMP,
     updated_at = CURRENT_TIMESTAMP
 WHERE id = $1 AND status = 'online'
-RETURNING id, labels, status, last_heartbeat, created_at, updated_at, applied_config_version
+RETURNING id, labels, status, last_heartbeat, created_at, updated_at, applied_config_version, prefetch_capacity, prefetch_strict_percentage, prefetch_heartbeat_ttl_ms
 `
 
 func (q *Queries) UpdateWorkerHeartbeat(ctx context.Context, id uuid.UUID) (*AnclaxWorker, error) {
@@ -200,6 +202,9 @@ func (q *Queries) UpdateWorkerHeartbeat(ctx context.Context, id uuid.UUID) (*Anc
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AppliedConfigVersion,
+		&i.PrefetchCapacity,
+		&i.PrefetchStrictPercentage,
+		&i.PrefetchHeartbeatTtlMs,
 	)
 	return &i, err
 }
@@ -214,7 +219,7 @@ DO UPDATE SET
     status = 'online',
     last_heartbeat = CURRENT_TIMESTAMP,
     updated_at = CURRENT_TIMESTAMP
-RETURNING id, labels, status, last_heartbeat, created_at, updated_at, applied_config_version
+RETURNING id, labels, status, last_heartbeat, created_at, updated_at, applied_config_version, prefetch_capacity, prefetch_strict_percentage, prefetch_heartbeat_ttl_ms
 `
 
 type UpsertWorkerParams struct {
@@ -234,6 +239,9 @@ func (q *Queries) UpsertWorker(ctx context.Context, arg UpsertWorkerParams) (*An
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AppliedConfigVersion,
+		&i.PrefetchCapacity,
+		&i.PrefetchStrictPercentage,
+		&i.PrefetchHeartbeatTtlMs,
 	)
 	return &i, err
 }

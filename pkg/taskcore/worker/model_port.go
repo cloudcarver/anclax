@@ -41,6 +41,9 @@ type ModelPort struct {
 
 	concurrencyMaintenanceMu sync.Mutex
 	nextConcurrencySweep     time.Time
+	prefetchCapacity         int32
+	prefetchStrictPercentage int32
+	prefetchHeartbeatTTL     int64
 }
 
 func NewModelPort(
@@ -98,6 +101,14 @@ func (p *ModelPort) RegisterWorker(ctx context.Context, workerID string, labels 
 	})
 	if err != nil {
 		return fmt.Errorf("register worker: %w", err)
+	}
+	if p.prefetchCapacity > 0 {
+		if err := p.model.ConfigureWorkerPrefetch(ctx, querier.ConfigureWorkerPrefetchParams{
+			WorkerID: p.workerID, Capacity: p.prefetchCapacity, StrictPercentage: p.prefetchStrictPercentage, HeartbeatTtlMs: p.prefetchHeartbeatTTL,
+		}); err != nil {
+			return err
+		}
+		return p.model.EnsureTaskPrefetch(ctx)
 	}
 	return nil
 }
@@ -243,7 +254,9 @@ func (p *ModelPort) ExecuteTask(ctx context.Context, task Task) (execErr error) 
 		return taskcore.ErrTaskLockLost
 	}
 	p.renewThroughFinalization(execCtx, task)
-	if p.taskHandler != nil {
+	if task.GetType() == PrefetchTaskType {
+		execErr = p.executePrefetch(execCtx, task)
+	} else if p.taskHandler != nil {
 		execErr = p.taskHandler.HandleTask(execCtx, task)
 	}
 	if cause := p.taskInterruptCause(execCtx); cause != nil {
@@ -272,6 +285,9 @@ func (p *ModelPort) FinalizeTask(ctx context.Context, task Task, execErr error) 
 func (p *ModelPort) Heartbeat(ctx context.Context, workerID string) error {
 	if _, err := p.model.UpdateWorkerHeartbeat(ctx, p.workerID); err != nil {
 		return fmt.Errorf("update worker heartbeat: %w", err)
+	}
+	if p.prefetchCapacity > 0 {
+		return nil
 	}
 	return p.maintainConcurrency(ctx)
 }
@@ -346,9 +362,6 @@ func (p *ModelPort) LookupTask(ctx context.Context, id int32) (*Task, error) {
 }
 
 func (p *ModelPort) ClaimControl(ctx context.Context, req ClaimRequest) (*Task, error) {
-	if err := p.maintainConcurrency(ctx); err != nil {
-		return nil, err
-	}
 	claimedAt := time.Now()
 	var out *Task
 	err := p.model.RunTransactionWithTx(ctx, func(_ core.Tx, txm model.ModelInterface) error {

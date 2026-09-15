@@ -363,6 +363,46 @@ func (mr *MockTaskRunnerMockRecorder) RunPauseTaskOnWorkerWithTx(ctx, tx, params
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunPauseTaskOnWorkerWithTx", reflect.TypeOf((*MockTaskRunner)(nil).RunPauseTaskOnWorkerWithTx), varargs...)
 }
 
+// RunPrefetchTasks mocks base method.
+func (m *MockTaskRunner) RunPrefetchTasks(ctx context.Context, params *map[string]any, overrides ...store.TaskOverride) (int32, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, params}
+	for _, a := range overrides {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "RunPrefetchTasks", varargs...)
+	ret0, _ := ret[0].(int32)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RunPrefetchTasks indicates an expected call of RunPrefetchTasks.
+func (mr *MockTaskRunnerMockRecorder) RunPrefetchTasks(ctx, params any, overrides ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, params}, overrides...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunPrefetchTasks", reflect.TypeOf((*MockTaskRunner)(nil).RunPrefetchTasks), varargs...)
+}
+
+// RunPrefetchTasksWithTx mocks base method.
+func (m *MockTaskRunner) RunPrefetchTasksWithTx(ctx context.Context, tx core.Tx, params *map[string]any, overrides ...store.TaskOverride) (int32, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, tx, params}
+	for _, a := range overrides {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "RunPrefetchTasksWithTx", varargs...)
+	ret0, _ := ret[0].(int32)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RunPrefetchTasksWithTx indicates an expected call of RunPrefetchTasksWithTx.
+func (mr *MockTaskRunnerMockRecorder) RunPrefetchTasksWithTx(ctx, tx, params any, overrides ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, tx, params}, overrides...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunPrefetchTasksWithTx", reflect.TypeOf((*MockTaskRunner)(nil).RunPrefetchTasksWithTx), varargs...)
+}
+
 // RunStressProbe mocks base method.
 func (m *MockTaskRunner) RunStressProbe(ctx context.Context, params *StressProbeParameters, overrides ...store.TaskOverride) (int32, error) {
 	m.ctrl.T.Helper()
@@ -537,6 +577,20 @@ func (m *MockExecutorInterface) ExecutePauseTaskOnWorker(ctx context.Context, ta
 func (mr *MockExecutorInterfaceMockRecorder) ExecutePauseTaskOnWorker(ctx, task, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecutePauseTaskOnWorker", reflect.TypeOf((*MockExecutorInterface)(nil).ExecutePauseTaskOnWorker), ctx, task, params)
+}
+
+// ExecutePrefetchTasks mocks base method.
+func (m *MockExecutorInterface) ExecutePrefetchTasks(ctx context.Context, task worker.Task, params *map[string]any) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExecutePrefetchTasks", ctx, task, params)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ExecutePrefetchTasks indicates an expected call of ExecutePrefetchTasks.
+func (mr *MockExecutorInterfaceMockRecorder) ExecutePrefetchTasks(ctx, task, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecutePrefetchTasks", reflect.TypeOf((*MockExecutorInterface)(nil).ExecutePrefetchTasks), ctx, task, params)
 }
 
 // ExecuteStressProbe mocks base method.

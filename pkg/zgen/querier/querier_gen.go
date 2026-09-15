@@ -20,6 +20,7 @@ type Querier interface {
 	ClaimTaskBatch(ctx context.Context, arg ClaimTaskBatchParams) ([]*AnclaxTask, error)
 	ClaimTaskByID(ctx context.Context, arg ClaimTaskByIDParams) (*AnclaxTask, error)
 	ClaimWorkerCommand(ctx context.Context, arg ClaimWorkerCommandParams) (*AnclaxTask, error)
+	ConfigureWorkerPrefetch(ctx context.Context, arg ConfigureWorkerPrefetchParams) error
 	CreateKeyPair(ctx context.Context, arg CreateKeyPairParams) (*AnclaxAccessKeyPair, error)
 	CreateOpaqueKey(ctx context.Context, arg CreateOpaqueKeyParams) (int64, error)
 	CreateOrg(ctx context.Context, name string) (*AnclaxOrg, error)
@@ -32,6 +33,7 @@ type Querier interface {
 	DeleteOpaqueKeys(ctx context.Context, group *string) error
 	DeleteUserByName(ctx context.Context, name string) error
 	DeleteUserByNameReturningID(ctx context.Context, name string) (int32, error)
+	EnsureTaskPrefetch(ctx context.Context) error
 	FinalizeTaskAttempt(ctx context.Context, arg FinalizeTaskAttemptParams) (string, error)
 	GetKeyPair(ctx context.Context, accessKey string) (*AnclaxAccessKeyPair, error)
 	GetLastTaskErrorEvent(ctx context.Context, taskID int32) (*AnclaxEvent, error)
@@ -64,6 +66,7 @@ type Querier interface {
 	ListTerminalTaskWaitStatuses(ctx context.Context, ids []int32) ([]*ListTerminalTaskWaitStatusesRow, error)
 	MaintainTaskConcurrency(ctx context.Context, legacyTtlMs int64) error
 	MarkWorkerOffline(ctx context.Context, id uuid.UUID) error
+	PrefetchReadyTasks(ctx context.Context, arg PrefetchReadyTasksParams) (int32, error)
 	RefreshTaskLock(ctx context.Context, arg RefreshTaskLockParams) (int32, error)
 	RefreshTaskLocks(ctx context.Context, arg RefreshTaskLocksParams) ([]*RefreshTaskLocksRow, error)
 	ReleaseTaskLockByWorker(ctx context.Context, arg ReleaseTaskLockByWorkerParams) (int32, error)
