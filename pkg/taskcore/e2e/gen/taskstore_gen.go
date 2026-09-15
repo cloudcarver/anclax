@@ -488,7 +488,7 @@ func runStepStrictPriorityAndWeightedGroupsS3(parent context.Context, actors Act
 			}
 		}
 	}()
-	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type'<>'prefetchTasks'", []any{})
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(0)}}, rows)
 	return err
@@ -712,7 +712,7 @@ func runStepSerialGatingAndFailureProgressionS5(parent context.Context, actors A
 	rows, err := actors.Validator.Query(ctx, "select status from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"K2"})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{"failed"}}, rows)
-	rows, err = actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type'<>'prefetchTasks'", []any{})
+	rows, err = actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(0)}}, rows)
 	return err
@@ -862,7 +862,7 @@ func runStepDefaultGroupUnknownLabelFallbackS3(parent context.Context, actors Ac
 			}
 		}
 	}()
-	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type'<>'prefetchTasks'", []any{})
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(0)}}, rows)
 	return err
@@ -1079,7 +1079,7 @@ func runStepLeaseTakeoverAfterTtlAndAbandonS6(parent context.Context, actors Act
 	}()
 	rows, err := actors.Validator.Query(ctx, "select status from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"L1"})
 	require.NoError(t, err)
-	require.Equal(t, [][]any{{"pending"}}, rows)
+	require.Equal(t, [][]any{{"running"}}, rows)
 	return err
 }
 
@@ -1163,7 +1163,7 @@ func runStepLeaseTakeoverAfterTtlAndAbandonS8(parent context.Context, actors Act
 			}
 		}
 	}()
-	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type'<>'prefetchTasks'", []any{})
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(0)}}, rows)
 	return err
@@ -1397,7 +1397,7 @@ func runStepWorkerLabelFilteringS6(parent context.Context, actors Actors, vars *
 			}
 		}
 	}()
-	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type'<>'prefetchTasks'", []any{})
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(0)}}, rows)
 	return err
@@ -1560,7 +1560,7 @@ func runStepWorkerLabelAllMatchGpuArmS4(parent context.Context, actors Actors, v
 			}
 		}
 	}()
-	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type'<>'prefetchTasks'", []any{})
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(0)}}, rows)
 	return err
@@ -1797,7 +1797,7 @@ func runStepWorkerLabelInternalOnlyScopeS5(parent context.Context, actors Actors
 			}
 		}
 	}()
-	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type'<>'prefetchTasks'", []any{})
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(0)}}, rows)
 	return err
@@ -1960,7 +1960,7 @@ func runStepWorkerLabelAllMatchStrictPriorityS4(parent context.Context, actors A
 			}
 		}
 	}()
-	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type'<>'prefetchTasks'", []any{})
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(0)}}, rows)
 	return err
@@ -2182,7 +2182,7 @@ func runStepStrictQueryDoesNotPickNormalS5(parent context.Context, actors Actors
 			}
 		}
 	}()
-	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type'<>'prefetchTasks'", []any{})
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(0)}}, rows)
 	return err
@@ -2531,7 +2531,7 @@ func runStepSmokeLeaseLifecycleS9(parent context.Context, actors Actors, vars *v
 			}
 		}
 	}()
-	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type'<>'prefetchTasks'", []any{})
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(0)}}, rows)
 	return err
@@ -2871,7 +2871,7 @@ func runStepSmokeSerialBehaviorS5(parent context.Context, actors Actors, vars *v
 			}
 		}
 	}()
-	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type'<>'prefetchTasks'", []any{})
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(0)}}, rows)
 	return err
@@ -4750,7 +4750,7 @@ func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS5(parent context.Con
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{"cancelled"}}, rows)
 
-	rows, err = actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type'<>'prefetchTasks' and spec->>'type' in ('broadcastPauseTask','broadcastCancelTask','pauseTaskOnWorker','cancelTaskOnWorker')", []any{})
+	rows, err = actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks' and spec->>'type' in ('broadcastPauseTask','broadcastCancelTask','pauseTaskOnWorker','cancelTaskOnWorker')", []any{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(0)}}, rows)
 	return err
@@ -6390,7 +6390,7 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS9(parent context.Context, a
 	}()
 	rows, err := actors.Validator.Query(ctx, "select status from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"CRRF_LEASE"})
 	require.NoError(t, err)
-	require.Equal(t, [][]any{{"pending"}}, rows)
+	require.Equal(t, [][]any{{"running"}}, rows)
 	return err
 }
 
@@ -6529,7 +6529,7 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS12(parent context.Context, 
 			}
 		}
 	}()
-	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type'<>'prefetchTasks'", []any{})
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(0)}}, rows)
 	return err
