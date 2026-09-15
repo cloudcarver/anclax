@@ -92,3 +92,5 @@ ANCLAX_TASKCORE_CHAOS_POSTGRES_IMAGE=postgres:17 \
 每次 chaos 运行先用执行器阻塞信号确认“满额等待 → 释放 → 继续执行”，再杀掉明确的租约持有者，或仅切断其数据库连接，验证指定受限任务发生接管。初始化重试任务不能满足这些恢复断言。领取矩阵覆盖 tags 与 strict、normal、strict fallback、手动和通用 SQL 领取，以及 serial、labels、定时条件的组合。`make test` 包含短 chaos；本地长跑可使用不同 seed 执行 `make chaos`，持续负载分位数通过 `make taskcore-perf` 测量。参见[测试覆盖与运行方式](async-task-testing.zh.md)。
 
 迁移 `0016_ready_task_prefetch` 增加 ready/running 状态、准入分组和独立 system 调度。升级或回滚都需先停止 Worker；回滚会释放尚未接管的 ready 预留并恢复迁移 15 协议，保留执行租约。详见[升级说明](ready-task-prefetch.md#upgrade-and-integration)。
+
+状态式预取的三组前后对比、无积压场景回退及最终 200 轮 chaos 见[预取测试报告](ready-task-prefetch-benchmark.md)。

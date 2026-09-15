@@ -49,3 +49,5 @@ Operationally, report ready depth/age separately from pending and executing task
 ## Verification
 
 PostgreSQL regressions cover reservation transfer without a second attempt/allocation, expiry versus a locked claim, cancel/pause/attribute edits, quota activation and overflow, serial ownership, weighted progress under one shared slot, stale scheduler fencing and unlimited-tag group normalization. Existing lifecycle, migration, renewal and concurrent batch tests also run against the new protocol. Benchmark evidence must include enqueue/group-maintenance cost and system scheduler work, not only Worker claim time.
+
+Ready-prefetch measurements, including unblocked-workload regressions and the final 200-round fault run, are in the [benchmark report](ready-task-prefetch-benchmark.md).

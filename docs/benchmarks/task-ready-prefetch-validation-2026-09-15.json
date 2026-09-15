@@ -1,0 +1,166 @@
+{
+  "revision": "b3bf02cc420f0f562fd8bca82c6af4aba53535d8",
+  "note": "Checks identify earlier broad regressions and final focused reruns explicitly. The final full race unit suite, three-repeat scenario suite and 200-round chaos use the final production sources. Interrupted or superseded chaos runs are not counted.",
+  "checks": [
+    {
+      "name": "unit-race-final",
+      "command": "go test -race -tags=ut ./... -timeout=6m",
+      "passed": true,
+      "note": "Final production sources b3bf02c; cached results reused for unchanged Go packages.",
+      "logSHA256": "1dbd773af4b5ede5bf997cdc090c620acce1149b5e25e2bac46a9572a9d4fb71",
+      "results": [
+        "ok  \tgithub.com/cloudcarver/anclax/cmd/anclax\t(cached)",
+        "ok  \tgithub.com/cloudcarver/anclax/lib/dst\t(cached)",
+        "ok  \tgithub.com/cloudcarver/anclax/lib/httpx\t(cached)",
+        "ok  \tgithub.com/cloudcarver/anclax/pkg/asynctask\t1.859s",
+        "ok  \tgithub.com/cloudcarver/anclax/pkg/auth\t(cached)",
+        "ok  \tgithub.com/cloudcarver/anclax/pkg/codegen/gotypes\t(cached)",
+        "ok  \tgithub.com/cloudcarver/anclax/pkg/codegen/oapi\t(cached)",
+        "ok  \tgithub.com/cloudcarver/anclax/pkg/codegen/schemas\t(cached)",
+        "ok  \tgithub.com/cloudcarver/anclax/pkg/codegen/task\t(cached)",
+        "ok  \tgithub.com/cloudcarver/anclax/pkg/config\t(cached)",
+        "ok  \tgithub.com/cloudcarver/anclax/pkg/controller\t(cached)",
+        "ok  \tgithub.com/cloudcarver/anclax/pkg/macaroons\t(cached)",
+        "ok  \tgithub.com/cloudcarver/anclax/pkg/macaroons/store\t(cached)",
+        "ok  \tgithub.com/cloudcarver/anclax/pkg/openapi/bundle\t(cached)",
+        "ok  \tgithub.com/cloudcarver/anclax/pkg/server\t(cached)",
+        "ok  \tgithub.com/cloudcarver/anclax/pkg/service\t(cached)",
+        "ok  \tgithub.com/cloudcarver/anclax/pkg/taskcore/chaos\t(cached)",
+        "ok  \tgithub.com/cloudcarver/anclax/pkg/taskcore/ctrl\t(cached)",
+        "ok  \tgithub.com/cloudcarver/anclax/pkg/taskcore/dtmtest\t(cached)",
+        "ok  \tgithub.com/cloudcarver/anclax/pkg/taskcore/listener\t(cached)",
+        "ok  \tgithub.com/cloudcarver/anclax/pkg/taskcore/store\t(cached)",
+        "ok  \tgithub.com/cloudcarver/anclax/pkg/taskcore/worker\t(cached)",
+        "ok  \tgithub.com/cloudcarver/anclax/pkg/zcore/model\t(cached)",
+        "ok  \tgithub.com/cloudcarver/anclax/wire\t(cached)"
+      ]
+    },
+    {
+      "name": "postgres-17",
+      "command": "ANCLAX_SMOKE_POSTGRES_IMAGE=postgres:17 go test -race -tags=smoke ./pkg/taskcore/e2e -run ready/admission/tag/lifecycle/renewal suites -count=1",
+      "passed": true,
+      "note": "Before bounded candidate-locking follow-up; see focused rerun.",
+      "logSHA256": "d7ef1b15c7a2ab1f2cc23998f896e65eb2018a321afe99fd09822c05753aa9dc",
+      "results": [
+        "--- PASS: TestBatchedTaskLeaseRenewalSmoke (3.95s)",
+        "--- PASS: TestTaskLifecycleMigrationSmoke (1.02s)",
+        "--- PASS: TestTaskLifecycleRegressionsSmoke (1.75s)",
+        "--- PASS: TestReadyTaskPrefetchSmoke (0.97s)",
+        "--- PASS: TestReadyTaskTransitionsSmoke (1.43s)",
+        "--- PASS: TestTaskTagConcurrencyMigrationSmoke (1.77s)",
+        "--- PASS: TestTaskTagConcurrencySmoke (3.58s)",
+        "--- PASS: TestTaskAdmissionMigrationSmoke (1.03s)",
+        "--- PASS: TestTaskAdmissionSmoke (3.91s)",
+        "--- PASS: TestTaskSlotAdmissionSmoke (1.08s)",
+        "ok  \tgithub.com/cloudcarver/anclax/pkg/taskcore/e2e\t24.334s"
+      ]
+    },
+    {
+      "name": "postgres-15",
+      "command": "ANCLAX_SMOKE_POSTGRES_IMAGE=postgres:15 go test -race -tags=smoke ./pkg/taskcore/e2e -run ready/admission/tag/lifecycle/renewal suites -count=1",
+      "passed": true,
+      "note": "Includes live-ready down/up migration; before bounded candidate-locking follow-up.",
+      "logSHA256": "3f074bbf421620d82e62932aa4c492d77c9e130705a022e179a59e01a6fd53f2",
+      "results": [
+        "--- PASS: TestBatchedTaskLeaseRenewalSmoke (4.07s)",
+        "--- PASS: TestTaskLifecycleMigrationSmoke (1.72s)",
+        "--- PASS: TestTaskLifecycleRegressionsSmoke (2.13s)",
+        "--- PASS: TestReadyTaskMigrationSmoke (1.57s)",
+        "--- PASS: TestReadyTaskPrefetchSmoke (1.55s)",
+        "--- PASS: TestReadyTaskTransitionsSmoke (2.22s)",
+        "--- PASS: TestTaskTagConcurrencyMigrationSmoke (1.89s)",
+        "--- PASS: TestTaskTagConcurrencySmoke (4.31s)",
+        "--- PASS: TestTaskAdmissionMigrationSmoke (1.68s)",
+        "--- PASS: TestTaskAdmissionSmoke (3.60s)",
+        "--- PASS: TestTaskSlotAdmissionSmoke (1.77s)",
+        "ok  \tgithub.com/cloudcarver/anclax/pkg/taskcore/e2e\t28.138s"
+      ]
+    },
+    {
+      "name": "bounded-prefetch-postgres-17",
+      "command": "ANCLAX_SMOKE_POSTGRES_IMAGE=postgres:17 ANCLAX_TEST_REPORT_DIR=/tmp/anclax-ready-plan-final go test -race -tags=smoke ./pkg/taskcore/e2e -run '^Test(ReadyTask.*|TaskAdmission.*|TaskSlotAdmissionSmoke)$' -count=1 -v -timeout=5m",
+      "passed": true,
+      "note": "Final scheduling SQL; includes candidate plan, ownership, serial, weighted, migration and slot regressions.",
+      "logSHA256": "2d154c95a70c82b8862189ac70942eb42f12bcd1af1bc144e5f555fee8ee08ad",
+      "results": [
+        "--- PASS: TestReadyTaskCandidatePlanSmoke (7.73s)",
+        "--- PASS: TestReadyTaskMigrationSmoke (1.54s)",
+        "--- PASS: TestReadyTaskPrefetchSmoke (1.49s)",
+        "--- PASS: TestReadyTaskTransitionsSmoke (2.04s)",
+        "--- PASS: TestTaskAdmissionMigrationSmoke (1.01s)",
+        "--- PASS: TestTaskAdmissionSmoke (4.15s)",
+        "--- PASS: TestTaskSlotAdmissionSmoke (1.64s)",
+        "ok  \tgithub.com/cloudcarver/anclax/pkg/taskcore/e2e\t21.199s"
+      ]
+    },
+    {
+      "name": "bounded-prefetch-postgres-15",
+      "command": "ANCLAX_SMOKE_POSTGRES_IMAGE=postgres:15 ANCLAX_TEST_REPORT_DIR=/tmp/anclax-ready-plan-final15 go test -race -tags=smoke ./pkg/taskcore/e2e -run '^TestReadyTask.*Smoke$' -count=1 -v -timeout=5m",
+      "passed": true,
+      "note": "Final scheduling SQL, including candidate plan and live-ready migration.",
+      "logSHA256": "e8b51cd2d7b92460311fac9462b80639ed9bc7645023ce4e9770629da46de503",
+      "results": [
+        "--- PASS: TestReadyTaskCandidatePlanSmoke (9.24s)",
+        "--- PASS: TestReadyTaskMigrationSmoke (1.60s)",
+        "--- PASS: TestReadyTaskPrefetchSmoke (1.58s)",
+        "--- PASS: TestReadyTaskTransitionsSmoke (2.28s)",
+        "ok  \tgithub.com/cloudcarver/anclax/pkg/taskcore/e2e\t16.060s"
+      ]
+    },
+    {
+      "name": "dtm",
+      "command": "go test ./pkg/taskcore/dtmtest -count=1 -timeout=3m",
+      "passed": true,
+      "note": "Before final follow-ups; deterministic runtime protocol.",
+      "logSHA256": "91423507ea415e6485edd90fadb995589fb061dc90178b4d6a75ebd637f464dc",
+      "results": [
+        "ok  \tgithub.com/cloudcarver/anclax/pkg/taskcore/dtmtest\t0.748s"
+      ]
+    },
+    {
+      "name": "offline-control-race",
+      "command": "go test -race -tags=ut ./pkg/asynctask -count=1 -timeout=3m",
+      "passed": true,
+      "note": "Final Go follow-up: cancel both pending and running obsolete control commands.",
+      "logSHA256": "438a1e96924960264d2931fe0a9494e7f4cd8410c92d21e0feec19530e9b98b1",
+      "results": [
+        "ok  \tgithub.com/cloudcarver/anclax/pkg/asynctask\t2.021s"
+      ]
+    },
+    {
+      "name": "dst-stress-final",
+      "command": "ANCLAX_SMOKE_POSTGRES_IMAGE=postgres:17 go test -race -tags=smoke ./pkg/taskcore/e2e -run '^TestDSTTaskStoreScenariosStressSmoke$' -count=1 -v -timeout=10m",
+      "passed": true,
+      "note": "Three complete scenario-suite repeats against final production sources b3bf02c.",
+      "logSHA256": "ebb86b67f84734c28e1709b1efa11ba973945ea9cb7874364ea55904b43a0863",
+      "results": [
+        "    dst_e2e_smoke_test.go:79: stress run 1 duration=35.696485834s err=<nil>",
+        "    dst_e2e_smoke_test.go:79: stress run 2 duration=36.73281575s err=<nil>",
+        "    dst_e2e_smoke_test.go:79: stress run 3 duration=36.726356875s err=<nil>",
+        "--- PASS: TestDSTTaskStoreScenariosStressSmoke (110.76s)",
+        "ok  \tgithub.com/cloudcarver/anclax/pkg/taskcore/e2e\t112.310s"
+      ]
+    },
+    {
+      "name": "chaos-200-final",
+      "command": "ANCLAX_TASKCORE_CHAOS_POSTGRES_IMAGE=postgres:17 ANCLAX_TASKCORE_CHAOS_ITERATIONS=200 go test -tags=smoke ./pkg/taskcore/chaos -run '^TestContainerizedTaskcoreChaosSmoke$' -count=1 -v -timeout=30m",
+      "passed": true,
+      "logSHA256": "4e1ce3d7b41b99f4aa12e9675189831d73859b691f81ca758850eb631833f236",
+      "results": [
+        "--- PASS: TestContainerizedTaskcoreChaosSmoke (599.48s)",
+        "ok  \tgithub.com/cloudcarver/anclax/pkg/taskcore/chaos\t599.914s"
+      ]
+    },
+    {
+      "name": "paired-automatic-benchmark",
+      "passed": true,
+      "baselineRevision": "05752916c4c19d40ed94a4971ae8983965f6dee0",
+      "afterRevision": "b3bf02cc420f0f562fd8bca82c6af4aba53535d8",
+      "runs": 6,
+      "cases": 84,
+      "businessCompletions": 168000,
+      "note": "Identical harness, three alternating pairs; includes regressions and insertion costs. See comparison JSON for commands, environment, hashes and every raw measurement.",
+      "artifactSHA256": "d40a1efc0b737b2adac7f1290bb741f4d7ee7dab8d52070ad6a52a687f0cfef5"
+    }
+  ]
+}
