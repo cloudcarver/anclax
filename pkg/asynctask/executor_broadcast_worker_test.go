@@ -588,33 +588,36 @@ func TestWaitForWorkerCommandTasksPartialAckThenConverge(t *testing.T) {
 	require.GreaterOrEqual(t, atomic.LoadInt32(&poll), int32(2))
 }
 
-func TestWaitForWorkerCommandTasksPendingThenWorkerDead(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+func TestWaitForWorkerCommandTasksActiveThenWorkerDead(t *testing.T) {
+	for _, status := range []apigen.TaskStatus{apigen.Pending, apigen.TaskStatusRunning} {
+		t.Run(string(status), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
 
-	mockModel := model.NewMockModelInterface(ctrl)
-	exec := &Executor{model: mockModel, now: time.Now, runtimeConfigHeartbeatTTL: 9 * time.Second}
-	w1 := uuid.New()
+			mockModel := model.NewMockModelInterface(ctrl)
+			exec := &Executor{model: mockModel, now: time.Now, runtimeConfigHeartbeatTTL: 9 * time.Second}
+			w1 := uuid.New()
 
-	gomock.InOrder(
-		mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{w1}, nil),
-		mockModel.EXPECT().GetTaskByUniqueTag(gomock.Any(), gomock.Any()).Return(&querier.AnclaxTask{ID: 1, Status: string(apigen.Pending)}, nil),
-		mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{}, nil),
-		mockModel.EXPECT().GetTaskByUniqueTag(gomock.Any(), gomock.Any()).Return(&querier.AnclaxTask{ID: 1, Status: string(apigen.Pending)}, nil),
-		mockModel.EXPECT().UpdateTaskStatus(gomock.Any(), querier.UpdateTaskStatusParams{ID: 1, Status: string(apigen.Cancelled)}).Return(nil),
-	)
+			gomock.InOrder(
+				mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{w1}, nil),
+				mockModel.EXPECT().GetTaskByUniqueTag(gomock.Any(), gomock.Any()).Return(&querier.AnclaxTask{ID: 1, Status: string(status)}, nil),
+				mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{}, nil),
+				mockModel.EXPECT().GetTaskByUniqueTag(gomock.Any(), gomock.Any()).Return(&querier.AnclaxTask{ID: 1, Status: string(status)}, nil),
+				mockModel.EXPECT().UpdateTaskStatus(gomock.Any(), querier.UpdateTaskStatusParams{ID: 1, Status: string(apigen.Cancelled)}).Return(nil),
+			)
 
-	err := exec.waitForWorkerCommandTasks(context.Background(), []uuid.UUID{w1}, time.Millisecond, func(workerID uuid.UUID) string {
-		return "tag"
-	})
-	var deferred *taskcore.TaskDeferred
-	require.ErrorAs(t, err, &deferred)
-	err = exec.waitForWorkerCommandTasks(context.Background(), []uuid.UUID{w1}, time.Millisecond, func(workerID uuid.UUID) string {
-		return "tag"
-	})
-	require.NoError(t, err)
+			err := exec.waitForWorkerCommandTasks(context.Background(), []uuid.UUID{w1}, time.Millisecond, func(workerID uuid.UUID) string {
+				return "tag"
+			})
+			var deferred *taskcore.TaskDeferred
+			require.ErrorAs(t, err, &deferred)
+			err = exec.waitForWorkerCommandTasks(context.Background(), []uuid.UUID{w1}, time.Millisecond, func(workerID uuid.UUID) string {
+				return "tag"
+			})
+			require.NoError(t, err)
+		})
+	}
 }
-
 func TestExecuteBroadcastCancelTaskYieldsWhilePending(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
