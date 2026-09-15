@@ -176,6 +176,8 @@ func TestTaskAdmissionBenchmark(t *testing.T) {
 				require.NoError(t, conn.QueryRow(ctx, `SELECT count(*) FROM anclax.task_tag_permits`).Scan(&result.RemainingPermits))
 				require.NoError(t, conn.QueryRow(ctx, `SELECT COALESCE(sum(total_exec_time),0),COALESCE(sum(shared_blks_hit),0)
                     FROM pg_stat_statements WHERE toplevel`).Scan(&result.TotalSQLMs, &result.TotalSharedHits))
+				require.NoError(t, conn.QueryRow(ctx, `SELECT COALESCE(sum(calls),0),COALESCE(sum(total_exec_time),0)
+					FROM pg_stat_statements WHERE toplevel AND query LIKE '-- name: ListWorkerPrefetchConsumption%'`).Scan(&result.ConsumptionSQLCalls, &result.ConsumptionSQLMs))
 				result.Passed = result.Completed == tasks && result.RepeatedTasks == 0 && result.LeaseErrors == 0 && result.LeaseLost == 0 && result.RemainingPermits == 0
 				for _, op := range result.Operations {
 					for code := range op.Errors {
@@ -198,6 +200,8 @@ func TestTaskAdmissionBenchmark(t *testing.T) {
 }
 
 type admissionBenchResult struct {
+	ConsumptionSQLCalls                                                                              int64
+	ConsumptionSQLMs                                                                                 float64
 	EnqueueSeconds, EnqueueCPUSeconds                                                                float64
 	Blocked                                                                                          int
 	TotalSQLMs                                                                                       float64

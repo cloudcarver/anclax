@@ -17,7 +17,7 @@ type Querier interface {
 	ClaimNormalTaskByGroup(ctx context.Context, arg ClaimNormalTaskByGroupParams) (*AnclaxTask, error)
 	ClaimStrictTask(ctx context.Context, arg ClaimStrictTaskParams) (*AnclaxTask, error)
 	ClaimTask(ctx context.Context, arg ClaimTaskParams) (*AnclaxTask, error)
-	ClaimTaskBatch(ctx context.Context, arg ClaimTaskBatchParams) ([]*AnclaxTask, error)
+	ClaimTaskBatch(ctx context.Context, arg ClaimTaskBatchParams) ([]*ClaimTaskBatchRow, error)
 	ClaimTaskByID(ctx context.Context, arg ClaimTaskByIDParams) (*AnclaxTask, error)
 	ClaimWorkerCommand(ctx context.Context, arg ClaimWorkerCommandParams) (*AnclaxTask, error)
 	ConfigureWorkerPrefetch(ctx context.Context, arg ConfigureWorkerPrefetchParams) error
@@ -64,6 +64,8 @@ type Querier interface {
 	ListTaskTagConcurrencyLimits(ctx context.Context, arg ListTaskTagConcurrencyLimitsParams) ([]*AnclaxTaskTagConcurrency, error)
 	ListTaskWaitStatuses(ctx context.Context, ids []int32) ([]*ListTaskWaitStatusesRow, error)
 	ListTerminalTaskWaitStatuses(ctx context.Context, ids []int32) ([]*ListTerminalTaskWaitStatusesRow, error)
+	// Include offline counters so liveness changes don't replay historical claims.
+	ListWorkerPrefetchConsumption(ctx context.Context) ([]*ListWorkerPrefetchConsumptionRow, error)
 	MaintainTaskConcurrency(ctx context.Context, legacyTtlMs int64) error
 	MarkWorkerOffline(ctx context.Context, id uuid.UUID) error
 	// A negative prepared count means the scheduler attempt no longer owns its lease.

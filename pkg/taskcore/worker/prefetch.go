@@ -22,21 +22,33 @@ func (p *ModelPort) executePrefetch(ctx context.Context, task Task) error {
 // Waiting never holds a database transaction; the execution lease is renewed by
 // the same keeper as other long-running tasks. Polling remains the idle mechanism.
 func RunTaskPrefetch(ctx context.Context, m model.ModelInterface, task Task, owner uuid.UUID, lockTTL time.Duration) error {
+	var pacing prefetchPacing
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		prepared, err := runTaskPrefetchBatch(ctx, m, task, owner, lockTTL)
+		started := time.Now()
+		consumption, err := m.ListWorkerPrefetchConsumption(ctx)
+		observeScheduler("prefetch_consumption", started, err)
 		if err != nil {
 			return err
 		}
-		if prepared < 0 {
-			return taskcore.ErrTaskLockLost
+		pacing.observe(started, consumption)
+		if batch, probe := pacing.batch(started); batch > 0 {
+			prepared, err := runTaskPrefetchBatch(ctx, m, task, owner, lockTTL, batch)
+			if err != nil {
+				return err
+			}
+			if prepared < 0 {
+				return taskcore.ErrTaskLockLost
+			}
+			pacing.prepared(started, prepared, probe)
 		}
-		if prepared > 0 {
-			continue
+		interval := pacing.interval()
+		if untilProbe := pacing.lastRun.Add(prefetchProbeInterval).Sub(started); untilProbe > 0 {
+			interval = min(interval, untilProbe)
 		}
-		timer := time.NewTimer(20 * time.Millisecond)
+		timer := time.NewTimer(max(0, interval-time.Since(started)))
 		select {
 		case <-ctx.Done():
 			timer.Stop()
@@ -46,14 +58,14 @@ func RunTaskPrefetch(ctx context.Context, m model.ModelInterface, task Task, own
 	}
 }
 
-func runTaskPrefetchBatch(ctx context.Context, m model.ModelInterface, task Task, owner uuid.UUID, lockTTL time.Duration) (prepared int32, resultErr error) {
+func runTaskPrefetchBatch(ctx context.Context, m model.ModelInterface, task Task, owner uuid.UUID, lockTTL time.Duration, batch int32) (prepared int32, resultErr error) {
 	started := time.Now()
 	defer func() { observeScheduler("prefetch", started, resultErr) }()
 	resultErr = m.RunTransactionWithTx(ctx, func(_ core.Tx, txm model.ModelInterface) error {
 		var err error
 		prepared, err = txm.PrefetchReadyTasks(ctx, querier.PrefetchReadyTasksParams{
 			TaskID: task.ID, WorkerID: owner, LeaseVersion: task.LeaseVersion,
-			BatchSize: 256, ReadyTtlMs: 2000, LockTtlMs: lockTTL.Milliseconds(),
+			BatchSize: batch, ReadyTtlMs: 2000, LockTtlMs: lockTTL.Milliseconds(),
 		})
 		return err
 	})

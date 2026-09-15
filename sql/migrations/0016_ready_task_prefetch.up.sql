@@ -8,7 +8,8 @@ ALTER TABLE anclax.tasks ADD CONSTRAINT tasks_ready_reservation_shape CHECK (
 );
 ALTER TABLE anclax.workers ADD COLUMN prefetch_capacity INT NOT NULL DEFAULT 0,
     ADD COLUMN prefetch_strict_percentage INT NOT NULL DEFAULT 100,
-    ADD COLUMN prefetch_heartbeat_ttl_ms BIGINT NOT NULL DEFAULT 9000;
+    ADD COLUMN prefetch_heartbeat_ttl_ms BIGINT NOT NULL DEFAULT 9000,
+    ADD COLUMN prefetch_claimed BIGINT NOT NULL DEFAULT 0 CHECK (prefetch_claimed>=0);
 CREATE FUNCTION anclax.is_system_task(task_type TEXT) RETURNS BOOLEAN
 LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
     SELECT task_type IN ('prefetchTasks', 'broadcastUpdateWorkerRuntimeConfig',

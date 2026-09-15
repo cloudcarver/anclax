@@ -28,9 +28,18 @@ WITH strict_candidates AS MATERIALIZED (
     SELECT * FROM (SELECT * FROM strict_candidates UNION ALL SELECT * FROM normal_candidates) candidates
     ORDER BY priority DESC,group_order,CASE WHEN priority=0 THEN weight ELSE 0 END DESC,created_at,id
     LIMIT sqlc.arg(batch_size)::int
-)
+), claimed AS (
 UPDATE anclax.tasks AS t
 SET status='running',ready_expires_at=NULL,locked_at=statement_timestamp(),worker_id=sqlc.arg(worker_id),
     lease_expires_at=statement_timestamp()+sqlc.arg(lock_ttl_ms)::bigint*INTERVAL '1 millisecond',
     lease_duration_ms=sqlc.arg(lock_ttl_ms)::bigint,attempts=t.attempts+1,updated_at=statement_timestamp()
-FROM candidate WHERE t.id=candidate.id RETURNING t.*;
+FROM candidate WHERE t.id=candidate.id RETURNING t.*
+), consumption AS (
+    -- One per-Worker write per nonempty batch, committed with the task leases.
+    -- Unregistered legacy callers can still claim, without reporting demand.
+    UPDATE anclax.workers w SET prefetch_claimed=w.prefetch_claimed+n.claimed
+    FROM (SELECT count(*) AS claimed FROM claimed) n
+    WHERE w.id=sqlc.arg(worker_id) AND n.claimed>0
+    RETURNING w.id
+)
+SELECT * FROM claimed;

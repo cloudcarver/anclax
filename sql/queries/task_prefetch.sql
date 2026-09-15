@@ -11,6 +11,13 @@ VALUES ('{"retryPolicy":{"interval":"100ms","maxAttempts":-1}}',
     '{"type":"prefetchTasks","payload":{}}','pending','anclax:system:prefetch')
 ON CONFLICT(unique_tag) DO NOTHING;
 
+-- name: ListWorkerPrefetchConsumption :many
+-- Include offline counters so liveness changes don't replay historical claims.
+SELECT id,prefetch_claimed,CASE WHEN status='online'
+    AND last_heartbeat>statement_timestamp()-prefetch_heartbeat_ttl_ms*interval '1 millisecond'
+    THEN prefetch_capacity ELSE 0 END::int AS capacity
+FROM anclax.workers WHERE prefetch_capacity>0;
+
 -- name: PrefetchReadyTasks :one
 -- A negative prepared count means the scheduler attempt no longer owns its lease.
 SELECT anclax.prefetch_ready_tasks(sqlc.arg(task_id)::int,sqlc.arg(worker_id)::uuid,

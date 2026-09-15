@@ -96,5 +96,5 @@ CREATE INDEX idx_tasks_serial_pending_head ON anclax.tasks
 ALTER TABLE anclax.tasks DROP CONSTRAINT tasks_ready_reservation_shape;
 ALTER TABLE anclax.tasks DROP COLUMN ready_expires_at,DROP COLUMN admission_group_id;
 DROP TABLE anclax.task_admission_groups;
-ALTER TABLE anclax.workers DROP COLUMN prefetch_capacity,DROP COLUMN prefetch_strict_percentage,DROP COLUMN prefetch_heartbeat_ttl_ms;
+ALTER TABLE anclax.workers DROP COLUMN prefetch_capacity,DROP COLUMN prefetch_strict_percentage,DROP COLUMN prefetch_heartbeat_ttl_ms,DROP COLUMN prefetch_claimed;
 COMMIT;

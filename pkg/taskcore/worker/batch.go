@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -80,7 +81,14 @@ func (p *ModelPort) ClaimBatch(ctx context.Context, req ClaimBatchRequest) (resu
 			return err
 		}
 		for _, row := range rows {
-			task := taskFromQuerier(row)
+			decoded := &querier.AnclaxTask{ID: row.ID, LeaseVersion: row.LeaseVersion, Attempts: row.Attempts, Priority: row.Priority, Weight: row.Weight}
+			if err := json.Unmarshal(row.Attributes, &decoded.Attributes); err != nil {
+				return fmt.Errorf("decode claimed task attributes: %w", err)
+			}
+			if err := json.Unmarshal(row.Spec, &decoded.Spec); err != nil {
+				return fmt.Errorf("decode claimed task spec: %w", err)
+			}
+			task := taskFromQuerier(decoded)
 			task.claimedAt = claimedAt
 			out = append(out, task)
 		}

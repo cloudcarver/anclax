@@ -4,6 +4,7 @@ package taskcoree2e_test
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,6 +22,26 @@ import (
 
 type prefetchLoopHandler struct{}
 
+type prefetchCountingModel struct {
+	model.ModelInterface
+	calls *atomic.Int64
+}
+
+func (m *prefetchCountingModel) RunTransactionWithTx(ctx context.Context, f func(core.Tx, model.ModelInterface) error) error {
+	return m.ModelInterface.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
+		return f(tx, &prefetchCountingModel{ModelInterface: txm, calls: m.calls})
+	})
+}
+
+func (m *prefetchCountingModel) PrefetchReadyTasks(ctx context.Context, arg querier.PrefetchReadyTasksParams) (int32, error) {
+	m.calls.Add(1)
+	return m.ModelInterface.PrefetchReadyTasks(ctx, arg)
+}
+
+func (m *prefetchCountingModel) TaskLeaseQueries() querier.Querier {
+	return m.ModelInterface.(interface{ TaskLeaseQueries() querier.Querier }).TaskLeaseQueries()
+}
+
 func (prefetchLoopHandler) HandleTask(context.Context, worker.Task) error { return nil }
 func (prefetchLoopHandler) RegisterTaskHandler(worker.TaskHandler)        {}
 func (prefetchLoopHandler) OnTaskFailed(context.Context, core.Tx, worker.TaskSpec, int32) error {
@@ -34,10 +55,12 @@ func TestReadyTaskLongPrefetchSmoke(t *testing.T) {
 		defer conn.Close(ctx)
 		concurrency, strict := 1, 100
 		poll, heartbeat, ttl := 5*time.Millisecond, 50*time.Millisecond, 300*time.Millisecond
+		var prefetchCalls atomic.Int64
+		observed := &prefetchCountingModel{ModelInterface: m, calls: &prefetchCalls}
 		components, err := worker.BuildWorkerComponents(&config.Config{Worker: config.Worker{
 			Concurrency: &concurrency, MaxStrictPercentage: &strict, PollInterval: &poll,
 			HeartbeatInterval: &heartbeat, LockRefreshInterval: &heartbeat, LockTTL: &ttl,
-		}}, m, prefetchLoopHandler{})
+		}}, observed, prefetchLoopHandler{})
 		require.NoError(t, err)
 		runCtx, cancel := context.WithCancel(ctx)
 		done := make(chan struct{})
@@ -61,7 +84,9 @@ func TestReadyTaskLongPrefetchSmoke(t *testing.T) {
 		for round := 0; round < 2; round++ {
 			// The same scheduler attempt must accept work after an idle period
 			// longer than its TTL, while a separate control task still progresses.
+			beforeIdle := prefetchCalls.Load()
 			time.Sleep(2 * ttl)
+			require.LessOrEqual(t, prefetchCalls.Load()-beforeIdle, int64(8), "idle admission backs off while the lease keeper continues")
 			var businessID, controlID int32
 			require.NoError(t, conn.QueryRow(ctx, `INSERT INTO anclax.tasks(attributes,spec,status)
 				VALUES('{}','{"type":"long-prefetch-probe"}','pending') RETURNING id`).Scan(&businessID))
