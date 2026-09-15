@@ -78,6 +78,8 @@ For rollback, stop new workers before applying the down migration. Reverting 15 
 
 ## Verification
 
+The [recorded automatic admission comparison](async-task-admission-benchmark.md) includes three before/after repetitions at 100/200 slots, the baseline PostgreSQL deadlock log, and the completed 200-iteration chaos result.
+
 ```bash
 go test -race -tags ut ./... -timeout=6m
 ANCLAX_SMOKE_POSTGRES_IMAGE=postgres:17 go test -race -tags=smoke ./pkg/taskcore/e2e \

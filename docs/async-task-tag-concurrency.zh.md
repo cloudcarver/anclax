@@ -76,6 +76,8 @@ if err := controlPlane.SetTagConcurrencyLimit(ctx, "vendor:api", 10); err != nil
 
 ## 验证
 
+已完成的[自动领取前后对比](async-task-admission-benchmark.md)包含 100/200 槽位各三次重复、旧版 PostgreSQL 死锁日志和 200 轮 chaos 结果。
+
 ```bash
 go test -race -tags ut ./... -timeout=6m
 ANCLAX_SMOKE_POSTGRES_IMAGE=postgres:17 go test -race -tags=smoke ./pkg/taskcore/e2e \

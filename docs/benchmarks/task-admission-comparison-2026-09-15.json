@@ -1,0 +1,3933 @@
+{
+  "metadata": {
+    "date": "2026-09-15",
+    "host": "Apple M5, arm64, 16 GiB RAM",
+    "go": "go1.26.5 darwin/arm64",
+    "GOMAXPROCS": 2,
+    "raceDetector": false,
+    "dockerCPUs": 10,
+    "dockerMemoryBytes": 8321515520,
+    "postgresImage": "postgres:17",
+    "postgresImageID": "sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675",
+    "postgresVersion": "17.11",
+    "postgresCPUQuota": 2,
+    "postgresMemoryBytes": 1073741824,
+    "mainPoolMax": 50,
+    "renewalPoolMax": 10,
+    "tasksPerCase": 2000,
+    "handlerMs": 20,
+    "pollMs": 20,
+    "heartbeatAndRenewalMs": 1000,
+    "leaseTTLms": 9000,
+    "strictPercentage": 0,
+    "batchSizeBefore": 1,
+    "batchSizeAfter": 32,
+    "automaticBatchInFlightAfter": 1,
+    "observationLimitSeconds": 90,
+    "repetitions": 3,
+    "executionOrder": [
+      "before-1",
+      "after-1",
+      "after-2",
+      "before-2",
+      "before-3",
+      "after-3"
+    ],
+    "testFile": "pkg/taskcore/e2e/admission_benchmark_test.go",
+    "testFileSHA256": "c3c7372cd3ca968d3e92f226393a2139a045bbaa84d57dff8f03a33942578a2a",
+    "scope": "Fixed-queue drain through the automatic Worker path. Fresh framework schema; no application-specific indexes. Cases and chaos run sequentially. All failures retained; no throughput ratio for failed cases. CPU time includes observer/background work; failed worker timeouts remain observed through the deadline. See docs/async-task-admission-benchmark.md for measurement boundaries."
+  },
+  "summary": [
+    {
+      "scenario": "untagged",
+      "concurrency": 100,
+      "before": {
+        "passed": 3,
+        "repetitions": 3,
+        "completed": [
+          2000,
+          2000,
+          2000
+        ],
+        "errors": {},
+        "leaseErrors": 0,
+        "leaseLost": 0,
+        "repeatedTasks": 0,
+        "measurements": {
+          "ElapsedSeconds": {
+            "median": 2.5214046249999997,
+            "min": 2.433030667,
+            "max": 2.579124167
+          },
+          "TasksPerSecond": {
+            "median": 793.2086663797566,
+            "min": 775.4570429722162,
+            "max": 822.0200538886179
+          },
+          "CPUSeconds": {
+            "median": 5.137259,
+            "min": 5.109796,
+            "max": 5.365548
+          },
+          "ClaimSQLCalls": {
+            "median": 2270,
+            "min": 2244,
+            "max": 2278
+          },
+          "ClaimSharedHits": {
+            "median": 337559,
+            "min": 336213,
+            "max": 339787
+          },
+          "CounterUpdates": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          }
+        }
+      },
+      "after": {
+        "passed": 3,
+        "repetitions": 3,
+        "completed": [
+          2000,
+          2000,
+          2000
+        ],
+        "errors": {},
+        "leaseErrors": 0,
+        "leaseLost": 0,
+        "repeatedTasks": 0,
+        "measurements": {
+          "ElapsedSeconds": {
+            "median": 1.020539,
+            "min": 0.947110416,
+            "max": 1.054739292
+          },
+          "TasksPerSecond": {
+            "median": 1959.7487210189909,
+            "min": 1896.203180415886,
+            "max": 2111.6862049165766
+          },
+          "CPUSeconds": {
+            "median": 2.022488,
+            "min": 1.818921,
+            "max": 2.140065
+          },
+          "ClaimSQLCalls": {
+            "median": 115,
+            "min": 111,
+            "max": 118
+          },
+          "ClaimSharedHits": {
+            "median": 116199,
+            "min": 116110,
+            "max": 116790
+          },
+          "CounterUpdates": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          }
+        }
+      },
+      "throughputRatio": 2.470659744507559
+    },
+    {
+      "scenario": "untagged",
+      "concurrency": 200,
+      "before": {
+        "passed": 3,
+        "repetitions": 3,
+        "completed": [
+          2000,
+          2000,
+          2000
+        ],
+        "errors": {},
+        "leaseErrors": 0,
+        "leaseLost": 0,
+        "repeatedTasks": 0,
+        "measurements": {
+          "ElapsedSeconds": {
+            "median": 2.635482958,
+            "min": 2.427002375,
+            "max": 2.853747792
+          },
+          "TasksPerSecond": {
+            "median": 758.8741918929912,
+            "min": 700.8327805304527,
+            "max": 824.0618223540058
+          },
+          "CPUSeconds": {
+            "median": 5.4569980000000005,
+            "min": 5.0754600000000005,
+            "max": 5.9173350000000005
+          },
+          "ClaimSQLCalls": {
+            "median": 2499,
+            "min": 2471,
+            "max": 2619
+          },
+          "ClaimSharedHits": {
+            "median": 379466,
+            "min": 374722,
+            "max": 386873
+          },
+          "CounterUpdates": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          }
+        }
+      },
+      "after": {
+        "passed": 3,
+        "repetitions": 3,
+        "completed": [
+          2000,
+          2000,
+          2000
+        ],
+        "errors": {},
+        "leaseErrors": 0,
+        "leaseLost": 0,
+        "repeatedTasks": 0,
+        "measurements": {
+          "ElapsedSeconds": {
+            "median": 0.852811542,
+            "min": 0.77501775,
+            "max": 0.88814275
+          },
+          "TasksPerSecond": {
+            "median": 2345.1840195661894,
+            "min": 2251.890250750794,
+            "max": 2580.586057545134
+          },
+          "CPUSeconds": {
+            "median": 1.7134230000000001,
+            "min": 1.5789310000000003,
+            "max": 1.8145139999999995
+          },
+          "ClaimSQLCalls": {
+            "median": 69,
+            "min": 67,
+            "max": 70
+          },
+          "ClaimSharedHits": {
+            "median": 109395,
+            "min": 109326,
+            "max": 109522
+          },
+          "CounterUpdates": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          }
+        }
+      },
+      "throughputRatio": 3.090346258470315
+    },
+    {
+      "scenario": "unlimited_shared",
+      "concurrency": 100,
+      "before": {
+        "passed": 0,
+        "repetitions": 3,
+        "completed": [
+          1204,
+          1335,
+          1202
+        ],
+        "errors": {
+          "other": 22
+        },
+        "leaseErrors": 122,
+        "leaseLost": 0,
+        "repeatedTasks": 0,
+        "measurements": {
+          "ElapsedSeconds": {
+            "median": 90.081658125,
+            "min": 90.045150084,
+            "max": 90.638514959
+          },
+          "TasksPerSecond": {
+            "median": 13.371069945208932,
+            "min": 13.261470585034631,
+            "max": 14.819887064551077
+          },
+          "CPUSeconds": {
+            "median": 179.79635299999998,
+            "min": 179.17229700000001,
+            "max": 180.011057
+          },
+          "ClaimSQLCalls": {
+            "median": 166769,
+            "min": 160388,
+            "max": 168053
+          },
+          "ClaimSharedHits": {
+            "median": 26957157,
+            "min": 25891329,
+            "max": 27929523
+          },
+          "CounterUpdates": {
+            "median": 3613,
+            "min": 3606,
+            "max": 4017
+          }
+        }
+      },
+      "after": {
+        "passed": 3,
+        "repetitions": 3,
+        "completed": [
+          2000,
+          2000,
+          2000
+        ],
+        "errors": {},
+        "leaseErrors": 0,
+        "leaseLost": 0,
+        "repeatedTasks": 0,
+        "measurements": {
+          "ElapsedSeconds": {
+            "median": 0.91767825,
+            "min": 0.869565,
+            "max": 1.14476775
+          },
+          "TasksPerSecond": {
+            "median": 2179.4131003976613,
+            "min": 1747.079265641437,
+            "max": 2300.0005750001437
+          },
+          "CPUSeconds": {
+            "median": 1.8925219999999996,
+            "min": 1.7623100000000003,
+            "max": 2.186065
+          },
+          "ClaimSQLCalls": {
+            "median": 114,
+            "min": 113,
+            "max": 119
+          },
+          "ClaimSharedHits": {
+            "median": 125735,
+            "min": 125028,
+            "max": 126476
+          },
+          "CounterUpdates": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          }
+        }
+      },
+      "throughputRatio": null
+    },
+    {
+      "scenario": "unlimited_shared",
+      "concurrency": 200,
+      "before": {
+        "passed": 0,
+        "repetitions": 3,
+        "completed": [
+          1557,
+          1022,
+          1473
+        ],
+        "errors": {
+          "40P01": 2,
+          "other": 25
+        },
+        "leaseErrors": 35,
+        "leaseLost": 0,
+        "repeatedTasks": 2,
+        "measurements": {
+          "ElapsedSeconds": {
+            "median": 90.479450958,
+            "min": 90.46979125,
+            "max": 90.574281791
+          },
+          "TasksPerSecond": {
+            "median": 16.281677891016468,
+            "min": 11.28355621254898,
+            "max": 17.208327233580913
+          },
+          "CPUSeconds": {
+            "median": 180.78243700000002,
+            "min": 180.775217,
+            "max": 181.091614
+          },
+          "ClaimSQLCalls": {
+            "median": 356807,
+            "min": 236473,
+            "max": 372022
+          },
+          "ClaimSharedHits": {
+            "median": 46383898,
+            "min": 43523267,
+            "max": 67942282
+          },
+          "CounterUpdates": {
+            "median": 4428,
+            "min": 3071,
+            "max": 4675
+          }
+        }
+      },
+      "after": {
+        "passed": 3,
+        "repetitions": 3,
+        "completed": [
+          2000,
+          2000,
+          2000
+        ],
+        "errors": {},
+        "leaseErrors": 0,
+        "leaseLost": 0,
+        "repeatedTasks": 0,
+        "measurements": {
+          "ElapsedSeconds": {
+            "median": 1.127774833,
+            "min": 0.852614667,
+            "max": 1.304755375
+          },
+          "TasksPerSecond": {
+            "median": 1773.4036453711146,
+            "min": 1532.8543865933489,
+            "max": 2345.7255398117613
+          },
+          "CPUSeconds": {
+            "median": 2.1496210000000007,
+            "min": 1.7180319999999991,
+            "max": 2.2593679999999994
+          },
+          "ClaimSQLCalls": {
+            "median": 64,
+            "min": 63,
+            "max": 68
+          },
+          "ClaimSharedHits": {
+            "median": 117895,
+            "min": 116828,
+            "max": 118015
+          },
+          "CounterUpdates": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          }
+        }
+      },
+      "throughputRatio": null
+    },
+    {
+      "scenario": "limited_shared",
+      "concurrency": 100,
+      "before": {
+        "passed": 0,
+        "repetitions": 3,
+        "completed": [
+          1050,
+          1292,
+          1253
+        ],
+        "errors": {},
+        "leaseErrors": 160,
+        "leaseLost": 0,
+        "repeatedTasks": 0,
+        "measurements": {
+          "ElapsedSeconds": {
+            "median": 90.657263375,
+            "min": 90.558058792,
+            "max": 90.692109459
+          },
+          "TasksPerSecond": {
+            "median": 13.821286385151707,
+            "min": 11.594771509090235,
+            "max": 14.246002300609032
+          },
+          "CPUSeconds": {
+            "median": 181.13845099999998,
+            "min": 180.39097599999997,
+            "max": 181.422301
+          },
+          "ClaimSQLCalls": {
+            "median": 175839,
+            "min": 139998,
+            "max": 179810
+          },
+          "ClaimSharedHits": {
+            "median": 35917135,
+            "min": 16488395,
+            "max": 45580920
+          },
+          "CounterUpdates": {
+            "median": 3760,
+            "min": 3151,
+            "max": 3877
+          }
+        }
+      },
+      "after": {
+        "passed": 3,
+        "repetitions": 3,
+        "completed": [
+          2000,
+          2000,
+          2000
+        ],
+        "errors": {
+          "55P03": 18044
+        },
+        "leaseErrors": 0,
+        "leaseLost": 0,
+        "repeatedTasks": 0,
+        "measurements": {
+          "ElapsedSeconds": {
+            "median": 16.140385833,
+            "min": 16.085166125,
+            "max": 16.545904333
+          },
+          "TasksPerSecond": {
+            "median": 123.91277511538036,
+            "min": 120.8758348741989,
+            "max": 124.33816253172206
+          },
+          "CPUSeconds": {
+            "median": 12.037422,
+            "min": 11.266606,
+            "max": 12.649467
+          },
+          "ClaimSQLCalls": {
+            "median": 1346,
+            "min": 1224,
+            "max": 1399
+          },
+          "ClaimSharedHits": {
+            "median": 464148,
+            "min": 443674,
+            "max": 469053
+          },
+          "CounterUpdates": {
+            "median": 6000,
+            "min": 6000,
+            "max": 6000
+          }
+        }
+      },
+      "throughputRatio": null
+    },
+    {
+      "scenario": "limited_shared",
+      "concurrency": 200,
+      "before": {
+        "passed": 0,
+        "repetitions": 3,
+        "completed": [
+          29,
+          7,
+          15
+        ],
+        "errors": {
+          "other": 253
+        },
+        "leaseErrors": 13,
+        "leaseLost": 0,
+        "repeatedTasks": 0,
+        "measurements": {
+          "ElapsedSeconds": {
+            "median": 90.016750084,
+            "min": 90.011253292,
+            "max": 90.019090625
+          },
+          "TasksPerSecond": {
+            "median": 0.16664582984240223,
+            "min": 0.0777612832055867,
+            "max": 0.32216226394463665
+          },
+          "CPUSeconds": {
+            "median": 23.63036999999997,
+            "min": 22.229707000000076,
+            "max": 24.062835000000064
+          },
+          "ClaimSQLCalls": {
+            "median": 1155,
+            "min": 1124,
+            "max": 5104
+          },
+          "ClaimSharedHits": {
+            "median": 463402,
+            "min": 457279,
+            "max": 1103457
+          },
+          "CounterUpdates": {
+            "median": 52,
+            "min": 37,
+            "max": 96
+          }
+        }
+      },
+      "after": {
+        "passed": 3,
+        "repetitions": 3,
+        "completed": [
+          2000,
+          2000,
+          2000
+        ],
+        "errors": {
+          "55P03": 17898
+        },
+        "leaseErrors": 0,
+        "leaseLost": 0,
+        "repeatedTasks": 0,
+        "measurements": {
+          "ElapsedSeconds": {
+            "median": 16.398604083,
+            "min": 16.165673542,
+            "max": 16.475437541
+          },
+          "TasksPerSecond": {
+            "median": 121.96160050435924,
+            "min": 121.39283069253206,
+            "max": 123.71894030915597
+          },
+          "CPUSeconds": {
+            "median": 11.108811,
+            "min": 10.810838999999998,
+            "max": 13.532231
+          },
+          "ClaimSQLCalls": {
+            "median": 1382,
+            "min": 1224,
+            "max": 1502
+          },
+          "ClaimSharedHits": {
+            "median": 464652,
+            "min": 446032,
+            "max": 486375
+          },
+          "CounterUpdates": {
+            "median": 6000,
+            "min": 6000,
+            "max": 6000
+          }
+        }
+      },
+      "throughputRatio": null
+    },
+    {
+      "scenario": "serial_history",
+      "concurrency": 100,
+      "before": {
+        "passed": 0,
+        "repetitions": 3,
+        "completed": [
+          2,
+          0,
+          0
+        ],
+        "errors": {
+          "other": 400
+        },
+        "leaseErrors": 2,
+        "leaseLost": 0,
+        "repeatedTasks": 0,
+        "measurements": {
+          "ElapsedSeconds": {
+            "median": 90.008198625,
+            "min": 90.002286041,
+            "max": 90.011894208
+          },
+          "TasksPerSecond": {
+            "median": 0,
+            "min": 0,
+            "max": 0.02222165778199136
+          },
+          "CPUSeconds": {
+            "median": 34.94238999999993,
+            "min": 15.639676000000009,
+            "max": 44.412959
+          },
+          "ClaimSQLCalls": {
+            "median": 0,
+            "min": 0,
+            "max": 2
+          },
+          "ClaimSharedHits": {
+            "median": 0,
+            "min": 0,
+            "max": 1630108
+          },
+          "CounterUpdates": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          }
+        }
+      },
+      "after": {
+        "passed": 3,
+        "repetitions": 3,
+        "completed": [
+          2000,
+          2000,
+          2000
+        ],
+        "errors": {},
+        "leaseErrors": 0,
+        "leaseLost": 0,
+        "repeatedTasks": 0,
+        "measurements": {
+          "ElapsedSeconds": {
+            "median": 1.038152917,
+            "min": 0.974536958,
+            "max": 1.064760625
+          },
+          "TasksPerSecond": {
+            "median": 1926.4984640022933,
+            "min": 1878.3564615755772,
+            "max": 2052.256698508914
+          },
+          "CPUSeconds": {
+            "median": 2.0552399999999977,
+            "min": 1.924742000000002,
+            "max": 2.0832399999999964
+          },
+          "ClaimSQLCalls": {
+            "median": 103,
+            "min": 99,
+            "max": 106
+          },
+          "ClaimSharedHits": {
+            "median": 343514,
+            "min": 333067,
+            "max": 344560
+          },
+          "CounterUpdates": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          }
+        }
+      },
+      "throughputRatio": null
+    },
+    {
+      "scenario": "serial_history",
+      "concurrency": 200,
+      "before": {
+        "passed": 0,
+        "repetitions": 3,
+        "completed": [
+          0,
+          0,
+          0
+        ],
+        "errors": {
+          "other": 855
+        },
+        "leaseErrors": 3,
+        "leaseLost": 0,
+        "repeatedTasks": 0,
+        "measurements": {
+          "ElapsedSeconds": {
+            "median": 90.00972,
+            "min": 90.006762042,
+            "max": 90.020498334
+          },
+          "TasksPerSecond": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "CPUSeconds": {
+            "median": 54.34815900000001,
+            "min": 15.154153999999949,
+            "max": 113.65168999999992
+          },
+          "ClaimSQLCalls": {
+            "median": 2,
+            "min": 1,
+            "max": 2
+          },
+          "ClaimSharedHits": {
+            "median": 1629646,
+            "min": 815053,
+            "max": 1630101
+          },
+          "CounterUpdates": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          }
+        }
+      },
+      "after": {
+        "passed": 3,
+        "repetitions": 3,
+        "completed": [
+          2000,
+          2000,
+          2000
+        ],
+        "errors": {},
+        "leaseErrors": 0,
+        "leaseLost": 0,
+        "repeatedTasks": 0,
+        "measurements": {
+          "ElapsedSeconds": {
+            "median": 0.883884,
+            "min": 0.836961542,
+            "max": 1.087544834
+          },
+          "TasksPerSecond": {
+            "median": 2262.740359594698,
+            "min": 1839.004643738669,
+            "max": 2389.5960562546375
+          },
+          "CPUSeconds": {
+            "median": 1.8190019999999976,
+            "min": 1.738045999999997,
+            "max": 2.176425000000002
+          },
+          "ClaimSQLCalls": {
+            "median": 68,
+            "min": 68,
+            "max": 69
+          },
+          "ClaimSharedHits": {
+            "median": 259323,
+            "min": 258136,
+            "max": 261110
+          },
+          "CounterUpdates": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          }
+        }
+      },
+      "throughputRatio": null
+    }
+  ],
+  "runs": [
+    {
+      "version": "before",
+      "repeat": 1,
+      "revision": "1681140eed9fe7c69b5f93349c0e65b4d080c4b9",
+      "exitCode": 1,
+      "elapsedSeconds": 553.3537592887878,
+      "results": [
+        {
+          "Revision": "1681140eed9fe7c69b5f93349c0e65b4d080c4b9",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "untagged",
+          "Schema": 14,
+          "Concurrency": 100,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 4360,
+          "ClaimSQLCalls": 2244,
+          "ClaimSharedHits": 336213,
+          "ClaimSharedReads": 8,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 2.579124167,
+          "TasksPerSecond": 775.4570429722162,
+          "CPUSeconds": 5.365548,
+          "PoolWaitSeconds": 99.929847881,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 20466.963420000026,
+          "PoolPeak": 50,
+          "Passed": true,
+          "Operations": {
+            "ClaimNormalTaskByGroup": {
+              "Calls": 2211,
+              "Empty": 211,
+              "Rows": 2000,
+              "P50Ms": 16.868333,
+              "P95Ms": 190.97525,
+              "P99Ms": 292.503417,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 2000,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 55.040417,
+              "P95Ms": 78.628709,
+              "P99Ms": 86.940875,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "1681140eed9fe7c69b5f93349c0e65b4d080c4b9",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "untagged",
+          "Schema": 14,
+          "Concurrency": 200,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 5952,
+          "ClaimSQLCalls": 2471,
+          "ClaimSharedHits": 379466,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 2.853747792,
+          "TasksPerSecond": 700.8327805304527,
+          "CPUSeconds": 5.9173350000000005,
+          "PoolWaitSeconds": 384.106103874,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 27460.22708899992,
+          "PoolPeak": 50,
+          "Passed": true,
+          "Operations": {
+            "ClaimNormalTaskByGroup": {
+              "Calls": 2433,
+              "Empty": 433,
+              "Rows": 2000,
+              "P50Ms": 73.560792,
+              "P95Ms": 532.282084,
+              "P99Ms": 719.790542,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 2000,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 65.125625,
+              "P95Ms": 85.3295,
+              "P99Ms": 186.306875,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "1681140eed9fe7c69b5f93349c0e65b4d080c4b9",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "unlimited_shared",
+          "Schema": 14,
+          "Concurrency": 100,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 1204,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 2,
+          "HandlerMs": 20,
+          "Attempts": 1205,
+          "PoolWaits": 98481,
+          "ClaimSQLCalls": 160388,
+          "ClaimSharedHits": 25891329,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 3613,
+          "ElapsedSeconds": 90.045150084,
+          "TasksPerSecond": 13.371069945208932,
+          "CPUSeconds": 179.79635299999998,
+          "PoolWaitSeconds": 3800.591178124,
+          "LeaseErrors": 89,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 2547488.454118902,
+          "PoolPeak": 50,
+          "Passed": false,
+          "Operations": {
+            "ClaimNormalTaskByGroup": {
+              "Calls": 160356,
+              "Empty": 159130,
+              "Rows": 1204,
+              "P50Ms": 7.520625,
+              "P95Ms": 61.090416,
+              "P99Ms": 1776.740417,
+              "Errors": {
+                "other": 22
+              }
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 1204,
+              "Empty": 0,
+              "Rows": 2408,
+              "P50Ms": 9.739,
+              "P95Ms": 1284.490375,
+              "P99Ms": 2278.963791,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "1681140eed9fe7c69b5f93349c0e65b4d080c4b9",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "unlimited_shared",
+          "Schema": 14,
+          "Concurrency": 200,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 1557,
+          "RepeatedTasks": 1,
+          "RemainingPermits": 2,
+          "HandlerMs": 20,
+          "Attempts": 1559,
+          "PoolWaits": 326288,
+          "ClaimSQLCalls": 372022,
+          "ClaimSharedHits": 46383898,
+          "ClaimSharedReads": 34,
+          "CounterUpdates": 4675,
+          "ElapsedSeconds": 90.479450958,
+          "TasksPerSecond": 17.208327233580913,
+          "CPUSeconds": 180.78243700000002,
+          "PoolWaitSeconds": 10862.065020637,
+          "LeaseErrors": 9,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 1392221.075842002,
+          "PoolPeak": 50,
+          "Passed": false,
+          "Operations": {
+            "ClaimNormalTaskByGroup": {
+              "Calls": 371972,
+              "Empty": 370414,
+              "Rows": 1558,
+              "P50Ms": 15.227458,
+              "P95Ms": 82.365083,
+              "P99Ms": 382.054875,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 1558,
+              "Empty": 0,
+              "Rows": 3114,
+              "P50Ms": 56.60475,
+              "P95Ms": 209.972541,
+              "P99Ms": 1070.131459,
+              "Errors": {
+                "40P01": 1
+              }
+            }
+          }
+        },
+        {
+          "Revision": "1681140eed9fe7c69b5f93349c0e65b4d080c4b9",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "limited_shared",
+          "Schema": 14,
+          "Concurrency": 100,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 1050,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 2,
+          "HandlerMs": 20,
+          "Attempts": 1051,
+          "PoolWaits": 88576,
+          "ClaimSQLCalls": 139998,
+          "ClaimSharedHits": 35917135,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 3151,
+          "ElapsedSeconds": 90.558058792,
+          "TasksPerSecond": 11.594771509090235,
+          "CPUSeconds": 181.13845099999998,
+          "PoolWaitSeconds": 3848.592460399,
+          "LeaseErrors": 108,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 2396632.0188029753,
+          "PoolPeak": 50,
+          "Passed": false,
+          "Operations": {
+            "ClaimNormalTaskByGroup": {
+              "Calls": 139952,
+              "Empty": 138902,
+              "Rows": 1050,
+              "P50Ms": 8.736084,
+              "P95Ms": 72.082292,
+              "P99Ms": 1595.693667,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 1050,
+              "Empty": 0,
+              "Rows": 2100,
+              "P50Ms": 26.284375,
+              "P95Ms": 1282.285625,
+              "P99Ms": 1682.361,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "1681140eed9fe7c69b5f93349c0e65b4d080c4b9",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "limited_shared",
+          "Schema": 14,
+          "Concurrency": 200,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 29,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 29,
+          "PoolWaits": 5196,
+          "ClaimSQLCalls": 5104,
+          "ClaimSharedHits": 1103457,
+          "ClaimSharedReads": 20,
+          "CounterUpdates": 96,
+          "ElapsedSeconds": 90.016750084,
+          "TasksPerSecond": 0.32216226394463665,
+          "CPUSeconds": 22.229707000000076,
+          "PoolWaitSeconds": 1263.72135342,
+          "LeaseErrors": 4,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 282116.388605,
+          "PoolPeak": 50,
+          "Passed": false,
+          "Operations": {
+            "ClaimNormalTaskByGroup": {
+              "Calls": 5089,
+              "Empty": 5052,
+              "Rows": 32,
+              "P50Ms": 91.421208,
+              "P95Ms": 2093.853875,
+              "P99Ms": 4206.510084,
+              "Errors": {
+                "other": 5
+              }
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 32,
+              "Empty": 0,
+              "Rows": 61,
+              "P50Ms": 181.186083,
+              "P95Ms": 3386.261583,
+              "P99Ms": 4150.59975,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "1681140eed9fe7c69b5f93349c0e65b4d080c4b9",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "serial_history",
+          "Schema": 14,
+          "Concurrency": 100,
+          "Tasks": 2000,
+          "History": 100000,
+          "GOMAXPROCS": 2,
+          "Completed": 2,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2,
+          "PoolWaits": 231,
+          "ClaimSQLCalls": 2,
+          "ClaimSharedHits": 1630108,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 90.002286041,
+          "TasksPerSecond": 0.02222165778199136,
+          "CPUSeconds": 44.412959,
+          "PoolWaitSeconds": 198.023916956,
+          "LeaseErrors": 2,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 6880.056377000001,
+          "PoolPeak": 50,
+          "Passed": false,
+          "Operations": {
+            "ClaimNormalTaskByGroup": {
+              "Calls": 202,
+              "Empty": 0,
+              "Rows": 2,
+              "P50Ms": 5002.842667,
+              "P95Ms": 5004.567333,
+              "P99Ms": 5004.825709,
+              "Errors": {
+                "other": 200
+              }
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 2,
+              "Empty": 0,
+              "Rows": 4,
+              "P50Ms": 4784.033041,
+              "P95Ms": 4874.353125,
+              "P99Ms": 4874.353125,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "1681140eed9fe7c69b5f93349c0e65b4d080c4b9",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "serial_history",
+          "Schema": 14,
+          "Concurrency": 200,
+          "Tasks": 2000,
+          "History": 100000,
+          "GOMAXPROCS": 2,
+          "Completed": 0,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 1,
+          "PoolWaits": 620,
+          "ClaimSQLCalls": 2,
+          "ClaimSharedHits": 1630101,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 90.006762042,
+          "TasksPerSecond": 0,
+          "CPUSeconds": 113.65168999999992,
+          "PoolWaitSeconds": 530.540731794,
+          "LeaseErrors": 1,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 5402.111293,
+          "PoolPeak": 50,
+          "Passed": false,
+          "Operations": {
+            "ClaimNormalTaskByGroup": {
+              "Calls": 556,
+              "Empty": 0,
+              "Rows": 2,
+              "P50Ms": 5002.692208,
+              "P95Ms": 5005.332625,
+              "P99Ms": 5006.861791,
+              "Errors": {
+                "other": 554
+              }
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 1,
+              "Empty": 0,
+              "Rows": 1,
+              "P50Ms": 165.48575,
+              "P95Ms": 165.48575,
+              "P99Ms": 165.48575,
+              "Errors": {}
+            }
+          }
+        }
+      ],
+      "startedAt": "2026-09-15T01:53:23.610064Z",
+      "logErrors": [
+        {
+          "case": "untagged/100",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 11,
+          "firstAt": "2026-09-15T01:53:27.813899Z",
+          "lastAt": "2026-09-15T01:53:27.814421Z"
+        },
+        {
+          "case": "untagged/200",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 22,
+          "firstAt": "2026-09-15T01:53:30.852007Z",
+          "lastAt": "2026-09-15T01:53:30.852814Z"
+        },
+        {
+          "case": "unlimited_shared/100",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 64,
+          "firstAt": "2026-09-15T01:53:36.663158Z",
+          "lastAt": "2026-09-15T01:55:01.118065Z"
+        },
+        {
+          "case": "unlimited_shared/100",
+          "message": "worker runtime error",
+          "error": "claim normal task: timeout: context deadline exceeded",
+          "count": 22,
+          "firstAt": "2026-09-15T01:53:36.663362Z",
+          "lastAt": "2026-09-15T01:53:37.165815Z"
+        },
+        {
+          "case": "unlimited_shared/100",
+          "message": "worker runtime error",
+          "error": "claim normal task: context deadline exceeded",
+          "count": 1,
+          "firstAt": "2026-09-15T01:53:36.856745Z",
+          "lastAt": "2026-09-15T01:53:36.856745Z"
+        },
+        {
+          "case": "unlimited_shared/200",
+          "message": "worker runtime error",
+          "error": "claim normal task: context deadline exceeded",
+          "count": 1,
+          "firstAt": "2026-09-15T01:55:07.855199Z",
+          "lastAt": "2026-09-15T01:55:07.855199Z"
+        },
+        {
+          "case": "unlimited_shared/200",
+          "message": "worker runtime error",
+          "error": "finalize task attempt: ERROR: deadlock detected (SQLSTATE 40P01)",
+          "count": 1,
+          "firstAt": "2026-09-15T01:55:59.296200Z",
+          "lastAt": "2026-09-15T01:55:59.296200Z"
+        },
+        {
+          "case": "unlimited_shared/200",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 25,
+          "firstAt": "2026-09-15T01:56:31.871918Z",
+          "lastAt": "2026-09-15T01:56:31.872109Z"
+        },
+        {
+          "case": "limited_shared/100",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 32,
+          "firstAt": "2026-09-15T01:58:02.721404Z",
+          "lastAt": "2026-09-15T01:58:02.721684Z"
+        },
+        {
+          "case": "limited_shared/200",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 44,
+          "firstAt": "2026-09-15T01:58:11.653834Z",
+          "lastAt": "2026-09-15T01:58:13.616356Z"
+        },
+        {
+          "case": "limited_shared/200",
+          "message": "worker runtime error",
+          "error": "claim normal task: timeout: context deadline exceeded",
+          "count": 5,
+          "firstAt": "2026-09-15T01:58:11.654101Z",
+          "lastAt": "2026-09-15T01:58:11.874309Z"
+        },
+        {
+          "case": "limited_shared/200",
+          "message": "worker runtime error",
+          "error": "claim normal task: context deadline exceeded",
+          "count": 1,
+          "firstAt": "2026-09-15T01:58:12.156378Z",
+          "lastAt": "2026-09-15T01:58:12.156378Z"
+        },
+        {
+          "case": "limited_shared/200",
+          "message": "worker runtime error",
+          "error": "maintain task concurrency: context deadline exceeded",
+          "count": 1,
+          "firstAt": "2026-09-15T01:58:13.614761Z",
+          "lastAt": "2026-09-15T01:58:13.614761Z"
+        },
+        {
+          "case": "serial_history/100",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 200,
+          "firstAt": "2026-09-15T01:59:39.968823Z",
+          "lastAt": "2026-09-15T01:59:55.030238Z"
+        },
+        {
+          "case": "serial_history/100",
+          "message": "worker runtime error",
+          "error": "claim normal task: timeout: context deadline exceeded",
+          "count": 200,
+          "firstAt": "2026-09-15T01:59:39.971922Z",
+          "lastAt": "2026-09-15T01:59:55.032220Z"
+        },
+        {
+          "case": "serial_history/100",
+          "message": "worker runtime error",
+          "error": "claim normal task: context deadline exceeded",
+          "count": 196,
+          "firstAt": "2026-09-15T01:59:39.969191Z",
+          "lastAt": "2026-09-15T01:59:55.756958Z"
+        },
+        {
+          "case": "serial_history/100",
+          "message": "worker runtime error",
+          "error": "context deadline exceeded",
+          "count": 3,
+          "firstAt": "2026-09-15T01:59:41.668681Z",
+          "lastAt": "2026-09-15T01:59:51.708761Z"
+        },
+        {
+          "case": "serial_history/100",
+          "message": "failed to rollback transaction: conn closed",
+          "error": "",
+          "count": 2,
+          "firstAt": "2026-09-15T01:59:55.968676Z",
+          "lastAt": "2026-09-15T01:59:55.968839Z"
+        },
+        {
+          "case": "serial_history/200",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 555,
+          "firstAt": "2026-09-15T02:01:11.300950Z",
+          "lastAt": "2026-09-15T02:02:01.503501Z"
+        },
+        {
+          "case": "serial_history/200",
+          "message": "worker runtime error",
+          "error": "claim normal task: context deadline exceeded",
+          "count": 862,
+          "firstAt": "2026-09-15T02:01:11.301322Z",
+          "lastAt": "2026-09-15T02:02:01.502934Z"
+        },
+        {
+          "case": "serial_history/200",
+          "message": "worker runtime error",
+          "error": "claim normal task: timeout: context deadline exceeded",
+          "count": 245,
+          "firstAt": "2026-09-15T02:01:11.308749Z",
+          "lastAt": "2026-09-15T02:02:01.502306Z"
+        },
+        {
+          "case": "serial_history/200",
+          "message": "worker runtime error",
+          "error": "context deadline exceeded",
+          "count": 8,
+          "firstAt": "2026-09-15T02:01:12.880348Z",
+          "lastAt": "2026-09-15T02:01:48.020343Z"
+        },
+        {
+          "case": "serial_history/200",
+          "message": "worker runtime error",
+          "error": "finalize task attempt: context deadline exceeded",
+          "count": 1,
+          "firstAt": "2026-09-15T02:01:27.087760Z",
+          "lastAt": "2026-09-15T02:01:27.087760Z"
+        },
+        {
+          "case": "serial_history/200",
+          "message": "worker runtime error",
+          "error": "maintain task concurrency: timeout: context deadline exceeded",
+          "count": 1,
+          "firstAt": "2026-09-15T02:01:52.159491Z",
+          "lastAt": "2026-09-15T02:01:52.159491Z"
+        },
+        {
+          "case": "serial_history/200",
+          "message": "worker runtime error",
+          "error": "timeout: context deadline exceeded",
+          "count": 1,
+          "firstAt": "2026-09-15T02:01:53.042766Z",
+          "lastAt": "2026-09-15T02:01:53.042766Z"
+        },
+        {
+          "case": "serial_history/200",
+          "message": "worker runtime error",
+          "error": "update worker heartbeat: context deadline exceeded",
+          "count": 1,
+          "firstAt": "2026-09-15T02:02:02.300447Z",
+          "lastAt": "2026-09-15T02:02:02.300447Z"
+        }
+      ]
+    },
+    {
+      "version": "after",
+      "repeat": 1,
+      "revision": "caf73329c7fae49cc4259164e0c001398a70ee6a",
+      "exitCode": 0,
+      "elapsedSeconds": 44.0088369846344,
+      "results": [
+        {
+          "Revision": "caf73329c7fae49cc4259164e0c001398a70ee6a",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "untagged",
+          "Schema": 15,
+          "Concurrency": 100,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 353,
+          "ClaimSQLCalls": 115,
+          "ClaimSharedHits": 116110,
+          "ClaimSharedReads": 7,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 1.020539,
+          "TasksPerSecond": 1959.7487210189909,
+          "CPUSeconds": 2.022488,
+          "PoolWaitSeconds": 1.966819143,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 437.8560830000003,
+          "PoolPeak": 50,
+          "Passed": true,
+          "Operations": {
+            "ClaimTaskBatch": {
+              "Calls": 115,
+              "Empty": 4,
+              "Rows": 2000,
+              "P50Ms": 5.357292,
+              "P95Ms": 17.712917,
+              "P99Ms": 33.659792,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 2000,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 4.769416,
+              "P95Ms": 25.156875,
+              "P99Ms": 117.340375,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "caf73329c7fae49cc4259164e0c001398a70ee6a",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "untagged",
+          "Schema": 15,
+          "Concurrency": 200,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 1259,
+          "ClaimSQLCalls": 69,
+          "ClaimSharedHits": 109522,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 0.852811542,
+          "TasksPerSecond": 2345.1840195661894,
+          "CPUSeconds": 1.7134230000000001,
+          "PoolWaitSeconds": 22.653554452,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 278.08982900000007,
+          "PoolPeak": 50,
+          "Passed": true,
+          "Operations": {
+            "ClaimTaskBatch": {
+              "Calls": 69,
+              "Empty": 5,
+              "Rows": 2000,
+              "P50Ms": 6.128,
+              "P95Ms": 47.811042,
+              "P99Ms": 67.967125,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 2000,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 7.281709,
+              "P95Ms": 56.977084,
+              "P99Ms": 61.416333,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "caf73329c7fae49cc4259164e0c001398a70ee6a",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "unlimited_shared",
+          "Schema": 15,
+          "Concurrency": 100,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 284,
+          "ClaimSQLCalls": 113,
+          "ClaimSharedHits": 125028,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 1.14476775,
+          "TasksPerSecond": 1747.079265641437,
+          "CPUSeconds": 2.186065,
+          "PoolWaitSeconds": 1.602565479,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 496.2323390000001,
+          "PoolPeak": 50,
+          "Passed": true,
+          "Operations": {
+            "ClaimTaskBatch": {
+              "Calls": 113,
+              "Empty": 0,
+              "Rows": 2000,
+              "P50Ms": 5.463791,
+              "P95Ms": 43.589958,
+              "P99Ms": 57.318292,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 2000,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 4.713541,
+              "P95Ms": 25.048042,
+              "P99Ms": 47.110416,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "caf73329c7fae49cc4259164e0c001398a70ee6a",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "unlimited_shared",
+          "Schema": 15,
+          "Concurrency": 200,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 918,
+          "ClaimSQLCalls": 63,
+          "ClaimSharedHits": 117895,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 1.127774833,
+          "TasksPerSecond": 1773.4036453711146,
+          "CPUSeconds": 2.1496210000000007,
+          "PoolWaitSeconds": 13.192242346,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 634.933496,
+          "PoolPeak": 50,
+          "Passed": true,
+          "Operations": {
+            "ClaimTaskBatch": {
+              "Calls": 63,
+              "Empty": 0,
+              "Rows": 2000,
+              "P50Ms": 8.120375,
+              "P95Ms": 53.178875,
+              "P99Ms": 96.815583,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 2000,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 6.252666,
+              "P95Ms": 55.511875,
+              "P99Ms": 62.884375,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "caf73329c7fae49cc4259164e0c001398a70ee6a",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "limited_shared",
+          "Schema": 15,
+          "Concurrency": 100,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 32,
+          "ClaimSQLCalls": 1224,
+          "ClaimSharedHits": 443674,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 6000,
+          "ElapsedSeconds": 16.085166125,
+          "TasksPerSecond": 124.33816253172206,
+          "CPUSeconds": 12.649467,
+          "PoolWaitSeconds": 0.293644133,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 6022.665082999999,
+          "PoolPeak": 34,
+          "Passed": true,
+          "Operations": {
+            "ClaimTaskBatch": {
+              "Calls": 1223,
+              "Empty": 1132,
+              "Rows": 2000,
+              "P50Ms": 1.594583,
+              "P95Ms": 35.962916,
+              "P99Ms": 49.328292,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 8007,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 2.962542,
+              "P95Ms": 6.046458,
+              "P99Ms": 13.6385,
+              "Errors": {
+                "55P03": 6007
+              }
+            }
+          }
+        },
+        {
+          "Revision": "caf73329c7fae49cc4259164e0c001398a70ee6a",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "limited_shared",
+          "Schema": 15,
+          "Concurrency": 200,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 32,
+          "ClaimSQLCalls": 1502,
+          "ClaimSharedHits": 486375,
+          "ClaimSharedReads": 0,
+          "CounterUpdates": 6000,
+          "ElapsedSeconds": 16.475437541,
+          "TasksPerSecond": 121.39283069253206,
+          "CPUSeconds": 10.810838999999998,
+          "PoolWaitSeconds": 0.496088423,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 4051.654345000003,
+          "PoolPeak": 33,
+          "Passed": true,
+          "Operations": {
+            "ClaimTaskBatch": {
+              "Calls": 1502,
+              "Empty": 1410,
+              "Rows": 2000,
+              "P50Ms": 1.492333,
+              "P95Ms": 31.564041,
+              "P99Ms": 44.05,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 7998,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 2.911833,
+              "P95Ms": 6.260458,
+              "P99Ms": 16.981916,
+              "Errors": {
+                "55P03": 5998
+              }
+            }
+          }
+        },
+        {
+          "Revision": "caf73329c7fae49cc4259164e0c001398a70ee6a",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "serial_history",
+          "Schema": 15,
+          "Concurrency": 100,
+          "Tasks": 2000,
+          "History": 100000,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 346,
+          "ClaimSQLCalls": 103,
+          "ClaimSharedHits": 343514,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 1.064760625,
+          "TasksPerSecond": 1878.3564615755772,
+          "CPUSeconds": 2.0832399999999964,
+          "PoolWaitSeconds": 4.588084289,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 500.34770899999984,
+          "PoolPeak": 50,
+          "Passed": true,
+          "Operations": {
+            "ClaimTaskBatch": {
+              "Calls": 103,
+              "Empty": 2,
+              "Rows": 2000,
+              "P50Ms": 6.538416,
+              "P95Ms": 28.827959,
+              "P99Ms": 57.492125,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 2000,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 4.46975,
+              "P95Ms": 40.089625,
+              "P99Ms": 58.405375,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "caf73329c7fae49cc4259164e0c001398a70ee6a",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "serial_history",
+          "Schema": 15,
+          "Concurrency": 200,
+          "Tasks": 2000,
+          "History": 100000,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 758,
+          "ClaimSQLCalls": 68,
+          "ClaimSharedHits": 258136,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 0.836961542,
+          "TasksPerSecond": 2389.5960562546375,
+          "CPUSeconds": 1.738045999999997,
+          "PoolWaitSeconds": 6.687549665,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 446.8936619999999,
+          "PoolPeak": 50,
+          "Passed": true,
+          "Operations": {
+            "ClaimTaskBatch": {
+              "Calls": 68,
+              "Empty": 5,
+              "Rows": 2000,
+              "P50Ms": 8.470083,
+              "P95Ms": 38.20825,
+              "P99Ms": 70.244458,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 2000,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 5.337333,
+              "P95Ms": 35.441375,
+              "P99Ms": 55.031041,
+              "Errors": {}
+            }
+          }
+        }
+      ],
+      "startedAt": "2026-09-15T02:02:36.966466Z",
+      "logErrors": [
+        {
+          "case": "unlimited_shared/100",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 1,
+          "firstAt": "2026-09-15T02:02:41.815363Z",
+          "lastAt": "2026-09-15T02:02:41.815363Z"
+        },
+        {
+          "case": "unlimited_shared/200",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 1,
+          "firstAt": "2026-09-15T02:02:43.148275Z",
+          "lastAt": "2026-09-15T02:02:43.148275Z"
+        },
+        {
+          "case": "limited_shared/100",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 1,
+          "firstAt": "2026-09-15T02:02:59.415257Z",
+          "lastAt": "2026-09-15T02:02:59.415257Z"
+        },
+        {
+          "case": "limited_shared/200",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 1,
+          "firstAt": "2026-09-15T02:03:16.340806Z",
+          "lastAt": "2026-09-15T02:03:16.340806Z"
+        },
+        {
+          "case": "serial_history/100",
+          "message": "failed to rollback transaction: conn closed",
+          "error": "",
+          "count": 1,
+          "firstAt": "2026-09-15T02:03:18.691328Z",
+          "lastAt": "2026-09-15T02:03:18.691328Z"
+        },
+        {
+          "case": "serial_history/100",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 1,
+          "firstAt": "2026-09-15T02:03:18.691352Z",
+          "lastAt": "2026-09-15T02:03:18.691352Z"
+        }
+      ]
+    },
+    {
+      "version": "after",
+      "repeat": 2,
+      "revision": "caf73329c7fae49cc4259164e0c001398a70ee6a",
+      "exitCode": 0,
+      "elapsedSeconds": 44.47956395149231,
+      "results": [
+        {
+          "Revision": "caf73329c7fae49cc4259164e0c001398a70ee6a",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "untagged",
+          "Schema": 15,
+          "Concurrency": 100,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 500,
+          "ClaimSQLCalls": 118,
+          "ClaimSharedHits": 116790,
+          "ClaimSharedReads": 7,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 0.947110416,
+          "TasksPerSecond": 2111.6862049165766,
+          "CPUSeconds": 1.818921,
+          "PoolWaitSeconds": 4.706859878,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 362.578959,
+          "PoolPeak": 50,
+          "Passed": true,
+          "Operations": {
+            "ClaimTaskBatch": {
+              "Calls": 118,
+              "Empty": 5,
+              "Rows": 2000,
+              "P50Ms": 5.005792,
+              "P95Ms": 15.736208,
+              "P99Ms": 42.388292,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 2000,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 4.7725,
+              "P95Ms": 44.220334,
+              "P99Ms": 90.722042,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "caf73329c7fae49cc4259164e0c001398a70ee6a",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "untagged",
+          "Schema": 15,
+          "Concurrency": 200,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 1178,
+          "ClaimSQLCalls": 70,
+          "ClaimSharedHits": 109395,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 0.77501775,
+          "TasksPerSecond": 2580.586057545134,
+          "CPUSeconds": 1.5789310000000003,
+          "PoolWaitSeconds": 18.208213252,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 314.32749900000016,
+          "PoolPeak": 50,
+          "Passed": true,
+          "Operations": {
+            "ClaimTaskBatch": {
+              "Calls": 70,
+              "Empty": 7,
+              "Rows": 2000,
+              "P50Ms": 6.362208,
+              "P95Ms": 40.700541,
+              "P99Ms": 72.720667,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 2000,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 6.376125,
+              "P95Ms": 55.254417,
+              "P99Ms": 71.092875,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "caf73329c7fae49cc4259164e0c001398a70ee6a",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "unlimited_shared",
+          "Schema": 15,
+          "Concurrency": 100,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 312,
+          "ClaimSQLCalls": 119,
+          "ClaimSharedHits": 125735,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 0.869565,
+          "TasksPerSecond": 2300.0005750001437,
+          "CPUSeconds": 1.7623100000000003,
+          "PoolWaitSeconds": 2.836952126,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 342.15670100000006,
+          "PoolPeak": 50,
+          "Passed": true,
+          "Operations": {
+            "ClaimTaskBatch": {
+              "Calls": 119,
+              "Empty": 5,
+              "Rows": 2000,
+              "P50Ms": 5.126334,
+              "P95Ms": 11.789541,
+              "P99Ms": 29.790917,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 2000,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 4.26125,
+              "P95Ms": 30.30775,
+              "P99Ms": 49.942042,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "caf73329c7fae49cc4259164e0c001398a70ee6a",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "unlimited_shared",
+          "Schema": 15,
+          "Concurrency": 200,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 961,
+          "ClaimSQLCalls": 64,
+          "ClaimSharedHits": 116828,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 1.304755375,
+          "TasksPerSecond": 1532.8543865933489,
+          "CPUSeconds": 2.2593679999999994,
+          "PoolWaitSeconds": 10.360433296,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 653.832205,
+          "PoolPeak": 50,
+          "Passed": true,
+          "Operations": {
+            "ClaimTaskBatch": {
+              "Calls": 64,
+              "Empty": 0,
+              "Rows": 2000,
+              "P50Ms": 7.811334,
+              "P95Ms": 68.736833,
+              "P99Ms": 116.348708,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 2000,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 6.395625,
+              "P95Ms": 41.741916,
+              "P99Ms": 48.467084,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "caf73329c7fae49cc4259164e0c001398a70ee6a",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "limited_shared",
+          "Schema": 15,
+          "Concurrency": 100,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 32,
+          "ClaimSQLCalls": 1399,
+          "ClaimSharedHits": 469053,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 6000,
+          "ElapsedSeconds": 16.545904333,
+          "TasksPerSecond": 120.8758348741989,
+          "CPUSeconds": 12.037422,
+          "PoolWaitSeconds": 0.520830252,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 4482.991606000004,
+          "PoolPeak": 34,
+          "Passed": true,
+          "Operations": {
+            "ClaimTaskBatch": {
+              "Calls": 1398,
+              "Empty": 1306,
+              "Rows": 2000,
+              "P50Ms": 1.526667,
+              "P95Ms": 33.896084,
+              "P99Ms": 59.849667,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 8054,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 3.08375,
+              "P95Ms": 5.745833,
+              "P99Ms": 18.116708,
+              "Errors": {
+                "55P03": 6054
+              }
+            }
+          }
+        },
+        {
+          "Revision": "caf73329c7fae49cc4259164e0c001398a70ee6a",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "limited_shared",
+          "Schema": 15,
+          "Concurrency": 200,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 33,
+          "ClaimSQLCalls": 1224,
+          "ClaimSharedHits": 446032,
+          "ClaimSharedReads": 0,
+          "CounterUpdates": 6000,
+          "ElapsedSeconds": 16.398604083,
+          "TasksPerSecond": 121.96160050435924,
+          "CPUSeconds": 13.532231,
+          "PoolWaitSeconds": 0.569467841,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 5845.610739999998,
+          "PoolPeak": 33,
+          "Passed": true,
+          "Operations": {
+            "ClaimTaskBatch": {
+              "Calls": 1224,
+              "Empty": 1133,
+              "Rows": 2000,
+              "P50Ms": 1.573875,
+              "P95Ms": 35.992125,
+              "P99Ms": 54.683125,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 7947,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 2.980708,
+              "P95Ms": 5.981792,
+              "P99Ms": 14.481208,
+              "Errors": {
+                "55P03": 5947
+              }
+            }
+          }
+        },
+        {
+          "Revision": "caf73329c7fae49cc4259164e0c001398a70ee6a",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "serial_history",
+          "Schema": 15,
+          "Concurrency": 100,
+          "Tasks": 2000,
+          "History": 100000,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 352,
+          "ClaimSQLCalls": 99,
+          "ClaimSharedHits": 333067,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 1.038152917,
+          "TasksPerSecond": 1926.4984640022933,
+          "CPUSeconds": 2.0552399999999977,
+          "PoolWaitSeconds": 4.48074225,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 424.133286,
+          "PoolPeak": 50,
+          "Passed": true,
+          "Operations": {
+            "ClaimTaskBatch": {
+              "Calls": 99,
+              "Empty": 3,
+              "Rows": 2000,
+              "P50Ms": 7.350833,
+              "P95Ms": 30.172208,
+              "P99Ms": 77.191083,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 2000,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 4.384292,
+              "P95Ms": 31.376083,
+              "P99Ms": 61.245542,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "caf73329c7fae49cc4259164e0c001398a70ee6a",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "serial_history",
+          "Schema": 15,
+          "Concurrency": 200,
+          "Tasks": 2000,
+          "History": 100000,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 865,
+          "ClaimSQLCalls": 68,
+          "ClaimSharedHits": 259323,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 0.883884,
+          "TasksPerSecond": 2262.740359594698,
+          "CPUSeconds": 1.8190019999999976,
+          "PoolWaitSeconds": 9.281429705,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 460.21271200000007,
+          "PoolPeak": 50,
+          "Passed": true,
+          "Operations": {
+            "ClaimTaskBatch": {
+              "Calls": 67,
+              "Empty": 4,
+              "Rows": 2000,
+              "P50Ms": 7.912875,
+              "P95Ms": 44.169,
+              "P99Ms": 62.750042,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 2000,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 5.435,
+              "P95Ms": 42.550125,
+              "P99Ms": 54.027208,
+              "Errors": {}
+            }
+          }
+        }
+      ],
+      "startedAt": "2026-09-15T02:03:20.977834Z",
+      "logErrors": [
+        {
+          "case": "unlimited_shared/200",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 1,
+          "firstAt": "2026-09-15T02:03:26.913316Z",
+          "lastAt": "2026-09-15T02:03:26.913316Z"
+        }
+      ]
+    },
+    {
+      "version": "before",
+      "repeat": 2,
+      "revision": "1681140eed9fe7c69b5f93349c0e65b4d080c4b9",
+      "exitCode": 1,
+      "elapsedSeconds": 552.7836771011353,
+      "results": [
+        {
+          "Revision": "1681140eed9fe7c69b5f93349c0e65b4d080c4b9",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "untagged",
+          "Schema": 14,
+          "Concurrency": 100,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 4737,
+          "ClaimSQLCalls": 2278,
+          "ClaimSharedHits": 337559,
+          "ClaimSharedReads": 8,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 2.433030667,
+          "TasksPerSecond": 822.0200538886179,
+          "CPUSeconds": 5.109796,
+          "PoolWaitSeconds": 92.968316033,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 21140.74525999993,
+          "PoolPeak": 50,
+          "Passed": true,
+          "Operations": {
+            "ClaimNormalTaskByGroup": {
+              "Calls": 2244,
+              "Empty": 244,
+              "Rows": 2000,
+              "P50Ms": 18.405541,
+              "P95Ms": 97.212625,
+              "P99Ms": 328.699375,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 2000,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 41.319083,
+              "P95Ms": 80.102417,
+              "P99Ms": 85.774417,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "1681140eed9fe7c69b5f93349c0e65b4d080c4b9",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "untagged",
+          "Schema": 14,
+          "Concurrency": 200,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 5915,
+          "ClaimSQLCalls": 2619,
+          "ClaimSharedHits": 386873,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 2.427002375,
+          "TasksPerSecond": 824.0618223540058,
+          "CPUSeconds": 5.0754600000000005,
+          "PoolWaitSeconds": 318.38984999,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 23674.502501999996,
+          "PoolPeak": 50,
+          "Passed": true,
+          "Operations": {
+            "ClaimNormalTaskByGroup": {
+              "Calls": 2583,
+              "Empty": 583,
+              "Rows": 2000,
+              "P50Ms": 75.842209,
+              "P95Ms": 218.154541,
+              "P99Ms": 325.800042,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 2000,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 68.284167,
+              "P95Ms": 91.1,
+              "P99Ms": 166.778125,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "1681140eed9fe7c69b5f93349c0e65b4d080c4b9",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "unlimited_shared",
+          "Schema": 14,
+          "Concurrency": 100,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 1335,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 1335,
+          "PoolWaits": 106503,
+          "ClaimSQLCalls": 166769,
+          "ClaimSharedHits": 27929523,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 4017,
+          "ElapsedSeconds": 90.081658125,
+          "TasksPerSecond": 14.819887064551077,
+          "CPUSeconds": 179.17229700000001,
+          "PoolWaitSeconds": 3688.146802707,
+          "LeaseErrors": 13,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 2058765.194732935,
+          "PoolPeak": 50,
+          "Passed": false,
+          "Operations": {
+            "ClaimNormalTaskByGroup": {
+              "Calls": 166769,
+              "Empty": 165430,
+              "Rows": 1339,
+              "P50Ms": 8.265,
+              "P95Ms": 211.20475,
+              "P99Ms": 788.415458,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 1339,
+              "Empty": 0,
+              "Rows": 2674,
+              "P50Ms": 11.701625,
+              "P95Ms": 576.279208,
+              "P99Ms": 1178.979625,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "1681140eed9fe7c69b5f93349c0e65b4d080c4b9",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "unlimited_shared",
+          "Schema": 14,
+          "Concurrency": 200,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 1022,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 2,
+          "HandlerMs": 20,
+          "Attempts": 1023,
+          "PoolWaits": 224021,
+          "ClaimSQLCalls": 236473,
+          "ClaimSharedHits": 67942282,
+          "ClaimSharedReads": 4,
+          "CounterUpdates": 3071,
+          "ElapsedSeconds": 90.574281791,
+          "TasksPerSecond": 11.28355621254898,
+          "CPUSeconds": 181.091614,
+          "PoolWaitSeconds": 11774.811864012,
+          "LeaseErrors": 11,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 1412376.4237470175,
+          "PoolPeak": 50,
+          "Passed": false,
+          "Operations": {
+            "ClaimNormalTaskByGroup": {
+              "Calls": 236433,
+              "Empty": 235402,
+              "Rows": 1023,
+              "P50Ms": 63.545333,
+              "P95Ms": 173.522125,
+              "P99Ms": 391.370042,
+              "Errors": {
+                "other": 8
+              }
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 1023,
+              "Empty": 0,
+              "Rows": 2045,
+              "P50Ms": 80.199834,
+              "P95Ms": 301.219333,
+              "P99Ms": 676.687208,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "1681140eed9fe7c69b5f93349c0e65b4d080c4b9",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "limited_shared",
+          "Schema": 14,
+          "Concurrency": 100,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 1292,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 2,
+          "HandlerMs": 20,
+          "Attempts": 1293,
+          "PoolWaits": 122390,
+          "ClaimSQLCalls": 179810,
+          "ClaimSharedHits": 45580920,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 3877,
+          "ElapsedSeconds": 90.692109459,
+          "TasksPerSecond": 14.246002300609032,
+          "CPUSeconds": 181.422301,
+          "PoolWaitSeconds": 3512.579936259,
+          "LeaseErrors": 22,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 1310141.2861919813,
+          "PoolPeak": 50,
+          "Passed": false,
+          "Operations": {
+            "ClaimNormalTaskByGroup": {
+              "Calls": 179768,
+              "Empty": 178476,
+              "Rows": 1292,
+              "P50Ms": 11.129291,
+              "P95Ms": 97.588708,
+              "P99Ms": 271.859625,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 1292,
+              "Empty": 0,
+              "Rows": 2584,
+              "P50Ms": 42.761,
+              "P95Ms": 262.567667,
+              "P99Ms": 1378.506584,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "1681140eed9fe7c69b5f93349c0e65b4d080c4b9",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "limited_shared",
+          "Schema": 14,
+          "Concurrency": 200,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 7,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 8,
+          "HandlerMs": 20,
+          "Attempts": 11,
+          "PoolWaits": 1305,
+          "ClaimSQLCalls": 1155,
+          "ClaimSharedHits": 457279,
+          "ClaimSharedReads": 3,
+          "CounterUpdates": 37,
+          "ElapsedSeconds": 90.019090625,
+          "TasksPerSecond": 0.0777612832055867,
+          "CPUSeconds": 23.63036999999997,
+          "PoolWaitSeconds": 1283.248257795,
+          "LeaseErrors": 6,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 274026.0132930002,
+          "PoolPeak": 50,
+          "Passed": false,
+          "Operations": {
+            "ClaimNormalTaskByGroup": {
+              "Calls": 1241,
+              "Empty": 1119,
+              "Rows": 14,
+              "P50Ms": 159.38175,
+              "P95Ms": 5000.321084,
+              "P99Ms": 5000.895375,
+              "Errors": {
+                "other": 108
+              }
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 11,
+              "Empty": 0,
+              "Rows": 17,
+              "P50Ms": 376.451416,
+              "P95Ms": 5001.182625,
+              "P99Ms": 5001.182625,
+              "Errors": {
+                "other": 1
+              }
+            }
+          }
+        },
+        {
+          "Revision": "1681140eed9fe7c69b5f93349c0e65b4d080c4b9",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "serial_history",
+          "Schema": 14,
+          "Concurrency": 100,
+          "Tasks": 2000,
+          "History": 100000,
+          "GOMAXPROCS": 2,
+          "Completed": 0,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 0,
+          "PoolWaits": 163,
+          "ClaimSQLCalls": 0,
+          "ClaimSharedHits": 0,
+          "ClaimSharedReads": 0,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 90.008198625,
+          "TasksPerSecond": 0,
+          "CPUSeconds": 34.94238999999993,
+          "PoolWaitSeconds": 110.457286455,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 0,
+          "PoolPeak": 50,
+          "Passed": false,
+          "Operations": {
+            "ClaimNormalTaskByGroup": {
+              "Calls": 150,
+              "Empty": 0,
+              "Rows": 0,
+              "P50Ms": 5005.802583,
+              "P95Ms": 5012.644959,
+              "P99Ms": 5013.337625,
+              "Errors": {
+                "other": 150
+              }
+            }
+          }
+        },
+        {
+          "Revision": "1681140eed9fe7c69b5f93349c0e65b4d080c4b9",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "serial_history",
+          "Schema": 14,
+          "Concurrency": 200,
+          "Tasks": 2000,
+          "History": 100000,
+          "GOMAXPROCS": 2,
+          "Completed": 0,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 0,
+          "PoolWaits": 52,
+          "ClaimSQLCalls": 1,
+          "ClaimSharedHits": 815053,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 90.020498334,
+          "TasksPerSecond": 0,
+          "CPUSeconds": 15.154153999999949,
+          "PoolWaitSeconds": 13.226473752,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 3096.780543,
+          "PoolPeak": 50,
+          "Passed": false,
+          "Operations": {
+            "ClaimNormalTaskByGroup": {
+              "Calls": 51,
+              "Empty": 0,
+              "Rows": 1,
+              "P50Ms": 5005.774291,
+              "P95Ms": 5007.39625,
+              "P99Ms": 5007.52675,
+              "Errors": {
+                "other": 50
+              }
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 1,
+              "Empty": 0,
+              "Rows": 1,
+              "P50Ms": 306.215958,
+              "P95Ms": 306.215958,
+              "P99Ms": 306.215958,
+              "Errors": {}
+            }
+          }
+        }
+      ],
+      "startedAt": "2026-09-15T02:04:05.460667Z",
+      "logErrors": [
+        {
+          "case": "untagged/100",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 20,
+          "firstAt": "2026-09-15T02:04:09.359566Z",
+          "lastAt": "2026-09-15T02:04:09.360242Z"
+        },
+        {
+          "case": "untagged/200",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 18,
+          "firstAt": "2026-09-15T02:04:11.958456Z",
+          "lastAt": "2026-09-15T02:04:11.958730Z"
+        },
+        {
+          "case": "unlimited_shared/200",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 19,
+          "firstAt": "2026-09-15T02:05:48.783264Z",
+          "lastAt": "2026-09-15T02:07:12.899685Z"
+        },
+        {
+          "case": "unlimited_shared/200",
+          "message": "worker runtime error",
+          "error": "claim normal task: timeout: context deadline exceeded",
+          "count": 8,
+          "firstAt": "2026-09-15T02:05:48.783965Z",
+          "lastAt": "2026-09-15T02:05:48.860029Z"
+        },
+        {
+          "case": "unlimited_shared/200",
+          "message": "worker runtime error",
+          "error": "claim normal task: context deadline exceeded",
+          "count": 1,
+          "firstAt": "2026-09-15T02:05:49.483375Z",
+          "lastAt": "2026-09-15T02:05:49.483375Z"
+        },
+        {
+          "case": "limited_shared/100",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 23,
+          "firstAt": "2026-09-15T02:08:43.797922Z",
+          "lastAt": "2026-09-15T02:08:43.798716Z"
+        },
+        {
+          "case": "limited_shared/200",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 112,
+          "firstAt": "2026-09-15T02:08:50.901569Z",
+          "lastAt": "2026-09-15T02:08:55.793528Z"
+        },
+        {
+          "case": "limited_shared/200",
+          "message": "worker runtime error",
+          "error": "claim normal task: timeout: context deadline exceeded",
+          "count": 109,
+          "firstAt": "2026-09-15T02:08:50.901890Z",
+          "lastAt": "2026-09-15T02:08:55.681266Z"
+        },
+        {
+          "case": "limited_shared/200",
+          "message": "worker runtime error",
+          "error": "claim normal task: context deadline exceeded",
+          "count": 18,
+          "firstAt": "2026-09-15T02:08:51.160656Z",
+          "lastAt": "2026-09-15T02:08:55.761318Z"
+        },
+        {
+          "case": "limited_shared/200",
+          "message": "failed to rollback transaction: conn closed",
+          "error": "",
+          "count": 11,
+          "firstAt": "2026-09-15T02:08:55.060866Z",
+          "lastAt": "2026-09-15T02:08:55.782577Z"
+        },
+        {
+          "case": "limited_shared/200",
+          "message": "worker runtime error",
+          "error": "context deadline exceeded",
+          "count": 1,
+          "firstAt": "2026-09-15T02:08:55.081090Z",
+          "lastAt": "2026-09-15T02:08:55.081090Z"
+        },
+        {
+          "case": "limited_shared/200",
+          "message": "worker runtime error",
+          "error": "finalize task attempt: context deadline exceeded",
+          "count": 3,
+          "firstAt": "2026-09-15T02:08:55.089199Z",
+          "lastAt": "2026-09-15T02:08:55.285511Z"
+        },
+        {
+          "case": "limited_shared/200",
+          "message": "worker runtime error",
+          "error": "maintain task concurrency: context deadline exceeded",
+          "count": 1,
+          "firstAt": "2026-09-15T02:08:55.481324Z",
+          "lastAt": "2026-09-15T02:08:55.481324Z"
+        },
+        {
+          "case": "limited_shared/200",
+          "message": "worker runtime error",
+          "error": "update worker heartbeat: context deadline exceeded",
+          "count": 1,
+          "firstAt": "2026-09-15T02:08:55.781414Z",
+          "lastAt": "2026-09-15T02:08:55.781414Z"
+        },
+        {
+          "case": "limited_shared/200",
+          "message": "worker runtime error",
+          "error": "finalize task attempt: timeout: context deadline exceeded",
+          "count": 1,
+          "firstAt": "2026-09-15T02:08:55.793631Z",
+          "lastAt": "2026-09-15T02:08:55.793631Z"
+        },
+        {
+          "case": "serial_history/100",
+          "message": "worker runtime error",
+          "error": "claim normal task: context deadline exceeded",
+          "count": 150,
+          "firstAt": "2026-09-15T02:10:21.196186Z",
+          "lastAt": "2026-09-15T02:10:31.239425Z"
+        },
+        {
+          "case": "serial_history/100",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 150,
+          "firstAt": "2026-09-15T02:10:21.206599Z",
+          "lastAt": "2026-09-15T02:10:31.238855Z"
+        },
+        {
+          "case": "serial_history/100",
+          "message": "worker runtime error",
+          "error": "claim normal task: timeout: context deadline exceeded",
+          "count": 150,
+          "firstAt": "2026-09-15T02:10:21.206634Z",
+          "lastAt": "2026-09-15T02:10:31.242203Z"
+        },
+        {
+          "case": "serial_history/100",
+          "message": "worker runtime error",
+          "error": "context deadline exceeded",
+          "count": 2,
+          "firstAt": "2026-09-15T02:10:23.274550Z",
+          "lastAt": "2026-09-15T02:10:28.294345Z"
+        },
+        {
+          "case": "serial_history/200",
+          "message": "worker runtime error",
+          "error": "claim normal task: context deadline exceeded",
+          "count": 58,
+          "firstAt": "2026-09-15T02:11:52.653420Z",
+          "lastAt": "2026-09-15T02:11:52.656628Z"
+        },
+        {
+          "case": "serial_history/200",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 50,
+          "firstAt": "2026-09-15T02:11:52.654382Z",
+          "lastAt": "2026-09-15T02:11:52.656126Z"
+        },
+        {
+          "case": "serial_history/200",
+          "message": "worker runtime error",
+          "error": "claim normal task: timeout: context deadline exceeded",
+          "count": 42,
+          "firstAt": "2026-09-15T02:11:52.654633Z",
+          "lastAt": "2026-09-15T02:11:52.655856Z"
+        },
+        {
+          "case": "serial_history/200",
+          "message": "worker runtime error",
+          "error": "update worker heartbeat: context deadline exceeded",
+          "count": 1,
+          "firstAt": "2026-09-15T02:11:53.650611Z",
+          "lastAt": "2026-09-15T02:11:53.650611Z"
+        }
+      ]
+    },
+    {
+      "version": "before",
+      "repeat": 3,
+      "revision": "1681140eed9fe7c69b5f93349c0e65b4d080c4b9",
+      "exitCode": 1,
+      "elapsedSeconds": 553.4384069442749,
+      "results": [
+        {
+          "Revision": "1681140eed9fe7c69b5f93349c0e65b4d080c4b9",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "untagged",
+          "Schema": 14,
+          "Concurrency": 100,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 4579,
+          "ClaimSQLCalls": 2270,
+          "ClaimSharedHits": 339787,
+          "ClaimSharedReads": 8,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 2.5214046249999997,
+          "TasksPerSecond": 793.2086663797566,
+          "CPUSeconds": 5.137259,
+          "PoolWaitSeconds": 94.259497825,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 17771.142488000063,
+          "PoolPeak": 50,
+          "Passed": true,
+          "Operations": {
+            "ClaimNormalTaskByGroup": {
+              "Calls": 2237,
+              "Empty": 237,
+              "Rows": 2000,
+              "P50Ms": 17.833541,
+              "P95Ms": 119.514709,
+              "P99Ms": 313.453375,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 2000,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 53.642,
+              "P95Ms": 73.602333,
+              "P99Ms": 79.340542,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "1681140eed9fe7c69b5f93349c0e65b4d080c4b9",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "untagged",
+          "Schema": 14,
+          "Concurrency": 200,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 6080,
+          "ClaimSQLCalls": 2499,
+          "ClaimSharedHits": 374722,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 2.635482958,
+          "TasksPerSecond": 758.8741918929912,
+          "CPUSeconds": 5.4569980000000005,
+          "PoolWaitSeconds": 357.486826471,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 25346.21255499999,
+          "PoolPeak": 50,
+          "Passed": true,
+          "Operations": {
+            "ClaimNormalTaskByGroup": {
+              "Calls": 2473,
+              "Empty": 473,
+              "Rows": 2000,
+              "P50Ms": 89.114375,
+              "P95Ms": 289.464625,
+              "P99Ms": 317.696958,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 2000,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 72.874333,
+              "P95Ms": 102.387708,
+              "P99Ms": 182.169958,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "1681140eed9fe7c69b5f93349c0e65b4d080c4b9",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "unlimited_shared",
+          "Schema": 14,
+          "Concurrency": 100,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 1202,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 1202,
+          "PoolWaits": 109132,
+          "ClaimSQLCalls": 168053,
+          "ClaimSharedHits": 26957157,
+          "ClaimSharedReads": 4,
+          "CounterUpdates": 3606,
+          "ElapsedSeconds": 90.638514959,
+          "TasksPerSecond": 13.261470585034631,
+          "CPUSeconds": 180.011057,
+          "PoolWaitSeconds": 3611.548250428,
+          "LeaseErrors": 20,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 1748849.4030720256,
+          "PoolPeak": 50,
+          "Passed": false,
+          "Operations": {
+            "ClaimNormalTaskByGroup": {
+              "Calls": 168020,
+              "Empty": 166818,
+              "Rows": 1202,
+              "P50Ms": 8.552125,
+              "P95Ms": 195.484,
+              "P99Ms": 578.309791,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 1202,
+              "Empty": 0,
+              "Rows": 2404,
+              "P50Ms": 12.617333,
+              "P95Ms": 484.887583,
+              "P99Ms": 1573.088458,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "1681140eed9fe7c69b5f93349c0e65b4d080c4b9",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "unlimited_shared",
+          "Schema": 14,
+          "Concurrency": 200,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 1473,
+          "RepeatedTasks": 1,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 1474,
+          "PoolWaits": 313479,
+          "ClaimSQLCalls": 356807,
+          "ClaimSharedHits": 43523267,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 4428,
+          "ElapsedSeconds": 90.46979125,
+          "TasksPerSecond": 16.281677891016468,
+          "CPUSeconds": 180.775217,
+          "PoolWaitSeconds": 10925.132119228,
+          "LeaseErrors": 15,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 1490190.150846001,
+          "PoolPeak": 50,
+          "Passed": false,
+          "Operations": {
+            "ClaimNormalTaskByGroup": {
+              "Calls": 356783,
+              "Empty": 355290,
+              "Rows": 1476,
+              "P50Ms": 16.02175,
+              "P95Ms": 82.969416,
+              "P99Ms": 289.093875,
+              "Errors": {
+                "other": 17
+              }
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 1476,
+              "Empty": 0,
+              "Rows": 2948,
+              "P50Ms": 57.627042,
+              "P95Ms": 180.46775,
+              "P99Ms": 782.746542,
+              "Errors": {
+                "40P01": 1
+              }
+            }
+          }
+        },
+        {
+          "Revision": "1681140eed9fe7c69b5f93349c0e65b4d080c4b9",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "limited_shared",
+          "Schema": 14,
+          "Concurrency": 100,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 1253,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 1253,
+          "PoolWaits": 110381,
+          "ClaimSQLCalls": 175839,
+          "ClaimSharedHits": 16488395,
+          "ClaimSharedReads": 4,
+          "CounterUpdates": 3760,
+          "ElapsedSeconds": 90.657263375,
+          "TasksPerSecond": 13.821286385151707,
+          "CPUSeconds": 180.39097599999997,
+          "PoolWaitSeconds": 3624.786087311,
+          "LeaseErrors": 30,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 1962214.6991420065,
+          "PoolPeak": 50,
+          "Passed": false,
+          "Operations": {
+            "ClaimNormalTaskByGroup": {
+              "Calls": 175807,
+              "Empty": 174554,
+              "Rows": 1253,
+              "P50Ms": 7.8355,
+              "P95Ms": 108.785334,
+              "P99Ms": 876.21575,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 1253,
+              "Empty": 0,
+              "Rows": 2506,
+              "P50Ms": 9.413,
+              "P95Ms": 669.426375,
+              "P99Ms": 1277.170958,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "1681140eed9fe7c69b5f93349c0e65b4d080c4b9",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "limited_shared",
+          "Schema": 14,
+          "Concurrency": 200,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 15,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 15,
+          "PoolWaits": 1284,
+          "ClaimSQLCalls": 1124,
+          "ClaimSharedHits": 463402,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 52,
+          "ElapsedSeconds": 90.011253292,
+          "TasksPerSecond": 0.16664582984240223,
+          "CPUSeconds": 24.062835000000064,
+          "PoolWaitSeconds": 1145.860208327,
+          "LeaseErrors": 3,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 196753.083553,
+          "PoolPeak": 50,
+          "Passed": false,
+          "Operations": {
+            "ClaimNormalTaskByGroup": {
+              "Calls": 1235,
+              "Empty": 1080,
+              "Rows": 16,
+              "P50Ms": 105.600417,
+              "P95Ms": 5000.392542,
+              "P99Ms": 5001.77825,
+              "Errors": {
+                "other": 139
+              }
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 16,
+              "Empty": 0,
+              "Rows": 31,
+              "P50Ms": 683.327167,
+              "P95Ms": 4758.259083,
+              "P99Ms": 4758.259083,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "1681140eed9fe7c69b5f93349c0e65b4d080c4b9",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "serial_history",
+          "Schema": 14,
+          "Concurrency": 100,
+          "Tasks": 2000,
+          "History": 100000,
+          "GOMAXPROCS": 2,
+          "Completed": 0,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 0,
+          "PoolWaits": 51,
+          "ClaimSQLCalls": 0,
+          "ClaimSharedHits": 0,
+          "ClaimSharedReads": 0,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 90.011894208,
+          "TasksPerSecond": 0,
+          "CPUSeconds": 15.639676000000009,
+          "PoolWaitSeconds": 13.083926376,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 0,
+          "PoolPeak": 50,
+          "Passed": false,
+          "Operations": {
+            "ClaimNormalTaskByGroup": {
+              "Calls": 50,
+              "Empty": 0,
+              "Rows": 0,
+              "P50Ms": 5007.45,
+              "P95Ms": 5008.893416,
+              "P99Ms": 5009.032375,
+              "Errors": {
+                "other": 50
+              }
+            }
+          }
+        },
+        {
+          "Revision": "1681140eed9fe7c69b5f93349c0e65b4d080c4b9",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "serial_history",
+          "Schema": 14,
+          "Concurrency": 200,
+          "Tasks": 2000,
+          "History": 100000,
+          "GOMAXPROCS": 2,
+          "Completed": 0,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2,
+          "PoolWaits": 292,
+          "ClaimSQLCalls": 2,
+          "ClaimSharedHits": 1629646,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 90.00972,
+          "TasksPerSecond": 0,
+          "CPUSeconds": 54.34815900000001,
+          "PoolWaitSeconds": 260.344669577,
+          "LeaseErrors": 2,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 6209.676626,
+          "PoolPeak": 50,
+          "Passed": false,
+          "Operations": {
+            "ClaimNormalTaskByGroup": {
+              "Calls": 252,
+              "Empty": 0,
+              "Rows": 2,
+              "P50Ms": 5005.18775,
+              "P95Ms": 5010.567958,
+              "P99Ms": 5011.048,
+              "Errors": {
+                "other": 250
+              }
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 1,
+              "Empty": 0,
+              "Rows": 1,
+              "P50Ms": 5000.144875,
+              "P95Ms": 5000.144875,
+              "P99Ms": 5000.144875,
+              "Errors": {
+                "other": 1
+              }
+            }
+          }
+        }
+      ],
+      "startedAt": "2026-09-15T02:13:18.247545Z",
+      "logErrors": [
+        {
+          "case": "untagged/100",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 34,
+          "firstAt": "2026-09-15T02:13:22.170997Z",
+          "lastAt": "2026-09-15T02:13:22.171357Z"
+        },
+        {
+          "case": "untagged/200",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 13,
+          "firstAt": "2026-09-15T02:13:25.073875Z",
+          "lastAt": "2026-09-15T02:13:25.074215Z"
+        },
+        {
+          "case": "unlimited_shared/100",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 8,
+          "firstAt": "2026-09-15T02:14:55.336810Z",
+          "lastAt": "2026-09-15T02:14:55.337182Z"
+        },
+        {
+          "case": "unlimited_shared/200",
+          "message": "worker runtime error",
+          "error": "claim normal task: context deadline exceeded",
+          "count": 2,
+          "firstAt": "2026-09-15T02:15:02.450026Z",
+          "lastAt": "2026-09-15T02:15:05.564251Z"
+        },
+        {
+          "case": "unlimited_shared/200",
+          "message": "worker runtime error",
+          "error": "claim normal task: timeout: context deadline exceeded",
+          "count": 17,
+          "firstAt": "2026-09-15T02:15:02.461508Z",
+          "lastAt": "2026-09-15T02:15:04.985376Z"
+        },
+        {
+          "case": "unlimited_shared/200",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 34,
+          "firstAt": "2026-09-15T02:15:02.461498Z",
+          "lastAt": "2026-09-15T02:16:26.292438Z"
+        },
+        {
+          "case": "unlimited_shared/200",
+          "message": "worker runtime error",
+          "error": "finalize task attempt: ERROR: deadlock detected (SQLSTATE 40P01)",
+          "count": 1,
+          "firstAt": "2026-09-15T02:16:17.055986Z",
+          "lastAt": "2026-09-15T02:16:17.055986Z"
+        },
+        {
+          "case": "limited_shared/100",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 24,
+          "firstAt": "2026-09-15T02:17:57.115303Z",
+          "lastAt": "2026-09-15T02:17:57.115870Z"
+        },
+        {
+          "case": "limited_shared/200",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 131,
+          "firstAt": "2026-09-15T02:18:04.190640Z",
+          "lastAt": "2026-09-15T02:18:08.869768Z"
+        },
+        {
+          "case": "limited_shared/200",
+          "message": "worker runtime error",
+          "error": "claim normal task: timeout: context deadline exceeded",
+          "count": 141,
+          "firstAt": "2026-09-15T02:18:04.190810Z",
+          "lastAt": "2026-09-15T02:18:08.870102Z"
+        },
+        {
+          "case": "limited_shared/200",
+          "message": "worker runtime error",
+          "error": "claim normal task: context deadline exceeded",
+          "count": 33,
+          "firstAt": "2026-09-15T02:18:04.269944Z",
+          "lastAt": "2026-09-15T02:18:09.069703Z"
+        },
+        {
+          "case": "limited_shared/200",
+          "message": "worker runtime error",
+          "error": "maintain task concurrency: context deadline exceeded",
+          "count": 1,
+          "firstAt": "2026-09-15T02:18:04.567642Z",
+          "lastAt": "2026-09-15T02:18:04.567642Z"
+        },
+        {
+          "case": "limited_shared/200",
+          "message": "failed to rollback transaction: conn closed",
+          "error": "",
+          "count": 5,
+          "firstAt": "2026-09-15T02:18:08.270418Z",
+          "lastAt": "2026-09-15T02:18:09.090330Z"
+        },
+        {
+          "case": "limited_shared/200",
+          "message": "worker runtime error",
+          "error": "timeout: context deadline exceeded",
+          "count": 1,
+          "firstAt": "2026-09-15T02:18:08.569835Z",
+          "lastAt": "2026-09-15T02:18:08.569835Z"
+        },
+        {
+          "case": "limited_shared/200",
+          "message": "worker runtime error",
+          "error": "update worker heartbeat: context deadline exceeded",
+          "count": 1,
+          "firstAt": "2026-09-15T02:18:09.090219Z",
+          "lastAt": "2026-09-15T02:18:09.090219Z"
+        },
+        {
+          "case": "serial_history/100",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 50,
+          "firstAt": "2026-09-15T02:19:34.720959Z",
+          "lastAt": "2026-09-15T02:19:34.721531Z"
+        },
+        {
+          "case": "serial_history/100",
+          "message": "worker runtime error",
+          "error": "claim normal task: timeout: context deadline exceeded",
+          "count": 50,
+          "firstAt": "2026-09-15T02:19:34.722719Z",
+          "lastAt": "2026-09-15T02:19:34.729467Z"
+        },
+        {
+          "case": "serial_history/100",
+          "message": "worker runtime error",
+          "error": "claim normal task: context deadline exceeded",
+          "count": 50,
+          "firstAt": "2026-09-15T02:19:34.724629Z",
+          "lastAt": "2026-09-15T02:19:34.727355Z"
+        },
+        {
+          "case": "serial_history/100",
+          "message": "worker runtime error",
+          "error": "update worker heartbeat: context deadline exceeded",
+          "count": 1,
+          "firstAt": "2026-09-15T02:19:35.724255Z",
+          "lastAt": "2026-09-15T02:19:35.724255Z"
+        },
+        {
+          "case": "serial_history/200",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 252,
+          "firstAt": "2026-09-15T02:21:06.102017Z",
+          "lastAt": "2026-09-15T02:21:27.100861Z"
+        },
+        {
+          "case": "serial_history/200",
+          "message": "worker runtime error",
+          "error": "claim normal task: timeout: context deadline exceeded",
+          "count": 115,
+          "firstAt": "2026-09-15T02:21:06.110334Z",
+          "lastAt": "2026-09-15T02:21:26.186668Z"
+        },
+        {
+          "case": "serial_history/200",
+          "message": "worker runtime error",
+          "error": "claim normal task: context deadline exceeded",
+          "count": 387,
+          "firstAt": "2026-09-15T02:21:06.110546Z",
+          "lastAt": "2026-09-15T02:21:26.979805Z"
+        },
+        {
+          "case": "serial_history/200",
+          "message": "worker runtime error",
+          "error": "context deadline exceeded",
+          "count": 4,
+          "firstAt": "2026-09-15T02:21:08.159854Z",
+          "lastAt": "2026-09-15T02:21:23.220457Z"
+        },
+        {
+          "case": "serial_history/200",
+          "message": "worker runtime error",
+          "error": "finalize task attempt: insert task completed event: timeout: context deadline exceeded",
+          "count": 1,
+          "firstAt": "2026-09-15T02:21:21.979711Z",
+          "lastAt": "2026-09-15T02:21:21.979711Z"
+        },
+        {
+          "case": "serial_history/200",
+          "message": "failed to rollback transaction: conn closed",
+          "error": "",
+          "count": 1,
+          "firstAt": "2026-09-15T02:21:27.101159Z",
+          "lastAt": "2026-09-15T02:21:27.101159Z"
+        }
+      ]
+    },
+    {
+      "version": "after",
+      "repeat": 3,
+      "revision": "caf73329c7fae49cc4259164e0c001398a70ee6a",
+      "exitCode": 0,
+      "elapsedSeconds": 43.55646991729736,
+      "results": [
+        {
+          "Revision": "caf73329c7fae49cc4259164e0c001398a70ee6a",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "untagged",
+          "Schema": 15,
+          "Concurrency": 100,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 468,
+          "ClaimSQLCalls": 111,
+          "ClaimSharedHits": 116199,
+          "ClaimSharedReads": 7,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 1.054739292,
+          "TasksPerSecond": 1896.203180415886,
+          "CPUSeconds": 2.140065,
+          "PoolWaitSeconds": 6.031080924,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 355.36583,
+          "PoolPeak": 50,
+          "Passed": true,
+          "Operations": {
+            "ClaimTaskBatch": {
+              "Calls": 111,
+              "Empty": 5,
+              "Rows": 2000,
+              "P50Ms": 5.105875,
+              "P95Ms": 27.911209,
+              "P99Ms": 60.038375,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 2000,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 5.023583,
+              "P95Ms": 47.713958,
+              "P99Ms": 94.2255,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "caf73329c7fae49cc4259164e0c001398a70ee6a",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "untagged",
+          "Schema": 15,
+          "Concurrency": 200,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 1181,
+          "ClaimSQLCalls": 67,
+          "ClaimSharedHits": 109326,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 0.88814275,
+          "TasksPerSecond": 2251.890250750794,
+          "CPUSeconds": 1.8145139999999995,
+          "PoolWaitSeconds": 17.129408202,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 291.2038279999999,
+          "PoolPeak": 50,
+          "Passed": true,
+          "Operations": {
+            "ClaimTaskBatch": {
+              "Calls": 67,
+              "Empty": 4,
+              "Rows": 2000,
+              "P50Ms": 7.13575,
+              "P95Ms": 43.756416,
+              "P99Ms": 71.31175,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 2000,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 7.914708,
+              "P95Ms": 55.125459,
+              "P99Ms": 73.895333,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "caf73329c7fae49cc4259164e0c001398a70ee6a",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "unlimited_shared",
+          "Schema": 15,
+          "Concurrency": 100,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 351,
+          "ClaimSQLCalls": 114,
+          "ClaimSharedHits": 126476,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 0.91767825,
+          "TasksPerSecond": 2179.4131003976613,
+          "CPUSeconds": 1.8925219999999996,
+          "PoolWaitSeconds": 2.722618187,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 364.2377490000001,
+          "PoolPeak": 50,
+          "Passed": true,
+          "Operations": {
+            "ClaimTaskBatch": {
+              "Calls": 114,
+              "Empty": 0,
+              "Rows": 2000,
+              "P50Ms": 5.224625,
+              "P95Ms": 16.622875,
+              "P99Ms": 28.622958,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 2000,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 4.655041,
+              "P95Ms": 33.100166,
+              "P99Ms": 49.101667,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "caf73329c7fae49cc4259164e0c001398a70ee6a",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "unlimited_shared",
+          "Schema": 15,
+          "Concurrency": 200,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 1016,
+          "ClaimSQLCalls": 68,
+          "ClaimSharedHits": 118015,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 0.852614667,
+          "TasksPerSecond": 2345.7255398117613,
+          "CPUSeconds": 1.7180319999999991,
+          "PoolWaitSeconds": 12.646924156,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 355.85945699999996,
+          "PoolPeak": 50,
+          "Passed": true,
+          "Operations": {
+            "ClaimTaskBatch": {
+              "Calls": 68,
+              "Empty": 5,
+              "Rows": 2000,
+              "P50Ms": 7.218333,
+              "P95Ms": 45.307292,
+              "P99Ms": 74.22375,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 2000,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 5.376333,
+              "P95Ms": 51.47725,
+              "P99Ms": 74.845333,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "caf73329c7fae49cc4259164e0c001398a70ee6a",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "limited_shared",
+          "Schema": 15,
+          "Concurrency": 100,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 33,
+          "ClaimSQLCalls": 1346,
+          "ClaimSharedHits": 464148,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 6000,
+          "ElapsedSeconds": 16.140385833,
+          "TasksPerSecond": 123.91277511538036,
+          "CPUSeconds": 11.266606,
+          "PoolWaitSeconds": 0.290651696,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 5023.582954999998,
+          "PoolPeak": 33,
+          "Passed": true,
+          "Operations": {
+            "ClaimTaskBatch": {
+              "Calls": 1345,
+              "Empty": 1255,
+              "Rows": 2000,
+              "P50Ms": 1.495917,
+              "P95Ms": 33.957416,
+              "P99Ms": 50.238875,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 7983,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 3.045875,
+              "P95Ms": 5.743583,
+              "P99Ms": 9.574416,
+              "Errors": {
+                "55P03": 5983
+              }
+            }
+          }
+        },
+        {
+          "Revision": "caf73329c7fae49cc4259164e0c001398a70ee6a",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "limited_shared",
+          "Schema": 15,
+          "Concurrency": 200,
+          "Tasks": 2000,
+          "History": 0,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 32,
+          "ClaimSQLCalls": 1382,
+          "ClaimSharedHits": 464652,
+          "ClaimSharedReads": 0,
+          "CounterUpdates": 6000,
+          "ElapsedSeconds": 16.165673542,
+          "TasksPerSecond": 123.71894030915597,
+          "CPUSeconds": 11.108811,
+          "PoolWaitSeconds": 0.772146119,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 4759.570147000001,
+          "PoolPeak": 34,
+          "Passed": true,
+          "Operations": {
+            "ClaimTaskBatch": {
+              "Calls": 1382,
+              "Empty": 1289,
+              "Rows": 2000,
+              "P50Ms": 1.496042,
+              "P95Ms": 32.282833,
+              "P99Ms": 47.177375,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 7953,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 2.941042,
+              "P95Ms": 5.829834,
+              "P99Ms": 21.877416,
+              "Errors": {
+                "55P03": 5953
+              }
+            }
+          }
+        },
+        {
+          "Revision": "caf73329c7fae49cc4259164e0c001398a70ee6a",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "serial_history",
+          "Schema": 15,
+          "Concurrency": 100,
+          "Tasks": 2000,
+          "History": 100000,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 361,
+          "ClaimSQLCalls": 106,
+          "ClaimSharedHits": 344560,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 0.974536958,
+          "TasksPerSecond": 2052.256698508914,
+          "CPUSeconds": 1.924742000000002,
+          "PoolWaitSeconds": 2.971498772,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 407.2094649999999,
+          "PoolPeak": 50,
+          "Passed": true,
+          "Operations": {
+            "ClaimTaskBatch": {
+              "Calls": 106,
+              "Empty": 4,
+              "Rows": 2000,
+              "P50Ms": 6.2265,
+              "P95Ms": 15.76875,
+              "P99Ms": 38.610708,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 2000,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 4.903625,
+              "P95Ms": 22.873208,
+              "P99Ms": 85.223459,
+              "Errors": {}
+            }
+          }
+        },
+        {
+          "Revision": "caf73329c7fae49cc4259164e0c001398a70ee6a",
+          "Postgres": "17.11 (Debian 17.11-1.pgdg13+2)",
+          "Scenario": "serial_history",
+          "Schema": 15,
+          "Concurrency": 200,
+          "Tasks": 2000,
+          "History": 100000,
+          "GOMAXPROCS": 2,
+          "Completed": 2000,
+          "RepeatedTasks": 0,
+          "RemainingPermits": 0,
+          "HandlerMs": 20,
+          "Attempts": 2000,
+          "PoolWaits": 719,
+          "ClaimSQLCalls": 69,
+          "ClaimSharedHits": 261110,
+          "ClaimSharedReads": 2,
+          "CounterUpdates": 0,
+          "ElapsedSeconds": 1.087544834,
+          "TasksPerSecond": 1839.004643738669,
+          "CPUSeconds": 2.176425000000002,
+          "PoolWaitSeconds": 9.720182554,
+          "LeaseErrors": 0,
+          "LeaseLost": 0,
+          "ClaimSQLMs": 611.3297540000002,
+          "PoolPeak": 50,
+          "Passed": true,
+          "Operations": {
+            "ClaimTaskBatch": {
+              "Calls": 69,
+              "Empty": 6,
+              "Rows": 2000,
+              "P50Ms": 8.476791,
+              "P95Ms": 62.045208,
+              "P99Ms": 71.57125,
+              "Errors": {}
+            },
+            "FinalizeTaskAttempt": {
+              "Calls": 2000,
+              "Empty": 0,
+              "Rows": 4000,
+              "P50Ms": 6.286708,
+              "P95Ms": 54.442875,
+              "P99Ms": 63.643167,
+              "Errors": {}
+            }
+          }
+        }
+      ],
+      "startedAt": "2026-09-15T02:22:31.692339Z",
+      "logErrors": [
+        {
+          "case": "unlimited_shared/100",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 1,
+          "firstAt": "2026-09-15T02:22:36.455519Z",
+          "lastAt": "2026-09-15T02:22:36.455519Z"
+        },
+        {
+          "case": "limited_shared/100",
+          "message": "failed to rollback transaction: failed to deallocate cached statement(s): conn closed",
+          "error": "",
+          "count": 2,
+          "firstAt": "2026-09-15T02:22:53.840772Z",
+          "lastAt": "2026-09-15T02:22:53.840772Z"
+        }
+      ]
+    }
+  ]
+}
