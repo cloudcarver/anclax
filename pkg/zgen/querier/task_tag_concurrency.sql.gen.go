@@ -61,7 +61,7 @@ func (q *Queries) MaintainTaskConcurrency(ctx context.Context, legacyTtlMs int64
 }
 
 const removeTaskTagConcurrencyLimit = `-- name: RemoveTaskTagConcurrencyLimit :exec
-UPDATE anclax.task_tag_concurrency SET max_concurrency = NULL WHERE tag = $1
+UPDATE anclax.task_tag_limits SET max_concurrency = NULL WHERE tag = $1
 `
 
 func (q *Queries) RemoveTaskTagConcurrencyLimit(ctx context.Context, tag string) error {
@@ -70,7 +70,7 @@ func (q *Queries) RemoveTaskTagConcurrencyLimit(ctx context.Context, tag string)
 }
 
 const setTaskTagConcurrencyLimit = `-- name: SetTaskTagConcurrencyLimit :exec
-INSERT INTO anclax.task_tag_concurrency (tag, max_concurrency)
+INSERT INTO anclax.task_tag_limits (tag, max_concurrency)
 VALUES ($1, $2::int)
 ON CONFLICT (tag) DO UPDATE SET max_concurrency = EXCLUDED.max_concurrency
 `

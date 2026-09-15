@@ -78,28 +78,26 @@ type AnclaxRoleAccessRule struct {
 }
 
 type AnclaxTask struct {
-	ID                 int32
-	Attributes         apigen.TaskAttributes
-	Spec               apigen.TaskSpec
-	Status             string
-	UniqueTag          *string
-	StartedAt          *time.Time
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
-	Attempts           int32
-	LockedAt           *time.Time
-	WorkerID           uuid.NullUUID
-	SerialKey          *string
-	SerialID           *int32
-	Priority           int32
-	Weight             int32
-	ParentTaskID       *int32
-	LeaseVersion       int64
-	LeaseExpiresAt     *time.Time
-	LeaseDurationMs    *int64
-	ConcurrencyWaitTag *string
-	ConcurrencyRetryAt *time.Time
-	LeaseTags          []string
+	ID              int32
+	Attributes      apigen.TaskAttributes
+	Spec            apigen.TaskSpec
+	Status          string
+	UniqueTag       *string
+	StartedAt       *time.Time
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	Attempts        int32
+	LockedAt        *time.Time
+	WorkerID        uuid.NullUUID
+	SerialKey       *string
+	SerialID        *int32
+	Priority        int32
+	Weight          int32
+	ParentTaskID    *int32
+	LeaseVersion    int64
+	LeaseExpiresAt  *time.Time
+	LeaseDurationMs *int64
+	LeaseTags       []string
 }
 
 type AnclaxTaskTag struct {
@@ -113,10 +111,23 @@ type AnclaxTaskTagConcurrency struct {
 	InUse          int32
 }
 
+type AnclaxTaskTagLimit struct {
+	Tag            string
+	MaxConcurrency *int32
+}
+
 type AnclaxTaskTagPermit struct {
-	TaskID       int32
-	LeaseVersion int64
+	TaskID       *int32
+	LeaseVersion *int64
 	Tag          string
+}
+
+type AnclaxTaskTagSlot struct {
+	Tag          string
+	SlotNo       int32
+	Retired      bool
+	TaskID       *int32
+	LeaseVersion *int64
 }
 
 type AnclaxUser struct {

@@ -33,7 +33,7 @@ func installTagConcurrencyAudit(ctx context.Context, inspector *Inspector) error
 		}
 	}
 	// Persist every admission observation across Postgres and worker restarts.
-	// Sampling the live counter alone could miss brief oversubscription.
+	// Sampling live occupancy alone could miss brief oversubscription.
 	_, err := inspector.pool.Exec(ctx, `
         CREATE TABLE anclax.chaos_tag_admissions (
             tag text NOT NULL, in_use int NOT NULL, max_concurrency int,
@@ -41,14 +41,16 @@ func installTagConcurrencyAudit(ctx context.Context, inspector *Inspector) error
         );
         CREATE FUNCTION anclax.chaos_record_tag_admission() RETURNS TRIGGER LANGUAGE plpgsql AS $$
         BEGIN
-            IF NEW.tag LIKE 'chaos:concurrency:%' AND NEW.in_use > OLD.in_use THEN
+            IF NEW.tag LIKE 'chaos:concurrency:%' AND NEW.task_id IS NOT NULL AND OLD.task_id IS NULL THEN
                 INSERT INTO anclax.chaos_tag_admissions(tag, in_use, max_concurrency, permits)
-                SELECT NEW.tag, NEW.in_use, NEW.max_concurrency, count(*)
+                SELECT NEW.tag,count(*),(SELECT max_concurrency FROM anclax.task_tag_limits WHERE tag=NEW.tag),count(*)
                 FROM anclax.task_tag_permits WHERE tag = NEW.tag;
+                IF NEW.retired OR NEW.slot_no > (SELECT max_concurrency FROM anclax.task_tag_limits WHERE tag=NEW.tag)
+                THEN RAISE EXCEPTION 'allocated retired/out-of-range slot'; END IF;
             END IF;
             RETURN NEW;
         END $$;
-        CREATE TRIGGER chaos_record_tag_admission AFTER UPDATE OF in_use ON anclax.task_tag_concurrency
+        CREATE TRIGGER chaos_record_tag_admission AFTER UPDATE OF task_id ON anclax.task_tag_slots
         FOR EACH ROW EXECUTE FUNCTION anclax.chaos_record_tag_admission();
     `)
 	return err
@@ -91,6 +93,15 @@ func checkTagConcurrencyAudit(ctx context.Context, inspector *Inspector, report 
 		}
 		if mismatches != 0 {
 			return fmt.Errorf("tag counters drifted: %d mismatches", mismatches)
+		}
+		var invalidOwners int64
+		if err := inspector.pool.QueryRow(ctx, `SELECT count(*) FROM anclax.task_tag_slots s
+            LEFT JOIN anclax.tasks t ON t.id=s.task_id WHERE s.task_id IS NOT NULL AND
+            (t.id IS NULL OR t.locked_at IS NULL OR s.lease_version>t.lease_version OR NOT s.tag=ANY(t.lease_tags))`).Scan(&invalidOwners); err != nil {
+			return err
+		}
+		if invalidOwners != 0 {
+			return fmt.Errorf("slot owner/attempt mismatch: %d", invalidOwners)
 		}
 		if remaining == 0 {
 			break

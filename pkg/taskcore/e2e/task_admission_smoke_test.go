@@ -51,7 +51,7 @@ func TestTaskAdmissionSmoke(t *testing.T) {
 			for _, isolation := range []pgx.TxIsoLevel{pgx.RepeatableRead, pgx.Serializable} {
 				for _, query := range []string{
 					"SELECT anclax.try_admit_task_tags($1)",
-					"INSERT INTO anclax.task_tag_concurrency(tag,max_concurrency) VALUES ('isolation',$1)",
+					"INSERT INTO anclax.task_tag_limits(tag,max_concurrency) VALUES ('isolation',$1)",
 				} {
 					tx, err := conn.BeginTx(ctx, pgx.TxOptions{IsoLevel: isolation})
 					require.NoError(t, err)
@@ -162,13 +162,13 @@ func TestTaskAdmissionSmoke(t *testing.T) {
 
 		t.Run("rejected_candidate_releases_partial_guards", func(t *testing.T) {
 			reset(t)
-			limit(t, "a", 2)
-			limit(t, "z", 2)
+			limit(t, "a", 1)
+			limit(t, "z", 1)
 			id := enqueue(t, `["a","z"]`)
 			blocker, err := conn.Begin(ctx)
 			require.NoError(t, err)
 			defer blocker.Rollback(ctx)
-			_, err = blocker.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended('anclax:task-tag:z',0))")
+			_, err = blocker.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended('anclax:task-slot:z:1',0))")
 			require.NoError(t, err)
 			claimant, err := pgx.Connect(ctx, smokePostgresDSN())
 			require.NoError(t, err)
@@ -179,36 +179,34 @@ func TestTaskAdmissionSmoke(t *testing.T) {
 			var admitted, acquired bool
 			require.NoError(t, tx.QueryRow(ctx, "SELECT anclax.try_admit_task_tags($1)", id).Scan(&admitted))
 			require.False(t, admitted)
-			require.NoError(t, blocker.QueryRow(ctx, "SELECT pg_try_advisory_xact_lock(hashtextextended('anclax:task-tag:a',0))").Scan(&acquired))
+			require.NoError(t, blocker.QueryRow(ctx, "SELECT pg_try_advisory_xact_lock(hashtextextended('anclax:task-slot:a:1',0))").Scan(&acquired))
 			require.True(t, acquired, "the rejected candidate must not retain its earlier tag guard")
 		})
 
-		t.Run("claim_skips_tag_with_uncommitted_updated_counter_tuple", func(t *testing.T) {
+		t.Run("uncommitted_release_does_not_block_another_slot_or_require_wakeup", func(t *testing.T) {
 			reset(t)
 			limit(t, "shared", 2)
 			p := port(t)
 			first, err := p.ClaimByID(ctx, enqueue(t, `["shared"]`), worker.ClaimRequest{})
 			require.NoError(t, err)
 			second := enqueue(t, `["shared"]`)
+			third := enqueue(t, `["shared"]`)
 			finalizer, err := conn.Begin(ctx)
 			require.NoError(t, err)
 			defer finalizer.Rollback(ctx)
-			_, err = finalizer.Exec(ctx, `UPDATE anclax.tasks SET locked_at=NULL,
-				lease_expires_at=NULL,lease_duration_ms=NULL,status='completed' WHERE id=$1`, first.ID)
+			_, err = finalizer.Exec(ctx, `UPDATE anclax.tasks SET locked_at=NULL,lease_expires_at=NULL,lease_duration_ms=NULL,status='completed' WHERE id=$1`, first.ID)
 			require.NoError(t, err)
-			// The finalizer owns a newly updated counter tuple and its guard.
-			// Admission must reject immediately, without following/waiting on
-			// that tuple version while it already holds the second task's row.
 			claimCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 			defer cancel()
-			_, err = p.ClaimByID(claimCtx, second, worker.ClaimRequest{})
+			task, err := p.ClaimByID(claimCtx, second, worker.ClaimRequest{})
+			require.NoError(t, err, "another free slot must remain usable while release holds its updated tuple")
+			_, err = p.ClaimByID(ctx, third, worker.ClaimRequest{})
 			require.ErrorIs(t, err, worker.ErrNoTask)
-			require.NoError(t, claimCtx.Err())
 			require.NoError(t, finalizer.Commit(ctx))
-			require.NoError(t, m.MaintainTaskConcurrency(ctx, 9000))
-			task, err := p.ClaimByID(ctx, second, worker.ClaimRequest{})
-			require.NoError(t, err)
+			next, err := p.ClaimByID(ctx, third, worker.ClaimRequest{})
+			require.NoError(t, err, "committed release is usable immediately without maintenance")
 			require.NoError(t, p.FinalizeTask(ctx, *task, nil))
+			require.NoError(t, p.FinalizeTask(ctx, *next, nil))
 			count(t, "SELECT count(*) FROM anclax.task_tag_permits", 0)
 		})
 
@@ -340,8 +338,20 @@ func TestTaskAdmissionSmoke(t *testing.T) {
 			blocker, err := conn.Begin(ctx)
 			require.NoError(t, err)
 			defer blocker.Rollback(ctx)
-			_, err = blocker.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended('anclax:task-tag:busy',0))")
+			_, err = blocker.Exec(ctx, "SELECT pg_advisory_xact_lock(42424201)")
 			require.NoError(t, err)
+			injector, err := pgx.Connect(ctx, smokePostgresDSN())
+			require.NoError(t, err)
+			defer injector.Close(ctx)
+			_, err = injector.Exec(ctx, `CREATE FUNCTION anclax.inject_finalize_retry() RETURNS TRIGGER LANGUAGE plpgsql AS $$ BEGIN
+                IF NEW.locked_at IS NULL AND OLD.locked_at IS NOT NULL AND NOT pg_try_advisory_xact_lock(42424201)
+                THEN RAISE EXCEPTION 'injected rollback' USING ERRCODE='55P03'; END IF; RETURN NEW; END $$;
+                CREATE TRIGGER inject_finalize_retry BEFORE UPDATE OF locked_at ON anclax.tasks FOR EACH ROW EXECUTE FUNCTION anclax.inject_finalize_retry()`)
+			require.NoError(t, err)
+			defer func() {
+				_, e := injector.Exec(ctx, "DROP TRIGGER inject_finalize_retry ON anclax.tasks; DROP FUNCTION anclax.inject_finalize_retry()")
+				require.NoError(t, e)
+			}()
 			result := make(chan error, 1)
 			go func() { result <- p.FinalizeTask(ctx, *task, nil) }()
 			time.Sleep(900 * time.Millisecond)

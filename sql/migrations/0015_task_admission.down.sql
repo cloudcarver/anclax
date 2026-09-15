@@ -1,9 +1,80 @@
 BEGIN;
-DROP TRIGGER lock_task_tag_configuration ON anclax.task_tag_concurrency;
+DROP TRIGGER lock_task_tag_configuration ON anclax.task_tag_limits;
+DROP TRIGGER task_tag_limit_changed ON anclax.task_tag_limits;
+DROP VIEW anclax.task_tag_concurrency;
+DROP VIEW anclax.task_tag_permits;
+CREATE TABLE anclax.task_tag_permits (
+    task_id INT NOT NULL REFERENCES anclax.tasks(id) ON DELETE CASCADE,
+    lease_version BIGINT NOT NULL,
+    tag TEXT NOT NULL REFERENCES anclax.task_tag_limits(tag),
+    PRIMARY KEY(task_id,lease_version,tag)
+);
+CREATE INDEX idx_task_tag_permits_tag ON anclax.task_tag_permits(tag,task_id);
+INSERT INTO anclax.task_tag_permits SELECT task_id,lease_version,tag FROM anclax.task_tag_slots WHERE task_id IS NOT NULL;
+DROP TABLE anclax.task_tag_slots;
+DROP FUNCTION anclax.try_task_tag_slot(TEXT,INT,BIGINT);
+ALTER TABLE anclax.task_tag_limits RENAME TO task_tag_concurrency;
+ALTER TABLE anclax.task_tag_concurrency ADD COLUMN in_use INT NOT NULL DEFAULT 0 CHECK(in_use>=0);
+DROP INDEX anclax.idx_tasks_pending_priority_created;
+DROP INDEX anclax.idx_tasks_pending_weight_created;
+ALTER TABLE anclax.tasks ADD COLUMN concurrency_wait_tag TEXT, ADD COLUMN concurrency_retry_at TIMESTAMPTZ;
+CREATE INDEX idx_tasks_pending_priority_created
+    ON anclax.tasks (priority DESC, created_at, id)
+    WHERE status = 'pending' AND concurrency_wait_tag IS NULL;
+CREATE INDEX idx_tasks_pending_weight_created
+    ON anclax.tasks (weight DESC, created_at, id)
+    WHERE status = 'pending' AND priority = 0 AND concurrency_wait_tag IS NULL;
+CREATE INDEX idx_tasks_concurrency_wait_tag
+    ON anclax.tasks (concurrency_wait_tag, COALESCE(started_at, '-infinity'::timestamptz), priority DESC, created_at, id)
+    WHERE status = 'pending' AND concurrency_wait_tag IS NOT NULL;
+CREATE INDEX idx_tasks_concurrency_retry
+    ON anclax.tasks (concurrency_retry_at, id)
+    WHERE status = 'pending' AND concurrency_wait_tag IS NOT NULL;
+
+CREATE FUNCTION anclax.classify_task_tag_wait() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP = 'UPDATE' AND NEW.attributes->'tags' IS NOT DISTINCT FROM OLD.attributes->'tags'
+       AND NEW.spec->>'type' IS NOT DISTINCT FROM OLD.spec->>'type' THEN
+        RETURN NEW;
+    END IF;
+    NEW.concurrency_wait_tag := NULL;
+    NEW.concurrency_retry_at := NULL;
+    IF NEW.status = 'pending' AND NEW.locked_at IS NULL AND NEW.spec->>'type' NOT IN ('broadcastUpdateWorkerRuntimeConfig', 'applyWorkerRuntimeConfigToWorker', 'broadcastCancelTask', 'cancelTaskOnWorker', 'broadcastPauseTask', 'pauseTaskOnWorker') THEN
+        SELECT c.tag INTO NEW.concurrency_wait_tag
+        FROM anclax.task_tag_concurrency c
+        JOIN jsonb_array_elements_text(COALESCE(NULLIF(NEW.attributes->'tags', 'null'::jsonb), '[]'::jsonb)) AS tags(tag) ON tags.tag = c.tag
+        WHERE c.in_use >= c.max_concurrency ORDER BY c.tag LIMIT 1;
+        IF NEW.concurrency_wait_tag IS NOT NULL THEN
+            NEW.concurrency_retry_at := statement_timestamp() + interval '5 seconds';
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE FUNCTION anclax.wake_task_tag_waiters(p_tag TEXT, p_skip_task_id INT DEFAULT NULL) RETURNS VOID LANGUAGE plpgsql AS $$
+DECLARE
+    available INT;
+BEGIN
+    SELECT CASE WHEN max_concurrency IS NULL THEN 64 ELSE LEAST(64, GREATEST(max_concurrency - in_use, 0)) END
+    INTO available FROM anclax.task_tag_concurrency WHERE tag = p_tag;
+    WITH waiters AS (
+        SELECT id FROM anclax.tasks
+        WHERE concurrency_wait_tag = p_tag AND status = 'pending'
+          AND id IS DISTINCT FROM p_skip_task_id
+          AND COALESCE(started_at, '-infinity'::timestamptz) <= statement_timestamp()
+        ORDER BY COALESCE(started_at, '-infinity'::timestamptz), priority DESC, created_at, id
+        LIMIT available FOR UPDATE SKIP LOCKED
+    )
+    UPDATE anclax.tasks t SET concurrency_wait_tag = NULL, concurrency_retry_at = NULL
+    FROM waiters w WHERE t.id = w.id;
+END;
+$$;
+CREATE TRIGGER classify_task_tag_wait BEFORE INSERT OR UPDATE OF attributes,spec ON anclax.tasks
+FOR EACH ROW EXECUTE FUNCTION anclax.classify_task_tag_wait();
 DROP FUNCTION anclax.lock_task_tag_configuration();
 DROP TRIGGER snapshot_task_lease_tags ON anclax.tasks;
 DROP FUNCTION anclax.snapshot_task_lease_tags();
-DROP TRIGGER task_tag_limit_changed ON anclax.task_tag_concurrency;
 -- Restore v1.4 accounting before restoring its trigger implementations.
 INSERT INTO anclax.task_tag_concurrency(tag)
 SELECT tag FROM anclax.task_tags UNION SELECT unnest(lease_tags) FROM anclax.tasks

@@ -4,9 +4,7 @@ package taskcoree2e_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -221,8 +219,7 @@ func TestTaskTagConcurrencySmoke(t *testing.T) {
 			require.NoError(t, p.FinalizeTask(ctx, *a, nil))
 			row, err = m.GetTaskByID(ctx, id)
 			require.NoError(t, err)
-			require.NotNil(t, row.ConcurrencyWaitTag, "release leaves task wakeups to maintenance")
-			require.NoError(t, m.MaintainTaskConcurrency(ctx, 9000))
+			require.Nil(t, row.LockedAt, "release permits immediate admission without maintenance")
 			both := claim(t, p, id)
 			usage(t, "a", 1)
 			usage(t, "b", 1)
@@ -248,7 +245,7 @@ func TestTaskTagConcurrencySmoke(t *testing.T) {
 			require.NoError(t, control.RemoveTagConcurrencyLimit(ctx, "tenant:1"))
 			row, err := m.GetTaskByID(ctx, id)
 			require.NoError(t, err)
-			require.Nil(t, row.ConcurrencyWaitTag)
+			require.Nil(t, row.LockedAt)
 			third := claim(t, p, id)
 			require.NoError(t, control.SetTagConcurrencyLimit(ctx, "tenant:1", 1))
 			blocked(t, p, enqueue(t, "tenant:1"))
@@ -385,7 +382,7 @@ func TestTaskTagConcurrencySmoke(t *testing.T) {
 			p := port(t, 9*time.Second)
 			for _, taskType := range []string{"broadcastUpdateWorkerRuntimeConfig", "applyWorkerRuntimeConfigToWorker", "broadcastCancelTask", "cancelTaskOnWorker", "broadcastPauseTask", "pauseTaskOnWorker"} {
 				id := enqueue(t, "a")
-				_, err := conn.Exec(ctx, "UPDATE anclax.tasks SET spec = jsonb_set(spec, '{type}', to_jsonb($2::text)), concurrency_wait_tag = NULL WHERE id = $1", id, taskType)
+				_, err := conn.Exec(ctx, "UPDATE anclax.tasks SET spec = jsonb_set(spec, '{type}', to_jsonb($2::text)) WHERE id = $1", id, taskType)
 				require.NoError(t, err)
 				task, err := p.ClaimControl(ctx, worker.ClaimRequest{})
 				require.NoError(t, err)
@@ -428,13 +425,17 @@ func TestTaskTagConcurrencySmoke(t *testing.T) {
 			// Inspect every counter increment, rather than sampling and missing
 			// short-lived oversubscription. This assertion exists only in tests.
 			_, err := conn.Exec(ctx, `CREATE FUNCTION anclax.assert_tag_capacity() RETURNS TRIGGER LANGUAGE plpgsql AS $$ BEGIN
-                IF NEW.in_use > OLD.in_use AND NEW.in_use > NEW.max_concurrency THEN RAISE EXCEPTION 'tag capacity exceeded: %', NEW.tag; END IF;
-                IF NEW.in_use <> (SELECT count(*) FROM anclax.task_tag_permits WHERE tag = NEW.tag) THEN RAISE EXCEPTION 'tag counter drift: %', NEW.tag; END IF;
+                IF NEW.task_id IS NOT NULL AND OLD.task_id IS NULL THEN
+                    IF NEW.retired OR NEW.slot_no > (SELECT max_concurrency FROM anclax.task_tag_limits WHERE tag=NEW.tag)
+                    THEN RAISE EXCEPTION 'non-allocatable slot: %',NEW.tag; END IF;
+                    IF (SELECT count(*) FROM anclax.task_tag_permits WHERE tag=NEW.tag) > (SELECT max_concurrency FROM anclax.task_tag_limits WHERE tag=NEW.tag)
+                    THEN RAISE EXCEPTION 'tag capacity exceeded: %',NEW.tag; END IF;
+                END IF;
                 RETURN NEW; END $$;
-                CREATE TRIGGER assert_tag_capacity AFTER UPDATE OF in_use ON anclax.task_tag_concurrency FOR EACH ROW EXECUTE FUNCTION anclax.assert_tag_capacity();`)
+                CREATE TRIGGER assert_tag_capacity AFTER UPDATE OF task_id ON anclax.task_tag_slots FOR EACH ROW EXECUTE FUNCTION anclax.assert_tag_capacity();`)
 			require.NoError(t, err)
 			defer func() {
-				_, err := conn.Exec(ctx, "DROP TRIGGER assert_tag_capacity ON anclax.task_tag_concurrency; DROP FUNCTION anclax.assert_tag_capacity()")
+				_, err := conn.Exec(ctx, "DROP TRIGGER assert_tag_capacity ON anclax.task_tag_slots; DROP FUNCTION anclax.assert_tag_capacity()")
 				require.NoError(t, err)
 			}()
 			const count = 96
@@ -505,59 +506,30 @@ func TestTaskTagConcurrencySmoke(t *testing.T) {
 			}
 		})
 
-		t.Run("bounded_candidates_indexed_waiters_and_fallback", func(t *testing.T) {
+		t.Run("current_capacity_filters_full_tag_backlog_without_waiter_writes", func(t *testing.T) {
 			reset(t)
-			// Existing backlog is visited in bounded batches when a new rule
-			// blocks it. New arrivals are parked directly at enqueue time.
-			for i := 0; i < 70; i++ {
-				enqueue(t, "hot")
-			}
 			require.NoError(t, control.SetTagConcurrencyLimit(ctx, "hot", 0))
+			_, err := conn.Exec(ctx, `INSERT INTO anclax.tasks(attributes,spec,status)
+                SELECT '{"tags":["hot","kind:a"]}','{"type":"tag-probe","payload":{}}','pending' FROM generate_series(1,20070)`)
+			require.NoError(t, err)
 			cold := enqueue(t, "cold")
 			p := port(t, 9*time.Second)
-			for _, want := range []int{32, 64} {
-				_, err := p.ClaimNormalByGroup(ctx, worker.ClaimNormalRequest{Group: worker.DefaultWeightGroup})
-				require.ErrorIs(t, err, worker.ErrNoTask)
-				var waiting int
-				require.NoError(t, conn.QueryRow(ctx, "SELECT count(*) FROM anclax.tasks WHERE concurrency_wait_tag = 'hot'").Scan(&waiting))
-				require.Equal(t, want, waiting)
-			}
+			start := time.Now()
 			task, err := p.ClaimNormalByGroup(ctx, worker.ClaimNormalRequest{Group: worker.DefaultWeightGroup})
 			require.NoError(t, err)
 			require.Equal(t, cold, task.ID)
+			t.Logf("20070 full-tag candidates, one unlimited task: %s", time.Since(start))
 			require.NoError(t, p.FinalizeTask(ctx, *task, nil))
-			_, err = conn.Exec(ctx, `INSERT INTO anclax.tasks(attributes,spec,status)
-                SELECT '{"tags":["hot","kind:a"]}', '{"type":"tag-probe","payload":{}}', 'pending' FROM generate_series(1,20000)`)
-			require.NoError(t, err)
-			cold = enqueue(t, "cold")
-			_, err = conn.Exec(ctx, "ANALYZE anclax.tasks")
-			require.NoError(t, err)
-			var plan json.RawMessage
-			require.NoError(t, conn.QueryRow(ctx, `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
-                SELECT id FROM anclax.tasks WHERE status='pending' AND concurrency_wait_tag IS NULL
-                ORDER BY priority DESC, created_at, id LIMIT 32 FOR UPDATE SKIP LOCKED`).Scan(&plan))
-			require.True(t, strings.Contains(string(plan), "idx_tasks_pending_priority_created"), string(plan))
-			start := time.Now()
-			task, err = p.ClaimNormalByGroup(ctx, worker.ClaimNormalRequest{Group: worker.DefaultWeightGroup})
-			require.NoError(t, err)
-			require.Equal(t, cold, task.ID)
-			t.Logf("20,070 parked tasks, 1 ready task: claim=%s; ready-index plan=%s", time.Since(start), plan)
-			require.NoError(t, p.FinalizeTask(ctx, *task, nil))
-			// A wakeup missed because the task was locked must eventually
-			// recover via the retry index, without changing business started_at.
-			_, err = conn.Exec(ctx, "UPDATE anclax.tasks SET concurrency_retry_at = statement_timestamp() - interval '1 second' WHERE concurrency_wait_tag IS NOT NULL")
-			require.NoError(t, err)
-			require.NoError(t, m.MaintainTaskConcurrency(ctx, 9000))
-			var ready int
-			require.NoError(t, conn.QueryRow(ctx, "SELECT count(*) FROM anclax.tasks WHERE status='pending' AND concurrency_wait_tag IS NULL").Scan(&ready))
-			require.Zero(t, ready, "full tags must stay out of the ready index during fallback")
+			var attempts int
+			require.NoError(t, conn.QueryRow(ctx, "SELECT sum(attempts) FROM anclax.tasks WHERE attributes->'tags' ? 'hot'").Scan(&attempts))
+			require.Zero(t, attempts)
 			require.NoError(t, control.SetTagConcurrencyLimit(ctx, "hot", 64))
-			// Model missed notifications by re-parking the awakened rows.
-			_, err = conn.Exec(ctx, "UPDATE anclax.tasks SET concurrency_wait_tag = 'hot', concurrency_retry_at = statement_timestamp() - interval '1 second' WHERE status='pending'")
+			tasks, err := p.ClaimBatch(ctx, worker.ClaimBatchRequest{BatchSize: 32, Groups: []string{worker.DefaultWeightGroup}})
 			require.NoError(t, err)
-			require.NoError(t, m.MaintainTaskConcurrency(ctx, 9000))
-			require.NoError(t, conn.QueryRow(ctx, "SELECT count(*) FROM anclax.tasks WHERE status='pending' AND concurrency_wait_tag IS NULL").Scan(&ready))
-			require.Equal(t, 64, ready)
+			require.Len(t, tasks, 32, "new capacity is usable without a maintenance/wakeup pass")
+			for _, task := range tasks {
+				require.NoError(t, p.FinalizeTask(ctx, *task, nil))
+			}
 		})
 	})
 }

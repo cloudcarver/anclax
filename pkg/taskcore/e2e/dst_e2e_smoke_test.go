@@ -124,7 +124,7 @@ func resetDSTState(ctx context.Context, m model.ModelInterface) error {
 				anclax.tasks,
 				anclax.workers,
 				anclax.worker_runtime_configs,
-				anclax.task_tag_concurrency
+				anclax.task_tag_limits
 			RESTART IDENTITY CASCADE
 		`)
 		return err

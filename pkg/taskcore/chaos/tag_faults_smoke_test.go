@@ -48,7 +48,11 @@ func runTagConcurrencyFaultScenarios(t *testing.T, ctx context.Context, h *Harne
 		t.Helper()
 		require.Eventually(t, func() bool {
 			r, err := q.GetTaskByID(ctx, id)
-			return err == nil && r.ConcurrencyWaitTag != nil && *r.ConcurrencyWaitTag == tag && r.LockedAt == nil
+			if err != nil || r.Status != "pending" || r.Attempts != attempts || r.LockedAt != nil {
+				return false
+			}
+			capacity, err := q.GetTaskTagConcurrency(ctx, tag)
+			return err == nil && capacity.MaxConcurrency != nil && capacity.InUse >= *capacity.MaxConcurrency
 		}, 10*time.Second, 20*time.Millisecond, "task %d never waited for %s", id, tag)
 		r := row(t, id)
 		require.Equal(t, attempts, r.Attempts)

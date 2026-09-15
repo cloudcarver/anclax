@@ -9,15 +9,68 @@ UPDATE anclax.tasks t SET lease_tags = COALESCE(
     ARRAY(SELECT DISTINCT tag FROM jsonb_array_elements_text(COALESCE(NULLIF(t.attributes->'tags', 'null'::jsonb), '[]'::jsonb)) AS tags(tag) ORDER BY tag))
 WHERE t.locked_at IS NOT NULL
   AND t.spec->>'type' NOT IN ('broadcastUpdateWorkerRuntimeConfig', 'applyWorkerRuntimeConfigToWorker', 'broadcastCancelTask', 'cancelTaskOnWorker', 'broadcastPauseTask', 'pauseTaskOnWorker');
+
+-- Configuration remains a rare, serialized control-plane operation. Task paths
+-- never update a shared tag counter. These views retain read-side diagnostics.
+DROP TRIGGER task_tag_limit_changed ON anclax.task_tag_concurrency;
+DROP TRIGGER classify_task_tag_wait ON anclax.tasks;
+DROP FUNCTION anclax.classify_task_tag_wait();
+DROP FUNCTION anclax.wake_task_tag_waiters(TEXT, INT);
 ALTER TABLE anclax.task_tags DROP CONSTRAINT task_tags_tag_fkey;
-DELETE FROM anclax.task_tag_permits p USING anclax.task_tag_concurrency c
-WHERE p.tag = c.tag AND c.max_concurrency IS NULL;
-DELETE FROM anclax.task_tag_concurrency WHERE max_concurrency IS NULL;
--- v14 could park a task on an unlimited tag solely because its counter row
--- was busy. Its registry row is gone now, so maintenance cannot find it.
-UPDATE anclax.tasks t SET concurrency_wait_tag = NULL, concurrency_retry_at = NULL
-WHERE t.concurrency_wait_tag IS NOT NULL AND NOT EXISTS (
-    SELECT 1 FROM anclax.task_tag_concurrency c WHERE c.tag = t.concurrency_wait_tag);
+ALTER TABLE anclax.task_tag_permits RENAME TO task_tag_permits_v14;
+ALTER TABLE anclax.task_tag_concurrency RENAME TO task_tag_limits;
+ALTER TABLE anclax.task_tag_limits DROP COLUMN in_use;
+
+CREATE TABLE anclax.task_tag_slots (
+    tag TEXT NOT NULL REFERENCES anclax.task_tag_limits(tag) ON DELETE CASCADE,
+    slot_no INT NOT NULL CHECK (slot_no > 0),
+    retired BOOLEAN NOT NULL DEFAULT FALSE,
+    task_id INT REFERENCES anclax.tasks(id),
+    lease_version BIGINT,
+    PRIMARY KEY (tag, slot_no),
+    CHECK ((task_id IS NULL) = (lease_version IS NULL))
+);
+CREATE UNIQUE INDEX idx_task_tag_slots_owner ON anclax.task_tag_slots (task_id, tag)
+    WHERE task_id IS NOT NULL;
+CREATE INDEX idx_task_tag_slots_free ON anclax.task_tag_slots (tag, slot_no)
+    WHERE task_id IS NULL AND NOT retired;
+CREATE INDEX idx_task_tag_slots_overflow ON anclax.task_tag_slots (tag)
+    WHERE task_id IS NOT NULL AND retired;
+
+-- Pack existing owners before free slots. Overflow survives a newly imposed
+-- lower quota, but is never an allocatable slot.
+WITH owners AS (
+    SELECT p.tag, p.task_id, p.lease_version,
+           row_number() OVER (PARTITION BY p.tag ORDER BY p.task_id)::int AS slot_no
+    FROM anclax.task_tag_permits_v14 p JOIN anclax.task_tag_limits c USING(tag)
+    WHERE c.max_concurrency IS NOT NULL
+), sizes AS (
+    SELECT c.tag, c.max_concurrency, GREATEST(c.max_concurrency,
+        (SELECT count(*)::int FROM owners o WHERE o.tag=c.tag)) AS n
+    FROM anclax.task_tag_limits c WHERE c.max_concurrency IS NOT NULL
+)
+INSERT INTO anclax.task_tag_slots(tag,slot_no,retired,task_id,lease_version)
+SELECT c.tag,seq.slot_no,seq.slot_no>c.max_concurrency,o.task_id,o.lease_version
+FROM sizes c CROSS JOIN LATERAL generate_series(1,c.n) AS seq(slot_no)
+LEFT JOIN owners o ON o.tag=c.tag AND o.slot_no=seq.slot_no;
+DROP TABLE anclax.task_tag_permits_v14;
+DELETE FROM anclax.task_tag_limits WHERE max_concurrency IS NULL;
+
+CREATE VIEW anclax.task_tag_permits AS
+SELECT task_id, lease_version, tag FROM anclax.task_tag_slots WHERE task_id IS NOT NULL;
+CREATE VIEW anclax.task_tag_concurrency AS
+SELECT c.tag, c.max_concurrency,
+    (SELECT count(*)::int FROM anclax.task_tag_slots s WHERE s.tag=c.tag AND s.task_id IS NOT NULL) AS in_use
+FROM anclax.task_tag_limits c;
+
+-- Availability is read from slots, never copied into persistent task state.
+DROP INDEX anclax.idx_tasks_pending_priority_created;
+DROP INDEX anclax.idx_tasks_pending_weight_created;
+ALTER TABLE anclax.tasks DROP COLUMN concurrency_wait_tag, DROP COLUMN concurrency_retry_at;
+CREATE INDEX idx_tasks_pending_priority_created ON anclax.tasks(priority DESC,created_at,id)
+    WHERE status='pending';
+CREATE INDEX idx_tasks_pending_weight_created ON anclax.tasks(weight DESC,created_at,id)
+    WHERE status='pending' AND priority=0;
 
 CREATE INDEX idx_tasks_serial_leased ON anclax.tasks (serial_key)
     INCLUDE (lease_expires_at, locked_at)
@@ -26,6 +79,7 @@ CREATE INDEX idx_tasks_serial_pending_head ON anclax.tasks
     (serial_key, (serial_id IS NULL), (COALESCE(serial_id, 2147483647)), created_at,
      (COALESCE(started_at, '-infinity'::timestamptz)), id)
     WHERE status = 'pending' AND serial_key IS NOT NULL;
+
 
 CREATE FUNCTION anclax.snapshot_task_lease_tags() RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
@@ -39,14 +93,10 @@ BEGIN
     RETURN NEW;
 END;
 $$;
+
 CREATE TRIGGER snapshot_task_lease_tags BEFORE INSERT OR UPDATE OF locked_at ON anclax.tasks
 FOR EACH ROW EXECUTE FUNCTION anclax.snapshot_task_lease_tags();
 
--- Take the table lock BEFORE any configuration row is locked (statement
--- trigger, including INSERT ... ON CONFLICT). EXCLUSIVE also conflicts with
--- SELECT FOR UPDATE, so admission/expiry/finalize cannot straddle the backfill.
--- Counter-only UPDATEs do not run this trigger. This is configuration-time
--- synchronization, not a lock acquired by ordinary task transactions.
 CREATE FUNCTION anclax.lock_task_tag_configuration() RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
     IF current_setting('transaction_isolation') NOT IN ('read committed', 'read uncommitted') THEN
@@ -56,31 +106,29 @@ BEGIN
     RETURN NULL;
 END;
 $$;
-CREATE TRIGGER lock_task_tag_configuration BEFORE INSERT OR UPDATE OF max_concurrency OR DELETE
-ON anclax.task_tag_concurrency FOR EACH STATEMENT EXECUTE FUNCTION anclax.lock_task_tag_configuration();
+
+CREATE TRIGGER lock_task_tag_configuration BEFORE INSERT OR UPDATE OR DELETE
+ON anclax.task_tag_limits FOR EACH STATEMENT EXECUTE FUNCTION anclax.lock_task_tag_configuration();
 
 CREATE OR REPLACE FUNCTION anclax.task_tag_limit_changed() RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
-    IF NEW.max_concurrency IS NULL THEN
-        DELETE FROM anclax.task_tag_permits WHERE tag = NEW.tag;
-        UPDATE anclax.task_tag_concurrency SET in_use = 0 WHERE tag = NEW.tag;
-    ELSIF TG_OP = 'INSERT' OR OLD.max_concurrency IS NULL THEN
-        INSERT INTO anclax.task_tag_permits (task_id, lease_version, tag)
-        SELECT id, lease_version, NEW.tag FROM anclax.tasks
-        WHERE locked_at IS NOT NULL AND NEW.tag = ANY(lease_tags)
-        ON CONFLICT DO NOTHING;
-        UPDATE anclax.task_tag_concurrency SET in_use =
-            (SELECT count(*)::int FROM anclax.task_tag_permits WHERE tag = NEW.tag)
-        WHERE tag = NEW.tag;
+    -- Rebuild from the durable attempt snapshot while the before-statement
+    -- task-table barrier excludes every claim, release and renewal transaction.
+    DELETE FROM anclax.task_tag_slots WHERE tag=NEW.tag;
+    IF NEW.max_concurrency IS NOT NULL THEN
+        WITH owners AS (
+            SELECT id, lease_version, row_number() OVER (ORDER BY id)::int AS slot_no
+            FROM anclax.tasks WHERE locked_at IS NOT NULL AND NEW.tag=ANY(lease_tags)
+        )
+        INSERT INTO anclax.task_tag_slots(tag,slot_no,retired,task_id,lease_version)
+        SELECT NEW.tag,n,n>NEW.max_concurrency,o.id,o.lease_version
+        FROM generate_series(1,GREATEST(NEW.max_concurrency,(SELECT count(*)::int FROM owners))) n
+        LEFT JOIN owners o ON o.slot_no=n;
     END IF;
-    -- Configuration owns the task table lock, so this wakeup cannot invert a
-    -- running task transaction's lock order. More waiters drain in maintenance.
-    PERFORM anclax.wake_task_tag_waiters(NEW.tag);
     RETURN NEW;
 END;
 $$;
-DROP TRIGGER task_tag_limit_changed ON anclax.task_tag_concurrency;
-CREATE TRIGGER task_tag_limit_changed AFTER INSERT OR UPDATE OF max_concurrency ON anclax.task_tag_concurrency
+CREATE TRIGGER task_tag_limit_changed AFTER INSERT OR UPDATE OF max_concurrency ON anclax.task_tag_limits
 FOR EACH ROW EXECUTE FUNCTION anclax.task_tag_limit_changed();
 
 CREATE OR REPLACE FUNCTION anclax.sync_task_tags() RETURNS TRIGGER LANGUAGE plpgsql AS $$
@@ -108,26 +156,42 @@ BEGIN
 END;
 $$;
 
--- These nonblocking guards protect every task-driven counter mutation. Unlike
--- tuple locks, they do not follow concurrently updated row versions. Holding
--- guards across several tasks is safe because no path waits for another guard.
+-- The task row is locked and its attempt fenced by the caller. Free only its
+-- own slots. Allocators only mutate free slots under per-slot try guards, so a
+-- release never acquires another task's slot or a shared tag lock.
 CREATE OR REPLACE FUNCTION anclax.release_task_tag_permits(p_task_id INT) RETURNS VOID LANGUAGE plpgsql AS $$
-DECLARE
-    v_tag TEXT;
-    released INT;
 BEGIN
-    FOR v_tag IN SELECT tag FROM anclax.task_tag_permits WHERE task_id = p_task_id GROUP BY tag ORDER BY tag LOOP
-        IF NOT pg_try_advisory_xact_lock(hashtextextended('anclax:task-tag:' || v_tag, 0)) THEN
-            RAISE EXCEPTION 'task tag busy: %', v_tag USING ERRCODE = '55P03';
-        END IF;
+    UPDATE anclax.task_tag_slots SET task_id=NULL,lease_version=NULL WHERE task_id=p_task_id;
+END;
+$$;
+
+CREATE FUNCTION anclax.try_task_tag_slot(p_tag TEXT, p_task_id INT, p_version BIGINT) RETURNS BOOLEAN
+LANGUAGE plpgsql VOLATILE AS $$
+DECLARE
+    candidate INT;
+BEGIN
+    FOR candidate IN
+        SELECT slot_no FROM anclax.task_tag_slots
+        WHERE tag=p_tag AND task_id IS NULL AND NOT retired ORDER BY slot_no
+    LOOP
+        BEGIN
+            IF NOT pg_try_advisory_xact_lock(hashtextextended('anclax:task-slot:' || p_tag || ':' || candidate,0)) THEN
+                CONTINUE;
+            END IF;
+            -- A separate statement gets a fresh READ COMMITTED snapshot after
+            -- acquiring the guard. A stale free-slot cursor must not follow an
+            -- updated occupied tuple or retain a useless guard until commit.
+            UPDATE anclax.task_tag_slots SET task_id=p_task_id,lease_version=p_version
+            WHERE tag=p_tag AND slot_no=candidate AND task_id IS NULL AND NOT retired;
+            IF FOUND THEN
+                RETURN TRUE;
+            END IF;
+            RAISE EXCEPTION 'slot changed' USING ERRCODE='P0S01';
+        EXCEPTION WHEN SQLSTATE 'P0S01' THEN
+            NULL;
+        END;
     END LOOP;
-    FOR v_tag IN SELECT tag FROM anclax.task_tag_permits WHERE task_id = p_task_id GROUP BY tag ORDER BY tag LOOP
-        DELETE FROM anclax.task_tag_permits WHERE task_id = p_task_id AND tag = v_tag;
-        GET DIAGNOSTICS released = ROW_COUNT;
-        UPDATE anclax.task_tag_concurrency SET in_use = in_use - released WHERE tag = v_tag;
-    END LOOP;
-    -- Do not lock other task rows while holding tag guards. Available waiters
-    -- are discovered by the indexed maintenance query below.
+    RETURN FALSE;
 END;
 $$;
 
@@ -135,55 +199,43 @@ CREATE OR REPLACE FUNCTION anclax.try_admit_task_tags(v_task_id INT) RETURNS BOO
 DECLARE
     task_version BIGINT;
     task_type TEXT;
-    snapshot_tags TEXT[];
-    wanted TEXT[];
-    all_tags TEXT[];
-    v_tag TEXT;
-    blocked_tag TEXT;
-    retry_delay INTERVAL := interval '100 milliseconds';
+    wanted RECORD;
 BEGIN
-    IF current_setting('transaction_isolation') NOT IN ('read committed', 'read uncommitted') THEN
-        RAISE EXCEPTION 'task admission requires READ COMMITTED isolation' USING ERRCODE = '0A000';
+    IF current_setting('transaction_isolation') NOT IN ('read committed','read uncommitted') THEN
+        RAISE EXCEPTION 'task admission requires READ COMMITTED isolation' USING ERRCODE='0A000';
     END IF;
-    SELECT t.lease_version, t.spec->>'type' INTO task_version, task_type
-    FROM anclax.tasks t WHERE t.id = v_task_id FOR UPDATE;
-    SELECT COALESCE(array_agg(tt.tag ORDER BY tt.tag), ARRAY[]::text[]) INTO snapshot_tags
-    FROM anclax.task_tags tt WHERE tt.task_id = v_task_id
-      AND task_type NOT IN ('broadcastUpdateWorkerRuntimeConfig', 'applyWorkerRuntimeConfigToWorker', 'broadcastCancelTask', 'cancelTaskOnWorker', 'broadcastPauseTask', 'pauseTaskOnWorker');
-    SELECT COALESCE(array_agg(c.tag ORDER BY c.tag), ARRAY[]::text[]) INTO wanted
-    FROM anclax.task_tag_concurrency c WHERE c.tag = ANY(snapshot_tags) AND c.max_concurrency IS NOT NULL;
-    SELECT COALESCE(array_agg(tag ORDER BY tag), ARRAY[]::text[]) INTO all_tags FROM (
-        SELECT unnest(wanted) AS tag UNION SELECT p.tag FROM anclax.task_tag_permits p WHERE p.task_id = v_task_id
-    ) tags;
-    IF cardinality(all_tags) = 0 THEN
-        RETURN TRUE;
-    END IF;
-    -- An exception subtransaction releases only this candidate's acquisitions
-    -- and mutations. Earlier successfully admitted tasks retain their guards.
+    SELECT lease_version,spec->>'type' INTO task_version,task_type
+    FROM anclax.tasks WHERE id=v_task_id FOR UPDATE;
+    -- One candidate is an allocation unit, including reclaim of its expired
+    -- attempt. Failure rolls back every partial slot and advisory acquisition.
     BEGIN
-        FOREACH v_tag IN ARRAY all_tags LOOP
-            IF NOT pg_try_advisory_xact_lock(hashtextextended('anclax:task-tag:' || v_tag, 0)) THEN
-                blocked_tag := v_tag;
-                RAISE EXCEPTION 'task tag busy' USING ERRCODE = '55P03';
+        PERFORM anclax.release_task_tag_permits(v_task_id);
+        FOR wanted IN
+            SELECT c.tag,c.max_concurrency FROM anclax.task_tag_limits c
+            JOIN anclax.task_tags tt ON tt.tag=c.tag
+            WHERE tt.task_id=v_task_id AND c.max_concurrency IS NOT NULL
+              AND task_type NOT IN ('broadcastUpdateWorkerRuntimeConfig','applyWorkerRuntimeConfigToWorker','broadcastCancelTask','cancelTaskOnWorker','broadcastPauseTask','pauseTaskOnWorker')
+            ORDER BY c.tag
+        LOOP
+            -- Only the exceptional shrink/backfill overflow period needs an
+            -- admission guard: releases stay independent, and a fresh count
+            -- prevents replacing active slots while excess owners still run.
+            IF EXISTS (SELECT 1 FROM anclax.task_tag_slots WHERE tag=wanted.tag AND retired AND task_id IS NOT NULL) THEN
+                IF NOT pg_try_advisory_xact_lock(hashtextextended('anclax:task-overflow:' || wanted.tag,0)) THEN
+                    RAISE EXCEPTION 'overflow allocation busy' USING ERRCODE='P0S02';
+                END IF;
+                IF (SELECT count(*) FROM anclax.task_tag_slots WHERE tag=wanted.tag AND task_id IS NOT NULL) >= wanted.max_concurrency THEN
+                    RAISE EXCEPTION 'overflow quota full' USING ERRCODE='P0S02';
+                END IF;
+            END IF;
+            IF NOT anclax.try_task_tag_slot(wanted.tag,v_task_id,task_version+1) THEN
+                RAISE EXCEPTION 'no free slot' USING ERRCODE='P0S02';
             END IF;
         END LOOP;
-        PERFORM anclax.release_task_tag_permits(v_task_id);
-        SELECT c.tag INTO blocked_tag FROM anclax.task_tag_concurrency c
-        WHERE c.tag = ANY(wanted) AND c.in_use >= c.max_concurrency ORDER BY c.tag LIMIT 1;
-        IF blocked_tag IS NOT NULL THEN
-            retry_delay := interval '5 seconds';
-            RAISE EXCEPTION 'task tag full' USING ERRCODE = 'P0T01';
-        END IF;
-        INSERT INTO anclax.task_tag_permits (task_id, lease_version, tag)
-        SELECT v_task_id, task_version + 1, unnest(wanted);
-        UPDATE anclax.task_tag_concurrency SET in_use = in_use + 1 WHERE tag = ANY(wanted);
         RETURN TRUE;
-    EXCEPTION WHEN lock_not_available OR SQLSTATE 'P0T01' THEN
-        -- Variables survive rollback, unlike the candidate's guards/permits.
+    EXCEPTION WHEN SQLSTATE 'P0S02' THEN
+        RETURN FALSE;
     END;
-    UPDATE anclax.tasks SET concurrency_wait_tag = blocked_tag,
-        concurrency_retry_at = statement_timestamp() + retry_delay WHERE id = v_task_id;
-    RETURN FALSE;
 END;
 $$;
 
@@ -206,32 +258,9 @@ BEGIN
               (t.lease_expires_at IS NULL AND t.locked_at < statement_timestamp() - p_legacy_ttl_ms * interval '1 millisecond'))
         FOR UPDATE OF t SKIP LOCKED
     LOOP
-        BEGIN
-            UPDATE anclax.tasks SET locked_at = NULL, worker_id = NULL,
+        UPDATE anclax.tasks SET locked_at = NULL, worker_id = NULL,
                 lease_expires_at = NULL, lease_duration_ms = NULL WHERE id = expired_task.id;
-        EXCEPTION WHEN lock_not_available THEN
-            -- The release trigger couldn't acquire every guard; keep the old
-            -- lease/permits intact and retry on the next bounded sweep.
-        END;
     END LOOP;
-    -- Start from available configured tags, then use the per-tag waiting index.
-    -- Capacity release is visible here immediately, regardless of the fallback
-    -- retry hint. Full tags never put their backlog back into the ready index.
-    WITH ready AS MATERIALIZED (
-        SELECT w.id FROM anclax.task_tag_concurrency c
-        CROSS JOIN LATERAL (
-            SELECT t.id FROM anclax.tasks t
-            WHERE t.concurrency_wait_tag = c.tag AND t.status = 'pending'
-              AND COALESCE(t.started_at, '-infinity'::timestamptz) <= statement_timestamp()
-            ORDER BY COALESCE(t.started_at, '-infinity'::timestamptz), t.priority DESC, t.created_at, t.id
-            LIMIT CASE WHEN c.max_concurrency IS NULL THEN 64 ELSE LEAST(64, GREATEST(0, c.max_concurrency - c.in_use)) END
-            FOR UPDATE OF t SKIP LOCKED
-        ) w
-        WHERE c.max_concurrency IS NULL OR c.in_use < c.max_concurrency
-        LIMIT 64
-    )
-    UPDATE anclax.tasks t SET concurrency_wait_tag = NULL, concurrency_retry_at = NULL
-    FROM ready r WHERE t.id = r.id;
 END;
 $$;
 

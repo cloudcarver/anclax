@@ -35,8 +35,8 @@ func (s *WorkerControlPlane) SetTagConcurrencyLimit(ctx context.Context, tag str
 	return nil
 }
 
-// RemoveTagConcurrencyLimit restores unlimited admission and clears its permits
-// and counter. Re-enabling backfills the still-leased attempt snapshots.
+// RemoveTagConcurrencyLimit restores unlimited admission and deletes its capacity
+// slots. Re-enabling backfills the still-leased attempt snapshots.
 func (s *WorkerControlPlane) RemoveTagConcurrencyLimit(ctx context.Context, tag string) error {
 	if tag == "" {
 		return errors.New("tag cannot be empty")

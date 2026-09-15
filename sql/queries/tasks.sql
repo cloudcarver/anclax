@@ -1,9 +1,15 @@
 -- name: ClaimTask :one
-WITH candidate AS MATERIALIZED (
+WITH unavailable_tags AS MATERIALIZED (
+    SELECT c.tag FROM anclax.task_tag_limits c
+    WHERE c.max_concurrency IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM anclax.task_tag_slots s WHERE s.tag=c.tag AND s.task_id IS NULL AND NOT s.retired
+    )
+), candidate AS MATERIALIZED (
     SELECT t.id
     FROM anclax.tasks t
     WHERE t.status = 'pending'
-        AND t.concurrency_wait_tag IS NULL
+        AND (t.spec->>'type' IN ('broadcastUpdateWorkerRuntimeConfig', 'applyWorkerRuntimeConfigToWorker', 'broadcastCancelTask', 'cancelTaskOnWorker', 'broadcastPauseTask', 'pauseTaskOnWorker')
+            OR NOT EXISTS (SELECT 1 FROM anclax.task_tags tt JOIN unavailable_tags u ON u.tag=tt.tag WHERE tt.task_id=t.id))
         AND (t.started_at IS NULL OR t.started_at <= statement_timestamp())
         AND (t.locked_at IS NULL OR COALESCE(t.lease_expires_at, t.locked_at + sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond') <= statement_timestamp())
         AND NOT EXISTS (
@@ -36,7 +42,6 @@ UPDATE anclax.tasks AS t
 SET locked_at = statement_timestamp(), worker_id = sqlc.arg(worker_id),
     lease_expires_at = statement_timestamp() + sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond',
     lease_duration_ms = sqlc.arg(lock_ttl_ms)::bigint,
-    concurrency_wait_tag = NULL, concurrency_retry_at = NULL,
     lease_version = t.lease_version + 1, attempts = t.attempts + 1,
     updated_at = statement_timestamp()
 FROM admitted
@@ -44,11 +49,16 @@ WHERE t.id = admitted.id
 RETURNING t.*;
 
 -- name: ClaimStrictTask :one
-WITH candidate AS MATERIALIZED (
+WITH unavailable_tags AS MATERIALIZED (
+    SELECT c.tag FROM anclax.task_tag_limits c
+    WHERE c.max_concurrency IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM anclax.task_tag_slots s WHERE s.tag=c.tag AND s.task_id IS NULL AND NOT s.retired
+    )
+), candidate AS MATERIALIZED (
     SELECT t.id
     FROM anclax.tasks t
     WHERE t.status = 'pending'
-        AND t.concurrency_wait_tag IS NULL
+        AND NOT EXISTS (SELECT 1 FROM anclax.task_tags tt JOIN unavailable_tags u ON u.tag=tt.tag WHERE tt.task_id=t.id)
         AND t.priority > 0
         AND t.spec->>'type' NOT IN ('broadcastUpdateWorkerRuntimeConfig', 'applyWorkerRuntimeConfigToWorker', 'broadcastCancelTask', 'cancelTaskOnWorker', 'broadcastPauseTask', 'pauseTaskOnWorker')
         AND (t.started_at IS NULL OR t.started_at <= statement_timestamp())
@@ -83,7 +93,6 @@ UPDATE anclax.tasks AS t
 SET locked_at = statement_timestamp(), worker_id = sqlc.arg(worker_id),
     lease_expires_at = statement_timestamp() + sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond',
     lease_duration_ms = sqlc.arg(lock_ttl_ms)::bigint,
-    concurrency_wait_tag = NULL, concurrency_retry_at = NULL,
     lease_version = t.lease_version + 1, attempts = t.attempts + 1,
     updated_at = statement_timestamp()
 FROM admitted
@@ -91,11 +100,16 @@ WHERE t.id = admitted.id
 RETURNING t.*;
 
 -- name: ClaimNormalTaskByGroup :one
-WITH candidate AS MATERIALIZED (
+WITH unavailable_tags AS MATERIALIZED (
+    SELECT c.tag FROM anclax.task_tag_limits c
+    WHERE c.max_concurrency IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM anclax.task_tag_slots s WHERE s.tag=c.tag AND s.task_id IS NULL AND NOT s.retired
+    )
+), candidate AS MATERIALIZED (
     SELECT t.id
     FROM anclax.tasks t
     WHERE t.status = 'pending'
-        AND t.concurrency_wait_tag IS NULL
+        AND NOT EXISTS (SELECT 1 FROM anclax.task_tags tt JOIN unavailable_tags u ON u.tag=tt.tag WHERE tt.task_id=t.id)
         AND t.spec->>'type' NOT IN ('broadcastUpdateWorkerRuntimeConfig', 'applyWorkerRuntimeConfigToWorker', 'broadcastCancelTask', 'cancelTaskOnWorker', 'broadcastPauseTask', 'pauseTaskOnWorker')
         AND (
             (sqlc.arg(allow_strict)::boolean AND t.priority > 0)
@@ -136,7 +150,6 @@ UPDATE anclax.tasks AS t
 SET locked_at = statement_timestamp(), worker_id = sqlc.arg(worker_id),
     lease_expires_at = statement_timestamp() + sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond',
     lease_duration_ms = sqlc.arg(lock_ttl_ms)::bigint,
-    concurrency_wait_tag = NULL, concurrency_retry_at = NULL,
     lease_version = t.lease_version + 1, attempts = t.attempts + 1,
     updated_at = statement_timestamp()
 FROM admitted
@@ -182,7 +195,6 @@ UPDATE anclax.tasks AS t
 SET locked_at = statement_timestamp(), worker_id = sqlc.arg(worker_id),
     lease_expires_at = statement_timestamp() + sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond',
     lease_duration_ms = sqlc.arg(lock_ttl_ms)::bigint,
-    concurrency_wait_tag = NULL, concurrency_retry_at = NULL,
     lease_version = t.lease_version + 1, attempts = t.attempts + 1,
     updated_at = statement_timestamp()
 FROM admitted
@@ -194,7 +206,6 @@ WITH candidate AS MATERIALIZED (
     SELECT t.id
     FROM anclax.tasks t
     WHERE t.status = 'pending'
-        AND t.concurrency_wait_tag IS NULL
         AND t.spec->>'type' IN ('broadcastUpdateWorkerRuntimeConfig', 'applyWorkerRuntimeConfigToWorker', 'broadcastCancelTask', 'cancelTaskOnWorker', 'broadcastPauseTask', 'pauseTaskOnWorker')
         AND (t.started_at IS NULL OR t.started_at <= statement_timestamp())
         AND (t.locked_at IS NULL OR COALESCE(t.lease_expires_at, t.locked_at + sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond') <= statement_timestamp())
@@ -228,7 +239,6 @@ UPDATE anclax.tasks AS t
 SET locked_at = statement_timestamp(), worker_id = sqlc.arg(worker_id),
     lease_expires_at = statement_timestamp() + sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond',
     lease_duration_ms = sqlc.arg(lock_ttl_ms)::bigint,
-    concurrency_wait_tag = NULL, concurrency_retry_at = NULL,
     lease_version = t.lease_version + 1, attempts = t.attempts + 1,
     updated_at = statement_timestamp()
 FROM admitted

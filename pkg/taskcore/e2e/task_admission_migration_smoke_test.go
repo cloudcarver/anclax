@@ -9,7 +9,6 @@ import (
 
 	"github.com/cloudcarver/anclax"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
-	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jackc/pgx/v5"
@@ -28,7 +27,8 @@ func TestTaskAdmissionMigrationSmoke(t *testing.T) {
 		require.NoError(t, err)
 		defer conn.Close(ctx)
 		require.NoError(t, migration.Migrate(14))
-		require.NoError(t, m.SetTaskTagConcurrencyLimit(ctx, querier.SetTaskTagConcurrencyLimitParams{Tag: "limited", MaxConcurrency: 1}))
+		_, err = conn.Exec(ctx, "INSERT INTO anclax.task_tag_concurrency(tag,max_concurrency) VALUES ('limited',1)")
+		require.NoError(t, err)
 		var id int32
 		require.NoError(t, conn.QueryRow(ctx, `INSERT INTO anclax.tasks(attributes,spec,status)
 			VALUES ('{"tags":["limited","ordinary"]}','{"type":"migration-probe"}','pending') RETURNING id`).Scan(&id))
@@ -54,8 +54,10 @@ func TestTaskAdmissionMigrationSmoke(t *testing.T) {
 		require.NoError(t, migration.Up())
 		waiting, err := m.GetTaskByID(ctx, waiter)
 		require.NoError(t, err)
-		require.Nil(t, waiting.ConcurrencyWaitTag, "v14 unlimited-tag lock waiters must not be stranded after registry removal")
-		require.Nil(t, waiting.ConcurrencyRetryAt)
+		require.Equal(t, "pending", waiting.Status)
+		var waitColumns int
+		require.NoError(t, conn.QueryRow(ctx, "SELECT count(*) FROM information_schema.columns WHERE table_schema='anclax' AND table_name='tasks' AND column_name LIKE 'concurrency_%'").Scan(&waitColumns))
+		require.Zero(t, waitColumns, "v14 wait flags are removed, so old waiters cannot remain parked")
 		row, err := m.GetTaskByID(ctx, id)
 		require.NoError(t, err)
 		require.Equal(t, []string{"limited", "ordinary"}, row.LeaseTags)

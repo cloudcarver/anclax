@@ -12,11 +12,16 @@ import (
 )
 
 const claimTaskBatch = `-- name: ClaimTaskBatch :many
-WITH strict_candidates AS MATERIALIZED (
+WITH unavailable_tags AS MATERIALIZED (
+    SELECT c.tag FROM anclax.task_tag_limits c
+    WHERE c.max_concurrency IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM anclax.task_tag_slots s WHERE s.tag=c.tag AND s.task_id IS NULL AND NOT s.retired
+    )
+), strict_candidates AS MATERIALIZED (
     SELECT t.id, t.priority, t.weight, t.created_at, 0::int AS group_order
     FROM anclax.tasks t
     WHERE t.status = 'pending'
-        AND t.concurrency_wait_tag IS NULL
+        AND NOT EXISTS (SELECT 1 FROM anclax.task_tags tt JOIN unavailable_tags u ON u.tag=tt.tag WHERE tt.task_id=t.id)
         AND t.spec->>'type' NOT IN ('broadcastUpdateWorkerRuntimeConfig', 'applyWorkerRuntimeConfigToWorker', 'broadcastCancelTask', 'cancelTaskOnWorker', 'broadcastPauseTask', 'pauseTaskOnWorker')
         AND t.priority > 0
         AND (t.started_at IS NULL OR t.started_at <= statement_timestamp())
@@ -46,7 +51,7 @@ WITH strict_candidates AS MATERIALIZED (
     SELECT t.id, t.priority, t.weight, t.created_at, array_position($5::text[], COALESCE((SELECT MIN(label) FROM jsonb_array_elements_text(COALESCE(NULLIF(t.attributes->'labels', 'null'::jsonb), '[]'::jsonb)) AS labels(label) WHERE label = ANY($6::text[])), '__default__')) AS group_order
     FROM anclax.tasks t
     WHERE t.status = 'pending'
-        AND t.concurrency_wait_tag IS NULL
+        AND NOT EXISTS (SELECT 1 FROM anclax.task_tags tt JOIN unavailable_tags u ON u.tag=tt.tag WHERE tt.task_id=t.id)
         AND t.spec->>'type' NOT IN ('broadcastUpdateWorkerRuntimeConfig', 'applyWorkerRuntimeConfigToWorker', 'broadcastCancelTask', 'cancelTaskOnWorker', 'broadcastPauseTask', 'pauseTaskOnWorker')
         AND t.priority = 0
         AND COALESCE((SELECT MIN(label) FROM jsonb_array_elements_text(COALESCE(NULLIF(t.attributes->'labels', 'null'::jsonb), '[]'::jsonb)) AS labels(label) WHERE label = ANY($6::text[])), '__default__') = ANY($5::text[])
@@ -85,12 +90,11 @@ UPDATE anclax.tasks AS t
 SET locked_at = statement_timestamp(), worker_id = $1,
     lease_expires_at = statement_timestamp() + $2::bigint * INTERVAL '1 millisecond',
     lease_duration_ms = $2::bigint,
-    concurrency_wait_tag = NULL, concurrency_retry_at = NULL,
     lease_version = t.lease_version + 1, attempts = t.attempts + 1,
     updated_at = statement_timestamp()
 FROM admitted
 WHERE t.id = admitted.id
-RETURNING t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id, t.lease_version, t.lease_expires_at, t.lease_duration_ms, t.concurrency_wait_tag, t.concurrency_retry_at, t.lease_tags
+RETURNING t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id, t.lease_version, t.lease_expires_at, t.lease_duration_ms, t.lease_tags
 `
 
 type ClaimTaskBatchParams struct {
@@ -140,8 +144,6 @@ func (q *Queries) ClaimTaskBatch(ctx context.Context, arg ClaimTaskBatchParams) 
 			&i.LeaseVersion,
 			&i.LeaseExpiresAt,
 			&i.LeaseDurationMs,
-			&i.ConcurrencyWaitTag,
-			&i.ConcurrencyRetryAt,
 			&i.LeaseTags,
 		); err != nil {
 			return nil, err
