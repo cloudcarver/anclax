@@ -61,20 +61,18 @@ func TestTaskTagConcurrencyMigrationSmoke(t *testing.T) {
 			require.JSONEq(t, `{"value":42}`, string(row.Spec.Payload))
 		}
 		state, err := m.GetTaskTagConcurrency(ctx, "legacy")
-		require.NoError(t, err)
-		require.Equal(t, int32(3), state.InUse, "all old held leases count, including pause/cancel")
-		require.Nil(t, state.MaxConcurrency)
+		require.ErrorIs(t, err, pgx.ErrNoRows, "unlimited tags have no registry/counter rows")
 		require.NoError(t, m.SetTaskTagConcurrencyLimit(ctx, querier.SetTaskTagConcurrencyLimitParams{Tag: "legacy", MaxConcurrency: 1}))
 		var mappings, permits int
 		require.NoError(t, conn.QueryRow(ctx, "SELECT count(*) FROM anclax.task_tags").Scan(&mappings))
 		require.NoError(t, conn.QueryRow(ctx, "SELECT count(*) FROM anclax.task_tag_permits").Scan(&permits))
 		require.Equal(t, 6, mappings, "only pending, paused, and still-leased cancelled tasks need mappings")
-		require.Equal(t, 6, permits)
+		require.Equal(t, 3, permits, "only the newly limited legacy tag is backfilled")
 		var historicalMappings, tagRows int
 		require.NoError(t, conn.QueryRow(ctx, "SELECT count(*) FROM anclax.task_tags WHERE tag LIKE 'history%'").Scan(&historicalMappings))
 		require.Zero(t, historicalMappings)
 		require.NoError(t, conn.QueryRow(ctx, "SELECT count(*) FROM anclax.task_tag_concurrency").Scan(&tagRows))
-		require.Equal(t, 2, tagRows, "historical tags must not populate the registry")
+		require.Equal(t, 1, tagRows, "only configured limits populate the registry")
 		historicalIDs, err := m.ListTaskIDsByTags(ctx, querier.ListTaskIDsByTagsParams{Tags: []string{"history"}, ExceptTagSets: []byte("[]")})
 		require.NoError(t, err)
 		require.Len(t, historicalIDs, historyCount, "historical tag queries still use the original attributes")

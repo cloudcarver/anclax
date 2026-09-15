@@ -91,7 +91,7 @@ func TestTaskTagConcurrencyLoadSmoke(t *testing.T) {
 					require.NoError(t, control.SetTagConcurrencyLimit(ctx, tag, 2))
 				}
 				if scenario == "many_tags" {
-					_, err := conn.Exec(ctx, `INSERT INTO anclax.task_tag_concurrency(tag,max_concurrency)
+					_, err := conn.Exec(ctx, `INSERT INTO anclax.task_tag_limits(tag,max_concurrency)
                         SELECT prefix || n, 2 FROM generate_series(0,$1::int-1) AS n
                         CROSS JOIN (VALUES ('load:tenant:'), ('load:resource:')) AS p(prefix)`, cardinality)
 					require.NoError(t, err)
@@ -202,7 +202,7 @@ func TestTaskTagConcurrencyLoadSmoke(t *testing.T) {
 					require.Positive(t, limited.Load())
 					require.Positive(t, unlimited.Load())
 					var stillBlocked int
-					require.NoError(t, conn.QueryRow(ctx, "SELECT count(*) FROM anclax.tasks WHERE concurrency_wait_tag='load:blocked' AND attempts=0").Scan(&stillBlocked))
+					require.NoError(t, conn.QueryRow(ctx, "SELECT count(*) FROM anclax.tasks WHERE attributes->'tags' ? 'load:blocked' AND status='pending' AND attempts=0").Scan(&stillBlocked))
 					require.Equal(t, backlog, stillBlocked)
 				}
 				var permits, inUse int64

@@ -46,6 +46,7 @@ const (
 	EventCancelTaskRequest  EventType = "cancel_task_request"
 	EventClaimByIDResult    EventType = "claim_by_id_result"
 	EventPollTick           EventType = "poll_tick"
+	EventClaimBatchResult   EventType = "claim_batch_result"
 
 	EventClaimStrictResult EventType = "claim_strict_result"
 	EventClaimNormalResult EventType = "claim_normal_result"
@@ -69,6 +70,7 @@ const (
 	CmdTaskRequestDone CommandType = "task_request_done"
 	CmdClaimStrict     CommandType = "claim_strict"
 	CmdClaimNormal     CommandType = "claim_normal"
+	CmdClaimBatch      CommandType = "claim_batch"
 	CmdExecuteTask     CommandType = "execute_task"
 	CmdFinalize        CommandType = "finalize"
 
@@ -110,6 +112,7 @@ type RuntimeConfig struct {
 }
 
 type Event struct {
+	Tasks     []*Task
 	TaskID    int32
 	Type      EventType
 	CycleID   int64
@@ -121,6 +124,9 @@ type Event struct {
 }
 
 type Command struct {
+	BatchSize      int
+	StrictSlots    int
+	Groups         []string
 	TaskID         int32
 	AllowStrict    bool
 	Err            error
@@ -171,6 +177,7 @@ type RuntimeConfigPayload struct {
 }
 
 type EngineConfig struct {
+	ClaimBatchSize      int
 	ControlConcurrency  int
 	WorkerID            string
 	Labels              []string
@@ -180,6 +187,9 @@ type EngineConfig struct {
 }
 
 type Snapshot struct {
+	Claiming               int
+	Executing              int
+	Finalizing             int
 	ControlInFlight        int
 	PendingRequests        int
 	WorkerID               string
@@ -202,6 +212,19 @@ type cycleState struct {
 	Phase          Phase
 	Task           *Task
 	PendingGroups  []string
+	WeightedLabels []string
+}
+
+// BatchPort enables one bounded automatic claim per worker. The legacy Port
+// remains available to deterministic adapters and manual single-task callers.
+type BatchPort interface {
+	ClaimBatch(context.Context, ClaimBatchRequest) ([]*Task, error)
+}
+
+type ClaimBatchRequest struct {
+	BatchSize      int
+	StrictSlots    int
+	Groups         []string
 	WeightedLabels []string
 }
 

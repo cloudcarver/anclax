@@ -10,8 +10,9 @@ import (
 )
 
 // TagConcurrency describes global admission across all workers. A nil limit
-// means unlimited. InUse includes admitted attempts awaiting finalization or
-// lease recovery, and can temporarily exceed a newly lowered limit.
+// means unlimited, with InUse zero. For configured limits, InUse includes
+// admitted attempts awaiting finalization or lease recovery, and can temporarily
+// exceed a newly lowered limit.
 type TagConcurrency struct {
 	Tag            string
 	MaxConcurrency *int32
@@ -34,8 +35,8 @@ func (s *WorkerControlPlane) SetTagConcurrencyLimit(ctx context.Context, tag str
 	return nil
 }
 
-// RemoveTagConcurrencyLimit restores unlimited admission without deleting the
-// tag or its active permits. Re-enabling a limit still counts those attempts.
+// RemoveTagConcurrencyLimit restores unlimited admission and deletes its capacity
+// slots. Re-enabling backfills the still-leased attempt snapshots.
 func (s *WorkerControlPlane) RemoveTagConcurrencyLimit(ctx context.Context, tag string) error {
 	if tag == "" {
 		return errors.New("tag cannot be empty")

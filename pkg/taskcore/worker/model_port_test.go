@@ -389,7 +389,7 @@ func TestFinalizeTaskCompletesRuntimeEntry(t *testing.T) {
 	case <-time.After(10 * time.Millisecond):
 	}
 
-	mockModel.EXPECT().RunTransactionWithTx(context.Background(), gomock.Any()).DoAndReturn(
+	mockModel.EXPECT().RunTransactionWithTx(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, f func(core.Tx, model.ModelInterface) error) error {
 			return f(&fakeTx{}, mockModel)
 		},

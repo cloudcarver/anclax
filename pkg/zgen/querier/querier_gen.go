@@ -17,6 +17,7 @@ type Querier interface {
 	ClaimNormalTaskByGroup(ctx context.Context, arg ClaimNormalTaskByGroupParams) (*AnclaxTask, error)
 	ClaimStrictTask(ctx context.Context, arg ClaimStrictTaskParams) (*AnclaxTask, error)
 	ClaimTask(ctx context.Context, arg ClaimTaskParams) (*AnclaxTask, error)
+	ClaimTaskBatch(ctx context.Context, arg ClaimTaskBatchParams) ([]*AnclaxTask, error)
 	ClaimTaskByID(ctx context.Context, arg ClaimTaskByIDParams) (*AnclaxTask, error)
 	ClaimWorkerCommand(ctx context.Context, arg ClaimWorkerCommandParams) (*AnclaxTask, error)
 	CreateKeyPair(ctx context.Context, arg CreateKeyPairParams) (*AnclaxAccessKeyPair, error)

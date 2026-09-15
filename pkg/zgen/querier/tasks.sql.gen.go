@@ -15,11 +15,16 @@ import (
 )
 
 const claimNormalTaskByGroup = `-- name: ClaimNormalTaskByGroup :one
-WITH candidate AS MATERIALIZED (
+WITH unavailable_tags AS MATERIALIZED (
+    SELECT c.tag FROM anclax.task_tag_limits c
+    WHERE c.max_concurrency IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM anclax.task_tag_slots s WHERE s.tag=c.tag AND s.task_id IS NULL AND NOT s.retired
+    )
+), candidate AS MATERIALIZED (
     SELECT t.id
     FROM anclax.tasks t
     WHERE t.status = 'pending'
-        AND t.concurrency_wait_tag IS NULL
+        AND NOT EXISTS (SELECT 1 FROM anclax.task_tags tt JOIN unavailable_tags u ON u.tag=tt.tag WHERE tt.task_id=t.id)
         AND t.spec->>'type' NOT IN ('broadcastUpdateWorkerRuntimeConfig', 'applyWorkerRuntimeConfigToWorker', 'broadcastCancelTask', 'cancelTaskOnWorker', 'broadcastPauseTask', 'pauseTaskOnWorker')
         AND (
             ($3::boolean AND t.priority > 0)
@@ -38,6 +43,7 @@ WITH candidate AS MATERIALIZED (
             NOT EXISTS (
                 SELECT 1 FROM anclax.tasks active
                 WHERE active.serial_key = t.serial_key
+                    AND (active.lease_expires_at IS NOT NULL OR active.locked_at IS NOT NULL)
                     AND COALESCE(active.lease_expires_at, active.locked_at + $2::bigint * INTERVAL '1 millisecond') > statement_timestamp()
             )
             AND NOT EXISTS (
@@ -59,12 +65,11 @@ UPDATE anclax.tasks AS t
 SET locked_at = statement_timestamp(), worker_id = $1,
     lease_expires_at = statement_timestamp() + $2::bigint * INTERVAL '1 millisecond',
     lease_duration_ms = $2::bigint,
-    concurrency_wait_tag = NULL, concurrency_retry_at = NULL,
     lease_version = t.lease_version + 1, attempts = t.attempts + 1,
     updated_at = statement_timestamp()
 FROM admitted
 WHERE t.id = admitted.id
-RETURNING t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id, t.lease_version, t.lease_expires_at, t.lease_duration_ms, t.concurrency_wait_tag, t.concurrency_retry_at
+RETURNING t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id, t.lease_version, t.lease_expires_at, t.lease_duration_ms, t.lease_tags
 `
 
 type ClaimNormalTaskByGroupParams struct {
@@ -106,18 +111,22 @@ func (q *Queries) ClaimNormalTaskByGroup(ctx context.Context, arg ClaimNormalTas
 		&i.LeaseVersion,
 		&i.LeaseExpiresAt,
 		&i.LeaseDurationMs,
-		&i.ConcurrencyWaitTag,
-		&i.ConcurrencyRetryAt,
+		&i.LeaseTags,
 	)
 	return &i, err
 }
 
 const claimStrictTask = `-- name: ClaimStrictTask :one
-WITH candidate AS MATERIALIZED (
+WITH unavailable_tags AS MATERIALIZED (
+    SELECT c.tag FROM anclax.task_tag_limits c
+    WHERE c.max_concurrency IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM anclax.task_tag_slots s WHERE s.tag=c.tag AND s.task_id IS NULL AND NOT s.retired
+    )
+), candidate AS MATERIALIZED (
     SELECT t.id
     FROM anclax.tasks t
     WHERE t.status = 'pending'
-        AND t.concurrency_wait_tag IS NULL
+        AND NOT EXISTS (SELECT 1 FROM anclax.task_tags tt JOIN unavailable_tags u ON u.tag=tt.tag WHERE tt.task_id=t.id)
         AND t.priority > 0
         AND t.spec->>'type' NOT IN ('broadcastUpdateWorkerRuntimeConfig', 'applyWorkerRuntimeConfigToWorker', 'broadcastCancelTask', 'cancelTaskOnWorker', 'broadcastPauseTask', 'pauseTaskOnWorker')
         AND (t.started_at IS NULL OR t.started_at <= statement_timestamp())
@@ -130,6 +139,7 @@ WITH candidate AS MATERIALIZED (
             NOT EXISTS (
                 SELECT 1 FROM anclax.tasks active
                 WHERE active.serial_key = t.serial_key
+                    AND (active.lease_expires_at IS NOT NULL OR active.locked_at IS NOT NULL)
                     AND COALESCE(active.lease_expires_at, active.locked_at + $2::bigint * INTERVAL '1 millisecond') > statement_timestamp()
             )
             AND NOT EXISTS (
@@ -151,12 +161,11 @@ UPDATE anclax.tasks AS t
 SET locked_at = statement_timestamp(), worker_id = $1,
     lease_expires_at = statement_timestamp() + $2::bigint * INTERVAL '1 millisecond',
     lease_duration_ms = $2::bigint,
-    concurrency_wait_tag = NULL, concurrency_retry_at = NULL,
     lease_version = t.lease_version + 1, attempts = t.attempts + 1,
     updated_at = statement_timestamp()
 FROM admitted
 WHERE t.id = admitted.id
-RETURNING t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id, t.lease_version, t.lease_expires_at, t.lease_duration_ms, t.concurrency_wait_tag, t.concurrency_retry_at
+RETURNING t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id, t.lease_version, t.lease_expires_at, t.lease_duration_ms, t.lease_tags
 `
 
 type ClaimStrictTaskParams struct {
@@ -188,18 +197,23 @@ func (q *Queries) ClaimStrictTask(ctx context.Context, arg ClaimStrictTaskParams
 		&i.LeaseVersion,
 		&i.LeaseExpiresAt,
 		&i.LeaseDurationMs,
-		&i.ConcurrencyWaitTag,
-		&i.ConcurrencyRetryAt,
+		&i.LeaseTags,
 	)
 	return &i, err
 }
 
 const claimTask = `-- name: ClaimTask :one
-WITH candidate AS MATERIALIZED (
+WITH unavailable_tags AS MATERIALIZED (
+    SELECT c.tag FROM anclax.task_tag_limits c
+    WHERE c.max_concurrency IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM anclax.task_tag_slots s WHERE s.tag=c.tag AND s.task_id IS NULL AND NOT s.retired
+    )
+), candidate AS MATERIALIZED (
     SELECT t.id
     FROM anclax.tasks t
     WHERE t.status = 'pending'
-        AND t.concurrency_wait_tag IS NULL
+        AND (t.spec->>'type' IN ('broadcastUpdateWorkerRuntimeConfig', 'applyWorkerRuntimeConfigToWorker', 'broadcastCancelTask', 'cancelTaskOnWorker', 'broadcastPauseTask', 'pauseTaskOnWorker')
+            OR NOT EXISTS (SELECT 1 FROM anclax.task_tags tt JOIN unavailable_tags u ON u.tag=tt.tag WHERE tt.task_id=t.id))
         AND (t.started_at IS NULL OR t.started_at <= statement_timestamp())
         AND (t.locked_at IS NULL OR COALESCE(t.lease_expires_at, t.locked_at + $2::bigint * INTERVAL '1 millisecond') <= statement_timestamp())
         AND NOT EXISTS (
@@ -210,6 +224,7 @@ WITH candidate AS MATERIALIZED (
             NOT EXISTS (
                 SELECT 1 FROM anclax.tasks active
                 WHERE active.serial_key = t.serial_key
+                    AND (active.lease_expires_at IS NOT NULL OR active.locked_at IS NOT NULL)
                     AND COALESCE(active.lease_expires_at, active.locked_at + $2::bigint * INTERVAL '1 millisecond') > statement_timestamp()
             )
             AND NOT EXISTS (
@@ -231,12 +246,11 @@ UPDATE anclax.tasks AS t
 SET locked_at = statement_timestamp(), worker_id = $1,
     lease_expires_at = statement_timestamp() + $2::bigint * INTERVAL '1 millisecond',
     lease_duration_ms = $2::bigint,
-    concurrency_wait_tag = NULL, concurrency_retry_at = NULL,
     lease_version = t.lease_version + 1, attempts = t.attempts + 1,
     updated_at = statement_timestamp()
 FROM admitted
 WHERE t.id = admitted.id
-RETURNING t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id, t.lease_version, t.lease_expires_at, t.lease_duration_ms, t.concurrency_wait_tag, t.concurrency_retry_at
+RETURNING t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id, t.lease_version, t.lease_expires_at, t.lease_duration_ms, t.lease_tags
 `
 
 type ClaimTaskParams struct {
@@ -268,8 +282,7 @@ func (q *Queries) ClaimTask(ctx context.Context, arg ClaimTaskParams) (*AnclaxTa
 		&i.LeaseVersion,
 		&i.LeaseExpiresAt,
 		&i.LeaseDurationMs,
-		&i.ConcurrencyWaitTag,
-		&i.ConcurrencyRetryAt,
+		&i.LeaseTags,
 	)
 	return &i, err
 }
@@ -291,6 +304,7 @@ WITH candidate AS MATERIALIZED (
             NOT EXISTS (
                 SELECT 1 FROM anclax.tasks active
                 WHERE active.serial_key = t.serial_key
+                    AND (active.lease_expires_at IS NOT NULL OR active.locked_at IS NOT NULL)
                     AND COALESCE(active.lease_expires_at, active.locked_at + $2::bigint * INTERVAL '1 millisecond') > statement_timestamp()
             )
             AND NOT EXISTS (
@@ -312,12 +326,11 @@ UPDATE anclax.tasks AS t
 SET locked_at = statement_timestamp(), worker_id = $1,
     lease_expires_at = statement_timestamp() + $2::bigint * INTERVAL '1 millisecond',
     lease_duration_ms = $2::bigint,
-    concurrency_wait_tag = NULL, concurrency_retry_at = NULL,
     lease_version = t.lease_version + 1, attempts = t.attempts + 1,
     updated_at = statement_timestamp()
 FROM admitted
 WHERE t.id = admitted.id
-RETURNING t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id, t.lease_version, t.lease_expires_at, t.lease_duration_ms, t.concurrency_wait_tag, t.concurrency_retry_at
+RETURNING t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id, t.lease_version, t.lease_expires_at, t.lease_duration_ms, t.lease_tags
 `
 
 type ClaimTaskByIDParams struct {
@@ -357,8 +370,7 @@ func (q *Queries) ClaimTaskByID(ctx context.Context, arg ClaimTaskByIDParams) (*
 		&i.LeaseVersion,
 		&i.LeaseExpiresAt,
 		&i.LeaseDurationMs,
-		&i.ConcurrencyWaitTag,
-		&i.ConcurrencyRetryAt,
+		&i.LeaseTags,
 	)
 	return &i, err
 }
@@ -368,7 +380,6 @@ WITH candidate AS MATERIALIZED (
     SELECT t.id
     FROM anclax.tasks t
     WHERE t.status = 'pending'
-        AND t.concurrency_wait_tag IS NULL
         AND t.spec->>'type' IN ('broadcastUpdateWorkerRuntimeConfig', 'applyWorkerRuntimeConfigToWorker', 'broadcastCancelTask', 'cancelTaskOnWorker', 'broadcastPauseTask', 'pauseTaskOnWorker')
         AND (t.started_at IS NULL OR t.started_at <= statement_timestamp())
         AND (t.locked_at IS NULL OR COALESCE(t.lease_expires_at, t.locked_at + $2::bigint * INTERVAL '1 millisecond') <= statement_timestamp())
@@ -380,6 +391,7 @@ WITH candidate AS MATERIALIZED (
             NOT EXISTS (
                 SELECT 1 FROM anclax.tasks active
                 WHERE active.serial_key = t.serial_key
+                    AND (active.lease_expires_at IS NOT NULL OR active.locked_at IS NOT NULL)
                     AND COALESCE(active.lease_expires_at, active.locked_at + $2::bigint * INTERVAL '1 millisecond') > statement_timestamp()
             )
             AND NOT EXISTS (
@@ -401,12 +413,11 @@ UPDATE anclax.tasks AS t
 SET locked_at = statement_timestamp(), worker_id = $1,
     lease_expires_at = statement_timestamp() + $2::bigint * INTERVAL '1 millisecond',
     lease_duration_ms = $2::bigint,
-    concurrency_wait_tag = NULL, concurrency_retry_at = NULL,
     lease_version = t.lease_version + 1, attempts = t.attempts + 1,
     updated_at = statement_timestamp()
 FROM admitted
 WHERE t.id = admitted.id
-RETURNING t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id, t.lease_version, t.lease_expires_at, t.lease_duration_ms, t.concurrency_wait_tag, t.concurrency_retry_at
+RETURNING t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id, t.lease_version, t.lease_expires_at, t.lease_duration_ms, t.lease_tags
 `
 
 type ClaimWorkerCommandParams struct {
@@ -438,15 +449,14 @@ func (q *Queries) ClaimWorkerCommand(ctx context.Context, arg ClaimWorkerCommand
 		&i.LeaseVersion,
 		&i.LeaseExpiresAt,
 		&i.LeaseDurationMs,
-		&i.ConcurrencyWaitTag,
-		&i.ConcurrencyRetryAt,
+		&i.LeaseTags,
 	)
 	return &i, err
 }
 
 const createTask = `-- name: CreateTask :one
 INSERT INTO anclax.tasks (attributes, spec, status, started_at, unique_tag, parent_task_id, serial_key, serial_id, priority, weight)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (unique_tag) DO NOTHING RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight, parent_task_id, lease_version, lease_expires_at, lease_duration_ms, concurrency_wait_tag, concurrency_retry_at
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (unique_tag) DO NOTHING RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight, parent_task_id, lease_version, lease_expires_at, lease_duration_ms, lease_tags
 `
 
 type CreateTaskParams struct {
@@ -496,8 +506,7 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (*Anclax
 		&i.LeaseVersion,
 		&i.LeaseExpiresAt,
 		&i.LeaseDurationMs,
-		&i.ConcurrencyWaitTag,
-		&i.ConcurrencyRetryAt,
+		&i.LeaseTags,
 	)
 	return &i, err
 }
@@ -575,7 +584,7 @@ func (q *Queries) GetTaskAttemptStatus(ctx context.Context, arg GetTaskAttemptSt
 }
 
 const getTaskByID = `-- name: GetTaskByID :one
-SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight, parent_task_id, lease_version, lease_expires_at, lease_duration_ms, concurrency_wait_tag, concurrency_retry_at FROM anclax.tasks
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight, parent_task_id, lease_version, lease_expires_at, lease_duration_ms, lease_tags FROM anclax.tasks
 WHERE id = $1
 `
 
@@ -602,14 +611,13 @@ func (q *Queries) GetTaskByID(ctx context.Context, id int32) (*AnclaxTask, error
 		&i.LeaseVersion,
 		&i.LeaseExpiresAt,
 		&i.LeaseDurationMs,
-		&i.ConcurrencyWaitTag,
-		&i.ConcurrencyRetryAt,
+		&i.LeaseTags,
 	)
 	return &i, err
 }
 
 const getTaskByUniqueTag = `-- name: GetTaskByUniqueTag :one
-SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight, parent_task_id, lease_version, lease_expires_at, lease_duration_ms, concurrency_wait_tag, concurrency_retry_at FROM anclax.tasks
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight, parent_task_id, lease_version, lease_expires_at, lease_duration_ms, lease_tags FROM anclax.tasks
 WHERE unique_tag = $1
 `
 
@@ -636,8 +644,7 @@ func (q *Queries) GetTaskByUniqueTag(ctx context.Context, uniqueTag *string) (*A
 		&i.LeaseVersion,
 		&i.LeaseExpiresAt,
 		&i.LeaseDurationMs,
-		&i.ConcurrencyWaitTag,
-		&i.ConcurrencyRetryAt,
+		&i.LeaseTags,
 	)
 	return &i, err
 }
@@ -685,7 +692,7 @@ func (q *Queries) InsertEvent(ctx context.Context, spec apigen.EventSpec) (*Ancl
 }
 
 const listAllPendingTasks = `-- name: ListAllPendingTasks :many
-SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight, parent_task_id, lease_version, lease_expires_at, lease_duration_ms, concurrency_wait_tag, concurrency_retry_at FROM anclax.tasks
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight, parent_task_id, lease_version, lease_expires_at, lease_duration_ms, lease_tags FROM anclax.tasks
 WHERE
     status = 'pending'
     AND (
@@ -722,8 +729,7 @@ func (q *Queries) ListAllPendingTasks(ctx context.Context) ([]*AnclaxTask, error
 			&i.LeaseVersion,
 			&i.LeaseExpiresAt,
 			&i.LeaseDurationMs,
-			&i.ConcurrencyWaitTag,
-			&i.ConcurrencyRetryAt,
+			&i.LeaseTags,
 		); err != nil {
 			return nil, err
 		}

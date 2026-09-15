@@ -72,7 +72,7 @@ func TestTaskLifecycleRegressionsSmoke(t *testing.T) {
 		reset := func(t *testing.T) {
 			t.Helper()
 			if err := m.RunTransactionWithTx(ctx, func(tx core.Tx, _ model.ModelInterface) error {
-				_, err := tx.Exec(ctx, "TRUNCATE anclax.task_tag_concurrency, anclax.task_tags, anclax.task_tag_permits, anclax.tasks, anclax.events, anclax.workers, anclax.worker_runtime_configs RESTART IDENTITY")
+				_, err := tx.Exec(ctx, "TRUNCATE anclax.task_tag_limits, anclax.task_tags, anclax.task_tag_slots, anclax.tasks, anclax.events, anclax.workers, anclax.worker_runtime_configs RESTART IDENTITY")
 				return err
 			}); err != nil {
 				t.Fatal(err)

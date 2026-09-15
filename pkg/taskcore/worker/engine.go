@@ -13,6 +13,8 @@ type Engine struct {
 	controlConcurrency int
 	controlInFlight    int
 	requests           []Event
+	claimBatchSize     int
+	batch              *Command
 
 	stopped bool
 
@@ -41,6 +43,7 @@ func NewEngine(cfg EngineConfig) *Engine {
 		labels:             append([]string(nil), cfg.Labels...),
 		concurrency:        concurrency,
 		controlConcurrency: max(0, cfg.ControlConcurrency),
+		claimBatchSize:     min(256, max(0, cfg.ClaimBatchSize)),
 		cycles:             map[int64]*cycleState{},
 	}
 
@@ -72,7 +75,7 @@ func (e *Engine) CurrentRuntimeConfigVersion() int64 {
 // Snapshot reads mutable engine state.
 // Caller must ensure single-owner access (same owner as Apply).
 func (e *Engine) Snapshot() Snapshot {
-	return Snapshot{
+	s := Snapshot{
 		ControlInFlight:        e.controlInFlight,
 		PendingRequests:        len(e.requests),
 		WorkerID:               e.workerID,
@@ -87,6 +90,20 @@ func (e *Engine) Snapshot() Snapshot {
 		NormalClaimWheelCursor: e.normalClaimCursor,
 		ActiveCycles:           len(e.cycles),
 	}
+	if e.batch != nil {
+		s.Claiming = e.batch.BatchSize
+	}
+	for _, cycle := range e.cycles {
+		switch cycle.Phase {
+		case PhaseExecuting:
+			s.Executing++
+		case PhaseFinalizing:
+			s.Finalizing++
+		default:
+			s.Claiming++
+		}
+	}
+	return s
 }
 
 // Apply mutates engine state and must be called by a single owner goroutine
@@ -113,6 +130,8 @@ func (e *Engine) Apply(event Event) []Command {
 		return nil
 	case EventPollTick:
 		return e.onPollTick()
+	case EventClaimBatchResult:
+		return e.onClaimBatchResult(event)
 	case EventClaimStrictResult:
 		return e.onClaimStrictResult(event)
 	case EventClaimNormalResult:
@@ -167,6 +186,9 @@ func (e *Engine) Apply(event Event) []Command {
 func (e *Engine) onPollTick() []Command {
 	if e.stopped || e.inFlight >= e.concurrency {
 		return nil
+	}
+	if e.claimBatchSize > 0 {
+		return e.claimBatch()
 	}
 
 	e.nextCycleID++
