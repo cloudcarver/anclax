@@ -524,9 +524,10 @@ func TestTaskTagConcurrencySmoke(t *testing.T) {
 			require.NoError(t, conn.QueryRow(ctx, "SELECT sum(attempts) FROM anclax.tasks WHERE attributes->'tags' ? 'hot'").Scan(&attempts))
 			require.Zero(t, attempts)
 			require.NoError(t, control.SetTagConcurrencyLimit(ctx, "hot", 64))
+			prepareReadyFixture(t, ctx, m, nil)
 			tasks, err := p.ClaimBatch(ctx, worker.ClaimBatchRequest{BatchSize: 32, Groups: []string{worker.DefaultWeightGroup}})
 			require.NoError(t, err)
-			require.Len(t, tasks, 32, "new capacity is usable without a maintenance/wakeup pass")
+			require.Len(t, tasks, 32, "the next system admission round can use newly enabled capacity")
 			for _, task := range tasks {
 				require.NoError(t, p.FinalizeTask(ctx, *task, nil))
 			}

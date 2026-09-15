@@ -72,7 +72,7 @@ func TestTaskAdmissionBenchmark(t *testing.T) {
 	for _, scenario := range strings.Split(scenarios, ",") {
 		for _, concurrency := range levels {
 			t.Run(fmt.Sprintf("%s/%d", scenario, concurrency), func(t *testing.T) {
-				require.Contains(t, []string{"untagged", "unlimited_shared", "limited_shared", "serial_history"}, scenario)
+				require.Contains(t, []string{"untagged", "unlimited_shared", "limited_shared", "serial_history", "blocked_0", "blocked_20000", "blocked_200000"}, scenario)
 				poll, heartbeat, ttl, strict, leasePool := 20*time.Millisecond, time.Second, 9*time.Second, 0, int32(10)
 				cfg := &config.Config{Pg: config.Pg{DSN: &dsn}, Worker: config.Worker{Concurrency: &concurrency,
 					PollInterval: &poll, HeartbeatInterval: &heartbeat, LockRefreshInterval: &heartbeat,
@@ -97,12 +97,26 @@ func TestTaskAdmissionBenchmark(t *testing.T) {
 						SELECT '{}','{"type":"benchmark-history"}','completed','serial:'||(n%256) FROM generate_series(1,$1::int) n`, history)
 					require.NoError(t, err)
 				}
+				enqueueStarted := time.Now()
+				enqueueCPUStart := admissionBenchCPU(t, name)
+				blockedRows := 0
+				if strings.HasPrefix(scenario, "blocked_") {
+					blockedRows, err = strconv.Atoi(strings.TrimPrefix(scenario, "blocked_"))
+					require.NoError(t, err)
+					require.NoError(t, base.SetTaskTagConcurrencyLimit(ctx, querier.SetTaskTagConcurrencyLimitParams{Tag: "bench:blocked", MaxConcurrency: 0}))
+					_, err = conn.Exec(ctx, `INSERT INTO anclax.tasks(attributes,spec,status,weight)
+                        SELECT '{"tags":["bench:blocked"]}','{"type":"blocked-benchmark"}','pending',1000 FROM generate_series(1,$1::int)`, blockedRows)
+					require.NoError(t, err)
+				}
 				_, err = conn.Exec(ctx, `INSERT INTO anclax.tasks(attributes,spec,status,serial_key)
 					SELECT CASE WHEN $2::text IN ('unlimited_shared','limited_shared')
 					THEN jsonb_build_object('tags',jsonb_build_array('bench:global','bench:group:'||(n%8))) ELSE '{}'::jsonb END,
 					'{"type":"admission-benchmark"}','pending',CASE WHEN $2::text='serial_history' THEN 'serial:'||(n%256) ELSE NULL END
 					FROM generate_series(1,$1::int) n`, tasks, scenario)
 				require.NoError(t, err)
+				enqueueCPU := admissionBenchCPU(t, name) - enqueueCPUStart
+				enqueueSeconds := time.Since(enqueueStarted).Seconds()
+				workStartID := historyRows + blockedRows
 				_, err = conn.Exec(ctx, "VACUUM ANALYZE anclax.tasks")
 				require.NoError(t, err)
 				stats := &admissionBenchStats{operations: map[string]*admissionBenchOperation{}}
@@ -121,10 +135,25 @@ func TestTaskAdmissionBenchmark(t *testing.T) {
 				done := make(chan struct{})
 				go func() { defer close(done); components.Runtime.Start(runCtx) }()
 				defer func() { cancel(); <-done }()
-				completed := 0
+				completed, ready, running, pending := 0, 0, 0, 0
+				steadySamples, emptyReadySamples, supplyGapSamples := 0, 0, 0
 				var peak int32
 				for time.Since(start) < timeout {
-					require.NoError(t, conn.QueryRow(ctx, "SELECT count(*) FROM anclax.tasks WHERE id>$1 AND status='completed'", historyRows).Scan(&completed))
+					require.NoError(t, conn.QueryRow(ctx, `SELECT count(*) FILTER(WHERE status='completed'),count(*) FILTER(WHERE status='ready'),
+                        count(*) FILTER(WHERE status='running'),count(*) FILTER(WHERE status='pending')
+                        FROM anclax.tasks WHERE id>$1 AND id<=$2`, workStartID, workStartID+tasks).Scan(&completed, &ready, &running, &pending))
+					// Exclude startup and tail. This is a sampled supply-gap
+					// indicator, not proof of runnable eligibility for tagged
+					// or serial work; concurrent transactions can be in flight.
+					if completed >= concurrency && completed < tasks-concurrency {
+						steadySamples++
+						if ready == 0 {
+							emptyReadySamples++
+							if pending > 0 && running < concurrency {
+								supplyGapSamples++
+							}
+						}
+					}
 					peak = max(peak, base.(*model.Model).PoolStats().AcquiredConns())
 					if completed == tasks {
 						break
@@ -141,12 +170,13 @@ func TestTaskAdmissionBenchmark(t *testing.T) {
 				cpuSeconds := admissionBenchCPU(t, name) - cpuStart
 				afterPool := base.(*model.Model).PoolStats()
 				result := admissionBenchResult{Revision: os.Getenv("ANCLAX_ADMISSION_BENCH_REVISION"), Postgres: postgres, Schema: schema,
-					Scenario: scenario, Concurrency: concurrency, Tasks: tasks, History: historyRows, HandlerMs: delay.Milliseconds(), GOMAXPROCS: runtime.GOMAXPROCS(0),
+					SteadySamples: steadySamples, EmptyReadySamples: emptyReadySamples, SupplyGapSamples: supplyGapSamples,
+					Scenario: scenario, Concurrency: concurrency, Tasks: tasks, History: historyRows, Blocked: blockedRows, EnqueueSeconds: enqueueSeconds, EnqueueCPUSeconds: enqueueCPU, HandlerMs: delay.Milliseconds(), GOMAXPROCS: runtime.GOMAXPROCS(0),
 					ElapsedSeconds: elapsed.Seconds(), CPUSeconds: cpuSeconds, PoolPeak: peak,
 					PoolWaits: afterPool.EmptyAcquireCount() - beforePool.EmptyAcquireCount(), PoolWaitSeconds: (afterPool.AcquireDuration() - beforePool.AcquireDuration()).Seconds(),
 					LeaseErrors: metricValue(metrics.TaskLeaseRenewalErrorsTotal) - leaseErrors, LeaseLost: metricValue(metrics.TaskLeaseRenewalLostTotal) - leaseLost}
 				require.NoError(t, conn.QueryRow(ctx, `SELECT count(*) FILTER(WHERE status='completed'),COALESCE(sum(attempts),0),count(*) FILTER(WHERE attempts>1)
-					FROM anclax.tasks WHERE id>$1`, historyRows).Scan(&result.Completed, &result.Attempts, &result.RepeatedTasks))
+					FROM anclax.tasks WHERE id>$1 AND id<=$2`, workStartID, workStartID+tasks).Scan(&result.Completed, &result.Attempts, &result.RepeatedTasks))
 				result.TasksPerSecond = float64(result.Completed) / result.ElapsedSeconds
 				stats.mu.Lock()
 				result.Operations = stats.operations
@@ -160,6 +190,10 @@ func TestTaskAdmissionBenchmark(t *testing.T) {
 				require.NoError(t, conn.QueryRow(ctx, `SELECT COALESCE(sum(calls),0) FROM pg_stat_statements
 					WHERE NOT toplevel AND query LIKE 'UPDATE anclax.task_tag_concurrency SET in_use%'`).Scan(&result.CounterUpdates))
 				require.NoError(t, conn.QueryRow(ctx, `SELECT count(*) FROM anclax.task_tag_permits`).Scan(&result.RemainingPermits))
+				require.NoError(t, conn.QueryRow(ctx, `SELECT COALESCE(sum(total_exec_time),0),COALESCE(sum(shared_blks_hit),0)
+                    FROM pg_stat_statements WHERE toplevel`).Scan(&result.TotalSQLMs, &result.TotalSharedHits))
+				require.NoError(t, conn.QueryRow(ctx, `SELECT COALESCE(sum(calls),0),COALESCE(sum(total_exec_time),0)
+					FROM pg_stat_statements WHERE toplevel AND query LIKE '-- name: ListWorkerPrefetchConsumption%'`).Scan(&result.ConsumptionSQLCalls, &result.ConsumptionSQLMs))
 				result.Passed = result.Completed == tasks && result.RepeatedTasks == 0 && result.LeaseErrors == 0 && result.LeaseLost == 0 && result.RemainingPermits == 0
 				for _, op := range result.Operations {
 					for code := range op.Errors {
@@ -182,6 +216,13 @@ func TestTaskAdmissionBenchmark(t *testing.T) {
 }
 
 type admissionBenchResult struct {
+	SteadySamples, EmptyReadySamples, SupplyGapSamples                                               int
+	ConsumptionSQLCalls                                                                              int64
+	ConsumptionSQLMs                                                                                 float64
+	EnqueueSeconds, EnqueueCPUSeconds                                                                float64
+	Blocked                                                                                          int
+	TotalSQLMs                                                                                       float64
+	TotalSharedHits                                                                                  int64
 	Revision, Postgres, Scenario                                                                     string
 	Schema, Concurrency, Tasks, History, GOMAXPROCS, Completed, RepeatedTasks, RemainingPermits      int
 	HandlerMs, Attempts, PoolWaits, ClaimSQLCalls, ClaimSharedHits, ClaimSharedReads, CounterUpdates int64
@@ -191,10 +232,12 @@ type admissionBenchResult struct {
 	Operations                                                                                       map[string]*admissionBenchOperation
 }
 type admissionBenchOperation struct {
-	Calls, Empty, Rows  int
-	P50Ms, P95Ms, P99Ms float64
-	Errors              map[string]int
-	latencies           []time.Duration
+	PreparedTasks, ZeroPrepared int
+	WaitReasons                 map[string]int
+	Calls, Empty, Rows          int
+	P50Ms, P95Ms, P99Ms         float64
+	Errors                      map[string]int
+	latencies                   []time.Duration
 }
 
 func (o *admissionBenchOperation) summarize() {
@@ -210,7 +253,7 @@ type admissionBenchStats struct {
 	operations map[string]*admissionBenchOperation
 }
 
-func (s *admissionBenchStats) record(name string, elapsed time.Duration, rows int, err error) {
+func (s *admissionBenchStats) record(name string, elapsed time.Duration, rows, prepared int, reason string, err error) {
 	if name == "" || errors.Is(err, context.Canceled) {
 		return
 	}
@@ -225,6 +268,23 @@ func (s *admissionBenchStats) record(name string, elapsed time.Duration, rows in
 		s.operations[name] = op
 	}
 	op.Calls++
+	if name == "PrefetchReadyTasks" && err == nil {
+		op.PreparedTasks += max(0, prepared)
+		if prepared == 0 {
+			op.ZeroPrepared++
+		}
+		if op.WaitReasons == nil {
+			op.WaitReasons = make(map[string]int)
+		}
+		if reason == "" {
+			if prepared > 0 {
+				reason = "productive"
+			} else {
+				reason = "unspecified_empty"
+			}
+		}
+		op.WaitReasons[reason]++
+	}
 	op.Rows += rows
 	op.latencies = append(op.latencies, elapsed)
 	if err == nil && rows == 0 {
@@ -253,7 +313,7 @@ func (m *admissionBenchModel) RunTransactionWithTx(ctx context.Context, f func(c
 		return f(observed, txm.SpawnWithTx(observed))
 	})
 	if observed != nil && !errors.Is(ctx.Err(), context.Canceled) {
-		m.stats.record(observed.operation, time.Since(started), observed.rows, err)
+		m.stats.record(observed.operation, time.Since(started), observed.rows, observed.prepared, observed.reason, err)
 	}
 	return err
 }
@@ -265,6 +325,8 @@ func (m *admissionBenchModel) TaskLeasePoolStats() *pgxpool.Stat {
 }
 
 type admissionBenchTx struct {
+	prepared int
+	reason   string
 	core.Tx
 	operation string
 	rows      int
@@ -276,7 +338,10 @@ func (t *admissionBenchTx) identify(sql string) {
 		return
 	}
 	name := fields[2]
-	if (strings.HasPrefix(name, "Claim") && name != "ClaimWorkerCommand") || name == "FinalizeTaskAttempt" {
+	if name == "PrefetchTaskSupply" {
+		name = "PrefetchReadyTasks"
+	}
+	if (strings.HasPrefix(name, "Claim") && name != "ClaimWorkerCommand") || name == "FinalizeTaskAttempt" || name == "PrefetchReadyTasks" {
 		t.operation = name
 	}
 }
@@ -302,6 +367,16 @@ func (r *admissionBenchRow) Scan(dest ...any) error {
 	err := r.Row.Scan(dest...)
 	if err == nil {
 		r.tx.rows++
+		if r.tx.operation == "PrefetchReadyTasks" {
+			if prepared, ok := dest[0].(*int32); ok {
+				r.tx.prepared = int(*prepared)
+			}
+			if len(dest) > 1 {
+				if reason, ok := dest[1].(*string); ok {
+					r.tx.reason = *reason
+				}
+			}
+		}
 	}
 	return err
 }

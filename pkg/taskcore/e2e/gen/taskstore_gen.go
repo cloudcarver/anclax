@@ -453,10 +453,9 @@ func runStepStrictPriorityAndWeightedGroupsS2(parent context.Context, actors Act
 	return nil
 }
 
-func runStepStrictPriorityAndWeightedGroupsS3(parent context.Context, actors Actors, vars *varStore) error {
+func runStepStrictPriorityAndWeightedGroupsS3(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -489,7 +488,7 @@ func runStepStrictPriorityAndWeightedGroupsS3(parent context.Context, actors Act
 			}
 		}
 	}()
-	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(0)}}, rows)
 	return err
@@ -675,10 +674,9 @@ func runStepSerialGatingAndFailureProgressionS4(parent context.Context, actors A
 	return nil
 }
 
-func runStepSerialGatingAndFailureProgressionS5(parent context.Context, actors Actors, vars *varStore) error {
+func runStepSerialGatingAndFailureProgressionS5(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -714,7 +712,7 @@ func runStepSerialGatingAndFailureProgressionS5(parent context.Context, actors A
 	rows, err := actors.Validator.Query(ctx, "select status from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"K2"})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{"failed"}}, rows)
-	rows, err = actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+	rows, err = actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(0)}}, rows)
 	return err
@@ -829,10 +827,9 @@ func runStepDefaultGroupUnknownLabelFallbackS2(parent context.Context, actors Ac
 	return nil
 }
 
-func runStepDefaultGroupUnknownLabelFallbackS3(parent context.Context, actors Actors, vars *varStore) error {
+func runStepDefaultGroupUnknownLabelFallbackS3(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -865,7 +862,7 @@ func runStepDefaultGroupUnknownLabelFallbackS3(parent context.Context, actors Ac
 			}
 		}
 	}()
-	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(0)}}, rows)
 	return err
@@ -1045,10 +1042,9 @@ func runStepLeaseTakeoverAfterTtlAndAbandonS5(parent context.Context, actors Act
 	return nil
 }
 
-func runStepLeaseTakeoverAfterTtlAndAbandonS6(parent context.Context, actors Actors, vars *varStore) error {
+func runStepLeaseTakeoverAfterTtlAndAbandonS6(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -1083,7 +1079,7 @@ func runStepLeaseTakeoverAfterTtlAndAbandonS6(parent context.Context, actors Act
 	}()
 	rows, err := actors.Validator.Query(ctx, "select status from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"L1"})
 	require.NoError(t, err)
-	require.Equal(t, [][]any{{"pending"}}, rows)
+	require.Equal(t, [][]any{{"running"}}, rows)
 	return err
 }
 
@@ -1132,10 +1128,9 @@ func runStepLeaseTakeoverAfterTtlAndAbandonS7(parent context.Context, actors Act
 	return nil
 }
 
-func runStepLeaseTakeoverAfterTtlAndAbandonS8(parent context.Context, actors Actors, vars *varStore) error {
+func runStepLeaseTakeoverAfterTtlAndAbandonS8(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -1168,7 +1163,7 @@ func runStepLeaseTakeoverAfterTtlAndAbandonS8(parent context.Context, actors Act
 			}
 		}
 	}()
-	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(0)}}, rows)
 	return err
@@ -1367,10 +1362,9 @@ func runStepWorkerLabelFilteringS5(parent context.Context, actors Actors, vars *
 	return nil
 }
 
-func runStepWorkerLabelFilteringS6(parent context.Context, actors Actors, vars *varStore) error {
+func runStepWorkerLabelFilteringS6(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -1403,7 +1397,7 @@ func runStepWorkerLabelFilteringS6(parent context.Context, actors Actors, vars *
 			}
 		}
 	}()
-	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(0)}}, rows)
 	return err
@@ -1531,10 +1525,9 @@ func runStepWorkerLabelAllMatchGpuArmS3(parent context.Context, actors Actors, v
 	return nil
 }
 
-func runStepWorkerLabelAllMatchGpuArmS4(parent context.Context, actors Actors, vars *varStore) error {
+func runStepWorkerLabelAllMatchGpuArmS4(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -1567,7 +1560,7 @@ func runStepWorkerLabelAllMatchGpuArmS4(parent context.Context, actors Actors, v
 			}
 		}
 	}()
-	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(0)}}, rows)
 	return err
@@ -1693,10 +1686,9 @@ func runStepWorkerLabelInternalOnlyScopeS2(parent context.Context, actors Actors
 	return nil
 }
 
-func runStepWorkerLabelInternalOnlyScopeS3(parent context.Context, actors Actors, vars *varStore) error {
+func runStepWorkerLabelInternalOnlyScopeS3(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -1770,10 +1762,9 @@ func runStepWorkerLabelInternalOnlyScopeS4(parent context.Context, actors Actors
 	return nil
 }
 
-func runStepWorkerLabelInternalOnlyScopeS5(parent context.Context, actors Actors, vars *varStore) error {
+func runStepWorkerLabelInternalOnlyScopeS5(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -1806,7 +1797,7 @@ func runStepWorkerLabelInternalOnlyScopeS5(parent context.Context, actors Actors
 			}
 		}
 	}()
-	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(0)}}, rows)
 	return err
@@ -1934,10 +1925,9 @@ func runStepWorkerLabelAllMatchStrictPriorityS3(parent context.Context, actors A
 	return nil
 }
 
-func runStepWorkerLabelAllMatchStrictPriorityS4(parent context.Context, actors Actors, vars *varStore) error {
+func runStepWorkerLabelAllMatchStrictPriorityS4(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -1970,7 +1960,7 @@ func runStepWorkerLabelAllMatchStrictPriorityS4(parent context.Context, actors A
 			}
 		}
 	}()
-	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(0)}}, rows)
 	return err
@@ -2086,10 +2076,9 @@ func runStepStrictQueryDoesNotPickNormalS2(parent context.Context, actors Actors
 	return nil
 }
 
-func runStepStrictQueryDoesNotPickNormalS3(parent context.Context, actors Actors, vars *varStore) error {
+func runStepStrictQueryDoesNotPickNormalS3(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -2158,10 +2147,9 @@ func runStepStrictQueryDoesNotPickNormalS4(parent context.Context, actors Actors
 	return nil
 }
 
-func runStepStrictQueryDoesNotPickNormalS5(parent context.Context, actors Actors, vars *varStore) error {
+func runStepStrictQueryDoesNotPickNormalS5(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -2194,7 +2182,7 @@ func runStepStrictQueryDoesNotPickNormalS5(parent context.Context, actors Actors
 			}
 		}
 	}()
-	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(0)}}, rows)
 	return err
@@ -2382,10 +2370,9 @@ func runStepSmokeLeaseLifecycleS5(parent context.Context, actors Actors, vars *v
 	return nil
 }
 
-func runStepSmokeLeaseLifecycleS6(parent context.Context, actors Actors, vars *varStore) error {
+func runStepSmokeLeaseLifecycleS6(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -2509,10 +2496,9 @@ func runStepSmokeLeaseLifecycleS8(parent context.Context, actors Actors, vars *v
 	return nil
 }
 
-func runStepSmokeLeaseLifecycleS9(parent context.Context, actors Actors, vars *varStore) error {
+func runStepSmokeLeaseLifecycleS9(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -2545,7 +2531,7 @@ func runStepSmokeLeaseLifecycleS9(parent context.Context, actors Actors, vars *v
 			}
 		}
 	}()
-	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(0)}}, rows)
 	return err
@@ -2850,10 +2836,9 @@ func runStepSmokeSerialBehaviorS4(parent context.Context, actors Actors, vars *v
 	return nil
 }
 
-func runStepSmokeSerialBehaviorS5(parent context.Context, actors Actors, vars *varStore) error {
+func runStepSmokeSerialBehaviorS5(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -2886,7 +2871,7 @@ func runStepSmokeSerialBehaviorS5(parent context.Context, actors Actors, vars *v
 			}
 		}
 	}()
-	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(0)}}, rows)
 	return err
@@ -3773,10 +3758,9 @@ func runStepSmokePauseTaskWorkerJoinsAfterPauseS3(parent context.Context, actors
 	return nil
 }
 
-func runStepSmokePauseTaskWorkerJoinsAfterPauseS4(parent context.Context, actors Actors, vars *varStore) error {
+func runStepSmokePauseTaskWorkerJoinsAfterPauseS4(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -3917,10 +3901,9 @@ func runStepSmokeCancelTaskWorkerJoinsAfterCancelS3(parent context.Context, acto
 	return nil
 }
 
-func runStepSmokeCancelTaskWorkerJoinsAfterCancelS4(parent context.Context, actors Actors, vars *varStore) error {
+func runStepSmokeCancelTaskWorkerJoinsAfterCancelS4(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -4107,10 +4090,9 @@ func runStepSmokePauseTaskInterruptS4(parent context.Context, actors Actors, var
 	return nil
 }
 
-func runStepSmokePauseTaskInterruptS5(parent context.Context, actors Actors, vars *varStore) error {
+func runStepSmokePauseTaskInterruptS5(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -4286,10 +4268,9 @@ func runStepSmokePauseTaskBeforeStartS3(parent context.Context, actors Actors, v
 	return nil
 }
 
-func runStepSmokePauseTaskBeforeStartS4(parent context.Context, actors Actors, vars *varStore) error {
+func runStepSmokePauseTaskBeforeStartS4(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -4476,10 +4457,9 @@ func runStepSmokeCancelTaskInterruptS4(parent context.Context, actors Actors, va
 	return nil
 }
 
-func runStepSmokeCancelTaskInterruptS5(parent context.Context, actors Actors, vars *varStore) error {
+func runStepSmokeCancelTaskInterruptS5(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -4642,10 +4622,9 @@ func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS2(parent context.Con
 	return nil
 }
 
-func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS3(parent context.Context, actors Actors, vars *varStore) error {
+func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS3(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -4732,10 +4711,9 @@ func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS4(parent context.Con
 	return nil
 }
 
-func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS5(parent context.Context, actors Actors, vars *varStore) error {
+func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS5(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -4772,7 +4750,7 @@ func runStepSmokeControlPlanePauseCancelRaceWithWorkerChurnS5(parent context.Con
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{"cancelled"}}, rows)
 
-	rows, err = actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type' in ('broadcastPauseTask','broadcastCancelTask','pauseTaskOnWorker','cancelTaskOnWorker')", []any{})
+	rows, err = actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks' and spec->>'type' in ('broadcastPauseTask','broadcastCancelTask','pauseTaskOnWorker','cancelTaskOnWorker')", []any{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(0)}}, rows)
 	return err
@@ -4971,10 +4949,9 @@ func runStepSmokeCancelTaskDescendantsS4(parent context.Context, actors Actors, 
 	return nil
 }
 
-func runStepSmokeCancelTaskDescendantsS5(parent context.Context, actors Actors, vars *varStore) error {
+func runStepSmokeCancelTaskDescendantsS5(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -5208,10 +5185,9 @@ func runStepSmokeTagControlIntersectionS2(parent context.Context, actors Actors,
 	return nil
 }
 
-func runStepSmokeTagControlIntersectionS3(parent context.Context, actors Actors, vars *varStore) error {
+func runStepSmokeTagControlIntersectionS3(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -5332,10 +5308,9 @@ func runStepSmokeTagControlIntersectionS5(parent context.Context, actors Actors,
 	return nil
 }
 
-func runStepSmokeTagControlIntersectionS6(parent context.Context, actors Actors, vars *varStore) error {
+func runStepSmokeTagControlIntersectionS6(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -5570,10 +5545,9 @@ func RunScenarioSmokeHighContention(ctx context.Context, actors Actors) error {
 	return nil
 }
 
-func runStepSmokeHighContentionS1(parent context.Context, actors Actors, vars *varStore) error {
+func runStepSmokeHighContentionS1(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -6379,10 +6353,9 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS8(parent context.Context, a
 	return nil
 }
 
-func runStepComplexRuntimeReconfigFailoverAndFailureS9(parent context.Context, actors Actors, vars *varStore) error {
+func runStepComplexRuntimeReconfigFailoverAndFailureS9(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -6417,7 +6390,7 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS9(parent context.Context, a
 	}()
 	rows, err := actors.Validator.Query(ctx, "select status from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"CRRF_LEASE"})
 	require.NoError(t, err)
-	require.Equal(t, [][]any{{"pending"}}, rows)
+	require.Equal(t, [][]any{{"running"}}, rows)
 	return err
 }
 
@@ -6521,10 +6494,9 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS11(parent context.Context, 
 	return nil
 }
 
-func runStepComplexRuntimeReconfigFailoverAndFailureS12(parent context.Context, actors Actors, vars *varStore) error {
+func runStepComplexRuntimeReconfigFailoverAndFailureS12(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -6557,7 +6529,7 @@ func runStepComplexRuntimeReconfigFailoverAndFailureS12(parent context.Context, 
 			}
 		}
 	}()
-	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(0)}}, rows)
 	return err
@@ -6615,10 +6587,9 @@ func runStepBoundedSoakNoBacklogWithWorkerChurnS1(parent context.Context, actors
 	return nil
 }
 
-func runStepBoundedSoakNoBacklogWithWorkerChurnS2(parent context.Context, actors Actors, vars *varStore) error {
+func runStepBoundedSoakNoBacklogWithWorkerChurnS2(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -6707,10 +6678,9 @@ func runStepBoundedSoakNoBacklogWithWorkerChurnS3(parent context.Context, actors
 	return nil
 }
 
-func runStepBoundedSoakNoBacklogWithWorkerChurnS4(parent context.Context, actors Actors, vars *varStore) error {
+func runStepBoundedSoakNoBacklogWithWorkerChurnS4(parent context.Context, actors Actors, vars *varStore) (err error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
@@ -6743,7 +6713,7 @@ func runStepBoundedSoakNoBacklogWithWorkerChurnS4(parent context.Context, actors
 			}
 		}
 	}()
-	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','running')", []any{})
+	rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type' <> 'prefetchTasks'", []any{})
 	require.NoError(t, err)
 	require.Equal(t, [][]any{{int64(0)}}, rows)
 	return err

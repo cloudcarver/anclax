@@ -148,6 +148,20 @@ func (mr *MockModelInterfaceMockRecorder) Close() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockModelInterface)(nil).Close))
 }
 
+// ConfigureWorkerPrefetch mocks base method.
+func (m *MockModelInterface) ConfigureWorkerPrefetch(ctx context.Context, arg querier.ConfigureWorkerPrefetchParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ConfigureWorkerPrefetch", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ConfigureWorkerPrefetch indicates an expected call of ConfigureWorkerPrefetch.
+func (mr *MockModelInterfaceMockRecorder) ConfigureWorkerPrefetch(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConfigureWorkerPrefetch", reflect.TypeOf((*MockModelInterface)(nil).ConfigureWorkerPrefetch), ctx, arg)
+}
+
 // CreateKeyPair mocks base method.
 func (m *MockModelInterface) CreateKeyPair(ctx context.Context, arg querier.CreateKeyPairParams) (*querier.AnclaxAccessKeyPair, error) {
 	m.ctrl.T.Helper()
@@ -322,6 +336,20 @@ func (m *MockModelInterface) DeleteUserByNameReturningID(ctx context.Context, na
 func (mr *MockModelInterfaceMockRecorder) DeleteUserByNameReturningID(ctx, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteUserByNameReturningID", reflect.TypeOf((*MockModelInterface)(nil).DeleteUserByNameReturningID), ctx, name)
+}
+
+// EnsureTaskPrefetch mocks base method.
+func (m *MockModelInterface) EnsureTaskPrefetch(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EnsureTaskPrefetch", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// EnsureTaskPrefetch indicates an expected call of EnsureTaskPrefetch.
+func (mr *MockModelInterfaceMockRecorder) EnsureTaskPrefetch(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureTaskPrefetch", reflect.TypeOf((*MockModelInterface)(nil).EnsureTaskPrefetch), ctx)
 }
 
 // FinalizeTaskAttempt mocks base method.
@@ -813,6 +841,36 @@ func (m *MockModelInterface) MarkWorkerOffline(ctx context.Context, id uuid.UUID
 func (mr *MockModelInterfaceMockRecorder) MarkWorkerOffline(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkWorkerOffline", reflect.TypeOf((*MockModelInterface)(nil).MarkWorkerOffline), ctx, id)
+}
+
+// PrefetchReadyTasks mocks base method.
+func (m *MockModelInterface) PrefetchReadyTasks(ctx context.Context, arg querier.PrefetchReadyTasksParams) (int32, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PrefetchReadyTasks", ctx, arg)
+	ret0, _ := ret[0].(int32)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PrefetchReadyTasks indicates an expected call of PrefetchReadyTasks.
+func (mr *MockModelInterfaceMockRecorder) PrefetchReadyTasks(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PrefetchReadyTasks", reflect.TypeOf((*MockModelInterface)(nil).PrefetchReadyTasks), ctx, arg)
+}
+
+// PrefetchTaskSupply mocks base method.
+func (m *MockModelInterface) PrefetchTaskSupply(ctx context.Context, arg querier.PrefetchTaskSupplyParams) (*querier.PrefetchTaskSupplyRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PrefetchTaskSupply", ctx, arg)
+	ret0, _ := ret[0].(*querier.PrefetchTaskSupplyRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PrefetchTaskSupply indicates an expected call of PrefetchTaskSupply.
+func (mr *MockModelInterfaceMockRecorder) PrefetchTaskSupply(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PrefetchTaskSupply", reflect.TypeOf((*MockModelInterface)(nil).PrefetchTaskSupply), ctx, arg)
 }
 
 // RefreshTaskLock mocks base method.

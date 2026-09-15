@@ -78,26 +78,34 @@ type AnclaxRoleAccessRule struct {
 }
 
 type AnclaxTask struct {
-	ID              int32
-	Attributes      apigen.TaskAttributes
-	Spec            apigen.TaskSpec
-	Status          string
-	UniqueTag       *string
-	StartedAt       *time.Time
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
-	Attempts        int32
-	LockedAt        *time.Time
-	WorkerID        uuid.NullUUID
-	SerialKey       *string
-	SerialID        *int32
-	Priority        int32
-	Weight          int32
-	ParentTaskID    *int32
-	LeaseVersion    int64
-	LeaseExpiresAt  *time.Time
-	LeaseDurationMs *int64
-	LeaseTags       []string
+	ID               int32
+	Attributes       apigen.TaskAttributes
+	Spec             apigen.TaskSpec
+	Status           string
+	UniqueTag        *string
+	StartedAt        *time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	Attempts         int32
+	LockedAt         *time.Time
+	WorkerID         uuid.NullUUID
+	SerialKey        *string
+	SerialID         *int32
+	Priority         int32
+	Weight           int32
+	ParentTaskID     *int32
+	LeaseVersion     int64
+	LeaseExpiresAt   *time.Time
+	LeaseDurationMs  *int64
+	LeaseTags        []string
+	ReadyExpiresAt   *time.Time
+	AdmissionGroupID *int64
+}
+
+type AnclaxTaskAdmissionGroup struct {
+	ID     int64
+	Tags   []string
+	Labels []string
 }
 
 type AnclaxTaskTag struct {
@@ -154,13 +162,16 @@ type AnclaxUsersRole struct {
 }
 
 type AnclaxWorker struct {
-	ID                   uuid.UUID
-	Labels               []byte
-	Status               string
-	LastHeartbeat        time.Time
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
-	AppliedConfigVersion int64
+	ID                       uuid.UUID
+	Labels                   []byte
+	Status                   string
+	LastHeartbeat            time.Time
+	CreatedAt                time.Time
+	UpdatedAt                time.Time
+	AppliedConfigVersion     int64
+	PrefetchCapacity         int32
+	PrefetchStrictPercentage int32
+	PrefetchHeartbeatTtlMs   int64
 }
 
 type AnclaxWorkerRuntimeConfig struct {

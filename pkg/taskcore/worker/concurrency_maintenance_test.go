@@ -30,10 +30,6 @@ func TestClaimMaintenanceFailurePreventsAdmission(t *testing.T) {
 			_, err := p.ClaimByID(ctx, 7, ClaimRequest{})
 			return err
 		},
-		"control": func(ctx context.Context, p *ModelPort) error {
-			_, err := p.ClaimControl(ctx, ClaimRequest{})
-			return err
-		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			for _, failure := range []error{errors.New("database unavailable"), context.Canceled} {
@@ -115,4 +111,16 @@ func TestBlockedBusinessClaimCommitsAndCommitFailureIsReturned(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSystemClaimDoesNotDependOnBusinessMaintenance(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	m, txm := model.NewMockModelInterface(ctrl), model.NewMockModelInterfaceWithTransaction(ctrl)
+	p, err := NewModelPort(m, uuid.New(), nil, nil, time.Second, 0)
+	require.NoError(t, err)
+	m.EXPECT().RunTransactionWithTx(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, f func(core.Tx, model.ModelInterface) error) error { return f(nil, txm) })
+	txm.EXPECT().ClaimWorkerCommand(gomock.Any(), gomock.Any()).Return(&querier.AnclaxTask{ID: 7}, nil)
+	task, err := p.ClaimControl(context.Background(), ClaimRequest{})
+	require.NoError(t, err)
+	require.Equal(t, int32(7), task.ID)
 }

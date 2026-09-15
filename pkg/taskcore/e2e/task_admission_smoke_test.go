@@ -99,7 +99,7 @@ func TestTaskAdmissionSmoke(t *testing.T) {
 			require.NoError(t, err)
 			defer tx.Rollback(ctx)
 			require.NoError(t, tx.QueryRow(ctx, "EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) "+capture.sql, capture.args...).Scan(&plan))
-			require.Contains(t, plan, "idx_tasks_serial_leased")
+			require.Contains(t, plan, "idx_tasks_ready_", "ready claim no longer checks serial history")
 			require.NotContains(t, plan, `"Rows Removed by Filter": 100000`)
 			require.NoError(t, tx.Rollback(ctx))
 			t.Logf("ClaimTaskBatch plan with 100000 historical serial tasks: %s", plan)
@@ -220,6 +220,7 @@ func TestTaskAdmissionSmoke(t *testing.T) {
 				INSERT INTO anclax.tasks(attributes,spec,status,priority) VALUES ('{"labels":["other"]}','{"type":"admission-probe"}','pending',100)`)
 			require.NoError(t, err)
 			p := port(t)
+			prepareReadyFixture(t, ctx, m, nil)
 			tasks, err := p.ClaimBatch(ctx, worker.ClaimBatchRequest{BatchSize: 32, StrictSlots: 3, Groups: []string{worker.DefaultWeightGroup}})
 			require.NoError(t, err)
 			require.Len(t, tasks, 32)
@@ -232,7 +233,7 @@ func TestTaskAdmissionSmoke(t *testing.T) {
 			require.Equal(t, 2, strict)
 			count(t, "SELECT count(*) FROM anclax.tasks WHERE locked_at IS NOT NULL AND serial_key='one-serial'", 1)
 			count(t, "SELECT count(*) FROM anclax.tasks WHERE locked_at IS NOT NULL AND attributes ? 'labels'", 0)
-			count(t, "SELECT count(*) FROM anclax.tasks WHERE locked_at IS NOT NULL", 32)
+			count(t, "SELECT count(*) FROM anclax.tasks WHERE locked_at IS NOT NULL AND spec->>'type'<>'prefetchTasks'", 32)
 			for _, task := range tasks {
 				require.NoError(t, p.FinalizeTask(ctx, *task, nil))
 			}
@@ -248,6 +249,7 @@ func TestTaskAdmissionSmoke(t *testing.T) {
 			require.NoError(t, err)
 			p, err := worker.NewModelPort(m, uuid.New(), []string{"a", "b"}, nil, 9*time.Second, 0)
 			require.NoError(t, err)
+			prepareReadyFixture(t, ctx, m, []string{"a", "b"})
 			tasks, err := p.ClaimBatch(ctx, worker.ClaimBatchRequest{BatchSize: 2,
 				Groups: []string{"a", "b", worker.DefaultWeightGroup}, WeightedLabels: []string{"a", "b"}})
 			require.NoError(t, err)
@@ -268,6 +270,7 @@ func TestTaskAdmissionSmoke(t *testing.T) {
 			_, err := conn.Exec(ctx, `INSERT INTO anclax.tasks(attributes,spec,status,priority,weight)
 				VALUES ('{"tags":["strict"]}','{"type":"admission-probe"}','pending',1,100)`)
 			require.NoError(t, err)
+			prepareReadyFixture(t, ctx, m, nil)
 			tasks, err := port(t).ClaimBatch(ctx, worker.ClaimBatchRequest{BatchSize: 2, StrictSlots: 2, Groups: []string{worker.DefaultWeightGroup}})
 			require.NoError(t, err)
 			require.Len(t, tasks, 1)
@@ -286,9 +289,21 @@ func TestTaskAdmissionSmoke(t *testing.T) {
 			require.NoError(t, err)
 			runCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 			defer cancel()
+			prepare := prepareReadyFixture(t, ctx, m, nil)
 			var completed, claims atomic.Int32
 			var wg sync.WaitGroup
-			errs := make(chan error, 8)
+			errs := make(chan error, 9)
+			schedulerDone := make(chan struct{})
+			go func() {
+				defer close(schedulerDone)
+				for completed.Load() < 320 && runCtx.Err() == nil {
+					if err := prepare(runCtx); err != nil {
+						errs <- err
+						return
+					}
+					time.Sleep(2 * time.Millisecond)
+				}
+			}()
 			for i := 0; i < 8; i++ {
 				p := port(t)
 				wg.Add(1)
@@ -315,6 +330,7 @@ func TestTaskAdmissionSmoke(t *testing.T) {
 				}()
 			}
 			wg.Wait()
+			<-schedulerDone
 			close(errs)
 			for err := range errs {
 				require.NoError(t, err)
@@ -371,6 +387,7 @@ func TestTaskAdmissionSmoke(t *testing.T) {
 			_, err := conn.Exec(ctx, `INSERT INTO anclax.tasks(attributes,spec,status)
 				SELECT jsonb_build_object('tags',jsonb_build_array('ordinary')),'{"type":"admission-probe"}','pending' FROM generate_series(1,150)`)
 			require.NoError(t, err)
+			prepareReadyFixture(t, ctx, m, nil)
 			gate := make(chan struct{})
 			var once sync.Once
 			release := func() { once.Do(func() { close(gate) }) }

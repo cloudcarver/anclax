@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	tasktypes "github.com/cloudcarver/anclax/pkg/taskcore/types"
 	"time"
 
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
@@ -243,11 +244,4 @@ type TaskRuntimesObserver interface{ TaskRuntimesActive([]int32) bool }
 
 // IsControlTask identifies the framework worker-control protocol. Keep this list
 // aligned with ClaimWorkerCommand and the built-in task spec.
-func IsControlTask(taskType string) bool {
-	switch taskType {
-	case "broadcastUpdateWorkerRuntimeConfig", "applyWorkerRuntimeConfigToWorker", "broadcastCancelTask", "cancelTaskOnWorker", "broadcastPauseTask", "pauseTaskOnWorker":
-		return true
-	default:
-		return false
-	}
-}
+func IsControlTask(taskType string) bool { return tasktypes.IsSystemTask(taskType) }

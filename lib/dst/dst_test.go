@@ -1,11 +1,87 @@
 package dst
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestGeneratedScriptFailuresReachCaller(t *testing.T) {
+	spec, err := ParseHybridSpec([]byte(`
+version: dst/hybrid/v1alpha1
+package: scriptprobe
+interfaces:
+  Worker:
+    methods:
+      - Claim(ctx context.Context) error
+instances:
+  worker: Worker
+scenarios:
+  - name: fatal
+    steps:
+      - id: check
+        script: |
+          _ = ctx
+          require.Equal(t, 1, 2, "fatal assertion")
+  - name: nonfatal
+    steps:
+      - id: check
+        script: |
+          _ = ctx
+          t.Errorf("nonfatal assertion")
+  - name: panic
+    steps:
+      - id: check
+        script: |
+          _ = ctx
+          panic("unexpected panic")
+  - name: success
+    steps:
+      - id: check
+        script: |
+          _ = ctx
+          require.Equal(t, 1, 1)
+`))
+	require.NoError(t, err)
+	code, err := GenerateHybridGo(spec, "")
+	require.NoError(t, err)
+	dir := t.TempDir()
+	generated := filepath.Join(dir, "probe.go")
+	testFile := filepath.Join(dir, "probe_test.go")
+	require.NoError(t, os.WriteFile(generated, []byte(code), 0600))
+	require.NoError(t, os.WriteFile(testFile, []byte(`package scriptprobe
+import (
+ "context"
+ "strings"
+ "testing"
+)
+func TestScriptResults(t *testing.T) {
+ for _, tc := range []struct {
+  name string
+  run func(context.Context, Actors) error
+  want string
+ }{
+  {"fatal", RunScenarioFatal, "fatal assertion"},
+  {"nonfatal", RunScenarioNonfatal, "nonfatal assertion"},
+  {"panic", RunScenarioPanic, "unexpected panic"},
+  {"success", RunScenarioSuccess, ""},
+ } {
+  err := tc.run(context.Background(), Actors{})
+  if tc.want == "" {
+   if err != nil { t.Errorf("%s: %v", tc.name, err) }
+  } else if err == nil || !strings.Contains(err.Error(), tc.want) {
+   t.Errorf("%s: got %v, want error containing %q", tc.name, err, tc.want)
+  }
+ }
+}
+`), 0600))
+	out, err := exec.Command("go", "test", generated, testFile).CombinedOutput()
+	require.NoError(t, err, "%s", out)
+}
 
 func TestValidateHybridSpecAndGenerate(t *testing.T) {
 	raw := []byte(`

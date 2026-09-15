@@ -389,11 +389,10 @@ func {{.FuncName}}(ctx context.Context, actors Actors) error {
 }
 
 {{range .Steps}}
-func {{.FuncName}}(parent context.Context, actors Actors, vars *varStore) error {
+func {{.FuncName}}(parent context.Context, actors Actors, vars *varStore) {{if .HasScript}}(err error){{else}}error{{end}} {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 {{- if .HasScript}}
-	var err error
 	t := &scriptT{}
 	set := func(name string, value any) {
 		vars.Set(name, value)
