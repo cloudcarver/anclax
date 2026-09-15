@@ -56,4 +56,4 @@ PostgreSQL regressions cover reservation transfer without a second attempt/alloc
 
 Long-task regressions verify repeated work under one attempt, idle renewal beyond the lease TTL, simultaneous control progress, shutdown and fencing. A statement-level audit verifies bulk admission, mixed constrained candidates, snapshots and quota backfill. An expired-lease regression exhausts the maintenance prefix before verifying that the full allocator releases the old reservation.
 
-Ready-prefetch measurements, including unblocked-workload regressions and the final 200-round fault run, are in the [benchmark report](ready-task-prefetch-benchmark.md).
+The [initial benchmark](ready-task-prefetch-benchmark.md) records the backlog benefits and unblocked-workload regressions of one-round prefetch. The [long-task follow-up](long-task-prefetch-benchmark.md) compares the loop and bulk-admission changes with that version, with fresh chaos and reliable scenario validation.

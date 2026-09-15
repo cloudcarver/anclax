@@ -98,3 +98,5 @@ Every chaos run first uses executor gates to prove full-limit waiting and releas
 Migration `0016_ready_task_prefetch` requires a stopped-Worker upgrade/rollback and updated generated model interfaces. It adds public ready/running states, a resource-group catalog and the internal system scheduler. Rollback releases ready reservations and restores the migration 15 protocol; [upgrade details](ready-task-prefetch.md#upgrade-and-integration).
 
 Ready-prefetch measurements, including unblocked-workload regressions and the final 200-round fault run, are in the [benchmark report](ready-task-prefetch-benchmark.md).
+
+The [long-task prefetch report](long-task-prefetch-benchmark.md) measures the subsequent loop and bulk-admission changes, with fresh chaos and corrected scenario validation.

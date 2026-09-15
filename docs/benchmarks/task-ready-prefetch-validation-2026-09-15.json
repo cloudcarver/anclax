@@ -162,5 +162,6 @@
       "note": "Identical harness, three alternating pairs; includes regressions and insertion costs. See comparison JSON for commands, environment, hashes and every raw measurement.",
       "artifactSHA256": "d40a1efc0b737b2adac7f1290bb741f4d7ee7dab8d52070ad6a52a687f0cfef5"
     }
-  ]
+  ],
+  "erratum": "The historical DST stress run reported success, but generated script assertion failures could return nil. Its passed flag records the process result, not reliable evidence that every script assertion passed. Follow-up 359fdb6 fixes error propagation; new reliable runs are recorded in task-long-prefetch-validation-2026-09-15.json. Direct Go assertions in PostgreSQL, chaos and benchmark tests are unaffected."
 }

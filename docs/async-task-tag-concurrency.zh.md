@@ -96,3 +96,5 @@ ANCLAX_TASKCORE_CHAOS_POSTGRES_IMAGE=postgres:17 \
 迁移 `0016_ready_task_prefetch` 增加 ready/running 状态、准入分组和独立 system 调度。升级或回滚都需先停止 Worker；回滚会释放尚未接管的 ready 预留并恢复迁移 15 协议，保留执行租约。详见[升级说明](ready-task-prefetch.md#upgrade-and-integration)。
 
 状态式预取的三组前后对比、无积压场景回退及最终 200 轮 chaos 见[预取测试报告](ready-task-prefetch-benchmark.md)。
+
+长任务循环和简单任务批量准入的后续对比、200 轮 chaos 与修正后的场景验证见[长任务预取报告](long-task-prefetch-benchmark.md)。

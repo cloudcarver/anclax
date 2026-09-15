@@ -1,5 +1,7 @@
 # Ready prefetch benchmark (2026-09-15)
 
+This records the first ready implementation. The [long-lived prefetch follow-up](long-task-prefetch-benchmark.md) measures the subsequent long-task loop and simple-task bulk admission against this implementation.
+
 Compare merged independent-slot admission (`0575291`, PR #71) with ready-state prefetch (`b3bf02c`). Both use exactly the same automatic-Worker benchmark harness. This measures the complete change, including resource grouping, ready transfer, bounded candidate lookup and the system function's local JIT setting.
 
 The design substantially reduces full-tag backlog scanning, with a measurable cost in some unblocked workloads. The full results below include that regression and insertion overhead.
@@ -57,7 +59,7 @@ The candidate-plan regression extracts the production selection query. With 0 / 
 
 Final commit `b3bf02c` passed **200 chaos rounds** in 599.5 s: 864 submitted, 860 completed, 4 cancelled, and no pending/ready/running tasks left. Faults included 21 Worker disruptions, 13 PostgreSQL restarts, 8 control-plane outages and 103 runtime-config updates. The durable tag audit recorded 589 observations, zero violations, all permits drained and no terminal tag memberships left.
 
-Final Go sources passed the full race unit suite and three complete task-scenario repetitions. PostgreSQL 15/17 regressions cover resource transfer, expiry versus claim, scheduling edits, tag-limit backfill/shrink, weighted progress, serial exclusion, stale scheduler versions, concurrent group creation and migration down/up with live ready/running tasks. Offline Worker command cleanup includes both pending and running states.
+Final Go sources passed the full race unit suite. The original three task-scenario repetitions reported success, but a follow-up found that generated script assertion failures could return nil; those repetitions do not establish that every assertion passed. The follow-up fixes error propagation, updates pending/running expectations and repeats the scenarios. Direct Go assertions in PostgreSQL, chaos and benchmark tests were unaffected. PostgreSQL 15/17 regressions cover resource transfer, expiry versus claim, scheduling edits, tag-limit backfill/shrink, weighted progress, serial exclusion, stale scheduler versions, concurrent group creation and migration down/up with live ready/running tasks. Offline Worker command cleanup includes both pending and running states.
 
 All **84 cases** completed their 2,000 business tasks: 168,000 completions and attempts, no repeated attempts, lease errors/loss or remaining permits, and no recorded claim/prefetch/finalize SQLSTATE errors. Shutdown cancellation emitted rollback-on-closed-connection logs in both revisions (38 before, 13 after); these are preserved in the comparison metadata. Passing does not mean the logs contain no errors.
 
