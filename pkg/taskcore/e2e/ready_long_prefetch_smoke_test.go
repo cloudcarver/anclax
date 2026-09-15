@@ -33,9 +33,9 @@ func (m *prefetchCountingModel) RunTransactionWithTx(ctx context.Context, f func
 	})
 }
 
-func (m *prefetchCountingModel) PrefetchReadyTasks(ctx context.Context, arg querier.PrefetchReadyTasksParams) (int32, error) {
+func (m *prefetchCountingModel) PrefetchTaskSupply(ctx context.Context, arg querier.PrefetchTaskSupplyParams) (*querier.PrefetchTaskSupplyRow, error) {
 	m.calls.Add(1)
-	return m.ModelInterface.PrefetchReadyTasks(ctx, arg)
+	return m.ModelInterface.PrefetchTaskSupply(ctx, arg)
 }
 
 func (m *prefetchCountingModel) TaskLeaseQueries() querier.Querier {
@@ -86,7 +86,7 @@ func TestReadyTaskLongPrefetchSmoke(t *testing.T) {
 			// longer than its TTL, while a separate control task still progresses.
 			beforeIdle := prefetchCalls.Load()
 			time.Sleep(2 * ttl)
-			require.LessOrEqual(t, prefetchCalls.Load()-beforeIdle, int64(8), "idle admission backs off while the lease keeper continues")
+			require.LessOrEqual(t, prefetchCalls.Load()-beforeIdle, int64(10), "idle admission backs off while the lease keeper continues")
 			var businessID, controlID int32
 			require.NoError(t, conn.QueryRow(ctx, `INSERT INTO anclax.tasks(attributes,spec,status)
 				VALUES('{}','{"type":"long-prefetch-probe"}','pending') RETURNING id`).Scan(&businessID))

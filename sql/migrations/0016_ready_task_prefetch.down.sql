@@ -3,6 +3,7 @@ UPDATE anclax.tasks SET status='pending',ready_expires_at=NULL WHERE status='rea
 UPDATE anclax.tasks SET status='pending' WHERE status='running';
 DELETE FROM anclax.tasks WHERE spec->>'type'='prefetchTasks';
 DROP FUNCTION anclax.prefetch_ready_tasks(INT,UUID,BIGINT,INT,BIGINT,BIGINT);
+DROP FUNCTION anclax.prefetch_task_supply(INT,UUID,BIGINT,INT,BIGINT,BIGINT);
 DROP FUNCTION anclax.recover_ready_tasks(INT);
 DROP TRIGGER reclassify_task_admission_groups ON anclax.task_tag_limits;
 DROP FUNCTION anclax.reclassify_task_admission_groups();
@@ -81,6 +82,7 @@ END;
 $$;
 CREATE TRIGGER snapshot_task_lease_tags BEFORE INSERT OR UPDATE OF locked_at ON anclax.tasks
 FOR EACH ROW EXECUTE FUNCTION anclax.snapshot_task_lease_tags();
+DROP INDEX anclax.idx_tasks_pending_due;
 DROP INDEX anclax.idx_tasks_system_pending;
 DROP INDEX anclax.idx_tasks_unclassified;
 DROP FUNCTION anclax.is_system_task(TEXT);
@@ -96,5 +98,5 @@ CREATE INDEX idx_tasks_serial_pending_head ON anclax.tasks
 ALTER TABLE anclax.tasks DROP CONSTRAINT tasks_ready_reservation_shape;
 ALTER TABLE anclax.tasks DROP COLUMN ready_expires_at,DROP COLUMN admission_group_id;
 DROP TABLE anclax.task_admission_groups;
-ALTER TABLE anclax.workers DROP COLUMN prefetch_capacity,DROP COLUMN prefetch_strict_percentage,DROP COLUMN prefetch_heartbeat_ttl_ms,DROP COLUMN prefetch_claimed;
+ALTER TABLE anclax.workers DROP COLUMN prefetch_capacity,DROP COLUMN prefetch_strict_percentage,DROP COLUMN prefetch_heartbeat_ttl_ms;
 COMMIT;

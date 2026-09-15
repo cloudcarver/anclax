@@ -92,10 +92,10 @@ func (mr *MockModelInterfaceMockRecorder) ClaimTask(ctx, arg any) *gomock.Call {
 }
 
 // ClaimTaskBatch mocks base method.
-func (m *MockModelInterface) ClaimTaskBatch(ctx context.Context, arg querier.ClaimTaskBatchParams) ([]*querier.ClaimTaskBatchRow, error) {
+func (m *MockModelInterface) ClaimTaskBatch(ctx context.Context, arg querier.ClaimTaskBatchParams) ([]*querier.AnclaxTask, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ClaimTaskBatch", ctx, arg)
-	ret0, _ := ret[0].([]*querier.ClaimTaskBatchRow)
+	ret0, _ := ret[0].([]*querier.AnclaxTask)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -815,21 +815,6 @@ func (mr *MockModelInterfaceMockRecorder) ListTerminalTaskWaitStatuses(ctx, ids 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTerminalTaskWaitStatuses", reflect.TypeOf((*MockModelInterface)(nil).ListTerminalTaskWaitStatuses), ctx, ids)
 }
 
-// ListWorkerPrefetchConsumption mocks base method.
-func (m *MockModelInterface) ListWorkerPrefetchConsumption(ctx context.Context) ([]*querier.ListWorkerPrefetchConsumptionRow, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListWorkerPrefetchConsumption", ctx)
-	ret0, _ := ret[0].([]*querier.ListWorkerPrefetchConsumptionRow)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListWorkerPrefetchConsumption indicates an expected call of ListWorkerPrefetchConsumption.
-func (mr *MockModelInterfaceMockRecorder) ListWorkerPrefetchConsumption(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListWorkerPrefetchConsumption", reflect.TypeOf((*MockModelInterface)(nil).ListWorkerPrefetchConsumption), ctx)
-}
-
 // MaintainTaskConcurrency mocks base method.
 func (m *MockModelInterface) MaintainTaskConcurrency(ctx context.Context, legacyTtlMs int64) error {
 	m.ctrl.T.Helper()
@@ -871,6 +856,21 @@ func (m *MockModelInterface) PrefetchReadyTasks(ctx context.Context, arg querier
 func (mr *MockModelInterfaceMockRecorder) PrefetchReadyTasks(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PrefetchReadyTasks", reflect.TypeOf((*MockModelInterface)(nil).PrefetchReadyTasks), ctx, arg)
+}
+
+// PrefetchTaskSupply mocks base method.
+func (m *MockModelInterface) PrefetchTaskSupply(ctx context.Context, arg querier.PrefetchTaskSupplyParams) (*querier.PrefetchTaskSupplyRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PrefetchTaskSupply", ctx, arg)
+	ret0, _ := ret[0].(*querier.PrefetchTaskSupplyRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PrefetchTaskSupply indicates an expected call of PrefetchTaskSupply.
+func (mr *MockModelInterfaceMockRecorder) PrefetchTaskSupply(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PrefetchTaskSupply", reflect.TypeOf((*MockModelInterface)(nil).PrefetchTaskSupply), ctx, arg)
 }
 
 // RefreshTaskLock mocks base method.

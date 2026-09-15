@@ -8,8 +8,7 @@ ALTER TABLE anclax.tasks ADD CONSTRAINT tasks_ready_reservation_shape CHECK (
 );
 ALTER TABLE anclax.workers ADD COLUMN prefetch_capacity INT NOT NULL DEFAULT 0,
     ADD COLUMN prefetch_strict_percentage INT NOT NULL DEFAULT 100,
-    ADD COLUMN prefetch_heartbeat_ttl_ms BIGINT NOT NULL DEFAULT 9000,
-    ADD COLUMN prefetch_claimed BIGINT NOT NULL DEFAULT 0 CHECK (prefetch_claimed>=0);
+    ADD COLUMN prefetch_heartbeat_ttl_ms BIGINT NOT NULL DEFAULT 9000;
 CREATE FUNCTION anclax.is_system_task(task_type TEXT) RETURNS BOOLEAN
 LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
     SELECT task_type IN ('prefetchTasks', 'broadcastUpdateWorkerRuntimeConfig',
@@ -27,6 +26,10 @@ CREATE INDEX idx_tasks_unclassified ON anclax.tasks(id)
     WHERE status='pending' AND admission_group_id IS NULL AND NOT anclax.is_system_task(spec->>'type');
 CREATE INDEX idx_tasks_admission_candidates ON anclax.tasks
     (admission_group_id,priority DESC,(CASE WHEN priority=0 THEN weight ELSE 0 END) DESC,created_at,id) WHERE status='pending';
+-- A zero-output admission round must not scan historical/future rows to
+-- distinguish true idleness from a due backlog waiting for resource release.
+CREATE INDEX idx_tasks_pending_due ON anclax.tasks((COALESCE(started_at,'-infinity'::timestamptz)))
+    WHERE status='pending' AND locked_at IS NULL AND NOT anclax.is_system_task(spec->>'type');
 CREATE INDEX idx_tasks_ready_priority ON anclax.tasks(priority DESC,created_at,id) WHERE status='ready';
 CREATE INDEX idx_tasks_ready_weight ON anclax.tasks(weight DESC,created_at,id) WHERE status='ready' AND priority=0;
 CREATE INDEX idx_tasks_ready_expiry ON anclax.tasks(ready_expires_at,id) WHERE status='ready';
@@ -241,8 +244,9 @@ BEGIN
 END;
 $$;
 
-CREATE FUNCTION anclax.prefetch_ready_tasks(p_task_id INT,p_worker UUID,p_version BIGINT,
-    p_batch INT,p_ready_ttl_ms BIGINT,p_lock_ttl_ms BIGINT) RETURNS INT LANGUAGE plpgsql VOLATILE SET jit=off AS $$
+CREATE FUNCTION anclax.prefetch_task_supply(p_task_id INT,p_worker UUID,p_version BIGINT,
+    p_batch INT,p_ready_ttl_ms BIGINT,p_lock_ttl_ms BIGINT)
+    RETURNS TABLE(prepared INT,wait_reason TEXT) LANGUAGE plpgsql VOLATILE SET jit=off AS $$
 DECLARE target INT; strict_target INT; current_ready INT; current_strict INT; n INT:=0; selected_task RECORD;
     group_cursor BIGINT; total_weight BIGINT; group_names TEXT[]; group_bounds BIGINT[];
     ordered_groups TEXT[]; weighted_labels TEXT[]; preferred_index INT:=1; i INT;
@@ -259,7 +263,7 @@ BEGIN
     FROM anclax.tasks WHERE id=p_task_id AND worker_id=p_worker AND lease_version=p_version
         AND unique_tag='anclax:system:prefetch' AND spec->>'type'='prefetchTasks' AND status IN ('pending','running')
         AND locked_at IS NOT NULL AND lease_expires_at>statement_timestamp() FOR UPDATE;
-    IF NOT FOUND THEN RETURN -1; END IF;
+    IF NOT FOUND THEN RETURN QUERY SELECT -1,'lost'::text; RETURN; END IF;
     stored_cursor:=group_cursor;
     PERFORM anclax.recover_ready_tasks(256);
     PERFORM anclax.maintain_task_concurrency(p_lock_ttl_ms);
@@ -279,7 +283,10 @@ BEGIN
     SELECT count(*)::int,count(*) FILTER(WHERE priority>0)::int INTO current_ready,current_strict
     FROM anclax.tasks WHERE status='ready';
     target:=LEAST(p_batch,target-current_ready);
-    IF target<=0 THEN RETURN 0; END IF;
+    IF target<=0 THEN
+        RETURN QUERY SELECT 0,CASE WHEN current_ready>0 THEN 'ready_full' ELSE 'idle' END::text;
+        RETURN;
+    END IF;
     -- Match the Worker's sorted weighted-group wheel without expanding large
     -- weights into one row per unit. Only the singleton job advances the cursor.
     WITH configured AS (
@@ -365,7 +372,29 @@ BEGIN
         UPDATE anclax.tasks SET spec=jsonb_set(spec,'{payload,admissionCursor}',to_jsonb((group_cursor+1)%total_weight),true)
         WHERE id=p_task_id;
     END IF;
-    RETURN n;
+    IF n>0 THEN
+        RETURN QUERY SELECT n,'productive'::text;
+    ELSIF NOT EXISTS(SELECT 1 FROM anclax.tasks
+        WHERE status='pending' AND locked_at IS NULL AND NOT anclax.is_system_task(spec->>'type')
+          AND COALESCE(started_at,'-infinity'::timestamptz)<=statement_timestamp()) THEN
+        RETURN QUERY SELECT 0,'idle'::text;
+    ELSIF current_ready>0 OR EXISTS(SELECT 1 FROM anclax.tasks
+        WHERE locked_at IS NOT NULL AND lease_expires_at IS NOT NULL
+          AND status IN ('pending','running') AND NOT anclax.is_system_task(spec->>'type')) THEN
+        -- Claimed work can release tag/serial resources without another claim.
+        -- Keep checking while it is active; claim-rate pacing cannot see this.
+        RETURN QUERY SELECT 0,'blocked'::text;
+    ELSE
+        -- Examples include quota zero and currently unavailable routing. These
+        -- are due tasks, not proven runnable work, and must not spin forever.
+        RETURN QUERY SELECT 0,'quiescent'::text;
+    END IF;
 END;
+$$;
+
+-- Preserve direct callers that only need the prepared count and lost fence.
+CREATE FUNCTION anclax.prefetch_ready_tasks(p_task_id INT,p_worker UUID,p_version BIGINT,
+    p_batch INT,p_ready_ttl_ms BIGINT,p_lock_ttl_ms BIGINT) RETURNS INT LANGUAGE sql VOLATILE SET jit=off AS $$
+    SELECT prepared FROM anclax.prefetch_task_supply(p_task_id,p_worker,p_version,p_batch,p_ready_ttl_ms,p_lock_ttl_ms);
 $$;
 COMMIT;

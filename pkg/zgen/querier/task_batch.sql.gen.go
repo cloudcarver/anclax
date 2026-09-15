@@ -7,8 +7,6 @@ package querier
 
 import (
 	"context"
-	"encoding/json"
-	"time"
 
 	"github.com/google/uuid"
 )
@@ -21,97 +19,63 @@ WITH strict_candidates AS MATERIALIZED (
         AND t.priority > 0
         AND NOT EXISTS (
             SELECT 1 FROM jsonb_array_elements_text(COALESCE(NULLIF(t.attributes->'labels', 'null'::jsonb), '[]'::jsonb)) AS task_label(value)
-            WHERE NOT (task_label.value = ANY(COALESCE($1::text[], ARRAY[]::text[])))
+            WHERE NOT (task_label.value = ANY(COALESCE($3::text[], ARRAY[]::text[])))
         )
     ORDER BY t.priority DESC, t.created_at, t.id
-    LIMIT $2::int
+    LIMIT $4::int
     FOR UPDATE OF t SKIP LOCKED
 ), normal_candidates AS MATERIALIZED (
-    SELECT t.id, t.priority, t.weight, t.created_at, array_position($3::text[], COALESCE((SELECT MIN(label) FROM jsonb_array_elements_text(COALESCE(NULLIF(t.attributes->'labels', 'null'::jsonb), '[]'::jsonb)) AS labels(label) WHERE label = ANY($4::text[])), '__default__')) AS group_order
+    SELECT t.id, t.priority, t.weight, t.created_at, array_position($5::text[], COALESCE((SELECT MIN(label) FROM jsonb_array_elements_text(COALESCE(NULLIF(t.attributes->'labels', 'null'::jsonb), '[]'::jsonb)) AS labels(label) WHERE label = ANY($6::text[])), '__default__')) AS group_order
     FROM anclax.tasks t
     WHERE t.status = 'ready' AND t.ready_expires_at > statement_timestamp()
         AND t.priority = 0
-        AND COALESCE((SELECT MIN(label) FROM jsonb_array_elements_text(COALESCE(NULLIF(t.attributes->'labels', 'null'::jsonb), '[]'::jsonb)) AS labels(label) WHERE label = ANY($4::text[])), '__default__') = ANY($3::text[])
+        AND COALESCE((SELECT MIN(label) FROM jsonb_array_elements_text(COALESCE(NULLIF(t.attributes->'labels', 'null'::jsonb), '[]'::jsonb)) AS labels(label) WHERE label = ANY($6::text[])), '__default__') = ANY($5::text[])
         AND NOT EXISTS (
             SELECT 1 FROM jsonb_array_elements_text(COALESCE(NULLIF(t.attributes->'labels', 'null'::jsonb), '[]'::jsonb)) AS task_label(value)
-            WHERE NOT (task_label.value = ANY(COALESCE($1::text[], ARRAY[]::text[])))
+            WHERE NOT (task_label.value = ANY(COALESCE($3::text[], ARRAY[]::text[])))
         )
     ORDER BY group_order, t.weight DESC, t.created_at, t.id
-    LIMIT $5::int
+    LIMIT $7::int
     FOR UPDATE OF t SKIP LOCKED
 ), candidate AS MATERIALIZED (
     SELECT id, priority, weight, created_at, group_order FROM (SELECT id, priority, weight, created_at, group_order FROM strict_candidates UNION ALL SELECT id, priority, weight, created_at, group_order FROM normal_candidates) candidates
     ORDER BY priority DESC,group_order,CASE WHEN priority=0 THEN weight ELSE 0 END DESC,created_at,id
-    LIMIT $5::int
-), claimed AS (
-UPDATE anclax.tasks AS t
-SET status='running',ready_expires_at=NULL,locked_at=statement_timestamp(),worker_id=$6,
-    lease_expires_at=statement_timestamp()+$7::bigint*INTERVAL '1 millisecond',
-    lease_duration_ms=$7::bigint,attempts=t.attempts+1,updated_at=statement_timestamp()
-FROM candidate WHERE t.id=candidate.id RETURNING t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id, t.lease_version, t.lease_expires_at, t.lease_duration_ms, t.lease_tags, t.ready_expires_at, t.admission_group_id
-), consumption AS (
-    -- One per-Worker write per nonempty batch, committed with the task leases.
-    -- Unregistered legacy callers can still claim, without reporting demand.
-    UPDATE anclax.workers w SET prefetch_claimed=w.prefetch_claimed+n.claimed
-    FROM (SELECT count(*) AS claimed FROM claimed) n
-    WHERE w.id=$6 AND n.claimed>0
-    RETURNING w.id
+    LIMIT $7::int
 )
-SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight, parent_task_id, lease_version, lease_expires_at, lease_duration_ms, lease_tags, ready_expires_at, admission_group_id FROM claimed
+UPDATE anclax.tasks AS t
+SET status='running',ready_expires_at=NULL,locked_at=statement_timestamp(),worker_id=$1,
+    lease_expires_at=statement_timestamp()+$2::bigint*INTERVAL '1 millisecond',
+    lease_duration_ms=$2::bigint,attempts=t.attempts+1,updated_at=statement_timestamp()
+FROM candidate WHERE t.id=candidate.id RETURNING t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id, t.lease_version, t.lease_expires_at, t.lease_duration_ms, t.lease_tags, t.ready_expires_at, t.admission_group_id
 `
 
 type ClaimTaskBatchParams struct {
+	WorkerID       uuid.NullUUID
+	LockTtlMs      int64
 	Labels         []string
 	StrictSlots    int32
 	GroupNames     []string
 	WeightedLabels []string
 	BatchSize      int32
-	WorkerID       uuid.NullUUID
-	LockTtlMs      int64
 }
 
-type ClaimTaskBatchRow struct {
-	ID               int32
-	Attributes       json.RawMessage
-	Spec             json.RawMessage
-	Status           string
-	UniqueTag        *string
-	StartedAt        *time.Time
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-	Attempts         int32
-	LockedAt         *time.Time
-	WorkerID         uuid.NullUUID
-	SerialKey        *string
-	SerialID         *int32
-	Priority         int32
-	Weight           int32
-	ParentTaskID     *int32
-	LeaseVersion     int64
-	LeaseExpiresAt   *time.Time
-	LeaseDurationMs  *int64
-	LeaseTags        []string
-	ReadyExpiresAt   *time.Time
-	AdmissionGroupID *int64
-}
-
-func (q *Queries) ClaimTaskBatch(ctx context.Context, arg ClaimTaskBatchParams) ([]*ClaimTaskBatchRow, error) {
+func (q *Queries) ClaimTaskBatch(ctx context.Context, arg ClaimTaskBatchParams) ([]*AnclaxTask, error) {
 	rows, err := q.db.Query(ctx, claimTaskBatch,
+		arg.WorkerID,
+		arg.LockTtlMs,
 		arg.Labels,
 		arg.StrictSlots,
 		arg.GroupNames,
 		arg.WeightedLabels,
 		arg.BatchSize,
-		arg.WorkerID,
-		arg.LockTtlMs,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []*ClaimTaskBatchRow
+	var items []*AnclaxTask
 	for rows.Next() {
-		var i ClaimTaskBatchRow
+		var i AnclaxTask
 		if err := rows.Scan(
 			&i.ID,
 			&i.Attributes,

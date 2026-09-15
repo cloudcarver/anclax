@@ -188,7 +188,7 @@ UPDATE anclax.workers
 SET last_heartbeat = CURRENT_TIMESTAMP,
     updated_at = CURRENT_TIMESTAMP
 WHERE id = $1 AND status = 'online'
-RETURNING id, labels, status, last_heartbeat, created_at, updated_at, applied_config_version, prefetch_capacity, prefetch_strict_percentage, prefetch_heartbeat_ttl_ms, prefetch_claimed
+RETURNING id, labels, status, last_heartbeat, created_at, updated_at, applied_config_version, prefetch_capacity, prefetch_strict_percentage, prefetch_heartbeat_ttl_ms
 `
 
 func (q *Queries) UpdateWorkerHeartbeat(ctx context.Context, id uuid.UUID) (*AnclaxWorker, error) {
@@ -205,7 +205,6 @@ func (q *Queries) UpdateWorkerHeartbeat(ctx context.Context, id uuid.UUID) (*Anc
 		&i.PrefetchCapacity,
 		&i.PrefetchStrictPercentage,
 		&i.PrefetchHeartbeatTtlMs,
-		&i.PrefetchClaimed,
 	)
 	return &i, err
 }
@@ -220,7 +219,7 @@ DO UPDATE SET
     status = 'online',
     last_heartbeat = CURRENT_TIMESTAMP,
     updated_at = CURRENT_TIMESTAMP
-RETURNING id, labels, status, last_heartbeat, created_at, updated_at, applied_config_version, prefetch_capacity, prefetch_strict_percentage, prefetch_heartbeat_ttl_ms, prefetch_claimed
+RETURNING id, labels, status, last_heartbeat, created_at, updated_at, applied_config_version, prefetch_capacity, prefetch_strict_percentage, prefetch_heartbeat_ttl_ms
 `
 
 type UpsertWorkerParams struct {
@@ -243,7 +242,6 @@ func (q *Queries) UpsertWorker(ctx context.Context, arg UpsertWorkerParams) (*An
 		&i.PrefetchCapacity,
 		&i.PrefetchStrictPercentage,
 		&i.PrefetchHeartbeatTtlMs,
-		&i.PrefetchClaimed,
 	)
 	return &i, err
 }

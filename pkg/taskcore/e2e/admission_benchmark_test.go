@@ -215,10 +215,12 @@ type admissionBenchResult struct {
 	Operations                                                                                       map[string]*admissionBenchOperation
 }
 type admissionBenchOperation struct {
-	Calls, Empty, Rows  int
-	P50Ms, P95Ms, P99Ms float64
-	Errors              map[string]int
-	latencies           []time.Duration
+	PreparedTasks, ZeroPrepared int
+	WaitReasons                 map[string]int
+	Calls, Empty, Rows          int
+	P50Ms, P95Ms, P99Ms         float64
+	Errors                      map[string]int
+	latencies                   []time.Duration
 }
 
 func (o *admissionBenchOperation) summarize() {
@@ -234,7 +236,7 @@ type admissionBenchStats struct {
 	operations map[string]*admissionBenchOperation
 }
 
-func (s *admissionBenchStats) record(name string, elapsed time.Duration, rows int, err error) {
+func (s *admissionBenchStats) record(name string, elapsed time.Duration, rows, prepared int, reason string, err error) {
 	if name == "" || errors.Is(err, context.Canceled) {
 		return
 	}
@@ -249,6 +251,23 @@ func (s *admissionBenchStats) record(name string, elapsed time.Duration, rows in
 		s.operations[name] = op
 	}
 	op.Calls++
+	if name == "PrefetchReadyTasks" && err == nil {
+		op.PreparedTasks += max(0, prepared)
+		if prepared == 0 {
+			op.ZeroPrepared++
+		}
+		if op.WaitReasons == nil {
+			op.WaitReasons = make(map[string]int)
+		}
+		if reason == "" {
+			if prepared > 0 {
+				reason = "productive"
+			} else {
+				reason = "unspecified_empty"
+			}
+		}
+		op.WaitReasons[reason]++
+	}
 	op.Rows += rows
 	op.latencies = append(op.latencies, elapsed)
 	if err == nil && rows == 0 {
@@ -277,7 +296,7 @@ func (m *admissionBenchModel) RunTransactionWithTx(ctx context.Context, f func(c
 		return f(observed, txm.SpawnWithTx(observed))
 	})
 	if observed != nil && !errors.Is(ctx.Err(), context.Canceled) {
-		m.stats.record(observed.operation, time.Since(started), observed.rows, err)
+		m.stats.record(observed.operation, time.Since(started), observed.rows, observed.prepared, observed.reason, err)
 	}
 	return err
 }
@@ -289,6 +308,8 @@ func (m *admissionBenchModel) TaskLeasePoolStats() *pgxpool.Stat {
 }
 
 type admissionBenchTx struct {
+	prepared int
+	reason   string
 	core.Tx
 	operation string
 	rows      int
@@ -300,6 +321,9 @@ func (t *admissionBenchTx) identify(sql string) {
 		return
 	}
 	name := fields[2]
+	if name == "PrefetchTaskSupply" {
+		name = "PrefetchReadyTasks"
+	}
 	if (strings.HasPrefix(name, "Claim") && name != "ClaimWorkerCommand") || name == "FinalizeTaskAttempt" || name == "PrefetchReadyTasks" {
 		t.operation = name
 	}
@@ -326,6 +350,16 @@ func (r *admissionBenchRow) Scan(dest ...any) error {
 	err := r.Row.Scan(dest...)
 	if err == nil {
 		r.tx.rows++
+		if r.tx.operation == "PrefetchReadyTasks" {
+			if prepared, ok := dest[0].(*int32); ok {
+				r.tx.prepared = int(*prepared)
+			}
+			if len(dest) > 1 {
+				if reason, ok := dest[1].(*string); ok {
+					r.tx.reason = *reason
+				}
+			}
+		}
 	}
 	return err
 }

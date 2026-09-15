@@ -48,40 +48,6 @@ func (q *Queries) EnsureTaskPrefetch(ctx context.Context) error {
 	return err
 }
 
-const listWorkerPrefetchConsumption = `-- name: ListWorkerPrefetchConsumption :many
-SELECT id,prefetch_claimed,CASE WHEN status='online'
-    AND last_heartbeat>statement_timestamp()-prefetch_heartbeat_ttl_ms*interval '1 millisecond'
-    THEN prefetch_capacity ELSE 0 END::int AS capacity
-FROM anclax.workers WHERE prefetch_capacity>0
-`
-
-type ListWorkerPrefetchConsumptionRow struct {
-	ID              uuid.UUID
-	PrefetchClaimed int64
-	Capacity        int32
-}
-
-// Include offline counters so liveness changes don't replay historical claims.
-func (q *Queries) ListWorkerPrefetchConsumption(ctx context.Context) ([]*ListWorkerPrefetchConsumptionRow, error) {
-	rows, err := q.db.Query(ctx, listWorkerPrefetchConsumption)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []*ListWorkerPrefetchConsumptionRow
-	for rows.Next() {
-		var i ListWorkerPrefetchConsumptionRow
-		if err := rows.Scan(&i.ID, &i.PrefetchClaimed, &i.Capacity); err != nil {
-			return nil, err
-		}
-		items = append(items, &i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const prefetchReadyTasks = `-- name: PrefetchReadyTasks :one
 SELECT anclax.prefetch_ready_tasks($1::int,$2::uuid,
     $3::bigint,$4::int,
@@ -110,4 +76,40 @@ func (q *Queries) PrefetchReadyTasks(ctx context.Context, arg PrefetchReadyTasks
 	var prepared int32
 	err := row.Scan(&prepared)
 	return prepared, err
+}
+
+const prefetchTaskSupply = `-- name: PrefetchTaskSupply :one
+SELECT prepared::int,wait_reason::text
+FROM anclax.prefetch_task_supply($1::int,$2::uuid,
+    $3::bigint,$4::int,
+    $5::bigint,$6::bigint)
+`
+
+type PrefetchTaskSupplyParams struct {
+	TaskID       int32
+	WorkerID     uuid.UUID
+	LeaseVersion int64
+	BatchSize    int32
+	ReadyTtlMs   int64
+	LockTtlMs    int64
+}
+
+type PrefetchTaskSupplyRow struct {
+	Prepared   int32
+	WaitReason string
+}
+
+// The wait reason is advisory; allocation and the scheduler fence stay in SQL.
+func (q *Queries) PrefetchTaskSupply(ctx context.Context, arg PrefetchTaskSupplyParams) (*PrefetchTaskSupplyRow, error) {
+	row := q.db.QueryRow(ctx, prefetchTaskSupply,
+		arg.TaskID,
+		arg.WorkerID,
+		arg.LeaseVersion,
+		arg.BatchSize,
+		arg.ReadyTtlMs,
+		arg.LockTtlMs,
+	)
+	var i PrefetchTaskSupplyRow
+	err := row.Scan(&i.Prepared, &i.WaitReason)
+	return &i, err
 }

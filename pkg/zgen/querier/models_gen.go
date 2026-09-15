@@ -172,7 +172,6 @@ type AnclaxWorker struct {
 	PrefetchCapacity         int32
 	PrefetchStrictPercentage int32
 	PrefetchHeartbeatTtlMs   int64
-	PrefetchClaimed          int64
 }
 
 type AnclaxWorkerRuntimeConfig struct {
