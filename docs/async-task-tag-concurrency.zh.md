@@ -60,7 +60,7 @@ if err := controlPlane.SetTagConcurrencyLimit(ctx, "vendor:api", 10); err != nil
 
 ready 预留默认两秒，占用配额直到接管、撤销或回收。窗口按在线 Worker 容量限制，全局最多保留 4,096 条 ready，执行中任务另行统计。容量释放后下一轮 system 调度可补充任务。完整恢复和升级语义见[预取设计](ready-task-prefetch.md)。
 
-预取 system 任务长期运行，每批使用独立短事务，成功补货后立即继续，优先补足现有 ready 窗口。ready 已满，或到期任务仍在等待执行中任务释放资源时，按 5 ms 检查；只有空闲或无活跃资源持有者的静止状态才逐步退避到 100 ms。不再使用消费额度，也不在领取路径写消费计数。Worker 预留两个控制槽位，让其他 system 命令持续执行。无有限额 tag、无 serial key 且无旧执行租约的任务批量更新为 ready，保留无限额 tag 快照供新增配额时回填；受限任务和过期租约继续走完整申请与释放路径。
+预取 system 任务长期运行，每批使用独立短事务，成功补货后立即继续，优先补足现有 ready 窗口。ready 已满时按 20 ms 检查，到期任务仍在等待执行中任务释放资源时按 5 ms 检查；只有空闲或无活跃资源持有者的静止状态才逐步退避到 100 ms。不再使用消费额度，也不在领取路径写消费计数。Worker 预留两个控制槽位，让其他 system 命令持续执行。无有限额 tag、无 serial key 且无旧执行租约的任务批量更新为 ready，保留无限额 tag 快照供新增配额时回填；受限任务和过期租约继续走完整申请与释放路径。
 
 调度指标包括 `anclax_task_scheduler_duration_seconds{operation}`、`anclax_task_scheduler_errors_total{operation,sqlstate}`、`anclax_task_claim_batch_size`（包括空批次）、`anclax_task_finalize_retries_total{sqlstate}`、`anclax_worker_task_phases{phase}`，配合已有租约续期指标，区分领取进展、空领取、收尾重试和最终错误。
 

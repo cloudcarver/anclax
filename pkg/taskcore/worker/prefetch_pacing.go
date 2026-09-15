@@ -7,6 +7,7 @@ import (
 
 const (
 	prefetchBusyInterval = 5 * time.Millisecond
+	prefetchFullInterval = 20 * time.Millisecond
 	prefetchIdleMaximum  = 100 * time.Millisecond
 )
 
@@ -22,7 +23,10 @@ func (p *prefetchPacing) interval(reason string) (time.Duration, error) {
 	case "productive":
 		p.idle = 0
 		return 0, nil
-	case "ready_full", "blocked":
+	case "ready_full":
+		p.idle = 0
+		return prefetchFullInterval, nil
+	case "blocked":
 		p.idle = 0
 		return prefetchBusyInterval, nil
 	case "idle", "quiescent":

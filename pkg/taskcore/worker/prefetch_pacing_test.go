@@ -32,7 +32,11 @@ func TestPrefetchSupplyActiveResourcesNeverAccumulateIdleBackoff(t *testing.T) {
 		for i := 0; i < 100; i++ {
 			interval, err := p.interval(reason)
 			require.NoError(t, err)
-			require.Equal(t, prefetchBusyInterval, interval)
+			if reason == "ready_full" {
+				require.Equal(t, prefetchFullInterval, interval)
+			} else {
+				require.Equal(t, prefetchBusyInterval, interval)
+			}
 			require.Zero(t, p.idle, "lack of claims does not mean active leases cannot release resources")
 		}
 		interval, err := p.interval("idle")
