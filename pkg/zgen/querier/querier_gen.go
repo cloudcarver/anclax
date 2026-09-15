@@ -66,6 +66,7 @@ type Querier interface {
 	ListTerminalTaskWaitStatuses(ctx context.Context, ids []int32) ([]*ListTerminalTaskWaitStatusesRow, error)
 	MaintainTaskConcurrency(ctx context.Context, legacyTtlMs int64) error
 	MarkWorkerOffline(ctx context.Context, id uuid.UUID) error
+	// A negative prepared count means the scheduler attempt no longer owns its lease.
 	PrefetchReadyTasks(ctx context.Context, arg PrefetchReadyTasksParams) (int32, error)
 	RefreshTaskLock(ctx context.Context, arg RefreshTaskLockParams) (int32, error)
 	RefreshTaskLocks(ctx context.Context, arg RefreshTaskLocksParams) ([]*RefreshTaskLocksRow, error)

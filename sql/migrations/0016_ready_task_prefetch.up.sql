@@ -245,15 +245,21 @@ CREATE FUNCTION anclax.prefetch_ready_tasks(p_task_id INT,p_worker UUID,p_versio
 DECLARE target INT; strict_target INT; current_ready INT; current_strict INT; n INT:=0; selected_task RECORD;
     group_cursor BIGINT; total_weight BIGINT; group_names TEXT[]; group_bounds BIGINT[];
     ordered_groups TEXT[]; weighted_labels TEXT[]; preferred_index INT:=1; i INT;
+    simple_ids INT[]:='{}'; stored_cursor BIGINT;
 BEGIN
     IF p_batch<1 OR p_batch>256 OR p_ready_ttl_ms<1 THEN RAISE EXCEPTION 'invalid prefetch bounds'; END IF;
+    -- The bulk path must obey the same isolation contract as slot allocation.
+    IF current_setting('transaction_isolation') NOT IN ('read committed','read uncommitted') THEN
+        RAISE EXCEPTION 'task admission requires READ COMMITTED isolation' USING ERRCODE='0A000';
+    END IF;
     -- Fence the singleton system task in every batch; an old process cannot
     -- keep admitting work after its scheduler lease has been taken over.
     SELECT COALESCE((spec->'payload'->>'admissionCursor')::bigint,0) INTO group_cursor
     FROM anclax.tasks WHERE id=p_task_id AND worker_id=p_worker AND lease_version=p_version
         AND unique_tag='anclax:system:prefetch' AND spec->>'type'='prefetchTasks' AND status IN ('pending','running')
         AND locked_at IS NOT NULL AND lease_expires_at>statement_timestamp() FOR UPDATE;
-    IF NOT FOUND THEN RETURN 0; END IF;
+    IF NOT FOUND THEN RETURN -1; END IF;
+    stored_cursor:=group_cursor;
     PERFORM anclax.recover_ready_tasks(256);
     PERFORM anclax.maintain_task_concurrency(p_lock_ttl_ms);
     IF EXISTS(SELECT 1 FROM anclax.tasks WHERE status='pending' AND admission_group_id IS NULL
@@ -299,7 +305,7 @@ BEGIN
         ), unavailable AS MATERIALIZED (
             SELECT COALESCE(array_agg(tag),'{}'::text[]) tags FROM capacities WHERE free_slots=0
         ), candidates AS MATERIALIZED (
-            SELECT t.id,t.priority,t.weight,t.created_at,t.candidate_xmin,
+            SELECT t.id,t.priority,t.weight,t.created_at,t.candidate_xmin,cardinality(g.tags)>0 AS limited,
                 CASE WHEN t.priority=0 THEN array_position(ordered_groups,COALESCE(
                     (SELECT min(label) FROM unnest(g.labels) label WHERE label=ANY(weighted_labels)),
                     '__default__')) ELSE 0 END AS group_order
@@ -325,16 +331,23 @@ BEGIN
         )
         -- Bound the locking phase too. A flattened join can otherwise choose a
         -- sequential scan of the entire task table to retrieve a small batch.
-        SELECT t.id,t.priority FROM (
+        SELECT t.id,t.priority,t.serial_key,t.locked_at,c.limited FROM (
             SELECT * FROM candidates ORDER BY priority DESC,group_order,weight DESC,created_at,id LIMIT p_batch
         ) c CROSS JOIN LATERAL (
-            SELECT t.id,t.priority FROM anclax.tasks t WHERE t.id=c.id AND t.status='pending'
+            SELECT t.id,t.priority,t.serial_key,t.locked_at FROM anclax.tasks t WHERE t.id=c.id AND t.status='pending'
                 AND t.xmin::text=c.candidate_xmin FOR UPDATE SKIP LOCKED
         ) t ORDER BY c.priority DESC,c.group_order,c.weight DESC,c.created_at,c.id
     LOOP
         EXIT WHEN n>=target;
         CONTINUE WHEN selected_task.priority>0 AND current_strict>=strict_target;
-        IF anclax.try_admit_task_tags(selected_task.id,p_lock_ttl_ms) THEN
+        IF NOT selected_task.limited AND selected_task.serial_key IS NULL AND selected_task.locked_at IS NULL THEN
+            -- These rows already hold their candidate locks and have no old
+            -- lease to release. Configuration is excluded by the task-table
+            -- barrier, so no slot/serial allocator is needed for this batch.
+            simple_ids:=array_append(simple_ids,selected_task.id);
+            n:=n+1;
+            IF selected_task.priority>0 THEN current_strict:=current_strict+1; END IF;
+        ELSIF anclax.try_admit_task_tags(selected_task.id,p_lock_ttl_ms) THEN
             UPDATE anclax.tasks SET status='ready',ready_expires_at=statement_timestamp()+p_ready_ttl_ms*interval '1 millisecond',
                 locked_at=NULL,worker_id=NULL,lease_expires_at=NULL,lease_duration_ms=NULL,
                 lease_version=lease_version+1,updated_at=statement_timestamp() WHERE id=selected_task.id;
@@ -342,7 +355,12 @@ BEGIN
             IF selected_task.priority>0 THEN current_strict:=current_strict+1; END IF;
         END IF;
     END LOOP;
-    IF n>0 THEN
+    IF cardinality(simple_ids)>0 THEN
+        UPDATE anclax.tasks SET status='ready',ready_expires_at=statement_timestamp()+p_ready_ttl_ms*interval '1 millisecond',
+            locked_at=NULL,worker_id=NULL,lease_expires_at=NULL,lease_duration_ms=NULL,
+            lease_version=lease_version+1,updated_at=statement_timestamp() WHERE id=ANY(simple_ids);
+    END IF;
+    IF n>0 AND (group_cursor+1)%total_weight<>stored_cursor THEN
         UPDATE anclax.tasks SET spec=jsonb_set(spec,'{payload,admissionCursor}',to_jsonb((group_cursor+1)%total_weight),true)
         WHERE id=p_task_id;
     END IF;

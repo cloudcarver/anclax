@@ -12,6 +12,7 @@ VALUES ('{"retryPolicy":{"interval":"100ms","maxAttempts":-1}}',
 ON CONFLICT(unique_tag) DO NOTHING;
 
 -- name: PrefetchReadyTasks :one
+-- A negative prepared count means the scheduler attempt no longer owns its lease.
 SELECT anclax.prefetch_ready_tasks(sqlc.arg(task_id)::int,sqlc.arg(worker_id)::uuid,
     sqlc.arg(lease_version)::bigint,sqlc.arg(batch_size)::int,
     sqlc.arg(ready_ttl_ms)::bigint,sqlc.arg(lock_ttl_ms)::bigint)::int AS prepared;

@@ -18,18 +18,38 @@ func (p *ModelPort) executePrefetch(ctx context.Context, task Task) error {
 	return RunTaskPrefetch(ctx, p.model, task, p.workerID, p.lockTTL)
 }
 
-// RunTaskPrefetch executes one fenced, bounded system scheduling round.
-func RunTaskPrefetch(ctx context.Context, m model.ModelInterface, task Task, owner uuid.UUID, lockTTL time.Duration) (resultErr error) {
-	started := time.Now()
-	defer func() {
-		if _, deferred := resultErr.(*taskcore.TaskDeferred); !deferred {
-			observeScheduler("prefetch", started, resultErr)
-		} else {
-			observeScheduler("prefetch", started, nil)
+// RunTaskPrefetch keeps one scheduler attempt alive across bounded batches.
+// Waiting never holds a database transaction; the execution lease is renewed by
+// the same keeper as other long-running tasks. Polling remains the idle mechanism.
+func RunTaskPrefetch(ctx context.Context, m model.ModelInterface, task Task, owner uuid.UUID, lockTTL time.Duration) error {
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
 		}
-	}()
-	var prepared int32
-	err := m.RunTransactionWithTx(ctx, func(_ core.Tx, txm model.ModelInterface) error {
+		prepared, err := runTaskPrefetchBatch(ctx, m, task, owner, lockTTL)
+		if err != nil {
+			return err
+		}
+		if prepared < 0 {
+			return taskcore.ErrTaskLockLost
+		}
+		if prepared > 0 {
+			continue
+		}
+		timer := time.NewTimer(20 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func runTaskPrefetchBatch(ctx context.Context, m model.ModelInterface, task Task, owner uuid.UUID, lockTTL time.Duration) (prepared int32, resultErr error) {
+	started := time.Now()
+	defer func() { observeScheduler("prefetch", started, resultErr) }()
+	resultErr = m.RunTransactionWithTx(ctx, func(_ core.Tx, txm model.ModelInterface) error {
 		var err error
 		prepared, err = txm.PrefetchReadyTasks(ctx, querier.PrefetchReadyTasksParams{
 			TaskID: task.ID, WorkerID: owner, LeaseVersion: task.LeaseVersion,
@@ -37,13 +57,5 @@ func RunTaskPrefetch(ctx context.Context, m model.ModelInterface, task Task, own
 		})
 		return err
 	})
-	if err != nil {
-		return err
-	}
-	// A finite batch yields the control lane to cancellation/configuration work.
-	// Deferral reuses this durable task without events or accumulated attempts.
-	if prepared > 0 {
-		return taskcore.DeferTask(0)
-	}
-	return taskcore.DeferTask(20 * time.Millisecond)
+	return prepared, resultErr
 }

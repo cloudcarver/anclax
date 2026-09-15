@@ -63,6 +63,7 @@ type PrefetchReadyTasksParams struct {
 	LockTtlMs    int64
 }
 
+// A negative prepared count means the scheduler attempt no longer owns its lease.
 func (q *Queries) PrefetchReadyTasks(ctx context.Context, arg PrefetchReadyTasksParams) (int32, error) {
 	row := q.db.QueryRow(ctx, prefetchReadyTasks,
 		arg.TaskID,

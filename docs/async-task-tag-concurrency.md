@@ -62,6 +62,8 @@ Ready reservations have a two-second expiry and consume quota until adopted, rev
 
 System tasks use their reserved lane and direct lease-based claim, bypassing business quota/serial/weight admission. TaskStore rejects these unsupported system scheduling attributes. The prefetch/recovery task is itself a system task, so an empty ready queue or full business quota does not prevent scheduling recovery. Legacy/manual pending claim APIs retain full admission.
 
+The prefetch task keeps one execution lease across bounded batch transactions and polls every 20 ms while idle. Two reserved control slots keep other system commands progressing alongside it. Fresh tasks without finite tags or serial keys enter ready with one bulk update; unlimited tag snapshots are retained for future quota backfill. Constrained tasks and expired leases keep the full allocation/release path.
+
 Scheduler metrics include `anclax_task_scheduler_duration_seconds{operation}`, `anclax_task_scheduler_errors_total{operation,sqlstate}`, `anclax_task_claim_batch_size` (including zero), `anclax_task_finalize_retries_total{sqlstate}`, and `anclax_worker_task_phases{phase}`. Batch-size and error metrics distinguish empty claims, batch progress and exhausted finalization retries. They complement the existing lease-renewal metrics.
 
 ## Storage compatibility and upgrade

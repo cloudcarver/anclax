@@ -105,8 +105,10 @@ func BuildWorkerComponents(cfg *config.Config, m model.ModelInterface, taskHandl
 	port.prefetchHeartbeatTTL = max(9*time.Second, heartbeatInterval*3).Milliseconds()
 
 	engine := NewEngine(EngineConfig{
-		ClaimBatchSize:      batchSize,
-		ControlConcurrency:  1,
+		ClaimBatchSize: batchSize,
+		// The singleton prefetch job is long-lived. Keep another control slot
+		// available for cancellation, pause and configuration commands.
+		ControlConcurrency:  2,
 		WorkerID:            workerID.String(),
 		Labels:              labels,
 		Concurrency:         concurrency,
