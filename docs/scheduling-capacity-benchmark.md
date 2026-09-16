@@ -41,7 +41,7 @@ Further capacity dimensions include mixed duration distributions, hot quota comb
 For the smaller default near-empty and backlogged cases:
 
 ```sh
-ANCLAX_TEST_REPORT_DIR=/tmp/anclax-capacity-results make taskcore-capacity
+ANCLAX_TEST_REPORT_DIR=/tmp/anclax-capacity-results make benchmark
 ```
 
 For capacity comparisons, build the smoke test binary once, then run it without concurrent builds/tests. This example uses the 30-connection / 5,000-slot operating point:
