@@ -41,7 +41,8 @@ Anclax 是面向小到中型应用（单个 PostgreSQL）。以模式定义 API 
 ### 亮点（Highlights）✨
 
 - **YAML 优先 + 代码生成**：用 YAML 定义 HTTP 与任务的模式，自动生成强类型接口；缺失实现会在编译期暴露，而不是线上。
-- **靠谱的异步任务**：内置至少一次投递、自动重试、cron 调度，并支持优先级/权重队列与运行时调优。
+- **靠谱的异步任务**：支持至少一次投递、unique tag 入队去重、自动重试与 cron 调度。
+- **任务组管理与并发限制**：按 tag 批量暂停、恢复、取消任务，配置跨 Worker 的 tag 并发上限，并支持优先级/权重调度与运行时调优。
 - **轻量高并发**：**30 条数据库连接预算支持约 5,000 个异步任务并发，PostgreSQL 平均 CPU 用量不足 1 核**（实测 0.77 核）。测试任务通过定时等待模拟 5–15 秒的执行耗时，PostgreSQL 设置为 2 核上限；完整负载、吞吐和资源用量见[持续容量 benchmark](docs/scheduling-capacity-benchmark.md)。
 - **任务串行执行**：使用 `taskcore.WithSerialKey`/`WithSerialID` 让同一 key 的任务严格串行。
 - **事务安全的流程**：`WithTx` 模式确保钩子必定执行、状态一致。
@@ -206,7 +207,10 @@ components:
       bearerFormat: macaroon
 ```
 
-### 异步任务：至少一次投递、重试、定时与优先级/权重
+### 异步任务：可靠投递、去重、任务组与并发限制
+
+`WithUniqueTag` 在任务记录保留期间，为重复提交返回同一任务 ID。重试或故障恢复仍可能再次调用 handler，因此投递语义保持至少一次，外部副作用需要幂等处理。可通过 tag 批量暂停、恢复、取消任务，并设置[跨 Worker 共享的并发上限](docs/async-task-tag-concurrency.zh.md)。
+
 - **之前的痛点**：手动构建 `apigen.Task` payload 与 attributes，重复且易错。
 - **之前的痛点**：重试/cronjob/unique-tag 逻辑在服务间复制并逐渐漂移。
 - **之前的痛点**：在数据库事务内入队需要自定义胶水代码。
