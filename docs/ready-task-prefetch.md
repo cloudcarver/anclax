@@ -68,6 +68,8 @@ Operationally, report ready depth/age separately from pending and executing task
 
 ## Verification
 
+For pacing changes, run focused unit/real-PostgreSQL regressions and the relevant benchmarks. Reserve chaos fault injection for concurrency/lease/recovery protocol changes and milestone validation; it is not required for every tuning iteration.
+
 PostgreSQL regressions cover reservation transfer without a second attempt/allocation, durable ready beyond the old expiry, competing claims, cancel/pause/attribute edits, quota activation and overflow, serial ownership, weighted progress under one shared slot, stale scheduler fencing and unlimited-tag group normalization. Existing lifecycle, migration, renewal and concurrent batch tests also run against the new protocol. Benchmark evidence must include enqueue/group-maintenance cost and system scheduler work, not only Worker claim time.
 
 Long-task regressions verify repeated work under one attempt, idle renewal beyond the lease TTL, simultaneous control progress, shutdown and fencing. A statement-level audit verifies bulk admission, mixed constrained candidates, snapshots and quota backfill. An expired-lease regression exhausts the maintenance prefix before verifying that the full allocator releases the old reservation.
@@ -78,4 +80,6 @@ The [consumption-paced follow-up](consumption-prefetch-benchmark.md) measures re
 
 The historical [supply-first follow-up](supply-prefetch-benchmark.md) compares the former bounded/expiring policy with consumption pacing and the original long-task loop. It does not measure the current durable-ready policy.
 
-The [durable-ready follow-up](durable-ready-prefetch-benchmark.md) measures the current policy against the former supply-first version, including three interleaved repetitions, a matched longer finite-quota run, idle observation cost and fresh 200-round chaos validation. Throughput remains mixed; removing expiry and a fixed stock cap does not establish a general performance improvement.
+The historical [durable-ready follow-up](durable-ready-prefetch-benchmark.md) measures the initial durable policy against the former supply-first version, including three interleaved repetitions, a matched longer finite-quota run, idle observation cost and 200-round chaos validation for that revision.
+
+The [arrival and backoff follow-up](arrival-prefetch-benchmark.md) measures the current consumption scheduler and independent empty-result backoff. It adds persistent Workers with independently scheduled flow ramps/bursts, mixed durations and hot resources, and stopped-consumption recovery. Queueing latency, CPU per completion and retry counts accompany the short fixtures; no new chaos run is used for this pacing iteration.
