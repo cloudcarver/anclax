@@ -48,16 +48,11 @@ Contact: mike@anclax.com
 ### Highlights ✨
 
 - **YAML-first, codegen-backed**: Define HTTP and task schemas in YAML; Anclax generates strongly-typed interfaces so missing implementations fail at compile time, not in prod.
-- **Async tasks you can trust**: Enqueue tasks atomically with business changes in one database transaction, with at-least-once delivery, automatic retries, cron scheduling, task group management, per-tag concurrency quotas shared across Workers, and priority/weight scheduling.
-- **Efficient async concurrency**: About **5,000 concurrent async tasks with a 30-connection database budget**, using **less than one PostgreSQL CPU core on average** (0.77 measured). Timer-based tasks took 5–15 seconds; PostgreSQL had a two-core limit. See the [sustained capacity benchmark](docs/scheduling-capacity-benchmark.md) for workload, throughput and resource measurements.
-- **Serial task execution**: Use `taskcore.WithSerialKey`/`WithSerialID` to run related tasks strictly one-by-one.
-- **Transaction-safe flows**: A `WithTx` pattern ensures hooks always run and side effects are consistent.
+- **Async tasks you can trust**: Enqueue tasks atomically with business changes in one database transaction, with at-least-once delivery, automatic retries, cron scheduling, strict serial execution, task group management, per-tag concurrency quotas, and priority/weight scheduling. Benchmarks sustained about 5,000 concurrent tasks with 30 database connections and less than one PostgreSQL CPU core on average; see the [scheduling capacity benchmark](docs/scheduling-capacity-benchmark.md).
 - **Typed database layer**: Powered by `sqlc` for safe, fast queries.
-- **Fast HTTP server**: Built on Fiber for performance and ergonomics.
+- **Fast HTTP server**: Built on Fiber with OpenAPI syntax extensions for performance and ease of use.
 - **AuthN/Z built-in**: Macaroons-based authentication and authorization.
-- **Pluggable architecture**: First-class plugin system for clean modularity.
-- **E2E scenarios as code**: Describe distributed flows in DST YAML and generate typed runners.
-- **Ergonomic DI**: Wire-based dependency injection keeps code testable and explicit.
+- **Ergonomic DI**: Wire-based dependency inversion keeps dependencies explicit and code testable.
 
 ### Why Anclax? (The problem it solves) 🤔
 
