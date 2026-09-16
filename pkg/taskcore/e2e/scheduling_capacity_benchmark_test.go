@@ -36,6 +36,7 @@ import (
 // Durations and arrival rate are independent of observed completions. A capacity
 // miss is a result; it must not throttle arrivals or extend warmup indefinitely.
 type schedulingCapacityCase struct {
+	RenewalIntervalMS, HeartbeatMS, LockTTLMS    int
 	HandlerJitter                                float64 // Uniform +/- fraction, deterministic per task ID.
 	Name, Mode                                   string
 	Connections, RenewalConnections, Concurrency int
@@ -54,6 +55,8 @@ func schedulingPool(p *pgxpool.Stat) schedulingCapacityPool {
 }
 
 type schedulingCapacitySample struct {
+	WorkerStopped                                    bool
+	RuntimeErrors                                    float64
 	ProcessCPUSeconds                                float64
 	Seconds, CollectionMS, DBSeconds, HandlerSeconds float64
 	Submitted, Scheduled, Completed, Prepared, Empty int64
@@ -74,6 +77,7 @@ type schedulingCapacityWindow struct {
 }
 
 type schedulingCapacityResult struct {
+	RuntimeErrors, WarmupRuntimeErrors                                float64
 	WarmupSchedulerErrors                                             map[string]float64
 	ProcessCPUSeconds                                                 float64
 	Case                                                              schedulingCapacityCase
@@ -225,7 +229,20 @@ func TestTaskSchedulingCapacityBenchmark(t *testing.T) {
 	}
 	require.NotEmpty(t, cases)
 	maxConnections := 0
-	for _, c := range cases {
+	for i := range cases {
+		c := &cases[i]
+		if c.RenewalIntervalMS == 0 {
+			c.RenewalIntervalMS = 1000
+		}
+		if c.HeartbeatMS == 0 {
+			c.HeartbeatMS = 1000
+		}
+		if c.LockTTLMS == 0 {
+			c.LockTTLMS = 9000
+		}
+		require.Positive(t, c.RenewalIntervalMS)
+		require.Positive(t, c.HeartbeatMS)
+		require.Greater(t, c.LockTTLMS, c.RenewalIntervalMS)
 		require.Contains(t, []string{"near_empty", "backlogged"}, c.Mode)
 		require.Greater(t, c.Connections, c.RenewalConnections+2)
 		require.Positive(t, c.RenewalConnections)
@@ -265,9 +282,10 @@ func TestTaskSchedulingCapacityBenchmark(t *testing.T) {
 
 func runSchedulingCapacity(t *testing.T, ctx context.Context, conn *pgx.Conn, dsn, container string, c schedulingCapacityCase) schedulingCapacityResult {
 	t.Helper()
-	poll, heartbeat, ttl, strict, renewal := 20*time.Millisecond, time.Second, 9*time.Second, 0, int32(c.RenewalConnections)
+	poll, heartbeat, ttl, strict, renewal := 20*time.Millisecond, time.Duration(c.HeartbeatMS)*time.Millisecond, time.Duration(c.LockTTLMS)*time.Millisecond, 0, int32(c.RenewalConnections)
+	refresh := time.Duration(c.RenewalIntervalMS) * time.Millisecond
 	cfg := &config.Config{Pg: config.Pg{DSN: &dsn}, Worker: config.Worker{Concurrency: &c.Concurrency, PollInterval: &poll, HeartbeatInterval: &heartbeat,
-		LockRefreshInterval: &heartbeat, LockTTL: &ttl, MaxStrictPercentage: &strict, LeaseRenewalMaxConnections: &renewal}}
+		LockRefreshInterval: &refresh, LockTTL: &ttl, MaxStrictPercentage: &strict, LeaseRenewalMaxConnections: &renewal}}
 	lib := config.DefaultLibConfig()
 	lib.Pg.MaxConnections, lib.Pg.MinConnections = int32(c.Connections-c.RenewalConnections-2), 1
 	cm := closer.NewCloserManager()
@@ -293,6 +311,7 @@ func runSchedulingCapacity(t *testing.T, ctx context.Context, conn *pgx.Conn, ds
 		}
 	}
 	errorsBefore := schedulerErrorCounts()
+	runtimeErrorsBefore := metricValue(metrics.RunTaskErrors)
 	runCtx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	go func() { defer close(done); components.Runtime.Start(runCtx) }()
@@ -320,7 +339,12 @@ func runSchedulingCapacity(t *testing.T, ctx context.Context, conn *pgx.Conn, ds
 
 	snapshot := func() schedulingCapacitySample {
 		began := time.Now()
-		s := schedulingCapacitySample{SchedulerErrors: schedulerErrorCounts()}
+		s := schedulingCapacitySample{SchedulerErrors: schedulerErrorCounts(), RuntimeErrors: metricValue(metrics.RunTaskErrors)}
+		select {
+		case <-done:
+			s.WorkerStopped = true
+		default:
+		}
 		// Only nonterminal rows are inspected during timed work; completed
 		// history is counted once after shutdown to validate the commit counter.
 		require.NoError(t, conn.QueryRow(ctx, `SELECT count(*) FILTER(WHERE status='pending'),count(*) FILTER(WHERE status='ready'),count(*) FILTER(WHERE status='running')
@@ -364,6 +388,7 @@ func runSchedulingCapacity(t *testing.T, ctx context.Context, conn *pgx.Conn, ds
 			result.WarmupSchedulerErrors[key] = delta
 		}
 	}
+	result.WarmupRuntimeErrors = first.RuntimeErrors - runtimeErrorsBefore
 	result.WarmupCompleted = first.Completed
 	result.Samples = append(result.Samples, first)
 	end := time.Now().Add(time.Duration(c.MeasureSeconds) * time.Second)
@@ -408,6 +433,7 @@ func runSchedulingCapacity(t *testing.T, ctx context.Context, conn *pgx.Conn, ds
 	result.MainWaitSeconds, result.RenewalWaitSeconds = w.MainWaitSeconds, w.RenewalWaitSeconds
 	result.MainMeanAcquired /= float64(result.PoolSamples)
 	result.RenewalMeanAcquired /= float64(result.PoolSamples)
+	result.RuntimeErrors = last.RuntimeErrors - first.RuntimeErrors
 	result.Completed = last.Completed - first.Completed
 	result.ExecutionUtilization = w.MeanExecuting / float64(c.Concurrency)
 	result.ThroughputPerBudgetConnection = w.CompletionsPerSecond / float64(c.Connections)
@@ -439,7 +465,7 @@ func runSchedulingCapacity(t *testing.T, ctx context.Context, conn *pgx.Conn, ds
 	}
 	require.NoError(t, conn.QueryRow(ctx, `SELECT count(*) FILTER(WHERE status='completed'),count(*) FILTER(WHERE attempts>1)
  FROM anclax.tasks WHERE spec->>'type'='steady-benchmark'`).Scan(&result.FinalDBCompleted, &result.RepeatedTasks))
-	result.Correct = result.FinalDBCompleted == observed.completed.Load() && result.RepeatedTasks == 0 && result.LeaseErrors == 0 && result.LeaseLost == 0 && result.Deadlocks == 0 && len(result.SchedulerErrors) == 0
+	result.Correct = !last.WorkerStopped && result.RuntimeErrors == 0 && result.FinalDBCompleted == observed.completed.Load() && result.RepeatedTasks == 0 && result.LeaseErrors == 0 && result.LeaseLost == 0 && result.Deadlocks == 0 && len(result.SchedulerErrors) == 0
 	// These are explicit reference thresholds, not correctness assertions or a
 	// capacity guarantee. Inspect interval trends, delivery lag and stock change.
 	result.ProducerKeptUp = result.ProducerShortfall <= int64(math.Max(256, c.ArrivalRate*.1)) && w.ArrivalsPerSecond >= .98*c.ArrivalRate
@@ -448,7 +474,7 @@ func runSchedulingCapacity(t *testing.T, ctx context.Context, conn *pgx.Conn, ds
 	} else {
 		result.TargetReached = result.ProducerKeptUp && w.CompletionsPerSecond >= .98*c.ArrivalRate && result.BacklogChange <= int64(math.Max(256, c.ArrivalRate*.1))
 	}
-	result.TargetReached = result.TargetReached && result.Correct && len(result.WarmupSchedulerErrors) == 0
+	result.TargetReached = result.TargetReached && result.Correct && result.WarmupRuntimeErrors == 0 && len(result.WarmupSchedulerErrors) == 0
 	t.Logf("CAPACITY case=%s correct=%v target=%v completed/s=%.1f executing=%.0f/%d db_ms/task=%.3f connections=%d", c.Name, result.Correct, result.TargetReached, w.CompletionsPerSecond, w.MeanExecuting, c.Concurrency, w.DBMSPerCompletion, c.Connections)
 	if !result.Correct {
 		t.Error("capacity run failed commit accounting, attempt, lease, deadlock or scheduler-error checks; see report")
