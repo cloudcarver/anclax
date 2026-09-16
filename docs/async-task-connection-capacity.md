@@ -1,10 +1,12 @@
 # Async task connection capacity
 
+> Historical benchmark report. These benchmark harnesses have been retired; current capacity testing uses the [sustained scheduling benchmark](scheduling-capacity-benchmark.md). Reproduction commands below apply to the recorded revisions and archived harnesses, available in the [source snapshot](https://github.com/cloudcarver/anclax/tree/a6b3869ce43c996d424e3bbc9e3b6c7c851f6e01/pkg/taskcore/e2e). Raw result links point to Git history; generated JSON/log reports are no longer stored in the current tree.
+
 This benchmark measures sustained execution with constrained business and lease-renewal pools. It is an opt-in PostgreSQL test, separate from the tag-admission throughput benchmark.
 
 ## Measurements on 2026-09-14
 
-Measured on an Apple M5 development machine with 10 logical CPUs and 16 GiB host RAM. Docker had 10 CPUs and approximately 7.75 GiB RAM; PostgreSQL was 15.19 and the Go toolchain was 1.26.5 on arm64. Suites ran sequentially; existing background services remained running. [Raw measurements and exact environment overrides](benchmarks/async-task-connection-capacity-2026-09-14.json) include every completed capacity case.
+Measured on an Apple M5 development machine with 10 logical CPUs and 16 GiB host RAM. Docker had 10 CPUs and approximately 7.75 GiB RAM; PostgreSQL was 15.19 and the Go toolchain was 1.26.5 on arm64. Suites ran sequentially; existing background services remained running. [Raw measurements and exact environment overrides](https://github.com/cloudcarver/anclax/blob/a6b3869ce43c996d424e3bbc9e3b6c7c851f6e01/docs/benchmarks/async-task-connection-capacity-2026-09-14.json) include every completed capacity case.
 
 | Workload | Business + renewal connection limits | Highest tested passing concurrency | Tested failure | Observation |
 | --- | --- | ---: | --- | --- |

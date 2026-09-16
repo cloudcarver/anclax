@@ -88,7 +88,7 @@ ANCLAX_SMOKE_POSTGRES_IMAGE=postgres:17 go test -race -tags=smoke ./pkg/taskcore
 
 Docker tests use port 5499. `make smoke` also runs the regression suite; the image defaults to `postgres:15` unless overridden.
 
-`TestBatchedTaskLeaseRenewalSmoke` verifies batch fencing and renewal/cancellation while the business pool is fully occupied. For sustained concurrency measurements with constrained pools, run `make taskcore-capacity`; see [connection capacity methodology and results](async-task-connection-capacity.md).
+`TestBatchedTaskLeaseRenewalSmoke` verifies batch fencing and renewal/cancellation while the business pool is fully occupied. For sustained concurrency measurements with constrained pools, run `make benchmark`; see [sustained capacity methodology and results](scheduling-capacity-benchmark.md).
 
 ## Finalization retries
 

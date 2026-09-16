@@ -867,6 +867,15 @@ func (a *runtimeActor) WaitTaskStartedAfterNow(ctx context.Context, task string,
 }
 
 func (a *runtimeActor) WaitNoPendingTasks(ctx context.Context, timeoutMs int32) error {
+	businessTasks := func(tasks []*querier.AnclaxTask) []*querier.AnclaxTask {
+		out := tasks[:0]
+		for _, task := range tasks {
+			if task.Spec.Type != worker.PrefetchTaskType {
+				out = append(out, task)
+			}
+		}
+		return out
+	}
 	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
 	for time.Now().Before(deadline) {
 		select {
@@ -875,12 +884,14 @@ func (a *runtimeActor) WaitNoPendingTasks(ctx context.Context, timeoutMs int32) 
 		default:
 		}
 		pending, err := a.model.ListAllPendingTasks(ctx)
+		pending = businessTasks(pending)
 		if err == nil && len(pending) == 0 {
 			return nil
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	pending, err := a.model.ListAllPendingTasks(ctx)
+	pending = businessTasks(pending)
 	if err != nil {
 		return fmt.Errorf("pending tasks did not drain and list failed: %w", err)
 	}

@@ -20,6 +20,7 @@ type Querier interface {
 	ClaimTaskBatch(ctx context.Context, arg ClaimTaskBatchParams) ([]*AnclaxTask, error)
 	ClaimTaskByID(ctx context.Context, arg ClaimTaskByIDParams) (*AnclaxTask, error)
 	ClaimWorkerCommand(ctx context.Context, arg ClaimWorkerCommandParams) (*AnclaxTask, error)
+	ConfigureWorkerPrefetch(ctx context.Context, arg ConfigureWorkerPrefetchParams) error
 	CreateKeyPair(ctx context.Context, arg CreateKeyPairParams) (*AnclaxAccessKeyPair, error)
 	CreateOpaqueKey(ctx context.Context, arg CreateOpaqueKeyParams) (int64, error)
 	CreateOrg(ctx context.Context, name string) (*AnclaxOrg, error)
@@ -32,6 +33,7 @@ type Querier interface {
 	DeleteOpaqueKeys(ctx context.Context, group *string) error
 	DeleteUserByName(ctx context.Context, name string) error
 	DeleteUserByNameReturningID(ctx context.Context, name string) (int32, error)
+	EnsureTaskPrefetch(ctx context.Context) error
 	FinalizeTaskAttempt(ctx context.Context, arg FinalizeTaskAttemptParams) (string, error)
 	GetKeyPair(ctx context.Context, accessKey string) (*AnclaxAccessKeyPair, error)
 	GetLastTaskErrorEvent(ctx context.Context, taskID int32) (*AnclaxEvent, error)
@@ -52,6 +54,8 @@ type Querier interface {
 	InsertEvent(ctx context.Context, spec apigen.EventSpec) (*AnclaxEvent, error)
 	InsertOrgOwner(ctx context.Context, arg InsertOrgOwnerParams) (*AnclaxOrgOwner, error)
 	InsertOrgUser(ctx context.Context, arg InsertOrgUserParams) (*AnclaxOrgUser, error)
+	// A group_id of -1 denotes a lost scheduler lease. Empty rows mean no supply/work.
+	InspectTaskPrefetch(ctx context.Context, arg InspectTaskPrefetchParams) ([]*InspectTaskPrefetchRow, error)
 	IsUsernameExists(ctx context.Context, name string) (bool, error)
 	ListAllPendingTasks(ctx context.Context) ([]*AnclaxTask, error)
 	ListLaggingAliveWorkers(ctx context.Context, arg ListLaggingAliveWorkersParams) ([]uuid.UUID, error)
@@ -64,6 +68,10 @@ type Querier interface {
 	ListTerminalTaskWaitStatuses(ctx context.Context, ids []int32) ([]*ListTerminalTaskWaitStatusesRow, error)
 	MaintainTaskConcurrency(ctx context.Context, legacyTtlMs int64) error
 	MarkWorkerOffline(ctx context.Context, id uuid.UUID) error
+	// A negative prepared count means the scheduler attempt no longer owns its lease.
+	PrefetchReadyTasks(ctx context.Context, arg PrefetchReadyTasksParams) (int32, error)
+	// The wait reason is advisory; allocation and the scheduler fence stay in SQL.
+	PrefetchTaskSupply(ctx context.Context, arg PrefetchTaskSupplyParams) (*PrefetchTaskSupplyRow, error)
 	RefreshTaskLock(ctx context.Context, arg RefreshTaskLockParams) (int32, error)
 	RefreshTaskLocks(ctx context.Context, arg RefreshTaskLocksParams) ([]*RefreshTaskLocksRow, error)
 	ReleaseTaskLockByWorker(ctx context.Context, arg ReleaseTaskLockByWorkerParams) (int32, error)

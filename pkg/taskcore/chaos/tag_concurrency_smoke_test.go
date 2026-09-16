@@ -97,7 +97,7 @@ func checkTagConcurrencyAudit(ctx context.Context, inspector *Inspector, report 
 		var invalidOwners int64
 		if err := inspector.pool.QueryRow(ctx, `SELECT count(*) FROM anclax.task_tag_slots s
             LEFT JOIN anclax.tasks t ON t.id=s.task_id WHERE s.task_id IS NOT NULL AND
-            (t.id IS NULL OR t.locked_at IS NULL OR s.lease_version>t.lease_version OR NOT s.tag=ANY(t.lease_tags))`).Scan(&invalidOwners); err != nil {
+            (t.id IS NULL OR (t.locked_at IS NULL AND t.status<>'ready') OR s.lease_version>t.lease_version OR NOT s.tag=ANY(t.lease_tags))`).Scan(&invalidOwners); err != nil {
 			return err
 		}
 		if invalidOwners != 0 {
@@ -118,7 +118,7 @@ func checkTagConcurrencyAudit(ctx context.Context, inspector *Inspector, report 
 	var terminalMemberships int64
 	if err := inspector.pool.QueryRow(ctx, `SELECT count(*)
         FROM anclax.task_tags tt JOIN anclax.tasks t ON t.id = tt.task_id
-        WHERE t.status NOT IN ('pending', 'running', 'paused') AND t.locked_at IS NULL`).Scan(&terminalMemberships); err != nil {
+        WHERE t.status NOT IN ('pending', 'ready', 'running', 'paused') AND t.locked_at IS NULL`).Scan(&terminalMemberships); err != nil {
 		return err
 	}
 	if terminalMemberships != 0 {

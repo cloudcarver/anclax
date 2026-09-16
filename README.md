@@ -7,7 +7,12 @@ English | [中文](README.zh.md)
 
 Build serverless, reliable apps at lightspeed ⚡ — with confidence 🛡️.
 
-Anclax is a definition‑first framework for small–medium apps (single PostgreSQL). Define APIs and tasks as schemas; generated code moves correctness to compile time.
+Anclax is a framework for small to medium-sized applications backed by a single PostgreSQL database. It provides:
+
+- Strong schemas and code generation that move correctness checks to compile time
+- An integrated toolchain of best-in-class Go tools
+- Dependency inversion and a white-box testing framework
+- A high-performance async task scheduling framework
 
 Join our [Discord server](https://discord.gg/XxXXbyF59H).
 
@@ -48,15 +53,11 @@ Contact: mike@anclax.com
 ### Highlights ✨
 
 - **YAML-first, codegen-backed**: Define HTTP and task schemas in YAML; Anclax generates strongly-typed interfaces so missing implementations fail at compile time, not in prod.
-- **Async tasks you can trust**: At-least-once delivery, automatic retries, cron scheduling, plus priority/weight lanes you can tune at runtime.
-- **Serial task execution**: Use `taskcore.WithSerialKey`/`WithSerialID` to run related tasks strictly one-by-one.
-- **Transaction-safe flows**: A `WithTx` pattern ensures hooks always run and side effects are consistent.
+- **Async tasks you can trust**: Enqueue tasks atomically with business changes in one database transaction, with at-least-once delivery, automatic retries, cron scheduling, strict serial execution, task group management, per-tag concurrency quotas, and priority/weight scheduling. Benchmarks sustained about 5,000 concurrent tasks with 30 database connections and less than one PostgreSQL CPU core on average; see the [scheduling capacity benchmark](docs/scheduling-capacity-benchmark.md).
 - **Typed database layer**: Powered by `sqlc` for safe, fast queries.
-- **Fast HTTP server**: Built on Fiber for performance and ergonomics.
+- **Fast HTTP server**: Built on Fiber with OpenAPI syntax extensions for performance and ease of use.
 - **AuthN/Z built-in**: Macaroons-based authentication and authorization.
-- **Pluggable architecture**: First-class plugin system for clean modularity.
-- **E2E scenarios as code**: Describe distributed flows in DST YAML and generate typed runners.
-- **Ergonomic DI**: Wire-based dependency injection keeps code testable and explicit.
+- **Ergonomic DI**: Wire-based dependency inversion keeps dependencies explicit and code testable.
 
 ### Why Anclax? (The problem it solves) 🤔
 
@@ -213,6 +214,7 @@ components:
 ```
 
 ### Async tasks: at-least-once, retries, cron, priority/weight
+
 - **Pain points before**: hand-building `apigen.Task` payloads and attributes was repetitive and easy to get wrong.
 - **Pain points before**: retry/cronjob/unique-tag logic got duplicated and drifted across services.
 - **Pain points before**: enqueueing inside a DB transaction required custom glue code.

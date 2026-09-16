@@ -5,3 +5,7 @@ coverage.out
 coverage.html
 CURRENT_TASK.md
 .chaos-debug
+
+# Keep raw benchmark reports outside the repository; retain Markdown reports.
+docs/benchmarks/*.json
+docs/benchmarks/*.log

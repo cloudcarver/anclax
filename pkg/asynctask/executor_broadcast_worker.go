@@ -455,11 +455,11 @@ func (e *Executor) cancelObsoleteWorkerCommandTask(ctx context.Context, uniqueTa
 		return errors.Wrapf(err, "get worker command task by unique tag %s", uniqueTag)
 	}
 
-	if apigen.TaskStatus(task.Status) != apigen.Pending {
+	if task.Status != string(apigen.Pending) && task.Status != string(apigen.TaskStatusRunning) {
 		return nil
 	}
 	if err := e.model.UpdateTaskStatus(ctx, querier.UpdateTaskStatusParams{ID: task.ID, Status: string(apigen.Cancelled)}); err != nil {
-		return errors.Wrapf(err, "cancel pending worker command task %s", uniqueTag)
+		return errors.Wrapf(err, "cancel obsolete worker command task %s", uniqueTag)
 	}
 	return nil
 }

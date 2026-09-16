@@ -1,10 +1,12 @@
 # Task slot admission measurements
 
+> Historical benchmark report. These benchmark harnesses have been retired; current capacity testing uses the [sustained scheduling benchmark](scheduling-capacity-benchmark.md). Reproduction commands below apply to the recorded revisions and archived harnesses, available in the [source snapshot](https://github.com/cloudcarver/anclax/tree/a6b3869ce43c996d424e3bbc9e3b6c7c851f6e01/pkg/taskcore/e2e). Raw result links point to Git history; generated JSON/log reports are no longer stored in the current tree.
+
 This records the final slot protocol at `a2238006f7e3566e7745831de85c1f2a8cfef775`, compared with the earlier shared-counter implementation at `caf73329c7fae49cc4259164e0c001398a70ee6a`. Both are revisions of PR #71. Unlike the [historical v1.4.1 comparison](async-task-admission-benchmark.md), both already have automatic batch claims, unlimited-tag accounting removal and the serial-history indexes. This comparison isolates the subsequent implementation change as a whole; it does not isolate every SQL change individually.
 
 ## Method
 
-The same opt-in `admission_benchmark_test.go` was used byte-for-byte in both builds (SHA-256 `c3c7372cd3ca968d3e92f226393a2139a045bbaa84d57dff8f03a33942578a2a`). The source was committed before the final benchmark build. Exact revisions, binary hashes, image ID, timestamps, all measurements and log-error counts are in the [comparison JSON](benchmarks/task-slot-admission-comparison-2026-09-15.json).
+The same opt-in `admission_benchmark_test.go` was used byte-for-byte in both builds (SHA-256 `c3c7372cd3ca968d3e92f226393a2139a045bbaa84d57dff8f03a33942578a2a`). The source was committed before the final benchmark build. Exact revisions, binary hashes, image ID, timestamps, all measurements and log-error counts are in the [comparison JSON](https://github.com/cloudcarver/anclax/blob/a6b3869ce43c996d424e3bbc9e3b6c7c851f6e01/docs/benchmarks/task-slot-admission-comparison-2026-09-15.json).
 
 - Apple M5 / arm64, 16 GiB host RAM; Go 1.26.5, `GOMAXPROCS=2`, without the race detector for timing.
 - PostgreSQL 17.11 in Docker with 2 CPU / 1 GiB limits, `pg_stat_statements.track=all` and `track_io_timing=on`. A new database container per invocation, main pool maximum 50 and renewal pool maximum 10.
@@ -47,9 +49,9 @@ Both builds also logged shutdown rollback diagnostics (`failed to deallocate cac
 
 ## Correctness and chaos
 
-The slot implementation passed a fresh **200-iteration PostgreSQL 17 chaos run**, seed 424242, in **611.37 seconds**. It submitted 864 tasks: 860 completed, four cancelled, none pending/running/failed at the end. Fault injection included 21 Worker disruptions, 13 PostgreSQL restarts, eight control-plane outages and 103 runtime configuration updates. A durable audit recorded 587 slot allocations, zero quota/ownership violations, global/group peaks of 3/2 and fully drained permits. Gates also verified full-limit release, takeover after owner death and takeover after isolating an owner's database connections. See the [chaos summary and assertions](benchmarks/task-slot-admission-chaos-200-2026-09-15.json); its audit events are slot allocations, unlike the historical counter-increase audit.
+The slot implementation passed a fresh **200-iteration PostgreSQL 17 chaos run**, seed 424242, in **611.37 seconds**. It submitted 864 tasks: 860 completed, four cancelled, none pending/running/failed at the end. Fault injection included 21 Worker disruptions, 13 PostgreSQL restarts, eight control-plane outages and 103 runtime configuration updates. A durable audit recorded 587 slot allocations, zero quota/ownership violations, global/group peaks of 3/2 and fully drained permits. Gates also verified full-limit release, takeover after owner death and takeover after isolating an owner's database connections. See the [chaos summary and assertions](https://github.com/cloudcarver/anclax/blob/a6b3869ce43c996d424e3bbc9e3b6c7c851f6e01/docs/benchmarks/task-slot-admission-chaos-200-2026-09-15.json); its audit events are slot allocations, unlike the historical counter-increase audit.
 
-The [validation record](benchmarks/task-slot-admission-validation-2026-09-15.json) includes:
+The [validation record](https://github.com/cloudcarver/anclax/blob/a6b3869ce43c996d424e3bbc9e3b6c7c851f6e01/docs/benchmarks/task-slot-admission-validation-2026-09-15.json) includes:
 
 - `go test -race -tags=ut ./... -timeout=6m` and the deterministic taskcore suite.
 - PostgreSQL 15 and 17 admission, tag, lifecycle, renewal and migration smoke suites under `-race`, including 14→15→14 rollback.

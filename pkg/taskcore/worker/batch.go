@@ -70,9 +70,6 @@ func (p *ModelPort) ClaimBatch(ctx context.Context, req ClaimBatchRequest) (resu
 	if req.BatchSize < 1 || req.BatchSize > 256 || req.StrictSlots < 0 || req.StrictSlots > req.BatchSize {
 		return nil, fmt.Errorf("invalid claim batch: size=%d strict=%d", req.BatchSize, req.StrictSlots)
 	}
-	if err := p.maintainConcurrency(ctx); err != nil {
-		return nil, err
-	}
 	claimedAt := time.Now()
 	var out []*Task
 	err := p.model.RunTransactionWithTx(ctx, func(_ core.Tx, txm model.ModelInterface) error {
