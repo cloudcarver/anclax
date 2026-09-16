@@ -48,8 +48,7 @@ Contact: mike@anclax.com
 ### Highlights ✨
 
 - **YAML-first, codegen-backed**: Define HTTP and task schemas in YAML; Anclax generates strongly-typed interfaces so missing implementations fail at compile time, not in prod.
-- **Async tasks you can trust**: At-least-once delivery, unique-tag enqueue deduplication, automatic retries, and cron scheduling.
-- **Task groups and concurrency limits**: Pause, resume, or cancel tasks in bulk by tag; enforce per-tag concurrency limits across Workers, with priority/weight scheduling and runtime tuning.
+- **Async tasks you can trust**: Enqueue tasks atomically with business changes in one database transaction, with at-least-once delivery, automatic retries, cron scheduling, task group management, cross-Worker concurrency limits, and priority/weight scheduling.
 - **Efficient async concurrency**: About **5,000 concurrent async tasks with a 30-connection database budget**, using **less than one PostgreSQL CPU core on average** (0.77 measured). Timer-based tasks took 5–15 seconds; PostgreSQL had a two-core limit. See the [sustained capacity benchmark](docs/scheduling-capacity-benchmark.md) for workload, throughput and resource measurements.
 - **Serial task execution**: Use `taskcore.WithSerialKey`/`WithSerialID` to run related tasks strictly one-by-one.
 - **Transaction-safe flows**: A `WithTx` pattern ensures hooks always run and side effects are consistent.
@@ -214,9 +213,7 @@ components:
       bearerFormat: macaroon
 ```
 
-### Async tasks: reliable delivery, deduplication, task groups and concurrency limits
-
-`WithUniqueTag` returns the same task ID for repeated submissions while the task record is retained. Retries and failure recovery can invoke the handler again, so delivery remains at least once and external side effects need idempotency. Use tags for bulk pause/resume/cancel operations and [concurrency limits shared across Workers](docs/async-task-tag-concurrency.md).
+### Async tasks: at-least-once, retries, cron, priority/weight
 
 - **Pain points before**: hand-building `apigen.Task` payloads and attributes was repetitive and easy to get wrong.
 - **Pain points before**: retry/cronjob/unique-tag logic got duplicated and drifted across services.
