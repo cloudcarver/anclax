@@ -85,7 +85,10 @@ func (p *prefetchPacing) admission(now time.Time) (batch int, paused []int64, ne
 		stock := g.projected(now)
 		target := max(1, g.rate*prefetchReserve.Seconds())
 		low := max(1, target/2)
-		if g.due && stock < low {
+		// A fractional forecast departure must not request a whole extra task
+		// when one stocked task already covers a low consumption rate.
+		threshold := min(low, target-1)
+		if g.due && stock <= threshold {
 			need := int(min(float64(prefetchBatchSize), math.Ceil(target-stock)))
 			if g.rate == 0 && g.ready == 0 {
 				need = prefetchBatchSize // Discovery/bootstrap batch, not a standing stock target.
@@ -95,7 +98,7 @@ func (p *prefetchPacing) admission(now time.Time) (batch int, paused []int64, ne
 		}
 		paused = append(paused, id)
 		if g.due && g.rate > 0 {
-			at := now.Add(time.Duration(min(prefetchIdleMaximum.Seconds(), max(0, (stock-low)/g.rate))*float64(time.Second)) + time.Millisecond)
+			at := now.Add(time.Duration(min(prefetchIdleMaximum.Seconds(), max(0, (stock-threshold)/g.rate))*float64(time.Second)) + time.Millisecond)
 			if next.IsZero() || at.Before(next) {
 				next = at
 			}

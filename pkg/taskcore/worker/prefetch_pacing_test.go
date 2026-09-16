@@ -100,3 +100,20 @@ func TestPrefetchEmptyBackoffDoesNotChangeConsumptionOrStopDemand(t *testing.T) 
 	require.True(t, b.until.IsZero())
 	require.Equal(t, float64(10), p.groups[1].rate)
 }
+
+func TestPrefetchLowConsumptionDoesNotRetryForFractionalTask(t *testing.T) {
+	var p prefetchPacing
+	now := time.Now()
+	p.observe(now, []*querier.InspectTaskPrefetchRow{{GroupID: 1, ReadyCount: 2, HasDue: true}})
+	now = now.Add(time.Second)
+	p.observe(now, []*querier.InspectTaskPrefetchRow{{GroupID: 1, ReadyCount: 1, HasDue: true}})
+	for i := 0; i < 50; i++ {
+		batch, _, _ := p.admission(now.Add(50 * time.Millisecond))
+		require.Zero(t, batch, "one stocked task covers this rate; fractional demand cannot cause empty retries")
+		now = now.Add(100 * time.Millisecond)
+		p.observe(now, []*querier.InspectTaskPrefetchRow{{GroupID: 1, ReadyCount: 1, HasDue: true}})
+	}
+	p.observe(now.Add(100*time.Millisecond), []*querier.InspectTaskPrefetchRow{{GroupID: 1, HasDue: true}})
+	batch, _, _ := p.admission(now.Add(100 * time.Millisecond))
+	require.Positive(t, batch, "actual depletion still resumes supply")
+}
