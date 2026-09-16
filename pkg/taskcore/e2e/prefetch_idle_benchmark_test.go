@@ -66,7 +66,7 @@ func TestTaskPrefetchIdleBenchmark(t *testing.T) {
 	var result struct {
 		Revision                                                           string
 		ElapsedSeconds, CPUSeconds, TotalSQLMs, FirstCompletionMs, DrainMs float64
-		PrefetchCalls, ConsumptionCalls, ClaimCalls                        int64
+		PrefetchCalls, ProbeCalls, ConsumptionCalls, ClaimCalls            int64
 		Completed, Attempts                                                int
 	}
 	result.Revision = os.Getenv("ANCLAX_ADMISSION_BENCH_REVISION")
@@ -76,10 +76,11 @@ func TestTaskPrefetchIdleBenchmark(t *testing.T) {
 	result.CPUSeconds = admissionBenchCPU(t, name) - cpuStart
 	require.NoError(t, conn.QueryRow(ctx, `SELECT
 		COALESCE(sum(calls) FILTER(WHERE (query LIKE '-- name: PrefetchReadyTasks%' OR query LIKE '-- name: PrefetchTaskSupply%')),0),
-		COALESCE(sum(calls) FILTER(WHERE query LIKE '-- name: ListWorkerPrefetchConsumption%'),0),
+		COALESCE(sum(calls) FILTER(WHERE query LIKE '-- name: InspectTaskPrefetch%'),0),
+        COALESCE(sum(calls) FILTER(WHERE query LIKE '-- name: ListWorkerPrefetchConsumption%'),0),
 		COALESCE(sum(calls) FILTER(WHERE query LIKE '-- name: ClaimTaskBatch%'),0),
 		COALESCE(sum(total_exec_time),0) FROM pg_stat_statements WHERE toplevel`).Scan(
-		&result.PrefetchCalls, &result.ConsumptionCalls, &result.ClaimCalls, &result.TotalSQLMs))
+		&result.PrefetchCalls, &result.ProbeCalls, &result.ConsumptionCalls, &result.ClaimCalls, &result.TotalSQLMs))
 	_, err = conn.Exec(ctx, `INSERT INTO anclax.tasks(attributes,spec,status)
 		SELECT '{}','{"type":"idle-benchmark"}','pending' FROM generate_series(1,100)`)
 	require.NoError(t, err)

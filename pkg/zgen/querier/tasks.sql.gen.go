@@ -69,7 +69,7 @@ SET locked_at = statement_timestamp(), worker_id = $1,
     updated_at = statement_timestamp()
 FROM admitted
 WHERE t.id = admitted.id
-RETURNING t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id, t.lease_version, t.lease_expires_at, t.lease_duration_ms, t.lease_tags, t.ready_expires_at, t.admission_group_id
+RETURNING t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id, t.lease_version, t.lease_expires_at, t.lease_duration_ms, t.lease_tags, t.admission_group_id
 `
 
 type ClaimNormalTaskByGroupParams struct {
@@ -112,7 +112,6 @@ func (q *Queries) ClaimNormalTaskByGroup(ctx context.Context, arg ClaimNormalTas
 		&i.LeaseExpiresAt,
 		&i.LeaseDurationMs,
 		&i.LeaseTags,
-		&i.ReadyExpiresAt,
 		&i.AdmissionGroupID,
 	)
 	return &i, err
@@ -167,7 +166,7 @@ SET locked_at = statement_timestamp(), worker_id = $1,
     updated_at = statement_timestamp()
 FROM admitted
 WHERE t.id = admitted.id
-RETURNING t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id, t.lease_version, t.lease_expires_at, t.lease_duration_ms, t.lease_tags, t.ready_expires_at, t.admission_group_id
+RETURNING t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id, t.lease_version, t.lease_expires_at, t.lease_duration_ms, t.lease_tags, t.admission_group_id
 `
 
 type ClaimStrictTaskParams struct {
@@ -200,7 +199,6 @@ func (q *Queries) ClaimStrictTask(ctx context.Context, arg ClaimStrictTaskParams
 		&i.LeaseExpiresAt,
 		&i.LeaseDurationMs,
 		&i.LeaseTags,
-		&i.ReadyExpiresAt,
 		&i.AdmissionGroupID,
 	)
 	return &i, err
@@ -254,7 +252,7 @@ SET locked_at = statement_timestamp(), worker_id = $1,
     updated_at = statement_timestamp()
 FROM admitted
 WHERE t.id = admitted.id
-RETURNING t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id, t.lease_version, t.lease_expires_at, t.lease_duration_ms, t.lease_tags, t.ready_expires_at, t.admission_group_id
+RETURNING t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id, t.lease_version, t.lease_expires_at, t.lease_duration_ms, t.lease_tags, t.admission_group_id
 `
 
 type ClaimTaskParams struct {
@@ -287,7 +285,6 @@ func (q *Queries) ClaimTask(ctx context.Context, arg ClaimTaskParams) (*AnclaxTa
 		&i.LeaseExpiresAt,
 		&i.LeaseDurationMs,
 		&i.LeaseTags,
-		&i.ReadyExpiresAt,
 		&i.AdmissionGroupID,
 	)
 	return &i, err
@@ -297,7 +294,7 @@ const claimTaskByID = `-- name: ClaimTaskByID :one
 WITH candidate AS MATERIALIZED (
     SELECT t.id
     FROM anclax.tasks t
-    WHERE (t.status='pending' OR (t.status='ready' AND t.ready_expires_at>statement_timestamp()))
+    WHERE (t.status='pending' OR t.status='ready')
         AND t.id = $3
         AND (t.priority = 0 OR $4::boolean)
         AND (t.started_at IS NULL OR t.started_at <= statement_timestamp())
@@ -329,14 +326,14 @@ WITH candidate AS MATERIALIZED (
     LIMIT 1
 )
 UPDATE anclax.tasks AS t
-SET status=CASE WHEN t.status='ready' THEN 'running' ELSE t.status END, ready_expires_at=NULL, locked_at = statement_timestamp(), worker_id = $1,
+SET status=CASE WHEN t.status='ready' THEN 'running' ELSE t.status END, locked_at = statement_timestamp(), worker_id = $1,
     lease_expires_at = statement_timestamp() + $2::bigint * INTERVAL '1 millisecond',
     lease_duration_ms = $2::bigint,
     lease_version = CASE WHEN t.status='ready' THEN t.lease_version ELSE t.lease_version+1 END, attempts = t.attempts + 1,
     updated_at = statement_timestamp()
 FROM admitted
 WHERE t.id = admitted.id
-RETURNING t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id, t.lease_version, t.lease_expires_at, t.lease_duration_ms, t.lease_tags, t.ready_expires_at, t.admission_group_id
+RETURNING t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id, t.lease_version, t.lease_expires_at, t.lease_duration_ms, t.lease_tags, t.admission_group_id
 `
 
 type ClaimTaskByIDParams struct {
@@ -377,7 +374,6 @@ func (q *Queries) ClaimTaskByID(ctx context.Context, arg ClaimTaskByIDParams) (*
 		&i.LeaseExpiresAt,
 		&i.LeaseDurationMs,
 		&i.LeaseTags,
-		&i.ReadyExpiresAt,
 		&i.AdmissionGroupID,
 	)
 	return &i, err
@@ -402,7 +398,7 @@ SET status='running',locked_at=statement_timestamp(),worker_id=$1,
     lease_expires_at=statement_timestamp()+$2::bigint*INTERVAL '1 millisecond',
     lease_duration_ms=$2::bigint,
     lease_version=t.lease_version+1,attempts=t.attempts+1,updated_at=statement_timestamp()
-FROM candidate WHERE t.id=candidate.id RETURNING t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id, t.lease_version, t.lease_expires_at, t.lease_duration_ms, t.lease_tags, t.ready_expires_at, t.admission_group_id
+FROM candidate WHERE t.id=candidate.id RETURNING t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id, t.lease_version, t.lease_expires_at, t.lease_duration_ms, t.lease_tags, t.admission_group_id
 `
 
 type ClaimWorkerCommandParams struct {
@@ -435,7 +431,6 @@ func (q *Queries) ClaimWorkerCommand(ctx context.Context, arg ClaimWorkerCommand
 		&i.LeaseExpiresAt,
 		&i.LeaseDurationMs,
 		&i.LeaseTags,
-		&i.ReadyExpiresAt,
 		&i.AdmissionGroupID,
 	)
 	return &i, err
@@ -443,7 +438,7 @@ func (q *Queries) ClaimWorkerCommand(ctx context.Context, arg ClaimWorkerCommand
 
 const createTask = `-- name: CreateTask :one
 INSERT INTO anclax.tasks (attributes, spec, status, started_at, unique_tag, parent_task_id, serial_key, serial_id, priority, weight)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (unique_tag) DO NOTHING RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight, parent_task_id, lease_version, lease_expires_at, lease_duration_ms, lease_tags, ready_expires_at, admission_group_id
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (unique_tag) DO NOTHING RETURNING id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight, parent_task_id, lease_version, lease_expires_at, lease_duration_ms, lease_tags, admission_group_id
 `
 
 type CreateTaskParams struct {
@@ -494,7 +489,6 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (*Anclax
 		&i.LeaseExpiresAt,
 		&i.LeaseDurationMs,
 		&i.LeaseTags,
-		&i.ReadyExpiresAt,
 		&i.AdmissionGroupID,
 	)
 	return &i, err
@@ -573,7 +567,7 @@ func (q *Queries) GetTaskAttemptStatus(ctx context.Context, arg GetTaskAttemptSt
 }
 
 const getTaskByID = `-- name: GetTaskByID :one
-SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight, parent_task_id, lease_version, lease_expires_at, lease_duration_ms, lease_tags, ready_expires_at, admission_group_id FROM anclax.tasks
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight, parent_task_id, lease_version, lease_expires_at, lease_duration_ms, lease_tags, admission_group_id FROM anclax.tasks
 WHERE id = $1
 `
 
@@ -601,14 +595,13 @@ func (q *Queries) GetTaskByID(ctx context.Context, id int32) (*AnclaxTask, error
 		&i.LeaseExpiresAt,
 		&i.LeaseDurationMs,
 		&i.LeaseTags,
-		&i.ReadyExpiresAt,
 		&i.AdmissionGroupID,
 	)
 	return &i, err
 }
 
 const getTaskByUniqueTag = `-- name: GetTaskByUniqueTag :one
-SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight, parent_task_id, lease_version, lease_expires_at, lease_duration_ms, lease_tags, ready_expires_at, admission_group_id FROM anclax.tasks
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight, parent_task_id, lease_version, lease_expires_at, lease_duration_ms, lease_tags, admission_group_id FROM anclax.tasks
 WHERE unique_tag = $1
 `
 
@@ -636,7 +629,6 @@ func (q *Queries) GetTaskByUniqueTag(ctx context.Context, uniqueTag *string) (*A
 		&i.LeaseExpiresAt,
 		&i.LeaseDurationMs,
 		&i.LeaseTags,
-		&i.ReadyExpiresAt,
 		&i.AdmissionGroupID,
 	)
 	return &i, err
@@ -685,7 +677,7 @@ func (q *Queries) InsertEvent(ctx context.Context, spec apigen.EventSpec) (*Ancl
 }
 
 const listAllPendingTasks = `-- name: ListAllPendingTasks :many
-SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight, parent_task_id, lease_version, lease_expires_at, lease_duration_ms, lease_tags, ready_expires_at, admission_group_id FROM anclax.tasks
+SELECT id, attributes, spec, status, unique_tag, started_at, created_at, updated_at, attempts, locked_at, worker_id, serial_key, serial_id, priority, weight, parent_task_id, lease_version, lease_expires_at, lease_duration_ms, lease_tags, admission_group_id FROM anclax.tasks
 WHERE
     status IN ('pending','ready','running')
     AND (
@@ -723,7 +715,6 @@ func (q *Queries) ListAllPendingTasks(ctx context.Context) ([]*AnclaxTask, error
 			&i.LeaseExpiresAt,
 			&i.LeaseDurationMs,
 			&i.LeaseTags,
-			&i.ReadyExpiresAt,
 			&i.AdmissionGroupID,
 		); err != nil {
 			return nil, err

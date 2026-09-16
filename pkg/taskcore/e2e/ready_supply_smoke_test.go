@@ -4,6 +4,7 @@ package taskcoree2e_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -70,11 +71,18 @@ func TestReadyTaskSupplyDecisionsSmoke(t *testing.T) {
 			t.Helper()
 			r, err := m.PrefetchTaskSupply(ctx, querier.PrefetchTaskSupplyParams{
 				TaskID: sys.ID, WorkerID: sys.WorkerID.UUID, LeaseVersion: sys.LeaseVersion,
-				BatchSize: 256, ReadyTtlMs: 30000, LockTtlMs: 9000,
+				BatchSize: 256, LockTtlMs: 9000,
 			})
 			require.NoError(t, err)
 			require.Equal(t, want, r.Prepared)
 			require.Equal(t, reason, r.WaitReason)
+			var groups map[int64]int32
+			require.NoError(t, json.Unmarshal(r.PreparedGroups, &groups))
+			var sum int32
+			for _, n := range groups {
+				sum += n
+			}
+			require.Equal(t, max(int32(0), want), sum, "committed per-group counts must account for every admitted task")
 		}
 		supply(0, "idle") // The scheduler's own lease must not make this busy.
 		_, err = conn.Exec(ctx, `INSERT INTO anclax.tasks(attributes,spec,status,started_at)
@@ -101,7 +109,10 @@ func TestReadyTaskSupplyDecisionsSmoke(t *testing.T) {
 		require.NoError(t, m.ConfigureWorkerPrefetch(ctx, querier.ConfigureWorkerPrefetchParams{
 			WorkerID: sys.WorkerID.UUID, Capacity: 1, StrictPercentage: 100,
 		}))
-		supply(0, "ready_full")
+		_, err = conn.Exec(ctx, `INSERT INTO anclax.tasks(attributes,spec,status)
+            SELECT '{}','{"type":"beyond-worker-capacity"}','pending' FROM generate_series(1,2)`)
+		require.NoError(t, err)
+		supply(2, "productive") // Ready supply is no longer capped by Worker capacity.
 		_, err = conn.Exec(ctx, "UPDATE anclax.tasks SET lease_version=lease_version+1 WHERE id=$1", sys.ID)
 		require.NoError(t, err)
 		supply(-1, "lost")
@@ -122,7 +133,8 @@ func TestReadyTaskSupplyIdleProbePlanSmoke(t *testing.T) {
 		require.NoError(t, err)
 		var plan string
 		require.NoError(t, conn.QueryRow(ctx, `EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) SELECT EXISTS(
-			SELECT 1 FROM anclax.tasks WHERE status='pending' AND locked_at IS NULL
+			SELECT 1 FROM anclax.tasks WHERE admission_group_id=(SELECT min(id) FROM anclax.task_admission_groups)
+            AND status='pending' AND locked_at IS NULL
 			AND NOT anclax.is_system_task(spec->>'type')
 			AND COALESCE(started_at,'-infinity'::timestamptz)<=statement_timestamp())`).Scan(&plan))
 		require.Contains(t, plan, "idx_tasks_pending_due", "future/history rows must not turn every idle probe into a scan")

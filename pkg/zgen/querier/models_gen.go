@@ -98,14 +98,14 @@ type AnclaxTask struct {
 	LeaseExpiresAt   *time.Time
 	LeaseDurationMs  *int64
 	LeaseTags        []string
-	ReadyExpiresAt   *time.Time
 	AdmissionGroupID *int64
 }
 
 type AnclaxTaskAdmissionGroup struct {
-	ID     int64
-	Tags   []string
-	Labels []string
+	ID       int64
+	Tags     []string
+	Labels   []string
+	IsStrict bool
 }
 
 type AnclaxTaskTag struct {

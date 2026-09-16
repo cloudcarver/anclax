@@ -1,10 +1,11 @@
 BEGIN;
-UPDATE anclax.tasks SET status='pending',ready_expires_at=NULL WHERE status='ready';
+UPDATE anclax.tasks SET status='pending' WHERE status='ready';
 UPDATE anclax.tasks SET status='pending' WHERE status='running';
 DELETE FROM anclax.tasks WHERE spec->>'type'='prefetchTasks';
-DROP FUNCTION anclax.prefetch_ready_tasks(INT,UUID,BIGINT,INT,BIGINT,BIGINT);
-DROP FUNCTION anclax.prefetch_task_supply(INT,UUID,BIGINT,INT,BIGINT,BIGINT);
-DROP FUNCTION anclax.recover_ready_tasks(INT);
+DROP FUNCTION anclax.prefetch_ready_tasks(INT,UUID,BIGINT,INT,BIGINT);
+DROP FUNCTION anclax.prefetch_task_supply(INT,UUID,BIGINT,INT,BIGINT,BIGINT[]);
+DROP FUNCTION anclax.inspect_task_prefetch(INT,UUID,BIGINT,BIGINT,BOOLEAN);
+DROP FUNCTION anclax.maintain_task_prefetch(BIGINT);
 DROP TRIGGER reclassify_task_admission_groups ON anclax.task_tag_limits;
 DROP FUNCTION anclax.reclassify_task_admission_groups();
 DROP TRIGGER aaa_invalidate_task_reservation ON anclax.tasks;
@@ -88,7 +89,7 @@ DROP INDEX anclax.idx_tasks_unclassified;
 DROP FUNCTION anclax.is_system_task(TEXT);
 DROP INDEX anclax.idx_tasks_ready_priority;
 DROP INDEX anclax.idx_tasks_ready_weight;
-DROP INDEX anclax.idx_tasks_ready_expiry;
+DROP INDEX anclax.idx_tasks_ready_group;
 DROP INDEX anclax.idx_tasks_serial_ready;
 DROP INDEX anclax.idx_tasks_admission_candidates;
 DROP INDEX anclax.idx_tasks_serial_pending_head;
@@ -96,7 +97,7 @@ CREATE INDEX idx_tasks_serial_pending_head ON anclax.tasks
  (serial_key,(serial_id IS NULL),(COALESCE(serial_id,2147483647)),created_at,(COALESCE(started_at,'-infinity'::timestamptz)),id)
  WHERE status='pending' AND serial_key IS NOT NULL;
 ALTER TABLE anclax.tasks DROP CONSTRAINT tasks_ready_reservation_shape;
-ALTER TABLE anclax.tasks DROP COLUMN ready_expires_at,DROP COLUMN admission_group_id;
+ALTER TABLE anclax.tasks DROP COLUMN admission_group_id;
 DROP TABLE anclax.task_admission_groups;
 ALTER TABLE anclax.workers DROP COLUMN prefetch_capacity,DROP COLUMN prefetch_strict_percentage,DROP COLUMN prefetch_heartbeat_ttl_ms;
 COMMIT;

@@ -160,7 +160,7 @@ RETURNING t.*;
 WITH candidate AS MATERIALIZED (
     SELECT t.id
     FROM anclax.tasks t
-    WHERE (t.status='pending' OR (t.status='ready' AND t.ready_expires_at>statement_timestamp()))
+    WHERE (t.status='pending' OR t.status='ready')
         AND t.id = sqlc.arg(id)
         AND (t.priority = 0 OR sqlc.arg(allow_strict)::boolean)
         AND (t.started_at IS NULL OR t.started_at <= statement_timestamp())
@@ -192,7 +192,7 @@ WITH candidate AS MATERIALIZED (
     LIMIT 1
 )
 UPDATE anclax.tasks AS t
-SET status=CASE WHEN t.status='ready' THEN 'running' ELSE t.status END, ready_expires_at=NULL, locked_at = statement_timestamp(), worker_id = sqlc.arg(worker_id),
+SET status=CASE WHEN t.status='ready' THEN 'running' ELSE t.status END, locked_at = statement_timestamp(), worker_id = sqlc.arg(worker_id),
     lease_expires_at = statement_timestamp() + sqlc.arg(lock_ttl_ms)::bigint * INTERVAL '1 millisecond',
     lease_duration_ms = sqlc.arg(lock_ttl_ms)::bigint,
     lease_version = CASE WHEN t.status='ready' THEN t.lease_version ELSE t.lease_version+1 END, attempts = t.attempts + 1,

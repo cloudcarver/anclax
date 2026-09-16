@@ -68,7 +68,7 @@ func TestReadyTaskMigrationSmoke(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "pending", afterReady.Status)
 		require.Nil(t, afterReady.LockedAt)
-		require.Nil(t, afterReady.ReadyExpiresAt)
+		require.Nil(t, afterReady.LeaseExpiresAt)
 		require.Empty(t, afterReady.LeaseTags)
 		require.Greater(t, afterReady.LeaseVersion, ready.LeaseVersion)
 		require.Zero(t, afterReady.Attempts)

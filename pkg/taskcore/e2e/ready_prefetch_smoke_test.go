@@ -31,7 +31,7 @@ func TestReadyTaskPrefetchSmoke(t *testing.T) {
 		sys, err := p.ClaimControl(ctx, worker.ClaimRequest{})
 		require.NoError(t, err)
 		prepare := func() int32 {
-			n, err := m.PrefetchReadyTasks(ctx, querier.PrefetchReadyTasksParams{TaskID: sys.ID, WorkerID: owner, LeaseVersion: sys.LeaseVersion, BatchSize: 256, ReadyTtlMs: 2000, LockTtlMs: 9000})
+			n, err := m.PrefetchReadyTasks(ctx, querier.PrefetchReadyTasksParams{TaskID: sys.ID, WorkerID: owner, LeaseVersion: sys.LeaseVersion, BatchSize: 256, LockTtlMs: 9000})
 			require.NoError(t, err)
 			return n
 		}
@@ -68,15 +68,11 @@ func TestReadyTaskPrefetchSmoke(t *testing.T) {
 		require.Equal(t, int32(0), prepare(), "ready and running both consume capacity")
 		require.NoError(t, p.FinalizeTask(ctx, *got[0], nil))
 		require.Equal(t, int32(1), prepare(), "finalize frees capacity without clearing waiter flags")
-		_, err = conn.Exec(ctx, `UPDATE anclax.tasks SET ready_expires_at=statement_timestamp()-interval '1 second' WHERE status='ready'`)
-		require.NoError(t, err)
-		var recovered int
-		require.NoError(t, conn.QueryRow(ctx, `SELECT anclax.recover_ready_tasks(256)`).Scan(&recovered))
-		require.Equal(t, 2, recovered)
+		time.Sleep(2100 * time.Millisecond)
+		require.Equal(t, int32(0), prepare(), "elapsed time must not revoke ready reservations")
 		state, err = m.GetTaskTagConcurrency(ctx, "ready:limited")
 		require.NoError(t, err)
-		require.Zero(t, state.InUse)
-		require.Equal(t, int32(2), prepare())
+		require.Equal(t, int32(2), state.InUse)
 		_, err = conn.Exec(ctx, `UPDATE anclax.tasks SET status='cancelled' WHERE status='ready'`)
 		require.NoError(t, err)
 		state, err = m.GetTaskTagConcurrency(ctx, "ready:limited")
@@ -104,7 +100,7 @@ func prepareReadyFixture(t *testing.T, ctx context.Context, m model.ModelInterfa
 	sys, err := p.ClaimControl(ctx, worker.ClaimRequest{})
 	require.NoError(t, err)
 	prepare := func(ctx context.Context) error {
-		_, err := m.PrefetchReadyTasks(ctx, querier.PrefetchReadyTasksParams{TaskID: sys.ID, WorkerID: owner, LeaseVersion: sys.LeaseVersion, BatchSize: 256, ReadyTtlMs: 30000, LockTtlMs: 9000})
+		_, err := m.PrefetchReadyTasks(ctx, querier.PrefetchReadyTasksParams{TaskID: sys.ID, WorkerID: owner, LeaseVersion: sys.LeaseVersion, BatchSize: 256, LockTtlMs: 9000})
 		return err
 	}
 	require.NoError(t, prepare(ctx))
@@ -199,33 +195,34 @@ func TestReadyTaskTransitionsSmoke(t *testing.T) {
 			require.Empty(t, after.LeaseTags)
 			usage(t, "old", 0)
 		})
-		t.Run("claim_commit_wins_over_reservation_recovery", func(t *testing.T) {
+		t.Run("uncommitted_claim_cannot_be_adopted_twice", func(t *testing.T) {
 			reset(t)
 			require.NoError(t, m.SetTaskTagConcurrencyLimit(ctx, querier.SetTaskTagConcurrencyLimitParams{Tag: "race", MaxConcurrency: 1}))
 			id := enqueue(t, `{"tags":["race"]}`, "")
 			prepareReadyFixture(t, ctx, m, nil)
-			_, err = conn.Exec(ctx, `UPDATE anclax.tasks SET ready_expires_at=statement_timestamp()+interval '150 milliseconds' WHERE id=$1`, id)
-			require.NoError(t, err)
 			tx, err := conn.Begin(ctx)
 			require.NoError(t, err)
 			defer tx.Rollback(ctx)
-			tasks, err := querier.New(tx).ClaimTaskBatch(ctx, querier.ClaimTaskBatchParams{WorkerID: uuid.NullUUID{UUID: uuid.New(), Valid: true}, BatchSize: 1, LockTtlMs: 9000, GroupNames: []string{"__default__"}})
+			args := querier.ClaimTaskBatchParams{WorkerID: uuid.NullUUID{UUID: uuid.New(), Valid: true}, BatchSize: 1, LockTtlMs: 9000, GroupNames: []string{"__default__"}}
+			tasks, err := querier.New(tx).ClaimTaskBatch(ctx, args)
 			require.NoError(t, err)
 			require.Len(t, tasks, 1)
-			time.Sleep(200 * time.Millisecond)
 			other, err := pgx.Connect(ctx, smokePostgresDSN())
 			require.NoError(t, err)
 			defer other.Close(ctx)
-			var n int
-			require.NoError(t, other.QueryRow(ctx, `SELECT anclax.recover_ready_tasks(256)`).Scan(&n))
-			require.Zero(t, n)
+			args.WorkerID.UUID = uuid.New()
+			tasks, err = querier.New(other).ClaimTaskBatch(ctx, args)
+			require.NoError(t, err)
+			require.Empty(t, tasks)
 			require.NoError(t, tx.Commit(ctx))
-			require.NoError(t, other.QueryRow(ctx, `SELECT anclax.recover_ready_tasks(256)`).Scan(&n))
-			require.Zero(t, n)
+			tasks, err = querier.New(other).ClaimTaskBatch(ctx, args)
+			require.NoError(t, err)
+			require.Empty(t, tasks)
 			usage(t, "race", 1)
 			r, err := m.GetTaskByID(ctx, id)
 			require.NoError(t, err)
 			require.Equal(t, "running", r.Status)
+			require.Equal(t, int32(1), r.Attempts)
 		})
 		t.Run("opposite_new_group_insertion_orders_do_not_wait", func(t *testing.T) {
 			reset(t)

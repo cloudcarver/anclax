@@ -665,6 +665,21 @@ func (mr *MockModelInterfaceMockRecorder) InsertOrgUser(ctx, arg any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertOrgUser", reflect.TypeOf((*MockModelInterface)(nil).InsertOrgUser), ctx, arg)
 }
 
+// InspectTaskPrefetch mocks base method.
+func (m *MockModelInterface) InspectTaskPrefetch(ctx context.Context, arg querier.InspectTaskPrefetchParams) ([]*querier.InspectTaskPrefetchRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InspectTaskPrefetch", ctx, arg)
+	ret0, _ := ret[0].([]*querier.InspectTaskPrefetchRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InspectTaskPrefetch indicates an expected call of InspectTaskPrefetch.
+func (mr *MockModelInterfaceMockRecorder) InspectTaskPrefetch(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InspectTaskPrefetch", reflect.TypeOf((*MockModelInterface)(nil).InspectTaskPrefetch), ctx, arg)
+}
+
 // IsUsernameExists mocks base method.
 func (m *MockModelInterface) IsUsernameExists(ctx context.Context, name string) (bool, error) {
 	m.ctrl.T.Helper()

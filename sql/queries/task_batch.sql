@@ -2,7 +2,7 @@
 WITH strict_candidates AS MATERIALIZED (
     SELECT t.id, t.priority, t.weight, t.created_at, 0::int AS group_order
     FROM anclax.tasks t
-    WHERE t.status = 'ready' AND t.ready_expires_at > statement_timestamp()
+    WHERE t.status = 'ready'
         AND t.priority > 0
         AND NOT EXISTS (
             SELECT 1 FROM jsonb_array_elements_text(COALESCE(NULLIF(t.attributes->'labels', 'null'::jsonb), '[]'::jsonb)) AS task_label(value)
@@ -14,7 +14,7 @@ WITH strict_candidates AS MATERIALIZED (
 ), normal_candidates AS MATERIALIZED (
     SELECT t.id, t.priority, t.weight, t.created_at, array_position(sqlc.arg(group_names)::text[], COALESCE((SELECT MIN(label) FROM jsonb_array_elements_text(COALESCE(NULLIF(t.attributes->'labels', 'null'::jsonb), '[]'::jsonb)) AS labels(label) WHERE label = ANY(sqlc.arg(weighted_labels)::text[])), '__default__')) AS group_order
     FROM anclax.tasks t
-    WHERE t.status = 'ready' AND t.ready_expires_at > statement_timestamp()
+    WHERE t.status = 'ready'
         AND t.priority = 0
         AND COALESCE((SELECT MIN(label) FROM jsonb_array_elements_text(COALESCE(NULLIF(t.attributes->'labels', 'null'::jsonb), '[]'::jsonb)) AS labels(label) WHERE label = ANY(sqlc.arg(weighted_labels)::text[])), '__default__') = ANY(sqlc.arg(group_names)::text[])
         AND NOT EXISTS (
@@ -30,7 +30,7 @@ WITH strict_candidates AS MATERIALIZED (
     LIMIT sqlc.arg(batch_size)::int
 )
 UPDATE anclax.tasks AS t
-SET status='running',ready_expires_at=NULL,locked_at=statement_timestamp(),worker_id=sqlc.arg(worker_id),
+SET status='running',locked_at=statement_timestamp(),worker_id=sqlc.arg(worker_id),
     lease_expires_at=statement_timestamp()+sqlc.arg(lock_ttl_ms)::bigint*INTERVAL '1 millisecond',
     lease_duration_ms=sqlc.arg(lock_ttl_ms)::bigint,attempts=t.attempts+1,updated_at=statement_timestamp()
 FROM candidate WHERE t.id=candidate.id RETURNING t.*;

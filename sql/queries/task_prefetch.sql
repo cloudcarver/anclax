@@ -15,11 +15,17 @@ ON CONFLICT(unique_tag) DO NOTHING;
 -- A negative prepared count means the scheduler attempt no longer owns its lease.
 SELECT anclax.prefetch_ready_tasks(sqlc.arg(task_id)::int,sqlc.arg(worker_id)::uuid,
     sqlc.arg(lease_version)::bigint,sqlc.arg(batch_size)::int,
-    sqlc.arg(ready_ttl_ms)::bigint,sqlc.arg(lock_ttl_ms)::bigint)::int AS prepared;
+    sqlc.arg(lock_ttl_ms)::bigint)::int AS prepared;
 
 -- name: PrefetchTaskSupply :one
 -- The wait reason is advisory; allocation and the scheduler fence stay in SQL.
-SELECT prepared::int,wait_reason::text
+SELECT prepared::int,wait_reason::text,prepared_groups::jsonb
 FROM anclax.prefetch_task_supply(sqlc.arg(task_id)::int,sqlc.arg(worker_id)::uuid,
     sqlc.arg(lease_version)::bigint,sqlc.arg(batch_size)::int,
-    sqlc.arg(ready_ttl_ms)::bigint,sqlc.arg(lock_ttl_ms)::bigint);
+    sqlc.arg(lock_ttl_ms)::bigint,sqlc.arg(paused_groups)::bigint[]);
+
+-- name: InspectTaskPrefetch :many
+-- A group_id of -1 denotes a lost scheduler lease. Empty rows mean no supply/work.
+SELECT group_id::bigint,ready_count::bigint,has_due::boolean
+FROM anclax.inspect_task_prefetch(sqlc.arg(task_id)::int,sqlc.arg(worker_id)::uuid,
+    sqlc.arg(lease_version)::bigint,sqlc.arg(lock_ttl_ms)::bigint,sqlc.arg(maintain)::boolean);

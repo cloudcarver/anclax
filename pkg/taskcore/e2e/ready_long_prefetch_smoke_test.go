@@ -182,7 +182,7 @@ func TestReadyTaskBulkAdmissionSmoke(t *testing.T) {
 		for _, isolation := range []pgx.TxIsoLevel{pgx.RepeatableRead, pgx.Serializable} {
 			tx, err := conn.BeginTx(ctx, pgx.TxOptions{IsoLevel: isolation})
 			require.NoError(t, err)
-			_, err = tx.Exec(ctx, "SELECT anclax.prefetch_ready_tasks(0,$1,0,256,2000,9000)", uuid.New())
+			_, err = tx.Exec(ctx, "SELECT anclax.prefetch_ready_tasks(0,$1,0,256,9000)", uuid.New())
 			var pgerr *pgconn.PgError
 			require.ErrorAs(t, err, &pgerr)
 			require.Equal(t, "0A000", pgerr.Code, "bulk admission must reject stale-snapshot isolation too")

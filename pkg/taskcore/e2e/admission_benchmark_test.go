@@ -136,12 +136,21 @@ func TestTaskAdmissionBenchmark(t *testing.T) {
 				go func() { defer close(done); components.Runtime.Start(runCtx) }()
 				defer func() { cancel(); <-done }()
 				completed, ready, running, pending := 0, 0, 0, 0
-				steadySamples, emptyReadySamples, supplyGapSamples := 0, 0, 0
+				steadySamples, emptyReadySamples, supplyGapSamples, peakReady := 0, 0, 0, 0
+				var progress []admissionBenchProgress
+				var lastProgress time.Duration
+				lastCompleted := 0
 				var peak int32
 				for time.Since(start) < timeout {
 					require.NoError(t, conn.QueryRow(ctx, `SELECT count(*) FILTER(WHERE status='completed'),count(*) FILTER(WHERE status='ready'),
                         count(*) FILTER(WHERE status='running'),count(*) FILTER(WHERE status='pending')
                         FROM anclax.tasks WHERE id>$1 AND id<=$2`, workStartID, workStartID+tasks).Scan(&completed, &ready, &running, &pending))
+					peakReady = max(peakReady, ready)
+					elapsed := time.Since(start)
+					if elapsed-lastProgress >= time.Second || completed == tasks {
+						progress = append(progress, admissionBenchProgress{Seconds: elapsed.Seconds(), Completed: completed, TasksPerSecond: float64(completed-lastCompleted) / (elapsed - lastProgress).Seconds()})
+						lastProgress, lastCompleted = elapsed, completed
+					}
 					// Exclude startup and tail. This is a sampled supply-gap
 					// indicator, not proof of runnable eligibility for tagged
 					// or serial work; concurrent transactions can be in flight.
@@ -170,7 +179,7 @@ func TestTaskAdmissionBenchmark(t *testing.T) {
 				cpuSeconds := admissionBenchCPU(t, name) - cpuStart
 				afterPool := base.(*model.Model).PoolStats()
 				result := admissionBenchResult{Revision: os.Getenv("ANCLAX_ADMISSION_BENCH_REVISION"), Postgres: postgres, Schema: schema,
-					SteadySamples: steadySamples, EmptyReadySamples: emptyReadySamples, SupplyGapSamples: supplyGapSamples,
+					SteadySamples: steadySamples, EmptyReadySamples: emptyReadySamples, SupplyGapSamples: supplyGapSamples, PeakReady: peakReady, Progress: progress,
 					Scenario: scenario, Concurrency: concurrency, Tasks: tasks, History: historyRows, Blocked: blockedRows, EnqueueSeconds: enqueueSeconds, EnqueueCPUSeconds: enqueueCPU, HandlerMs: delay.Milliseconds(), GOMAXPROCS: runtime.GOMAXPROCS(0),
 					ElapsedSeconds: elapsed.Seconds(), CPUSeconds: cpuSeconds, PoolPeak: peak,
 					PoolWaits: afterPool.EmptyAcquireCount() - beforePool.EmptyAcquireCount(), PoolWaitSeconds: (afterPool.AcquireDuration() - beforePool.AcquireDuration()).Seconds(),
@@ -215,7 +224,14 @@ func TestTaskAdmissionBenchmark(t *testing.T) {
 	}
 }
 
+type admissionBenchProgress struct {
+	Seconds, TasksPerSecond float64
+	Completed               int
+}
+
 type admissionBenchResult struct {
+	PeakReady                                                                                        int
+	Progress                                                                                         []admissionBenchProgress
 	SteadySamples, EmptyReadySamples, SupplyGapSamples                                               int
 	ConsumptionSQLCalls                                                                              int64
 	ConsumptionSQLMs                                                                                 float64
@@ -341,7 +357,7 @@ func (t *admissionBenchTx) identify(sql string) {
 	if name == "PrefetchTaskSupply" {
 		name = "PrefetchReadyTasks"
 	}
-	if (strings.HasPrefix(name, "Claim") && name != "ClaimWorkerCommand") || name == "FinalizeTaskAttempt" || name == "PrefetchReadyTasks" {
+	if (strings.HasPrefix(name, "Claim") && name != "ClaimWorkerCommand") || name == "FinalizeTaskAttempt" || name == "PrefetchReadyTasks" || name == "InspectTaskPrefetch" {
 		t.operation = name
 	}
 }

@@ -1,10 +1,8 @@
 BEGIN;
 
 -- Stop all workers for this protocol change. Ready owns resources but no worker.
-ALTER TABLE anclax.tasks ADD COLUMN ready_expires_at TIMESTAMPTZ;
 ALTER TABLE anclax.tasks ADD CONSTRAINT tasks_ready_reservation_shape CHECK (
-    (status='ready')=(ready_expires_at IS NOT NULL)
-    AND (status<>'ready' OR (locked_at IS NULL AND worker_id IS NULL))
+    status<>'ready' OR (locked_at IS NULL AND worker_id IS NULL AND lease_expires_at IS NULL)
 );
 ALTER TABLE anclax.workers ADD COLUMN prefetch_capacity INT NOT NULL DEFAULT 0,
     ADD COLUMN prefetch_strict_percentage INT NOT NULL DEFAULT 100,
@@ -19,23 +17,23 @@ CREATE TABLE anclax.task_admission_groups (
     id BIGSERIAL PRIMARY KEY,
     tags TEXT[] NOT NULL,
     labels TEXT[] NOT NULL,
-    UNIQUE(tags,labels)
+    is_strict BOOLEAN NOT NULL,
+    UNIQUE(tags,labels,is_strict)
 );
 ALTER TABLE anclax.tasks ADD COLUMN admission_group_id BIGINT REFERENCES anclax.task_admission_groups(id);
 CREATE INDEX idx_tasks_unclassified ON anclax.tasks(id)
     WHERE status='pending' AND admission_group_id IS NULL AND NOT anclax.is_system_task(spec->>'type');
 CREATE INDEX idx_tasks_admission_candidates ON anclax.tasks
     (admission_group_id,priority DESC,(CASE WHEN priority=0 THEN weight ELSE 0 END) DESC,created_at,id) WHERE status='pending';
--- A zero-output admission round must not scan historical/future rows to
--- distinguish true idleness from a due backlog waiting for resource release.
-CREATE INDEX idx_tasks_pending_due ON anclax.tasks((COALESCE(started_at,'-infinity'::timestamptz)))
+-- Group observations do not scan completed history or future pending work.
+CREATE INDEX idx_tasks_pending_due ON anclax.tasks(admission_group_id,(COALESCE(started_at,'-infinity'::timestamptz)))
     WHERE status='pending' AND locked_at IS NULL AND NOT anclax.is_system_task(spec->>'type');
 CREATE INDEX idx_tasks_ready_priority ON anclax.tasks(priority DESC,created_at,id) WHERE status='ready';
 CREATE INDEX idx_tasks_ready_weight ON anclax.tasks(weight DESC,created_at,id) WHERE status='ready' AND priority=0;
-CREATE INDEX idx_tasks_ready_expiry ON anclax.tasks(ready_expires_at,id) WHERE status='ready';
+CREATE INDEX idx_tasks_ready_group ON anclax.tasks(admission_group_id) WHERE status='ready';
 CREATE INDEX idx_tasks_system_pending ON anclax.tasks((COALESCE(started_at,created_at)),id)
     WHERE status IN ('pending','running') AND anclax.is_system_task(spec->>'type');
-CREATE INDEX idx_tasks_serial_ready ON anclax.tasks(serial_key,ready_expires_at) WHERE status='ready' AND serial_key IS NOT NULL;
+CREATE INDEX idx_tasks_serial_ready ON anclax.tasks(serial_key) WHERE status='ready' AND serial_key IS NOT NULL;
 DROP INDEX anclax.idx_tasks_serial_pending_head;
 CREATE INDEX idx_tasks_serial_pending_head ON anclax.tasks
     (serial_key,(serial_id IS NULL),(COALESCE(serial_id,2147483647)),created_at,
@@ -57,7 +55,8 @@ BEGIN
     IF TG_OP='UPDATE' AND NEW.admission_group_id IS NOT NULL
        AND NEW.attributes->'tags' IS NOT DISTINCT FROM OLD.attributes->'tags'
        AND NEW.attributes->'labels' IS NOT DISTINCT FROM OLD.attributes->'labels'
-       AND NEW.spec->>'type' IS NOT DISTINCT FROM OLD.spec->>'type' THEN
+       AND NEW.spec->>'type' IS NOT DISTINCT FROM OLD.spec->>'type'
+       AND (NEW.priority>0)=(OLD.priority>0) THEN
         RETURN NEW;
     END IF;
     SELECT COALESCE(array_agg(DISTINCT x.tag ORDER BY x.tag),'{}'::text[]) INTO wanted_tags
@@ -65,7 +64,7 @@ BEGIN
     JOIN anclax.task_tag_limits c ON c.tag=x.tag AND c.max_concurrency IS NOT NULL;
     SELECT COALESCE(array_agg(DISTINCT x.label ORDER BY x.label),'{}'::text[]) INTO wanted_labels
     FROM jsonb_array_elements_text(COALESCE(NULLIF(NEW.attributes->'labels','null'::jsonb),'[]')) x(label);
-    SELECT id INTO group_id FROM anclax.task_admission_groups WHERE tags=wanted_tags AND labels=wanted_labels;
+    SELECT id INTO group_id FROM anclax.task_admission_groups WHERE tags=wanted_tags AND labels=wanted_labels AND is_strict=(NEW.priority>0);
     IF group_id IS NULL THEN
         -- Never wait on another transaction creating a different new group:
         -- opposite multi-task insertion orders must not form a unique-key cycle.
@@ -74,17 +73,17 @@ BEGIN
             NEW.admission_group_id:=NULL;
             RETURN NEW;
         END IF;
-        INSERT INTO anclax.task_admission_groups(tags,labels) VALUES(wanted_tags,wanted_labels)
+        INSERT INTO anclax.task_admission_groups(tags,labels,is_strict) VALUES(wanted_tags,wanted_labels,NEW.priority>0)
         ON CONFLICT DO NOTHING RETURNING id INTO group_id;
         IF group_id IS NULL THEN
-            SELECT id INTO group_id FROM anclax.task_admission_groups WHERE tags=wanted_tags AND labels=wanted_labels;
+            SELECT id INTO group_id FROM anclax.task_admission_groups WHERE tags=wanted_tags AND labels=wanted_labels AND is_strict=(NEW.priority>0);
         END IF;
     END IF;
     NEW.admission_group_id := group_id;
     RETURN NEW;
 END;
 $$;
-CREATE TRIGGER classify_task_admission BEFORE INSERT OR UPDATE OF attributes,spec,status,locked_at,admission_group_id
+CREATE TRIGGER classify_task_admission BEFORE INSERT OR UPDATE OF attributes,spec,status,locked_at,admission_group_id,priority
 ON anclax.tasks FOR EACH ROW EXECUTE FUNCTION anclax.classify_task_admission();
 UPDATE anclax.tasks SET admission_group_id=NULL WHERE status IN ('pending','running','paused') OR locked_at IS NOT NULL;
 
@@ -102,7 +101,6 @@ BEGIN
             NEW.status := 'pending';
         END IF;
         IF NEW.status <> 'ready' THEN
-            NEW.ready_expires_at := NULL;
             IF NEW.status <> 'running' THEN
                 PERFORM anclax.release_task_tag_permits(OLD.id);
                 NEW.lease_version := OLD.lease_version+1;
@@ -199,11 +197,11 @@ BEGIN
     SELECT * INTO t FROM anclax.tasks WHERE id=v_task_id FOR UPDATE;
     IF NOT FOUND THEN RETURN FALSE; END IF;
     IF anclax.is_system_task(t.spec->>'type') THEN RETURN TRUE; END IF;
-    IF t.status='ready' THEN RETURN t.ready_expires_at>statement_timestamp(); END IF;
+    IF t.status='ready' THEN RETURN TRUE; END IF;
     IF t.serial_key IS NOT NULL THEN
         IF NOT pg_try_advisory_xact_lock(hashtextextended('anclax:serial-admit:'||t.serial_key,0)) THEN RETURN FALSE; END IF;
         IF EXISTS(SELECT 1 FROM anclax.tasks a WHERE a.serial_key=t.serial_key AND a.id<>t.id
-            AND a.status='ready' AND a.ready_expires_at>statement_timestamp())
+            AND a.status='ready')
            OR EXISTS(SELECT 1 FROM anclax.tasks a WHERE a.serial_key=t.serial_key AND a.id<>t.id
             AND a.locked_at IS NOT NULL
             AND COALESCE(a.lease_expires_at,a.locked_at+p_legacy_ttl_ms*interval '1 millisecond')>statement_timestamp()) THEN
@@ -230,42 +228,9 @@ BEGIN
 END;
 $$;
 
-CREATE FUNCTION anclax.recover_ready_tasks(p_limit INT) RETURNS INT LANGUAGE plpgsql AS $$
-DECLARE n INT;
+CREATE FUNCTION anclax.maintain_task_prefetch(p_lock_ttl_ms BIGINT) RETURNS VOID
+    LANGUAGE plpgsql VOLATILE AS $$
 BEGIN
-    WITH expired AS (
-        SELECT id FROM anclax.tasks WHERE status='ready' AND ready_expires_at<=statement_timestamp()
-        ORDER BY ready_expires_at,id LIMIT p_limit FOR UPDATE SKIP LOCKED
-    )
-    UPDATE anclax.tasks t SET status='pending',ready_expires_at=NULL,updated_at=statement_timestamp()
-    FROM expired e WHERE t.id=e.id;
-    GET DIAGNOSTICS n=ROW_COUNT;
-    RETURN n;
-END;
-$$;
-
-CREATE FUNCTION anclax.prefetch_task_supply(p_task_id INT,p_worker UUID,p_version BIGINT,
-    p_batch INT,p_ready_ttl_ms BIGINT,p_lock_ttl_ms BIGINT)
-    RETURNS TABLE(prepared INT,wait_reason TEXT) LANGUAGE plpgsql VOLATILE SET jit=off AS $$
-DECLARE target INT; strict_target INT; current_ready INT; current_strict INT; n INT:=0; selected_task RECORD;
-    group_cursor BIGINT; total_weight BIGINT; group_names TEXT[]; group_bounds BIGINT[];
-    ordered_groups TEXT[]; weighted_labels TEXT[]; preferred_index INT:=1; i INT;
-    simple_ids INT[]:='{}'; stored_cursor BIGINT;
-BEGIN
-    IF p_batch<1 OR p_batch>256 OR p_ready_ttl_ms<1 THEN RAISE EXCEPTION 'invalid prefetch bounds'; END IF;
-    -- The bulk path must obey the same isolation contract as slot allocation.
-    IF current_setting('transaction_isolation') NOT IN ('read committed','read uncommitted') THEN
-        RAISE EXCEPTION 'task admission requires READ COMMITTED isolation' USING ERRCODE='0A000';
-    END IF;
-    -- Fence the singleton system task in every batch; an old process cannot
-    -- keep admitting work after its scheduler lease has been taken over.
-    SELECT COALESCE((spec->'payload'->>'admissionCursor')::bigint,0) INTO group_cursor
-    FROM anclax.tasks WHERE id=p_task_id AND worker_id=p_worker AND lease_version=p_version
-        AND unique_tag='anclax:system:prefetch' AND spec->>'type'='prefetchTasks' AND status IN ('pending','running')
-        AND locked_at IS NOT NULL AND lease_expires_at>statement_timestamp() FOR UPDATE;
-    IF NOT FOUND THEN RETURN QUERY SELECT -1,'lost'::text; RETURN; END IF;
-    stored_cursor:=group_cursor;
-    PERFORM anclax.recover_ready_tasks(256);
     PERFORM anclax.maintain_task_concurrency(p_lock_ttl_ms);
     IF EXISTS(SELECT 1 FROM anclax.tasks WHERE status='pending' AND admission_group_id IS NULL
             AND NOT anclax.is_system_task(spec->>'type'))
@@ -276,17 +241,60 @@ BEGIN
     )
     UPDATE anclax.tasks t SET admission_group_id=NULL FROM unclassified u WHERE t.id=u.id;
     END IF;
-    SELECT LEAST(4096,COALESCE(sum(prefetch_capacity),0))::int,
-           LEAST(4096,COALESCE(sum((prefetch_capacity::bigint*prefetch_strict_percentage+99)/100),0))::int
-    INTO target,strict_target FROM anclax.workers
-    WHERE status='online' AND last_heartbeat>statement_timestamp()-prefetch_heartbeat_ttl_ms*interval '1 millisecond';
-    SELECT count(*)::int,count(*) FILTER(WHERE priority>0)::int INTO current_ready,current_strict
-    FROM anclax.tasks WHERE status='ready';
-    target:=LEAST(p_batch,target-current_ready);
-    IF target<=0 THEN
-        RETURN QUERY SELECT 0,CASE WHEN current_ready>0 THEN 'ready_full' ELSE 'idle' END::text;
-        RETURN;
+END;
+$$;
+
+-- Observation and execution-lease recovery continue while admission is paused.
+-- Ready is durable: time and scheduler/Worker ownership changes do not revoke it.
+CREATE FUNCTION anclax.inspect_task_prefetch(p_task_id INT,p_worker UUID,p_version BIGINT,
+    p_lock_ttl_ms BIGINT,p_maintain BOOLEAN)
+    RETURNS TABLE(group_id BIGINT,ready_count BIGINT,has_due BOOLEAN)
+    LANGUAGE plpgsql VOLATILE SET jit=off AS $$
+BEGIN
+    PERFORM 1 FROM anclax.tasks WHERE id=p_task_id AND worker_id=p_worker AND lease_version=p_version
+        AND unique_tag='anclax:system:prefetch' AND spec->>'type'='prefetchTasks' AND status IN ('pending','running')
+        AND locked_at IS NOT NULL AND lease_expires_at>statement_timestamp() FOR UPDATE;
+    IF NOT FOUND THEN RETURN QUERY SELECT -1::bigint,0::bigint,FALSE; RETURN; END IF;
+    IF p_maintain THEN PERFORM anclax.maintain_task_prefetch(p_lock_ttl_ms); END IF;
+    RETURN QUERY
+        SELECT g.id,r.n,COALESCE(d.due,FALSE) FROM anclax.task_admission_groups g
+        CROSS JOIN LATERAL (SELECT count(*) AS n FROM anclax.tasks t
+            WHERE t.admission_group_id=g.id AND t.status='ready') r
+        LEFT JOIN LATERAL (SELECT TRUE AS due FROM anclax.tasks t
+            WHERE t.admission_group_id=g.id AND t.status='pending' AND t.locked_at IS NULL
+              AND NOT anclax.is_system_task(t.spec->>'type')
+              AND COALESCE(t.started_at,'-infinity'::timestamptz)<=statement_timestamp()
+              AND NOT EXISTS(SELECT 1 FROM anclax.task_tag_limits l WHERE l.tag=ANY(g.tags) AND l.max_concurrency=0)
+              AND EXISTS(SELECT 1 FROM anclax.workers w WHERE w.status='online' AND w.prefetch_capacity>0
+                AND w.last_heartbeat>statement_timestamp()-w.prefetch_heartbeat_ttl_ms*interval '1 millisecond'
+                AND w.labels @> to_jsonb(g.labels) AND (NOT g.is_strict OR w.prefetch_strict_percentage>0))
+            ORDER BY COALESCE(t.started_at,'-infinity'::timestamptz) LIMIT 1) d ON TRUE
+        WHERE r.n>0 OR d.due;
+END;
+$$;
+
+CREATE FUNCTION anclax.prefetch_task_supply(p_task_id INT,p_worker UUID,p_version BIGINT,
+    p_batch INT,p_lock_ttl_ms BIGINT,p_paused_groups BIGINT[] DEFAULT '{}')
+    RETURNS TABLE(prepared INT,wait_reason TEXT,prepared_groups JSONB) LANGUAGE plpgsql VOLATILE SET jit=off AS $$
+DECLARE n INT:=0; selected_task RECORD; admitted_groups BIGINT[]:='{}'; grouped JSONB;
+    group_cursor BIGINT; total_weight BIGINT; group_names TEXT[]; group_bounds BIGINT[];
+    ordered_groups TEXT[]; weighted_labels TEXT[]; preferred_index INT:=1; i INT;
+    simple_ids INT[]:='{}'; stored_cursor BIGINT;
+BEGIN
+    IF p_batch<1 OR p_batch>256 THEN RAISE EXCEPTION 'invalid prefetch bounds'; END IF;
+    -- The bulk path must obey the same isolation contract as slot allocation.
+    IF current_setting('transaction_isolation') NOT IN ('read committed','read uncommitted') THEN
+        RAISE EXCEPTION 'task admission requires READ COMMITTED isolation' USING ERRCODE='0A000';
     END IF;
+    -- Fence the singleton system task in every batch; an old process cannot
+    -- keep admitting work after its scheduler lease has been taken over.
+    SELECT COALESCE((spec->'payload'->>'admissionCursor')::bigint,0) INTO group_cursor
+    FROM anclax.tasks WHERE id=p_task_id AND worker_id=p_worker AND lease_version=p_version
+        AND unique_tag='anclax:system:prefetch' AND spec->>'type'='prefetchTasks' AND status IN ('pending','running')
+        AND locked_at IS NOT NULL AND lease_expires_at>statement_timestamp() FOR UPDATE;
+    IF NOT FOUND THEN RETURN QUERY SELECT -1,'lost'::text,'{}'::jsonb; RETURN; END IF;
+    stored_cursor:=group_cursor;
+    PERFORM anclax.maintain_task_prefetch(p_lock_ttl_ms);
     -- Match the Worker's sorted weighted-group wheel without expanding large
     -- weights into one row per unit. Only the singleton job advances the cursor.
     WITH configured AS (
@@ -313,7 +321,7 @@ BEGIN
         ), unavailable AS MATERIALIZED (
             SELECT COALESCE(array_agg(tag),'{}'::text[]) tags FROM capacities WHERE free_slots=0
         ), candidates AS MATERIALIZED (
-            SELECT t.id,t.priority,t.weight,t.created_at,t.candidate_xmin,cardinality(g.tags)>0 AS limited,
+            SELECT t.id,t.priority,t.weight,t.created_at,t.candidate_xmin,g.id AS admission_group_id,cardinality(g.tags)>0 AS limited,
                 CASE WHEN t.priority=0 THEN array_position(ordered_groups,COALESCE(
                     (SELECT min(label) FROM unnest(g.labels) label WHERE label=ANY(weighted_labels)),
                     '__default__')) ELSE 0 END AS group_order
@@ -324,7 +332,6 @@ BEGIN
                 WHERE t.admission_group_id=g.id AND t.status='pending'
                   AND (t.started_at IS NULL OR t.started_at<=statement_timestamp())
                   AND (t.locked_at IS NULL OR COALESCE(t.lease_expires_at,t.locked_at+p_lock_ttl_ms*interval '1 millisecond')<=statement_timestamp())
-                  AND (t.priority=0 OR current_strict<strict_target)
                   AND (t.serial_key IS NULL OR NOT EXISTS(SELECT 1 FROM anclax.tasks h
                       WHERE h.serial_key=t.serial_key AND h.status IN ('pending','ready')
                       AND ROW(h.serial_id IS NULL,COALESCE(h.serial_id,2147483647),h.created_at,COALESCE(h.started_at,'-infinity'::timestamptz),h.id)
@@ -332,39 +339,37 @@ BEGIN
                 ORDER BY t.priority DESC,CASE WHEN t.priority=0 THEN t.weight ELSE 0 END DESC,t.created_at,t.id
                 LIMIT LEAST(p_batch,COALESCE((SELECT min(a.free_slots) FROM capacities a WHERE a.tag=ANY(g.tags)),p_batch))
             ) t
-            WHERE NOT g.tags && u.tags
+            WHERE NOT g.id=ANY(COALESCE(p_paused_groups,'{}')) AND NOT g.tags && u.tags
               AND EXISTS(SELECT 1 FROM anclax.workers w WHERE w.status='online' AND w.prefetch_capacity>0
                 AND w.last_heartbeat>statement_timestamp()-w.prefetch_heartbeat_ttl_ms*interval '1 millisecond'
-                AND w.labels @> to_jsonb(g.labels) AND (t.priority=0 OR w.prefetch_strict_percentage>0))
+                AND w.labels @> to_jsonb(g.labels) AND (NOT g.is_strict OR w.prefetch_strict_percentage>0))
         )
         -- Bound the locking phase too. A flattened join can otherwise choose a
         -- sequential scan of the entire task table to retrieve a small batch.
-        SELECT t.id,t.priority,t.serial_key,t.locked_at,c.limited FROM (
+        SELECT t.id,t.priority,t.serial_key,t.locked_at,c.limited,c.admission_group_id FROM (
             SELECT * FROM candidates ORDER BY priority DESC,group_order,weight DESC,created_at,id LIMIT p_batch
         ) c CROSS JOIN LATERAL (
             SELECT t.id,t.priority,t.serial_key,t.locked_at FROM anclax.tasks t WHERE t.id=c.id AND t.status='pending'
                 AND t.xmin::text=c.candidate_xmin FOR UPDATE SKIP LOCKED
         ) t ORDER BY c.priority DESC,c.group_order,c.weight DESC,c.created_at,c.id
     LOOP
-        EXIT WHEN n>=target;
-        CONTINUE WHEN selected_task.priority>0 AND current_strict>=strict_target;
         IF NOT selected_task.limited AND selected_task.serial_key IS NULL AND selected_task.locked_at IS NULL THEN
             -- These rows already hold their candidate locks and have no old
             -- lease to release. Configuration is excluded by the task-table
             -- barrier, so no slot/serial allocator is needed for this batch.
             simple_ids:=array_append(simple_ids,selected_task.id);
             n:=n+1;
-            IF selected_task.priority>0 THEN current_strict:=current_strict+1; END IF;
+            admitted_groups:=array_append(admitted_groups,selected_task.admission_group_id);
         ELSIF anclax.try_admit_task_tags(selected_task.id,p_lock_ttl_ms) THEN
-            UPDATE anclax.tasks SET status='ready',ready_expires_at=statement_timestamp()+p_ready_ttl_ms*interval '1 millisecond',
+            UPDATE anclax.tasks SET status='ready',
                 locked_at=NULL,worker_id=NULL,lease_expires_at=NULL,lease_duration_ms=NULL,
                 lease_version=lease_version+1,updated_at=statement_timestamp() WHERE id=selected_task.id;
             n:=n+1;
-            IF selected_task.priority>0 THEN current_strict:=current_strict+1; END IF;
+            admitted_groups:=array_append(admitted_groups,selected_task.admission_group_id);
         END IF;
     END LOOP;
     IF cardinality(simple_ids)>0 THEN
-        UPDATE anclax.tasks SET status='ready',ready_expires_at=statement_timestamp()+p_ready_ttl_ms*interval '1 millisecond',
+        UPDATE anclax.tasks SET status='ready',
             locked_at=NULL,worker_id=NULL,lease_expires_at=NULL,lease_duration_ms=NULL,
             lease_version=lease_version+1,updated_at=statement_timestamp() WHERE id=ANY(simple_ids);
     END IF;
@@ -373,28 +378,32 @@ BEGIN
         WHERE id=p_task_id;
     END IF;
     IF n>0 THEN
-        RETURN QUERY SELECT n,'productive'::text;
-    ELSIF NOT EXISTS(SELECT 1 FROM anclax.tasks
-        WHERE status='pending' AND locked_at IS NULL AND NOT anclax.is_system_task(spec->>'type')
-          AND COALESCE(started_at,'-infinity'::timestamptz)<=statement_timestamp()) THEN
-        RETURN QUERY SELECT 0,'idle'::text;
-    ELSIF current_ready>0 OR EXISTS(SELECT 1 FROM anclax.tasks
+        SELECT jsonb_object_agg(g.id,g.n) INTO grouped FROM (
+            SELECT id,count(*) AS n FROM unnest(admitted_groups) id GROUP BY id) g;
+        RETURN QUERY SELECT n,'productive'::text,grouped;
+    ELSIF NOT EXISTS(SELECT 1 FROM anclax.task_admission_groups g WHERE NOT g.id=ANY(COALESCE(p_paused_groups,'{}'))
+        AND COALESCE((SELECT TRUE FROM anclax.tasks t WHERE t.admission_group_id=g.id
+          AND t.status='pending' AND t.locked_at IS NULL AND NOT anclax.is_system_task(t.spec->>'type')
+          AND COALESCE(t.started_at,'-infinity'::timestamptz)<=statement_timestamp()
+          ORDER BY COALESCE(t.started_at,'-infinity'::timestamptz) LIMIT 1),FALSE)) THEN
+        RETURN QUERY SELECT 0,'idle'::text,'{}'::jsonb;
+    ELSIF EXISTS(SELECT 1 FROM anclax.tasks WHERE status='ready') OR EXISTS(SELECT 1 FROM anclax.tasks
         WHERE locked_at IS NOT NULL AND lease_expires_at IS NOT NULL
           AND status IN ('pending','running') AND NOT anclax.is_system_task(spec->>'type')) THEN
         -- Claimed work can release tag/serial resources without another claim.
         -- Keep checking while it is active; claim-rate pacing cannot see this.
-        RETURN QUERY SELECT 0,'blocked'::text;
+        RETURN QUERY SELECT 0,'blocked'::text,'{}'::jsonb;
     ELSE
         -- Examples include quota zero and currently unavailable routing. These
         -- are due tasks, not proven runnable work, and must not spin forever.
-        RETURN QUERY SELECT 0,'quiescent'::text;
+        RETURN QUERY SELECT 0,'quiescent'::text,'{}'::jsonb;
     END IF;
 END;
 $$;
 
 -- Preserve direct callers that only need the prepared count and lost fence.
 CREATE FUNCTION anclax.prefetch_ready_tasks(p_task_id INT,p_worker UUID,p_version BIGINT,
-    p_batch INT,p_ready_ttl_ms BIGINT,p_lock_ttl_ms BIGINT) RETURNS INT LANGUAGE sql VOLATILE SET jit=off AS $$
-    SELECT prepared FROM anclax.prefetch_task_supply(p_task_id,p_worker,p_version,p_batch,p_ready_ttl_ms,p_lock_ttl_ms);
+    p_batch INT,p_lock_ttl_ms BIGINT) RETURNS INT LANGUAGE sql VOLATILE SET jit=off AS $$
+    SELECT prepared FROM anclax.prefetch_task_supply(p_task_id,p_worker,p_version,p_batch,p_lock_ttl_ms);
 $$;
 COMMIT;

@@ -7,6 +7,7 @@ package querier
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/google/uuid"
 )
@@ -48,10 +49,57 @@ func (q *Queries) EnsureTaskPrefetch(ctx context.Context) error {
 	return err
 }
 
+const inspectTaskPrefetch = `-- name: InspectTaskPrefetch :many
+SELECT group_id::bigint,ready_count::bigint,has_due::boolean
+FROM anclax.inspect_task_prefetch($1::int,$2::uuid,
+    $3::bigint,$4::bigint,$5::boolean)
+`
+
+type InspectTaskPrefetchParams struct {
+	TaskID       int32
+	WorkerID     uuid.UUID
+	LeaseVersion int64
+	LockTtlMs    int64
+	Maintain     bool
+}
+
+type InspectTaskPrefetchRow struct {
+	GroupID    int64
+	ReadyCount int64
+	HasDue     bool
+}
+
+// A group_id of -1 denotes a lost scheduler lease. Empty rows mean no supply/work.
+func (q *Queries) InspectTaskPrefetch(ctx context.Context, arg InspectTaskPrefetchParams) ([]*InspectTaskPrefetchRow, error) {
+	rows, err := q.db.Query(ctx, inspectTaskPrefetch,
+		arg.TaskID,
+		arg.WorkerID,
+		arg.LeaseVersion,
+		arg.LockTtlMs,
+		arg.Maintain,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*InspectTaskPrefetchRow
+	for rows.Next() {
+		var i InspectTaskPrefetchRow
+		if err := rows.Scan(&i.GroupID, &i.ReadyCount, &i.HasDue); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const prefetchReadyTasks = `-- name: PrefetchReadyTasks :one
 SELECT anclax.prefetch_ready_tasks($1::int,$2::uuid,
     $3::bigint,$4::int,
-    $5::bigint,$6::bigint)::int AS prepared
+    $5::bigint)::int AS prepared
 `
 
 type PrefetchReadyTasksParams struct {
@@ -59,7 +107,6 @@ type PrefetchReadyTasksParams struct {
 	WorkerID     uuid.UUID
 	LeaseVersion int64
 	BatchSize    int32
-	ReadyTtlMs   int64
 	LockTtlMs    int64
 }
 
@@ -70,7 +117,6 @@ func (q *Queries) PrefetchReadyTasks(ctx context.Context, arg PrefetchReadyTasks
 		arg.WorkerID,
 		arg.LeaseVersion,
 		arg.BatchSize,
-		arg.ReadyTtlMs,
 		arg.LockTtlMs,
 	)
 	var prepared int32
@@ -79,10 +125,10 @@ func (q *Queries) PrefetchReadyTasks(ctx context.Context, arg PrefetchReadyTasks
 }
 
 const prefetchTaskSupply = `-- name: PrefetchTaskSupply :one
-SELECT prepared::int,wait_reason::text
+SELECT prepared::int,wait_reason::text,prepared_groups::jsonb
 FROM anclax.prefetch_task_supply($1::int,$2::uuid,
     $3::bigint,$4::int,
-    $5::bigint,$6::bigint)
+    $5::bigint,$6::bigint[])
 `
 
 type PrefetchTaskSupplyParams struct {
@@ -90,13 +136,14 @@ type PrefetchTaskSupplyParams struct {
 	WorkerID     uuid.UUID
 	LeaseVersion int64
 	BatchSize    int32
-	ReadyTtlMs   int64
 	LockTtlMs    int64
+	PausedGroups []int64
 }
 
 type PrefetchTaskSupplyRow struct {
-	Prepared   int32
-	WaitReason string
+	Prepared       int32
+	WaitReason     string
+	PreparedGroups json.RawMessage
 }
 
 // The wait reason is advisory; allocation and the scheduler fence stay in SQL.
@@ -106,10 +153,10 @@ func (q *Queries) PrefetchTaskSupply(ctx context.Context, arg PrefetchTaskSupply
 		arg.WorkerID,
 		arg.LeaseVersion,
 		arg.BatchSize,
-		arg.ReadyTtlMs,
 		arg.LockTtlMs,
+		arg.PausedGroups,
 	)
 	var i PrefetchTaskSupplyRow
-	err := row.Scan(&i.Prepared, &i.WaitReason)
+	err := row.Scan(&i.Prepared, &i.WaitReason, &i.PreparedGroups)
 	return &i, err
 }

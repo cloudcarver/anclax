@@ -15,7 +15,7 @@ const claimTaskBatch = `-- name: ClaimTaskBatch :many
 WITH strict_candidates AS MATERIALIZED (
     SELECT t.id, t.priority, t.weight, t.created_at, 0::int AS group_order
     FROM anclax.tasks t
-    WHERE t.status = 'ready' AND t.ready_expires_at > statement_timestamp()
+    WHERE t.status = 'ready'
         AND t.priority > 0
         AND NOT EXISTS (
             SELECT 1 FROM jsonb_array_elements_text(COALESCE(NULLIF(t.attributes->'labels', 'null'::jsonb), '[]'::jsonb)) AS task_label(value)
@@ -27,7 +27,7 @@ WITH strict_candidates AS MATERIALIZED (
 ), normal_candidates AS MATERIALIZED (
     SELECT t.id, t.priority, t.weight, t.created_at, array_position($5::text[], COALESCE((SELECT MIN(label) FROM jsonb_array_elements_text(COALESCE(NULLIF(t.attributes->'labels', 'null'::jsonb), '[]'::jsonb)) AS labels(label) WHERE label = ANY($6::text[])), '__default__')) AS group_order
     FROM anclax.tasks t
-    WHERE t.status = 'ready' AND t.ready_expires_at > statement_timestamp()
+    WHERE t.status = 'ready'
         AND t.priority = 0
         AND COALESCE((SELECT MIN(label) FROM jsonb_array_elements_text(COALESCE(NULLIF(t.attributes->'labels', 'null'::jsonb), '[]'::jsonb)) AS labels(label) WHERE label = ANY($6::text[])), '__default__') = ANY($5::text[])
         AND NOT EXISTS (
@@ -43,10 +43,10 @@ WITH strict_candidates AS MATERIALIZED (
     LIMIT $7::int
 )
 UPDATE anclax.tasks AS t
-SET status='running',ready_expires_at=NULL,locked_at=statement_timestamp(),worker_id=$1,
+SET status='running',locked_at=statement_timestamp(),worker_id=$1,
     lease_expires_at=statement_timestamp()+$2::bigint*INTERVAL '1 millisecond',
     lease_duration_ms=$2::bigint,attempts=t.attempts+1,updated_at=statement_timestamp()
-FROM candidate WHERE t.id=candidate.id RETURNING t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id, t.lease_version, t.lease_expires_at, t.lease_duration_ms, t.lease_tags, t.ready_expires_at, t.admission_group_id
+FROM candidate WHERE t.id=candidate.id RETURNING t.id, t.attributes, t.spec, t.status, t.unique_tag, t.started_at, t.created_at, t.updated_at, t.attempts, t.locked_at, t.worker_id, t.serial_key, t.serial_id, t.priority, t.weight, t.parent_task_id, t.lease_version, t.lease_expires_at, t.lease_duration_ms, t.lease_tags, t.admission_group_id
 `
 
 type ClaimTaskBatchParams struct {
@@ -97,7 +97,6 @@ func (q *Queries) ClaimTaskBatch(ctx context.Context, arg ClaimTaskBatchParams) 
 			&i.LeaseExpiresAt,
 			&i.LeaseDurationMs,
 			&i.LeaseTags,
-			&i.ReadyExpiresAt,
 			&i.AdmissionGroupID,
 		); err != nil {
 			return nil, err

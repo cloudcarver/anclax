@@ -54,6 +54,8 @@ type Querier interface {
 	InsertEvent(ctx context.Context, spec apigen.EventSpec) (*AnclaxEvent, error)
 	InsertOrgOwner(ctx context.Context, arg InsertOrgOwnerParams) (*AnclaxOrgOwner, error)
 	InsertOrgUser(ctx context.Context, arg InsertOrgUserParams) (*AnclaxOrgUser, error)
+	// A group_id of -1 denotes a lost scheduler lease. Empty rows mean no supply/work.
+	InspectTaskPrefetch(ctx context.Context, arg InspectTaskPrefetchParams) ([]*InspectTaskPrefetchRow, error)
 	IsUsernameExists(ctx context.Context, name string) (bool, error)
 	ListAllPendingTasks(ctx context.Context) ([]*AnclaxTask, error)
 	ListLaggingAliveWorkers(ctx context.Context, arg ListLaggingAliveWorkersParams) ([]uuid.UUID, error)

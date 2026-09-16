@@ -26,7 +26,7 @@ func TestReadyTaskCandidatePlanSmoke(t *testing.T) {
 		query, _, found = strings.Cut(query, "    LOOP\n")
 		require.True(t, found)
 		query = "EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) " + strings.NewReplacer(
-			"p_batch", "256", "p_lock_ttl_ms", "9000", "current_strict", "0", "strict_target", "100",
+			"p_paused_groups", "ARRAY[]::bigint[]", "p_batch", "256", "p_lock_ttl_ms", "9000", "current_strict", "0", "strict_target", "100",
 			"ordered_groups", "ARRAY['__default__']::text[]", "weighted_labels", "ARRAY[]::text[]",
 		).Replace(query)
 		conn, err := pgx.Connect(ctx, smokePostgresDSN())
