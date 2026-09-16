@@ -1,5 +1,7 @@
 # Durable ready and consumption-based prefetch
 
+> Historical benchmark report. These benchmark harnesses have been retired; current capacity testing uses the [sustained scheduling benchmark](scheduling-capacity-benchmark.md). Reproduction commands below apply to the recorded revisions and archived harnesses, available in the [source snapshot](https://github.com/cloudcarver/anclax/tree/a6b3869ce43c996d424e3bbc9e3b6c7c851f6e01/pkg/taskcore/e2e). Raw result links point to Git history; generated JSON/log reports are no longer stored in the current tree.
+
 Measured on 2026-09-16. Production source: `13249773e7c7f22d6f9d77f4bdd9a89c1af3cd9d`; baseline: `d5e463f78cd53b48c4b7011c27ca655d6aa2f9c3` (the previous supply-first policy). Later changes only publish documentation.
 
 Ready now persists until consumption or explicit invalidation, with no TTL or fixed stock ceiling. Per-group stock departures estimate consumption and decide when candidate computation can pause. This removes idle candidate calls and builds a larger reserve for unconstrained work, but **does not establish a general throughput or CPU improvement**: 6/14 short-case medians improve and 8/14 decline. The PR remains a draft.

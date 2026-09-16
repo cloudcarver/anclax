@@ -1,6 +1,6 @@
 # Sustained scheduling capacity
 
-The primary performance question is how much continuous task turnover Anclax can sustain for a fixed database and connection budget. Startup/recovery delay has a separate acceptable budget; finite-job drain time is an auxiliary measurement. A large configured concurrency or a set of parked tasks does not establish scheduling throughput.
+The objective is **maximum sustained async task concurrency with minimum resources**. At a fixed workload duration and arrival rate, find healthy operating points by varying execution slots and connection budgets; compare actual execution concurrency, committed completions/s, and database/process CPU per completion. Startup/recovery delay has a separate acceptable budget. A large configured concurrency or a set of parked tasks does not establish scheduling throughput.
 
 `TestTaskSchedulingCapacityBenchmark` uses the automatic Worker, pending-to-ready admission, ready claims, normal finalization, and execution-lease renewal. The production controller is unchanged by this benchmark addition. Main performance criteria are sustained healthy throughput and resource use; an acceptable recovery-latency budget is assessed separately from capacity. The production empty-result retry cap remains 100 ms in this iteration.
 
@@ -32,24 +32,33 @@ Snapshots are not atomic across the database, producer and process. Collection d
 
 The initial scan varies 100 ms, 1 s, 10 s and 60 s handlers, total budgets of 30/100/200 connections, and configured execution concurrency up to 40,000. It first measures unconstrained work to isolate scheduling capacity. It is an exploratory sequential scan, not a repeated before/after comparison or a production capacity certification. Connection comparisons at the same concurrency retain arrival rate; higher-concurrency targets also require higher offered load. Changes between those targets cannot be attributed to configured concurrency alone. See the recorded results below for which targets actually ran and succeeded.
 
-The existing [arrival benchmark](arrival-prefetch-benchmark.md) retains burst, mixed-duration, hot-quota, serial and stopped-consumption recovery cases; [protocol validation](durable-ready-prefetch-benchmark.md) covers separate concurrency/recovery properties. They supplement this test rather than substitute for sustained turnover.
+This is the maintained capacity benchmark. The former finite-drain, idle/recovery, arrival-pattern and manually admitted connection-capacity harnesses have been removed. Their Markdown reports remain as historical evidence, with source and raw results available in Git history or the recorded archives. The [arrival report](arrival-prefetch-benchmark.md) records earlier burst, hot-quota, serial and stopped-consumption experiments; [protocol validation](durable-ready-prefetch-benchmark.md) records separate concurrency/recovery properties. Dedicated correctness regressions remain in the test suite.
 
 Further capacity dimensions include mixed duration distributions, hot quota combinations, serial history, heterogeneous routing/strict/weight groups, multiple processes and renewal pools, background business SQL, database CPU/IO scaling, long-term MVCC/autovacuum behavior and prolonged soak. A fixed timer distribution deliberately isolates capacity; it cannot cover every production workload.
 
 ## Reproduce
 
-Build the smoke test binary once, then run it without concurrent builds/tests:
+For the smaller default near-empty and backlogged cases:
+
+```sh
+ANCLAX_TEST_REPORT_DIR=/tmp/anclax-capacity-results make taskcore-capacity
+```
+
+For capacity comparisons, build the smoke test binary once, then run it without concurrent builds/tests. This example uses the 30-connection / 5,000-slot operating point:
 
 ```sh
 go test -c -tags smoke ./pkg/taskcore/e2e -o /tmp/anclax-capacity.test
 ANCLAX_SCHEDULING_CAPACITY=1 \
-ANCLAX_SCHEDULING_CAPACITY_CASES='[{"Name":"p100-c10000-10s","Mode":"backlogged","Connections":100,"RenewalConnections":10,"Concurrency":10000,"HandlerMS":10000,"HandlerJitter":0.5,"RenewalIntervalMS":3000,"HeartbeatMS":3000,"LockTTLMS":9000,"ArrivalRate":1200,"WarmupSeconds":60,"MeasureSeconds":120}]' \
+ANCLAX_SCHEDULING_CAPACITY_CASES='[{"Name":"p30-c5000-10s","Mode":"backlogged","Connections":30,"RenewalConnections":10,"Concurrency":5000,"HandlerMS":10000,"HandlerJitter":0.5,"RenewalIntervalMS":1000,"HeartbeatMS":1000,"LockTTLMS":9000,"ArrivalRate":600,"WarmupSeconds":60,"MeasureSeconds":120}]' \
+ANCLAX_SCHEDULING_CAPACITY_REVISION="$(git rev-parse HEAD)" \
 ANCLAX_TEST_REPORT_DIR=/tmp/anclax-capacity-results \
 GOMAXPROCS=2 /tmp/anclax-capacity.test \
   -test.run='^TestTaskSchedulingCapacityBenchmark$' -test.v -test.timeout=12m
 ```
 
 The default cases are smaller (100 slots, 1-second handlers, two 120-second measurements) and remain opt-in. All tasks belong to an isolated Docker PostgreSQL container, removed during cleanup. The fixture does not access production or application repositories. No new chaos run is required for this measurement-only change.
+
+Compare connection budgets at the same concurrency, duration distribution and arrival rate before increasing the concurrency target. Repeat healthy operating points; failures bracket capacity and remain in the reports. Store generated reports under `/tmp` or an external artifact directory, not in source control. Historical harnesses used `ANCLAX_ADMISSION_BENCH_REVISION`; the maintained fixture uses `ANCLAX_SCHEDULING_CAPACITY_REVISION` for the revision label.
 
 ## Recorded results
 

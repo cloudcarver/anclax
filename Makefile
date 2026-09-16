@@ -67,7 +67,7 @@ taskcore-perf: check-docker
 	GOCACHE=/tmp/go-cache go test -tags=smoke ./pkg/taskcore/e2e -run '^TestTaskTagConcurrencyLoadSmoke$$' -count=1 -v -timeout 10m
 
 taskcore-capacity: check-docker
-	go test -tags=smoke ./pkg/taskcore/e2e -run '^TestAsyncTaskConnectionCapacitySmoke$$' -count=1 -v -timeout 30m
+	ANCLAX_SCHEDULING_CAPACITY=1 GOMAXPROCS=$${GOMAXPROCS:-2} go test -tags=smoke ./pkg/taskcore/e2e -run '^TestTaskSchedulingCapacityBenchmark$$' -count=1 -v -timeout 30m
 
 test-deterministic:
 	GOCACHE=/tmp/go-cache go run ./cmd/anclax gen

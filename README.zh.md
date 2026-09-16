@@ -42,6 +42,7 @@ Anclax 是面向小到中型应用（单个 PostgreSQL）。以模式定义 API 
 
 - **YAML 优先 + 代码生成**：用 YAML 定义 HTTP 与任务的模式，自动生成强类型接口；缺失实现会在编译期暴露，而不是线上。
 - **靠谱的异步任务**：内置至少一次投递、自动重试、cron 调度，并支持优先级/权重队列与运行时调优。
+- **轻量高并发**：**30 条数据库连接预算支持约 5,000 个异步任务并发，PostgreSQL 平均 CPU 用量不足 1 核**（实测 0.77 核）。测试任务通过定时等待模拟 5–15 秒的执行耗时，PostgreSQL 设置为 2 核上限；完整负载、吞吐和资源用量见[持续容量 benchmark](docs/scheduling-capacity-benchmark.md)。
 - **任务串行执行**：使用 `taskcore.WithSerialKey`/`WithSerialID` 让同一 key 的任务严格串行。
 - **事务安全的流程**：`WithTx` 模式确保钩子必定执行、状态一致。
 - **类型化数据库层**：基于 `sqlc`，快速且安全。

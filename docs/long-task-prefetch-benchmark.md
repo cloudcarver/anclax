@@ -1,5 +1,7 @@
 # Long-lived task prefetch benchmark (2026-09-15)
 
+> Historical benchmark report. These benchmark harnesses have been retired; current capacity testing uses the [sustained scheduling benchmark](scheduling-capacity-benchmark.md). Reproduction commands below apply to the recorded revisions and archived harnesses, available in the [source snapshot](https://github.com/cloudcarver/anclax/tree/a6b3869ce43c996d424e3bbc9e3b6c7c851f6e01/pkg/taskcore/e2e). Raw result links point to Git history; generated JSON/log reports are no longer stored in the current tree.
+
 Compare one-round ready prefetch (`eafef95`) with long-lived prefetch and bulk simple-task admission (`8b8a943`, production sources `300a850`). Both revisions already use migration 16, independent tag slots, admission groups and the bounded candidate query. This is a fresh comparison of the follow-up, not a reuse of the earlier main-versus-ready measurements.
 
 **The follow-up does not demonstrate an overall performance gain.** Eleven of fourteen scenario/concurrency combinations have lower throughput medians, by 2.1–12.2%. The long-lived task eliminates per-round finalization, but prefetch SQL calls increase. PostgreSQL CPU does not consistently improve. Keep the PR in draft while reviewing those costs.
@@ -92,6 +94,6 @@ ANCLAX_TASKCORE_CHAOS_POSTGRES_IMAGE=postgres:17 ANCLAX_TASKCORE_CHAOS_ITERATION
 go test -tags=smoke ./pkg/taskcore/chaos -run '^TestContainerizedTaskcoreChaosSmoke$' -count=1 -v -timeout=30m
 ```
 
-- [Every raw benchmark run, environment, hashes and medians](benchmarks/task-long-prefetch-comparison-2026-09-15.json)
-- [Fresh 200-round chaos and allocation audit](benchmarks/task-long-prefetch-chaos-200-2026-09-15.json)
-- [Validation commands, results and log hashes](benchmarks/task-long-prefetch-validation-2026-09-15.json)
+- [Every raw benchmark run, environment, hashes and medians](https://github.com/cloudcarver/anclax/blob/a6b3869ce43c996d424e3bbc9e3b6c7c851f6e01/docs/benchmarks/task-long-prefetch-comparison-2026-09-15.json)
+- [Fresh 200-round chaos and allocation audit](https://github.com/cloudcarver/anclax/blob/a6b3869ce43c996d424e3bbc9e3b6c7c851f6e01/docs/benchmarks/task-long-prefetch-chaos-200-2026-09-15.json)
+- [Validation commands, results and log hashes](https://github.com/cloudcarver/anclax/blob/a6b3869ce43c996d424e3bbc9e3b6c7c851f6e01/docs/benchmarks/task-long-prefetch-validation-2026-09-15.json)

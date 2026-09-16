@@ -1,5 +1,7 @@
 # Supply-first prefetch measurements
 
+> Historical benchmark report. These benchmark harnesses have been retired; current capacity testing uses the [sustained scheduling benchmark](scheduling-capacity-benchmark.md). Reproduction commands below apply to the recorded revisions and archived harnesses, available in the [source snapshot](https://github.com/cloudcarver/anclax/tree/a6b3869ce43c996d424e3bbc9e3b6c7c851f6e01/pkg/taskcore/e2e). Raw result links point to Git history; generated JSON/log reports are no longer stored in the current tree.
+
 2026-09-15. The scheduler now favors available ready work: productive batches continue immediately, and historical consumption no longer limits refill. Finite-quota throughput improves, with additional database work; the measurements do **not** establish an overall throughput or idle-arrival improvement. The comparison below includes both the previous consumption-paced version and the original long-lived scheduler. These are local synthetic measurements, not production capacity limits.
 
 ## Policy and comparison

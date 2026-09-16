@@ -1,5 +1,7 @@
 # Ready prefetch benchmark (2026-09-15)
 
+> Historical benchmark report. These benchmark harnesses have been retired; current capacity testing uses the [sustained scheduling benchmark](scheduling-capacity-benchmark.md). Reproduction commands below apply to the recorded revisions and archived harnesses, available in the [source snapshot](https://github.com/cloudcarver/anclax/tree/a6b3869ce43c996d424e3bbc9e3b6c7c851f6e01/pkg/taskcore/e2e). Raw result links point to Git history; generated JSON/log reports are no longer stored in the current tree.
+
 This records the first ready implementation. The [long-lived prefetch follow-up](long-task-prefetch-benchmark.md) measures the subsequent long-task loop and simple-task bulk admission against this implementation.
 
 Compare merged independent-slot admission (`0575291`, PR #71) with ready-state prefetch (`b3bf02c`). Both use exactly the same automatic-Worker benchmark harness. This measures the complete change, including resource grouping, ready transfer, bounded candidate lookup and the system function's local JIT setting.
@@ -94,7 +96,7 @@ ANCLAX_ADMISSION_BENCH_REVISION=COMMIT ANCLAX_TEST_REPORT_DIR=/tmp/REPORT \
 /tmp/anclax-ready-VERSION.test -test.run='^TestTaskAdmissionBenchmark$' -test.v -test.timeout=20m
 ```
 
-- [Full comparison, revisions, hashes and measurements](benchmarks/task-ready-prefetch-comparison-2026-09-15.json)
-- [PostgreSQL candidate plans](benchmarks/task-ready-prefetch-candidate-plans-2026-09-15.json)
-- [Final 200-round chaos](benchmarks/task-ready-prefetch-chaos-200-2026-09-15.json)
-- [Validation commands and log hashes](benchmarks/task-ready-prefetch-validation-2026-09-15.json)
+- [Full comparison, revisions, hashes and measurements](https://github.com/cloudcarver/anclax/blob/a6b3869ce43c996d424e3bbc9e3b6c7c851f6e01/docs/benchmarks/task-ready-prefetch-comparison-2026-09-15.json)
+- [PostgreSQL candidate plans](https://github.com/cloudcarver/anclax/blob/a6b3869ce43c996d424e3bbc9e3b6c7c851f6e01/docs/benchmarks/task-ready-prefetch-candidate-plans-2026-09-15.json)
+- [Final 200-round chaos](https://github.com/cloudcarver/anclax/blob/a6b3869ce43c996d424e3bbc9e3b6c7c851f6e01/docs/benchmarks/task-ready-prefetch-chaos-200-2026-09-15.json)
+- [Validation commands and log hashes](https://github.com/cloudcarver/anclax/blob/a6b3869ce43c996d424e3bbc9e3b6c7c851f6e01/docs/benchmarks/task-ready-prefetch-validation-2026-09-15.json)

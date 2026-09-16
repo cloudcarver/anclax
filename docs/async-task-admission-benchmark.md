@@ -1,5 +1,7 @@
 # Historical automatic task admission comparison
 
+> Historical benchmark report. These benchmark harnesses have been retired; current capacity testing uses the [sustained scheduling benchmark](scheduling-capacity-benchmark.md). Reproduction commands below apply to the recorded revisions and archived harnesses, available in the [source snapshot](https://github.com/cloudcarver/anclax/tree/a6b3869ce43c996d424e3bbc9e3b6c7c851f6e01/pkg/taskcore/e2e). Raw result links point to Git history; generated JSON/log reports are no longer stored in the current tree.
+
 This records the earlier shared-counter implementation at `caf7332`. The final slot implementation, its fresh three-run comparison and its separate 200-iteration chaos run are documented in [Task slot admission measurements](async-task-slot-benchmark.md). References to the PR below mean `caf7332`, not the current PR head.
 
 This compares framework revision `1681140` (v1.4.1) with `caf7332` (PR #71) using the same `admission_benchmark_test.go` in both checkouts. It exercises `BuildWorkerComponents` and automatic polling, including handler execution, renewal and committed finalization. The existing LIMIT 1 load loop and manual `Runtime.RunTask` capacity test do not measure the automatic batch change.
@@ -23,7 +25,7 @@ Claim/finalize transaction latency includes pool acquisition and commit for tran
 
 ## Recorded results, 2026-09-15
 
-The PR passed all 24 cases. The baseline passed the six untagged cases; its other 18 cases reached the 90 s observation limit without completing the queue. All individual measurements, including failures and transaction latency distributions, are retained in the [comparison JSON](benchmarks/task-admission-comparison-2026-09-15.json), together with revisions, image ID, harness SHA-256, execution order and aggregate medians.
+The PR passed all 24 cases. The baseline passed the six untagged cases; its other 18 cases reached the 90 s observation limit without completing the queue. All individual measurements, including failures and transaction latency distributions, are retained in the [comparison JSON](https://github.com/cloudcarver/anclax/blob/a6b3869ce43c996d424e3bbc9e3b6c7c851f6e01/docs/benchmarks/task-admission-comparison-2026-09-15.json), together with revisions, image ID, harness SHA-256, execution order and aggregate medians.
 
 Each row represents three repetitions. Successful drain times are medians, with the PR's minimum–maximum in parentheses. Failed baseline rows show the range of tasks completed at the observation cutoff; the expected count is always 2,000.
 
@@ -40,7 +42,7 @@ Each row represents three repetitions. Successful drain times are medians, with 
 
 For the healthy untagged comparison, median completed throughput increased **2.47× at 100 slots** and **3.09× at 200 slots**. Median business-claim statement calls fell from 2,270 to 115 and from 2,499 to 69 per queue. Median database CPU time per completed task fell from 2.57 to 1.01 ms and from 2.73 to 0.86 ms, respectively. Shared unlimited-tag cases made **zero counter-update statement calls** on the PR.
 
-The baseline produced two `40P01` finalization errors in the shared-unlimited, 200-slot workload, and two tasks had more than one attempt. A [saved PostgreSQL log excerpt](benchmarks/task-admission-baseline-deadlock-2026-09-15.log) shows a local `ClaimNormalTaskByGroup` / `FinalizeTaskAttempt` transaction lock cycle involving `release_task_tag_permits` and `task_tag_concurrency`, matching the SQL pair and relation reported in production. This does not reconstruct the original production transaction schedule. The PR recorded no deadlocks, renewal errors/losses, repeated attempts or leftover permits in these 24 cases.
+The baseline produced two `40P01` finalization errors in the shared-unlimited, 200-slot workload, and two tasks had more than one attempt. A [saved PostgreSQL log excerpt](https://github.com/cloudcarver/anclax/blob/a6b3869ce43c996d424e3bbc9e3b6c7c851f6e01/docs/benchmarks/task-admission-baseline-deadlock-2026-09-15.log) shows a local `ClaimNormalTaskByGroup` / `FinalizeTaskAttempt` transaction lock cycle involving `release_task_tag_permits` and `task_tag_concurrency`, matching the SQL pair and relation reported in production. This does not reconstruct the original production transaction schedule. The PR recorded no deadlocks, renewal errors/losses, repeated attempts or leftover permits in these 24 cases.
 
 **Finite hot tags still have a measurable cost.** The six PR cases with global limit 32 and group limit 8 recorded 35,942 recovered `55P03` finalization retries across 12,000 tasks, about three per task. All handlers ran once. The roughly 122–124 tasks/s and 16 s drain times are consistent with waiters being woken by maintenance at most once every 250 ms per Worker: a saturated global quota of 32 can yield roughly 128 admissions/s when each wakeup fills one quota's worth of work. This is an inference from the measured rate and current wakeup cadence, not an isolated attribution experiment. Hot-tag retries and wakeup latency remain optimization opportunities; raising execution slots from 100 to 200 did not improve this workload.
 
@@ -61,7 +63,7 @@ Overrides: `ANCLAX_ADMISSION_BENCH_TASKS` (2,000), `ANCLAX_ADMISSION_BENCH_HISTO
 
 ## Chaos validation
 
-The PR's PostgreSQL 17 container chaos run passed 200 iterations with seed 424242 in 617.24 seconds. It submitted 864 tasks: 860 completed, four cancelled, and none pending/running/failed at the end. Fault injection included 21 Worker disruptions, 13 PostgreSQL restarts and eight control-plane outages. The durable tag audit recorded 588 counter increases with zero limit/permit violations; all permits drained. See the [recorded summary and assertions](benchmarks/task-admission-chaos-200-2026-09-15.json).
+The PR's PostgreSQL 17 container chaos run passed 200 iterations with seed 424242 in 617.24 seconds. It submitted 864 tasks: 860 completed, four cancelled, and none pending/running/failed at the end. Fault injection included 21 Worker disruptions, 13 PostgreSQL restarts and eight control-plane outages. The durable tag audit recorded 588 counter increases with zero limit/permit violations; all permits drained. See the [recorded summary and assertions](https://github.com/cloudcarver/anclax/blob/a6b3869ce43c996d424e3bbc9e3b6c7c851f6e01/docs/benchmarks/task-admission-chaos-200-2026-09-15.json).
 
 ```sh
 ANCLAX_TASKCORE_CHAOS_POSTGRES_IMAGE=postgres:17 \

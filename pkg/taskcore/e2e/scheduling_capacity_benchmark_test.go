@@ -29,6 +29,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 )
 
@@ -164,7 +165,7 @@ func (r *schedulingCapacityRow) Scan(dest ...any) error {
 }
 
 type schedulingCapacityHandler struct {
-	admissionBenchHandler
+	delay   time.Duration
 	jitter  float64
 	mu      sync.Mutex
 	active  int
@@ -195,6 +196,11 @@ func (h *schedulingCapacityHandler) HandleTask(ctx context.Context, task worker.
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+func (*schedulingCapacityHandler) RegisterTaskHandler(worker.TaskHandler) {}
+func (*schedulingCapacityHandler) OnTaskFailed(context.Context, core.Tx, worker.TaskSpec, int32) error {
+	return nil
 }
 
 func schedulingTaskDelay(base time.Duration, jitter float64, id int32) time.Duration {
@@ -295,13 +301,13 @@ func runSchedulingCapacity(t *testing.T, ctx context.Context, conn *pgx.Conn, ds
 	require.NoError(t, resetDSTState(ctx, base))
 	db := base.(*model.Model)
 	observed := &schedulingCapacityModel{ModelInterface: base}
-	h := &schedulingCapacityHandler{admissionBenchHandler: admissionBenchHandler{delay: time.Duration(c.HandlerMS) * time.Millisecond}, jitter: c.HandlerJitter}
+	h := &schedulingCapacityHandler{delay: time.Duration(c.HandlerMS) * time.Millisecond, jitter: c.HandlerJitter}
 	components, err := worker.BuildWorkerComponents(cfg, observed, h)
 	require.NoError(t, err)
 	producer, err := pgx.Connect(ctx, dsn)
 	require.NoError(t, err)
 	defer producer.Close(ctx)
-	result := schedulingCapacityResult{Case: c, Revision: os.Getenv("ANCLAX_ADMISSION_BENCH_REVISION"), MainPoolLimit: int(lib.Pg.MaxConnections), GOMAXPROCS: runtime.GOMAXPROCS(0)}
+	result := schedulingCapacityResult{Case: c, Revision: os.Getenv("ANCLAX_SCHEDULING_CAPACITY_REVISION"), MainPoolLimit: int(lib.Pg.MaxConnections), GOMAXPROCS: runtime.GOMAXPROCS(0)}
 	require.NoError(t, conn.QueryRow(ctx, "SHOW server_version").Scan(&result.Postgres))
 	if c.Mode == "backlogged" {
 		result.SeedTasks = 2 * c.Concurrency
@@ -362,7 +368,7 @@ func runSchedulingCapacity(t *testing.T, ctx context.Context, conn *pgx.Conn, ds
 		s.LeaseErrors, s.LeaseLost, s.LeaseCalls = metricValue(metrics.TaskLeaseRenewalErrorsTotal), metricValue(metrics.TaskLeaseRenewalLostTotal), metricValue(metrics.TaskLeaseRenewalBatchesTotal)
 		require.NoError(t, conn.QueryRow(ctx, "SELECT deadlocks FROM pg_stat_database WHERE datname=current_database()").Scan(&s.Deadlocks))
 		require.NoError(t, conn.QueryRow(ctx, "SELECT COALESCE(sum(calls),0),COALESCE(sum(total_exec_time),0) FROM pg_stat_statements WHERE toplevel").Scan(&s.SQLCalls, &s.SQLMS))
-		s.DBSeconds = admissionBenchCPU(t, container)
+		s.DBSeconds = schedulingDatabaseCPU(t, container)
 		s.ProcessCPUSeconds = schedulingProcessCPU(t)
 		s.CollectionMS = float64(time.Since(began)) / float64(time.Millisecond)
 		return s
@@ -499,6 +505,28 @@ func schedulingProcessCPU(t *testing.T) float64 {
 	var usage syscall.Rusage
 	require.NoError(t, syscall.Getrusage(syscall.RUSAGE_SELF, &usage))
 	return float64(usage.Utime.Sec+usage.Stime.Sec) + float64(usage.Utime.Usec+usage.Stime.Usec)/1e6
+}
+
+func schedulingDatabaseCPU(t *testing.T, container string) float64 {
+	t.Helper()
+	out, err := exec.Command("docker", "exec", container, "cat", "/sys/fs/cgroup/cpu.stat").Output()
+	require.NoError(t, err)
+	for _, line := range strings.Split(string(out), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && fields[0] == "usage_usec" {
+			n, err := strconv.ParseFloat(fields[1], 64)
+			require.NoError(t, err)
+			return n / 1e6
+		}
+	}
+	t.Fatal("cgroup CPU usage unavailable")
+	return 0
+}
+
+func metricValue(m prometheus.Metric) float64 {
+	var v dto.Metric
+	_ = m.Write(&v)
+	return v.GetCounter().GetValue()
 }
 
 func schedulerErrorCounts() map[string]float64 {

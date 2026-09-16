@@ -49,6 +49,7 @@ Contact: mike@anclax.com
 
 - **YAML-first, codegen-backed**: Define HTTP and task schemas in YAML; Anclax generates strongly-typed interfaces so missing implementations fail at compile time, not in prod.
 - **Async tasks you can trust**: At-least-once delivery, automatic retries, cron scheduling, plus priority/weight lanes you can tune at runtime.
+- **Efficient async concurrency**: About **5,000 concurrent async tasks with a 30-connection database budget**, using **less than one PostgreSQL CPU core on average** (0.77 measured). Timer-based tasks took 5–15 seconds; PostgreSQL had a two-core limit. See the [sustained capacity benchmark](docs/scheduling-capacity-benchmark.md) for workload, throughput and resource measurements.
 - **Serial task execution**: Use `taskcore.WithSerialKey`/`WithSerialID` to run related tasks strictly one-by-one.
 - **Transaction-safe flows**: A `WithTx` pattern ensures hooks always run and side effects are consistent.
 - **Typed database layer**: Powered by `sqlc` for safe, fast queries.

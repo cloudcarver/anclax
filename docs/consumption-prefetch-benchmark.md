@@ -1,5 +1,7 @@
 # Consumption-paced prefetch measurements
 
+> Historical benchmark report. These benchmark harnesses have been retired; current capacity testing uses the [sustained scheduling benchmark](scheduling-capacity-benchmark.md). Reproduction commands below apply to the recorded revisions and archived harnesses, available in the [source snapshot](https://github.com/cloudcarver/anclax/tree/a6b3869ce43c996d424e3bbc9e3b6c7c851f6e01/pkg/taskcore/e2e). Raw result links point to Git history; generated JSON/log reports are no longer stored in the current tree.
+
 2026-09-15. Consumption pacing substantially reduces idle scheduler work, but this version does **not** establish a consistent improvement in busy throughput. Eight of fourteen scenario/concurrency medians are lower. Finite shared quotas regress in all three runs at both concurrency levels. PR #72 remains a draft; this is local evidence, not a production capacity result.
 
 ## Scope and method

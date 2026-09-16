@@ -1,5 +1,7 @@
 # Consumption scheduling and empty-result backoff
 
+> Historical benchmark report. These benchmark harnesses have been retired; current capacity testing uses the [sustained scheduling benchmark](scheduling-capacity-benchmark.md). Reproduction commands below apply to the recorded revisions and archived harnesses, available in the [source snapshot](https://github.com/cloudcarver/anclax/tree/a6b3869ce43c996d424e3bbc9e3b6c7c851f6e01/pkg/taskcore/e2e). Raw result links point to Git history; generated JSON/log reports are no longer stored in the current tree.
+
 Measured 2026-09-16. Baseline: `3f229c123c143a4e862cad2d8eb7a384109b003b`; new source: `f0bb64e36a9c95c62eba522d140253b29c9b7540`. Production policy changed in `c9a4a9a`, with a whole-task-deficit correction in `f0bb64e`; `668964c` corrects benchmark phase sampling. Later documentation commits do not change measured code.
 
 The scheduler now separates normal consumption-based scheduling from empty-result retry deadlines. Ready remains durable and uncapped. This report adds persistent-runtime, independently scheduled arrival workloads to the existing short database benchmarks. It is synthetic Anclax load, not a replay of production traffic.
