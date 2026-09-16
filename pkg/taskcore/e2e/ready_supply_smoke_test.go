@@ -5,6 +5,7 @@ package taskcoree2e_test
 import (
 	"context"
 	"encoding/json"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -139,5 +140,52 @@ func TestReadyTaskSupplyIdleProbePlanSmoke(t *testing.T) {
 			AND COALESCE(started_at,'-infinity'::timestamptz)<=statement_timestamp())`).Scan(&plan))
 		require.Contains(t, plan, "idx_tasks_pending_due", "future/history rows must not turn every idle probe into a scan")
 		prepareReadyFixture(t, ctx, m, nil)
+	})
+}
+
+// An empty ready set with a running quota owner must back off, but cannot wait
+// for another ready consumption event: only finalization can release this slot.
+func TestReadyTaskEmptyBackoffRecoverySmoke(t *testing.T) {
+	withSmokePostgres(t, func(ctx context.Context, m model.ModelInterface) {
+		conn, err := pgx.Connect(ctx, smokePostgresDSN())
+		require.NoError(t, err)
+		defer conn.Close(ctx)
+		prepare := prepareReadyFixture(t, ctx, m, nil)
+		require.NoError(t, m.SetTaskTagConcurrencyLimit(ctx, querier.SetTaskTagConcurrencyLimitParams{Tag: "backoff:held", MaxConcurrency: 1}))
+		_, err = conn.Exec(ctx, `INSERT INTO anclax.tasks(attributes,spec,status)
+ SELECT '{"tags":["backoff:held"]}','{"type":"backoff-recovery"}','pending' FROM generate_series(1,2)`)
+		require.NoError(t, err)
+		require.NoError(t, prepare(ctx))
+		tag := "anclax:system:prefetch"
+		sys, err := m.GetTaskByUniqueTag(ctx, &tag)
+		require.NoError(t, err)
+		port, err := worker.NewModelPort(m, sys.WorkerID.UUID, nil, nil, 9*time.Second, 0)
+		require.NoError(t, err)
+		tasks, err := port.ClaimBatch(ctx, worker.ClaimBatchRequest{BatchSize: 1, Groups: []string{"__default__"}})
+		require.NoError(t, err)
+		require.Len(t, tasks, 1)
+		var calls atomic.Int64
+		observed := &prefetchCountingModel{ModelInterface: m, calls: &calls}
+		runCtx, cancel := context.WithCancel(ctx)
+		done := make(chan error, 1)
+		go func() {
+			done <- worker.RunTaskPrefetch(runCtx, observed, worker.Task{ID: sys.ID, LeaseVersion: sys.LeaseVersion}, sys.WorkerID.UUID, 9*time.Second)
+		}()
+		defer func() {
+			cancel()
+			select {
+			case <-done:
+			case <-time.After(time.Second):
+				t.Error("prefetch failed to stop during backoff")
+			}
+		}()
+		time.Sleep(800 * time.Millisecond)
+		require.GreaterOrEqual(t, calls.Load(), int64(3), "empty output cannot permanently stop demand")
+		require.LessOrEqual(t, calls.Load(), int64(20), "observations must not bypass the retry deadline")
+		require.NoError(t, port.FinalizeTask(ctx, *tasks[0], nil))
+		require.Eventually(t, func() bool {
+			var n int
+			return conn.QueryRow(ctx, `SELECT count(*) FROM anclax.tasks WHERE status='ready' AND spec->>'type'='backoff-recovery'`).Scan(&n) == nil && n == 1
+		}, 500*time.Millisecond, 5*time.Millisecond, "resource release resumes admission without any further consumption")
 	})
 }

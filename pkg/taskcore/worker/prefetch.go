@@ -24,7 +24,8 @@ func (p *ModelPort) executePrefetch(ctx context.Context, task Task) error {
 // recovery continue independently; the ordinary keeper renews the system task.
 func RunTaskPrefetch(ctx context.Context, m model.ModelInterface, task Task, owner uuid.UUID, lockTTL time.Duration) error {
 	var pacing prefetchPacing
-	var nextProbe, nextAdmission, nextMaintenance time.Time
+	var backoff prefetchBackoff
+	var nextProbe, nextMaintenance time.Time
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -41,6 +42,7 @@ func RunTaskPrefetch(ctx context.Context, m model.ModelInterface, task Task, own
 					return taskcore.ErrTaskLockLost
 				}
 			}
+			now = time.Now()
 			pacing.observe(now, rows)
 			nextProbe = now.Add(pacing.probeInterval())
 			if maintain {
@@ -50,10 +52,10 @@ func RunTaskPrefetch(ctx context.Context, m model.ModelInterface, task Task, own
 				nextProbe = nextMaintenance
 			}
 		}
-		wanted, paused := pacing.admission()
 		now = time.Now()
-		if wanted && !now.Before(nextAdmission) {
-			result, err := runTaskPrefetchBatch(ctx, m, task, owner, lockTTL, paused)
+		batch, paused, nextDemand := pacing.admission(now)
+		if batch > 0 && !now.Before(backoff.until) {
+			result, err := runTaskPrefetchBatch(ctx, m, task, owner, lockTTL, batch, paused)
 			if err != nil {
 				return err
 			}
@@ -64,17 +66,25 @@ func RunTaskPrefetch(ctx context.Context, m model.ModelInterface, task Task, own
 			if err := json.Unmarshal(result.PreparedGroups, &prepared); err != nil {
 				return err
 			}
-			pacing.prepared(prepared)
-			interval, err := pacing.interval(result.WaitReason)
-			if err != nil {
-				return err
+			now = time.Now()
+			pacing.prepared(now, prepared)
+			backoff.result(now, result.Prepared)
+			if probe := now.Add(pacing.probeInterval()); probe.Before(nextProbe) {
+				nextProbe = probe
 			}
-			nextAdmission = now.Add(interval)
 			continue
 		}
 		wake := nextProbe
-		if wanted && nextAdmission.Before(wake) {
-			wake = nextAdmission
+		if batch > 0 {
+			nextDemand = now
+		}
+		if !nextDemand.IsZero() {
+			if nextDemand.Before(backoff.until) {
+				nextDemand = backoff.until
+			}
+			if nextDemand.Before(wake) {
+				wake = nextDemand
+			}
 		}
 		timer := time.NewTimer(max(0, time.Until(wake)))
 		select {
@@ -100,14 +110,14 @@ func inspectTaskPrefetch(ctx context.Context, m model.ModelInterface, task Task,
 	return rows, resultErr
 }
 
-func runTaskPrefetchBatch(ctx context.Context, m model.ModelInterface, task Task, owner uuid.UUID, lockTTL time.Duration, paused []int64) (result *querier.PrefetchTaskSupplyRow, resultErr error) {
+func runTaskPrefetchBatch(ctx context.Context, m model.ModelInterface, task Task, owner uuid.UUID, lockTTL time.Duration, batch int, paused []int64) (result *querier.PrefetchTaskSupplyRow, resultErr error) {
 	started := time.Now()
 	defer func() { observeScheduler("prefetch", started, resultErr) }()
 	resultErr = m.RunTransactionWithTx(ctx, func(_ core.Tx, txm model.ModelInterface) error {
 		var err error
 		result, err = txm.PrefetchTaskSupply(ctx, querier.PrefetchTaskSupplyParams{
 			TaskID: task.ID, WorkerID: owner, LeaseVersion: task.LeaseVersion,
-			BatchSize: prefetchBatchSize, LockTtlMs: lockTTL.Milliseconds(), PausedGroups: paused,
+			BatchSize: int32(batch), LockTtlMs: lockTTL.Milliseconds(), PausedGroups: paused,
 		})
 		return err
 	})

@@ -140,15 +140,17 @@ func TestReadyTaskAdmissionPauseSmoke(t *testing.T) {
 		}, time.Second, 5*time.Millisecond)
 		require.Equal(t, before, calls.Load(), "running lease recovery does not require an admission batch")
 
-		tasks, err := port.ClaimBatch(ctx, worker.ClaimBatchRequest{BatchSize: 64, Groups: []string{"__default__"}})
+		before = calls.Load()
+		tasks, err := port.ClaimBatch(ctx, worker.ClaimBatchRequest{BatchSize: 256, Groups: []string{"__default__"}})
 		require.NoError(t, err)
-		require.Len(t, tasks, 64)
+		require.Len(t, tasks, 256)
 		for _, task := range tasks {
 			require.NoError(t, port.FinalizeTask(ctx, *task, nil))
 		}
-		require.Eventually(t, func() bool { return count("stock-a") > 256 }, time.Second, 5*time.Millisecond, "observed consumption resumes batches beyond Worker capacity")
+		require.Eventually(t, func() bool { return calls.Load() > before && count("stock-a") > 1 }, time.Second, 5*time.Millisecond, "depleted stock resumes admission beyond Worker capacity")
 		_, err = conn.Exec(ctx, `UPDATE anclax.tasks SET lease_version=lease_version+1 WHERE id=$1`, sys.ID)
 		require.NoError(t, err)
+		preserved := count("stock-a")
 		select {
 		case err = <-done:
 			require.ErrorIs(t, err, taskstore.ErrTaskLockLost)
@@ -156,7 +158,7 @@ func TestReadyTaskAdmissionPauseSmoke(t *testing.T) {
 		case <-time.After(time.Second):
 			t.Fatal("paused scheduler failed to observe lost ownership")
 		}
-		require.Greater(t, count("stock-a"), 256, "scheduler loss does not revoke ready")
+		require.Equal(t, preserved, count("stock-a"), "scheduler loss does not revoke ready")
 	})
 }
 
