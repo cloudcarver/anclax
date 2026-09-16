@@ -7,7 +7,12 @@ English | [中文](README.zh.md)
 
 Build serverless, reliable apps at lightspeed ⚡ — with confidence 🛡️.
 
-Anclax is a definition‑first framework for small–medium apps (single PostgreSQL). Define APIs and tasks as schemas; generated code moves correctness to compile time.
+Anclax is a framework for small to medium-sized applications backed by a single PostgreSQL database. It provides:
+
+- Strong schemas and code generation that move correctness checks to compile time
+- An integrated toolchain of best-in-class Go tools
+- Dependency inversion and a white-box testing framework
+- A high-performance async task scheduling framework
 
 Join our [Discord server](https://discord.gg/XxXXbyF59H).
 
