@@ -54,6 +54,7 @@ type arrivalWindow struct {
 	Name                                                              string
 	Seconds, CPUSeconds, SQLMS                                        float64
 	Submitted, Completed, AdmissionCalls, EmptyAdmissions, ProbeCalls int
+	BoundaryLagMS, CollectionMS                                       float64
 }
 type arrivalResult struct {
 	Revision, Scenario, Postgres                                                            string
@@ -216,8 +217,6 @@ CREATE TRIGGER arrival_audit AFTER UPDATE OF status ON anclax.tasks FOR EACH ROW
 	}()
 	last := arrivalWindow{}
 	boundary := started
-	sampleTick := time.NewTicker(250 * time.Millisecond)
-	defer sampleTick.Stop()
 	quotaEnabled := false
 	var quotaAt time.Time
 	for _, phase := range append(phases, arrivalPhase{Name: "drain", Seconds: 30}) {
@@ -228,9 +227,12 @@ CREATE TRIGGER arrival_audit AFTER UPDATE OF status ON anclax.tasks FOR EACH ROW
 		}
 		boundary = boundary.Add(time.Duration(phase.Seconds) * time.Second)
 		for {
+			// Do not let a coarse sample tick cross into the next arrival phase.
+			timer := time.NewTimer(min(250*time.Millisecond, max(0, time.Until(boundary))))
 			select {
-			case <-sampleTick.C:
+			case <-timer.C:
 			case p := <-produced:
+				timer.Stop()
 				producerDone = true
 				result.ProducerMaxLagMS = p.lag
 				require.NoError(t, p.err)
@@ -243,7 +245,11 @@ CREATE TRIGGER arrival_audit AFTER UPDATE OF status ON anclax.tasks FOR EACH ROW
 				break
 			}
 		}
+		collectedAt := time.Now()
 		current := arrivalWindow{Seconds: time.Since(started).Seconds(), CPUSeconds: admissionBenchCPU(t, name) - cpuStart}
+		if phase.Name != "drain" {
+			current.BoundaryLagMS = float64(max(0, collectedAt.Sub(boundary))) / float64(time.Millisecond)
+		}
 		sample := result.Samples[len(result.Samples)-1]
 		current.Submitted, current.Completed = sample.Submitted, sample.Completed
 		require.NoError(t, conn.QueryRow(ctx, "SELECT COALESCE(sum(total_exec_time),0) FROM pg_stat_statements WHERE toplevel").Scan(&current.SQLMS))
@@ -255,7 +261,8 @@ CREATE TRIGGER arrival_audit AFTER UPDATE OF status ON anclax.tasks FOR EACH ROW
 			current.ProbeCalls = op.Calls
 		}
 		stats.mu.Unlock()
-		result.Windows = append(result.Windows, arrivalWindow{Name: phase.Name, Seconds: current.Seconds - last.Seconds, CPUSeconds: current.CPUSeconds - last.CPUSeconds,
+		current.CollectionMS = float64(time.Since(collectedAt)) / float64(time.Millisecond)
+		result.Windows = append(result.Windows, arrivalWindow{Name: phase.Name, BoundaryLagMS: current.BoundaryLagMS, CollectionMS: current.CollectionMS, Seconds: current.Seconds - last.Seconds, CPUSeconds: current.CPUSeconds - last.CPUSeconds,
 			SQLMS: current.SQLMS - last.SQLMS, Submitted: current.Submitted - last.Submitted, Completed: current.Completed - last.Completed,
 			AdmissionCalls: current.AdmissionCalls - last.AdmissionCalls, EmptyAdmissions: current.EmptyAdmissions - last.EmptyAdmissions, ProbeCalls: current.ProbeCalls - last.ProbeCalls})
 		last = current
