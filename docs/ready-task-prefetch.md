@@ -68,6 +68,8 @@ Operationally, report ready depth/age separately from pending and executing task
 
 ## Verification
 
+The primary performance objective is sustained healthy completion throughput at a fixed database/connection budget. Startup and empty-supply recovery have a separate latency budget; finite-job drain time alone does not establish capacity. The [sustained capacity benchmark](scheduling-capacity-benchmark.md) keeps arrivals independent of completions, measures near-empty and continuously backlogged states, and varies task duration, connection budget, execution concurrency and lease frequency. Report actual execution and completion throughput together; configured slots or parked tasks are not capacity evidence.
+
 For pacing changes, run focused unit/real-PostgreSQL regressions and the relevant benchmarks. Reserve chaos fault injection for concurrency/lease/recovery protocol changes and milestone validation; it is not required for every tuning iteration.
 
 PostgreSQL regressions cover reservation transfer without a second attempt/allocation, durable ready beyond the old expiry, competing claims, cancel/pause/attribute edits, quota activation and overflow, serial ownership, weighted progress under one shared slot, stale scheduler fencing and unlimited-tag group normalization. Existing lifecycle, migration, renewal and concurrent batch tests also run against the new protocol. Benchmark evidence must include enqueue/group-maintenance cost and system scheduler work, not only Worker claim time.
