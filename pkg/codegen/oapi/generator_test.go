@@ -312,6 +312,91 @@ components:
 	}
 }
 
+func TestGenerateRejectsInjectedIntegerFormatAndCustomType(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name       string
+		schemaBody string
+		wantError  string
+	}{
+		{
+			name:       "integer format",
+			schemaBody: `{type: integer, format: "int32; func Injected() {}"}`,
+			wantError:  "unsupported integer format",
+		},
+		{
+			name:       "custom type",
+			schemaBody: `{type: string, x-go-type: "json.RawMessage; func Injected() {}"}`,
+			wantError:  "invalid x-go-type",
+		},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			workdir := t.TempDir()
+			specPath := filepath.Join(workdir, "spec.yaml")
+			outPath := filepath.Join(workdir, "spec_gen.go")
+			spec := `openapi: 3.0.3
+info:
+  title: test
+  version: 1.0.0
+paths:
+  /payload:
+    get:
+      operationId: GetPayload
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                ` + test.schemaBody + "\n"
+			mustWriteFile(t, specPath, spec)
+
+			err := Generate(workdir, Config{Path: specPath, Out: outPath, Package: "apigen"})
+			if err == nil || !strings.Contains(err.Error(), test.wantError) {
+				t.Fatalf("Generate error = %v, want %q", err, test.wantError)
+			}
+			if _, statErr := os.Stat(outPath); !os.IsNotExist(statErr) {
+				t.Fatalf("unsafe output was written: %v", statErr)
+			}
+		})
+	}
+}
+
+func TestGenerateEscapesBackticksInOpenAPIStructTags(t *testing.T) {
+	t.Parallel()
+
+	workdir := t.TempDir()
+	specPath := filepath.Join(workdir, "spec.yaml")
+	outPath := filepath.Join(workdir, "spec_gen.go")
+	mustWriteFile(t, specPath, `openapi: 3.0.3
+info:
+  title: test
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    Payload:
+      type: object
+      properties:
+        'value`+"`"+` json:"attacker"':
+          type: string
+`)
+
+	if err := Generate(workdir, Config{Path: specPath, Out: outPath, Package: "apigen"}); err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	raw, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("read generated output: %v", err)
+	}
+	out := string(raw)
+	if strings.Contains(out, "`json:") {
+		t.Fatalf("generated output uses an attacker-breakable raw struct tag: %s", out)
+	}
+}
+
 func mustWriteFile(t *testing.T, path string, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
