@@ -82,8 +82,8 @@ components:
 	}
 
 	if err := Generate(workdir, Config{
-		Path:    specPath,
-		Out:     outPath,
+		Path:    "spec.yaml",
+		Out:     "spec_gen.go",
 		Package: "apigen",
 	}); err != nil {
 		t.Fatalf("generate: %v", err)
@@ -181,7 +181,7 @@ x-check-rules:
 	outPath := filepath.Join(workdir, "spec_gen.go")
 	if err := Generate(workdir, Config{
 		Path:    filepath.Join("api", "openapi"),
-		Out:     outPath,
+		Out:     "spec_gen.go",
 		Package: "apigen",
 		Schemas: &schema_codegen.Config{Path: filepath.Join("api", "schemas"), Output: filepath.Join("pkg", "zgen", "schemas")},
 	}); err != nil {
@@ -210,10 +210,15 @@ func TestGenerateMiddlewareUsesWrappedFiberErrorStatus(t *testing.T) {
 
 	workdir := t.TempDir()
 	outPath := filepath.Join(workdir, "spec_gen.go")
+	spec, err := os.ReadFile(filepath.Join("testdata", "x_check_rules_status.yaml"))
+	if err != nil {
+		t.Fatalf("read test spec: %v", err)
+	}
+	mustWriteFile(t, filepath.Join(workdir, "spec.yaml"), string(spec))
 
-	if err := Generate(".", Config{
-		Path:    filepath.Join("testdata", "x_check_rules_status.yaml"),
-		Out:     outPath,
+	if err := Generate(workdir, Config{
+		Path:    "spec.yaml",
+		Out:     "spec_gen.go",
 		Package: "apigen",
 	}); err != nil {
 		t.Fatalf("generate: %v", err)
@@ -286,8 +291,8 @@ components:
 	}
 
 	if err := Generate(workdir, Config{
-		Path:    specPath,
-		Out:     outPath,
+		Path:    "spec.yaml",
+		Out:     "spec_gen.go",
 		Package: "apigen",
 	}); err != nil {
 		t.Fatalf("generate: %v", err)
@@ -309,6 +314,94 @@ components:
 		if !strings.Contains(out, needle) {
 			t.Fatalf("generated output missing %q", needle)
 		}
+	}
+}
+
+func TestGenerateRejectsOpenAPIOutputsOutsideWorkdir(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		out  func(workdir, outside, sentinel string) string
+	}{
+		{name: "absolute", out: func(_, _, sentinel string) string { return sentinel }},
+		{name: "lexical escape", out: func(_, _, _ string) string { return filepath.Join("..", "outside", "sentinel") }},
+		{name: "symlink parent escape", out: func(_, _, _ string) string { return filepath.Join("escape", "sentinel") }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parent := t.TempDir()
+			workdir := filepath.Join(parent, "repo")
+			outside := filepath.Join(parent, "outside")
+			if err := os.MkdirAll(workdir, 0755); err != nil {
+				t.Fatalf("mkdir workdir: %v", err)
+			}
+			if err := os.MkdirAll(outside, 0755); err != nil {
+				t.Fatalf("mkdir outside: %v", err)
+			}
+			if tt.name == "symlink parent escape" {
+				if err := os.Symlink(outside, filepath.Join(workdir, "escape")); err != nil {
+					t.Fatalf("create escaping symlink: %v", err)
+				}
+			}
+			sentinel := filepath.Join(outside, "sentinel")
+			if err := os.WriteFile(sentinel, []byte("keep"), 0644); err != nil {
+				t.Fatalf("write sentinel: %v", err)
+			}
+			mustWriteFile(t, filepath.Join(workdir, "spec.yaml"), `openapi: 3.0.3
+info:
+  title: test
+  version: 1.0.0
+paths: {}
+`)
+
+			err := Generate(workdir, Config{
+				Path:    "spec.yaml",
+				Out:     tt.out(workdir, outside, sentinel),
+				Package: "apigen",
+			})
+			if err == nil {
+				t.Fatal("Generate() unexpectedly accepted an output outside workdir")
+			}
+			raw, readErr := os.ReadFile(sentinel)
+			if readErr != nil {
+				t.Fatalf("read sentinel: %v", readErr)
+			}
+			if string(raw) != "keep" {
+				t.Fatalf("sentinel = %q, want keep", raw)
+			}
+		})
+	}
+}
+
+func TestGenerateAllowsExternalReadOnlyInput(t *testing.T) {
+	t.Parallel()
+
+	parent := t.TempDir()
+	workdir := filepath.Join(parent, "repo")
+	outside := filepath.Join(parent, "outside")
+	if err := os.MkdirAll(workdir, 0755); err != nil {
+		t.Fatalf("mkdir workdir: %v", err)
+	}
+	if err := os.MkdirAll(outside, 0755); err != nil {
+		t.Fatalf("mkdir outside: %v", err)
+	}
+	specPath := filepath.Join(outside, "spec.yaml")
+	mustWriteFile(t, specPath, `openapi: 3.0.3
+info:
+  title: external input
+  version: 1.0.0
+paths: {}
+`)
+	if err := Generate(workdir, Config{
+		Path:    specPath,
+		Out:     "spec_gen.go",
+		Package: "apigen",
+	}); err != nil {
+		t.Fatalf("Generate() rejected external read-only input: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workdir, "spec_gen.go")); err != nil {
+		t.Fatalf("generated output missing from workdir: %v", err)
 	}
 }
 

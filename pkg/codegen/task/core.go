@@ -7,13 +7,13 @@ import (
 	"log"
 	"math"
 	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"text/template"
 	"time"
 
+	"github.com/cloudcarver/anclax/pkg/codegen/codegenpath"
 	"github.com/cloudcarver/anclax/pkg/codegen/gotypes"
 	schema_codegen "github.com/cloudcarver/anclax/pkg/codegen/schemas"
 	"github.com/cloudcarver/anclax/pkg/utils"
@@ -311,7 +311,14 @@ func indent(s string, spaces int) string {
 }
 
 func Generate(workdir, packageName, taskDefPath, outPath string, schemaConfig *schema_codegen.Config) error {
-	raw, err := os.ReadFile(filepath.Join(workdir, taskDefPath))
+	resolvedTaskDefPath, err := codegenpath.ResolveRead(workdir, taskDefPath)
+	if err != nil {
+		return fmt.Errorf("invalid task-handler input path: %w", err)
+	}
+	if _, err := codegenpath.Resolve(workdir, outPath); err != nil {
+		return fmt.Errorf("invalid task-handler out: %w", err)
+	}
+	raw, err := os.ReadFile(resolvedTaskDefPath)
 	if err != nil {
 		return err
 	}
@@ -328,12 +335,12 @@ func Generate(workdir, packageName, taskDefPath, outPath string, schemaConfig *s
 		return err
 	}
 
-	result, err := generateToolInterfaces(workdir, packageName, filepath.Join(workdir, taskDefPath), data, schemaManager)
+	result, err := generateToolInterfaces(workdir, packageName, resolvedTaskDefPath, data, schemaManager)
 	if err != nil {
 		return err
 	}
 
-	if err := os.WriteFile(filepath.Join(workdir, outPath), []byte(result), 0644); err != nil {
+	if err := codegenpath.WriteFile(workdir, outPath, []byte(result), 0644); err != nil {
 		return err
 	}
 

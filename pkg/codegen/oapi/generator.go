@@ -4,13 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"go/format"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/cloudcarver/anclax/pkg/codegen/codegenpath"
 	"github.com/cloudcarver/anclax/pkg/codegen/gotypes"
 	schema_codegen "github.com/cloudcarver/anclax/pkg/codegen/schemas"
 	openapi_bundle "github.com/cloudcarver/anclax/pkg/openapi/bundle"
@@ -173,9 +172,12 @@ func Generate(workdir string, config Config) error {
 		return errors.New("oapi-codegen package is required")
 	}
 
-	specPath := config.Path
-	if !filepath.IsAbs(specPath) {
-		specPath = filepath.Join(workdir, specPath)
+	specPath, err := codegenpath.ResolveRead(workdir, config.Path)
+	if err != nil {
+		return errors.Wrap(err, "invalid oapi-codegen input path")
+	}
+	if _, err := codegenpath.Resolve(workdir, config.Out); err != nil {
+		return errors.Wrap(err, "invalid oapi-codegen out")
 	}
 	schemaManager, err := schema_codegen.Load(workdir, derefSchemaConfig(config.Schemas))
 	if err != nil {
@@ -1604,14 +1606,7 @@ func renderImports(b *strings.Builder, imports []string) {
 }
 
 func writeFile(workdir, path, content string) error {
-	fullPath := path
-	if !filepath.IsAbs(fullPath) {
-		fullPath = filepath.Join(workdir, fullPath)
-	}
-	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
-		return err
-	}
-	return os.WriteFile(fullPath, []byte(content), 0644)
+	return codegenpath.WriteFile(workdir, path, []byte(content), 0644)
 }
 
 func parseXCheckRules(doc *document, currentFile string, spec *openapi3.T, enumMap map[string]*enumDef, schemaManager *schema_codegen.Manager) error {
