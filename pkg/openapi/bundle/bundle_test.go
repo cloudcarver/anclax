@@ -1,9 +1,13 @@
 package bundle
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -178,6 +182,93 @@ paths:
 	out := string(source.Bytes)
 	if !strings.Contains(out, "get:") || !strings.Contains(out, "post:") {
 		t.Fatalf("merged yaml missing methods: %s", out)
+	}
+}
+
+func TestLoadRejectsRemoteReferencesWithoutContactingServer(t *testing.T) {
+	t.Parallel()
+
+	var contacted atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		contacted.Store(true)
+		http.Error(w, "unexpected request", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	workdir := t.TempDir()
+	mustWriteFile(t, filepath.Join(workdir, "openapi.yaml"), `openapi: 3.0.3
+info:
+  title: test
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    Remote:
+      $ref: `+server.URL+`/schema.yaml#/Remote
+`)
+
+	_, _, err := Load(workdir, "openapi.yaml")
+	if err == nil || !strings.Contains(err.Error(), "remote OpenAPI references are disabled") {
+		t.Fatalf("Load error = %v, want remote-reference rejection", err)
+	}
+	if contacted.Load() {
+		t.Fatal("remote OpenAPI server was contacted")
+	}
+}
+
+func TestLoadRejectsLocalReferenceOutsideWorkdir(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	workdir := filepath.Join(root, "project")
+	mustWriteFile(t, filepath.Join(root, "outside.yaml"), `Outside:
+  type: string
+`)
+	mustWriteFile(t, filepath.Join(workdir, "openapi.yaml"), `openapi: 3.0.3
+info:
+  title: test
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    Outside:
+      $ref: ../outside.yaml#/Outside
+`)
+
+	_, _, err := Load(workdir, "openapi.yaml")
+	if err == nil || !strings.Contains(err.Error(), "outside workdir") {
+		t.Fatalf("Load error = %v, want workdir-boundary rejection", err)
+	}
+}
+
+func TestLoadRejectsSymlinkReferenceOutsideWorkdir(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation is not generally available on Windows")
+	}
+	t.Parallel()
+
+	root := t.TempDir()
+	workdir := filepath.Join(root, "project")
+	mustWriteFile(t, filepath.Join(root, "outside.yaml"), `Outside:
+  type: string
+`)
+	mustWriteFile(t, filepath.Join(workdir, "openapi.yaml"), `openapi: 3.0.3
+info:
+  title: test
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    Outside:
+      $ref: linked.yaml#/Outside
+`)
+	if err := os.Symlink(filepath.Join(root, "outside.yaml"), filepath.Join(workdir, "linked.yaml")); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+
+	_, _, err := Load(workdir, "openapi.yaml")
+	if err == nil || !strings.Contains(err.Error(), "outside workdir") {
+		t.Fatalf("Load error = %v, want symlink boundary rejection", err)
 	}
 }
 
