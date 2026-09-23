@@ -95,6 +95,20 @@ func (m *MockCaveat) EXPECT() *MockCaveatMockRecorder {
 	return m.recorder
 }
 
+// Settings mocks base method.
+func (m *MockCaveat) Settings() CaveatSettings {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Settings")
+	ret0, _ := ret[0].(CaveatSettings)
+	return ret0
+}
+
+// Settings indicates an expected call of Settings.
+func (mr *MockCaveatMockRecorder) Settings() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Settings", reflect.TypeOf((*MockCaveat)(nil).Settings))
+}
+
 // Type mocks base method.
 func (m *MockCaveat) Type() string {
 	m.ctrl.T.Helper()
