@@ -15,8 +15,20 @@ type CaveatParserInterface interface {
 	Register(typ string, constructor CaveatConstructor) error
 }
 
+// CaveatSettings defines the policy for a caveat type.
+type CaveatSettings struct {
+	// AllowDuplicates permits multiple caveats with the same Type in one token.
+	// The zero value rejects duplicates, even when their values are identical.
+	// When enabled, every occurrence must still pass Validate.
+	AllowDuplicates bool
+}
+
 type Caveat interface {
 	Type() string
+
+	// Settings returns the policy for this caveat type. It must not depend on
+	// values decoded from the token.
+	Settings() CaveatSettings
 
 	Validate(fiber.Ctx) error
 }

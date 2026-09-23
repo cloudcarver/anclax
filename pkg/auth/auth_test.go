@@ -67,6 +67,8 @@ func TestAuth_Authfunc(t *testing.T) {
 			authHeader: testToken,
 			setupMock: func() {
 				mockCaveat := macaroons.NewMockCaveat(ctrl)
+				mockCaveat.EXPECT().Type().Return("test")
+				mockCaveat.EXPECT().Settings().Return(macaroons.CaveatSettings{})
 
 				macaroon, err := macaroons.CreateMacaroon(123, []byte("key"), []macaroons.Caveat{mockCaveat})
 				require.NoError(t, err)
@@ -81,13 +83,34 @@ func TestAuth_Authfunc(t *testing.T) {
 			name:       "duplicate user context caveat",
 			authHeader: testToken,
 			setupMock: func() {
-				macaroon, err := macaroons.CreateMacaroon(123, []byte("key"), []macaroons.Caveat{
+				// Preserve coverage of the user-context guard even when a custom
+				// manager returns a token without enforcing duplicate settings.
+				macaroon := &macaroons.Macaroon{Caveats: []macaroons.Caveat{
 					NewUserContextCaveat(101, 202),
 					NewUserContextCaveat(303, 404),
-				})
-				require.NoError(t, err)
+				}}
 
 				mockMacaroons.EXPECT().Parse(gomock.Any(), testToken).Return(macaroon, nil)
+			},
+			expectedStatus: fiber.StatusUnauthorized,
+		},
+		{
+			name:       "repeatable caveats still require every validation to pass",
+			authHeader: testToken,
+			setupMock: func() {
+				first := macaroons.NewMockCaveat(ctrl)
+				second := macaroons.NewMockCaveat(ctrl)
+				for _, caveat := range []*macaroons.MockCaveat{first, second} {
+					caveat.EXPECT().Type().Return("test")
+					caveat.EXPECT().Settings().Return(macaroons.CaveatSettings{AllowDuplicates: true})
+				}
+				macaroon, err := macaroons.CreateMacaroon(123, []byte("key"), []macaroons.Caveat{first, second})
+				require.NoError(t, err)
+				mockMacaroons.EXPECT().Parse(gomock.Any(), testToken).Return(macaroon, nil)
+				gomock.InOrder(
+					first.EXPECT().Validate(gomock.Any()).Return(nil),
+					second.EXPECT().Validate(gomock.Any()).Return(macaroons.ErrCaveatCheckFailed),
+				)
 			},
 			expectedStatus: fiber.StatusUnauthorized,
 		},
@@ -96,6 +119,8 @@ func TestAuth_Authfunc(t *testing.T) {
 			authHeader: testToken,
 			setupMock: func() {
 				mockCaveat := macaroons.NewMockCaveat(ctrl)
+				mockCaveat.EXPECT().Type().Return("test")
+				mockCaveat.EXPECT().Settings().Return(macaroons.CaveatSettings{})
 				macaroon, err := macaroons.CreateMacaroon(123, []byte("key"), []macaroons.Caveat{mockCaveat})
 				require.NoError(t, err)
 
@@ -343,6 +368,8 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 	require.NoError(t, err)
 
 	noRefreshCaveat := macaroons.NewMockCaveat(ctrl)
+	noRefreshCaveat.EXPECT().Type().Return("test")
+	noRefreshCaveat.EXPECT().Settings().Return(macaroons.CaveatSettings{})
 	noRefreshMacaroon, err := macaroons.CreateMacaroon(0, []byte("key"), []macaroons.Caveat{noRefreshCaveat})
 	require.NoError(t, err)
 
@@ -430,6 +457,26 @@ func TestRefreshOnlyCaveat_JSONRoundTrip(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, accessCaveat.UserID, uc.UserID)
 	require.Equal(t, accessCaveat.OrgID, uc.OrgID)
+}
+
+func TestBuiltInCaveatsRejectDuplicates(t *testing.T) {
+	tests := []struct {
+		name    string
+		caveats []macaroons.Caveat
+	}{
+		{"same user", []macaroons.Caveat{NewUserContextCaveat(1, 1), NewUserContextCaveat(1, 1)}},
+		{"different user", []macaroons.Caveat{NewUserContextCaveat(1, 1), NewUserContextCaveat(2, 1)}},
+		{"refresh only", []macaroons.Caveat{NewRefreshOnlyCaveat("one", nil), NewRefreshOnlyCaveat("two", nil)}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := macaroons.CreateMacaroon(1, []byte("key"), tt.caveats)
+			require.ErrorIs(t, err, macaroons.ErrDuplicateCaveat)
+			token, err := macaroons.CreateMacaroon(1, []byte("key"), tt.caveats[:1])
+			require.NoError(t, err)
+			require.ErrorIs(t, token.AddCaveat(tt.caveats[1]), macaroons.ErrDuplicateCaveat)
+		})
+	}
 }
 
 func TestUserContextCaveat_ValidateRejectsDuplicateContext(t *testing.T) {

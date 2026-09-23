@@ -37,6 +37,13 @@ func (m *Macaroon) KeyID() int64 {
 }
 
 func (m *Macaroon) AddCaveat(caveat Caveat) error {
+	caveats := make([]Caveat, len(m.Caveats)+1)
+	copy(caveats, m.Caveats)
+	caveats[len(m.Caveats)] = caveat
+	if err := checkDuplicateCaveats(caveats); err != nil {
+		return err
+	}
+
 	// encode caveat
 	encodedCaveat, err := EncodeCaveat(caveat)
 	if err != nil {
@@ -52,7 +59,7 @@ func (m *Macaroon) AddCaveat(caveat Caveat) error {
 
 	m.encodedTokenNoSig = m.encodedTokenNoSig + "." + encodedCaveat
 	m.encodedToken = m.encodedTokenNoSig + "." + encodedSignature
-	m.Caveats = append(m.Caveats, caveat)
+	m.Caveats = caveats
 	m.signature = sig
 	return nil
 }
@@ -73,6 +80,10 @@ func NewMacaroonManager(keyStore store.KeyStore, caveatParser CaveatParserInterf
 }
 
 func (m *MacaroonsManager) CreateToken(ctx context.Context, caveats []Caveat, ttl time.Duration, group string) (*Macaroon, error) {
+	if err := checkDuplicateCaveats(caveats); err != nil {
+		return nil, err
+	}
+
 	key, err := m.randomKey()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate random key")
@@ -86,6 +97,10 @@ func (m *MacaroonsManager) CreateToken(ctx context.Context, caveats []Caveat, tt
 }
 
 func CreateMacaroon(keyID int64, key []byte, caveats []Caveat) (*Macaroon, error) {
+	if err := checkDuplicateCaveats(caveats); err != nil {
+		return nil, err
+	}
+
 	encodedKeyID := base64.StdEncoding.EncodeToString([]byte(strconv.FormatInt(keyID, 10)))
 	token := encodedKeyID
 
@@ -163,6 +178,9 @@ func (m *MacaroonsManager) Parse(ctx context.Context, token string) (*Macaroon, 
 			return nil, errors.Wrap(err, "failed to parse caveat")
 		}
 		caveats[i] = caveat
+	}
+	if err := checkDuplicateCaveats(caveats); err != nil {
+		return nil, err
 	}
 
 	return &Macaroon{

@@ -10,7 +10,21 @@ import (
 
 var (
 	ErrCaveatCheckFailed = errors.New("caveat check failed")
+	ErrDuplicateCaveat   = errors.New("duplicate caveat")
 )
+
+func checkDuplicateCaveats(caveats []Caveat) error {
+	seen := make(map[string]bool, len(caveats))
+	for _, caveat := range caveats {
+		typ := caveat.Type()
+		allowDuplicates := caveat.Settings().AllowDuplicates
+		if previousAllowsDuplicates, exists := seen[typ]; exists && (!previousAllowsDuplicates || !allowDuplicates) {
+			return errors.Wrapf(ErrDuplicateCaveat, "caveat type %q does not allow duplicates", typ)
+		}
+		seen[typ] = allowDuplicates
+	}
+	return nil
+}
 
 type CaveatConstructor func() Caveat
 
