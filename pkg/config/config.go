@@ -94,7 +94,25 @@ type Debug struct {
 	// (Optional) Whether to enable the debug server, default is false
 	Enable bool `yaml:"enable"`
 
-	// (Optional) The port of the debug server, default is 8080
+	// (Optional) The host of the debug server, default is 127.0.0.1.
+	// Set an external address only when the listener is protected by a trusted
+	// management network.
+	Host string `yaml:"host"`
+
+	// (Optional) The port of the debug server, default is 8777
+	Port int `yaml:"port"`
+}
+
+type Metrics struct {
+	// (Optional) Whether to enable the metrics server, default is false.
+	Enable bool `yaml:"enable"`
+
+	// (Optional) The host of the metrics server, default is 127.0.0.1.
+	// Set an external address only when the listener is protected by a trusted
+	// management network.
+	Host string `yaml:"host"`
+
+	// (Optional) The port of the metrics server, default is 9020.
 	Port int `yaml:"port"`
 }
 
@@ -123,8 +141,11 @@ type Config struct {
 	// (Optional, deprecated) Whether to disable the default sign-up endpoint, default is false.
 	DisableDefaultSignUp bool `yaml:"disableDefaultSignUp"`
 
-	// (Optional) The port of the metrics server, default is 9020
+	// Deprecated: use Metrics. Setting this field keeps the legacy metrics
+	// listener enabled on the configured port, but it now binds to loopback.
 	MetricsPort int `yaml:"metricsport"`
+
+	Metrics Metrics `yaml:"metrics"`
 
 	Worker Worker `yaml:"worker"`
 

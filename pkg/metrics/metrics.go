@@ -2,8 +2,10 @@ package metrics
 
 import (
 	"context"
-	"fmt"
+	"net"
 	"net/http"
+	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/cloudcarver/anclax/pkg/config"
@@ -98,14 +100,20 @@ var TaskListenerPollDurationSeconds = promauto.NewHistogram(
 )
 
 type MetricsServer struct {
+	enable    bool
+	host      string
 	port      int
 	server    *http.Server
 	globalCtx *globalctx.GlobalContext
 }
 
 func (m *MetricsServer) Start() {
+	if !m.enable {
+		return
+	}
+
 	go func() {
-		log.Infof("metrics server is listening on port %d", m.port)
+		log.Infof("metrics server is listening on %s", m.server.Addr)
 		if err := m.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Error("metrics server exited", zap.Error(err))
 		}
@@ -114,7 +122,9 @@ func (m *MetricsServer) Start() {
 	// Shutdown the server when the global context is done
 	go func() {
 		<-m.globalCtx.Context().Done()
-		if err := m.server.Shutdown(context.Background()); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := m.server.Shutdown(ctx); err != nil {
 			log.Error("metrics server shutdown error", zap.Error(err))
 		} else {
 			log.Info("metrics server shutdown gracefully")
@@ -124,8 +134,14 @@ func (m *MetricsServer) Start() {
 	ready := make(chan struct{})
 
 	go func() {
+		client := &http.Client{Timeout: time.Second}
+		probeURL := url.URL{
+			Scheme: "http",
+			Host:   net.JoinHostPort(metricsProbeHost(m.host), strconv.Itoa(m.port)),
+			Path:   "/metrics",
+		}
 		for range 5 {
-			resp, err := http.Get(fmt.Sprintf("http://localhost:%d/metrics", m.port))
+			resp, err := client.Get(probeURL.String())
 			if err == nil {
 				resp.Body.Close()
 				close(ready)
@@ -145,22 +161,47 @@ func (m *MetricsServer) Start() {
 }
 
 func NewMetricsServer(cfg *config.Config, globalCtx *globalctx.GlobalContext) *MetricsServer {
+	enable := cfg.Metrics.Enable
+	host := cfg.Metrics.Host
+	if host == "" {
+		host = "127.0.0.1"
+	}
 	port := 9020
-	if cfg.MetricsPort != 0 {
+	if cfg.Metrics.Port != 0 {
+		port = cfg.Metrics.Port
+	} else if cfg.MetricsPort != 0 {
 		port = cfg.MetricsPort
+		enable = true
 	}
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
 
 	server := &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
-		Handler: mux,
+		Addr:              net.JoinHostPort(host, strconv.Itoa(port)),
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	return &MetricsServer{
+		enable:    enable,
+		host:      host,
 		port:      port,
 		server:    server,
 		globalCtx: globalCtx,
 	}
+}
+
+func metricsProbeHost(host string) string {
+	ip := net.ParseIP(host)
+	if ip == nil || !ip.IsUnspecified() {
+		return host
+	}
+	if ip.To4() != nil {
+		return "127.0.0.1"
+	}
+	return "::1"
 }

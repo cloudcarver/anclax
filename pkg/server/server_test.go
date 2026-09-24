@@ -11,6 +11,27 @@ func stringPtr(s string) *string {
 	return &s
 }
 
+func TestListenAddressUsesConfiguredHost(t *testing.T) {
+	tests := []struct {
+		name string
+		host string
+		port int
+		want string
+	}{
+		{name: "loopback", host: "127.0.0.1", port: 8020, want: "127.0.0.1:8020"},
+		{name: "hostname", host: "localhost", port: 2910, want: "localhost:2910"},
+		{name: "ipv6", host: "::1", port: 8020, want: "[::1]:8020"},
+		{name: "explicit wildcard", host: "0.0.0.0", port: 8020, want: "0.0.0.0:8020"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Server{host: tt.host, port: tt.port}
+			require.Equal(t, tt.want, s.listenAddress())
+		})
+	}
+}
+
 func TestLogRules(t *testing.T) {
 	tests := []struct {
 		name             string
