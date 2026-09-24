@@ -5,6 +5,7 @@ import (
 
 	"github.com/cloudcarver/anclax/pkg/auth"
 	"github.com/cloudcarver/anclax/pkg/config"
+	"github.com/cloudcarver/anclax/pkg/server"
 	"github.com/cloudcarver/anclax/pkg/service"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/gofiber/fiber/v3"
@@ -38,6 +39,8 @@ func simpleAuthNotFound(c fiber.Ctx, path string) error {
 }
 
 func (controller *Controller) SignIn(c fiber.Ctx) error {
+	server.DisableBodyLog(c)
+
 	if !controller.enableSimpleAuth {
 		return simpleAuthNotFound(c, "/api/v1/auth/sign-in")
 	}
@@ -70,6 +73,8 @@ func (controller *Controller) SignOut(c fiber.Ctx) error {
 }
 
 func (controller *Controller) RefreshToken(c fiber.Ctx) error {
+	server.DisableBodyLog(c)
+
 	var params apigen.RefreshTokenRequest
 	if err := c.Bind().Body(&params); err != nil {
 		return c.SendStatus(fiber.StatusBadRequest)
@@ -90,6 +95,8 @@ func (controller *Controller) RefreshToken(c fiber.Ctx) error {
 }
 
 func (controller *Controller) SignUp(c fiber.Ctx) error {
+	server.DisableBodyLog(c)
+
 	if !controller.enableSimpleAuth || controller.disableDefaultSignUp {
 		return simpleAuthNotFound(c, "/api/v1/auth/sign-up")
 	}

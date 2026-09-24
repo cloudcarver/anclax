@@ -162,9 +162,13 @@ func TestAuth_Authfunc(t *testing.T) {
 			resp, err := app.Test(req)
 			require.NoError(t, err)
 
-			// Read and print the response body
+			// Read and validate the response body.
+			var (
+				bodyBytes []byte
+				readErr   error
+			)
 			if resp.Body != nil {
-				bodyBytes, readErr := io.ReadAll(resp.Body)
+				bodyBytes, readErr = io.ReadAll(resp.Body)
 				if readErr == nil {
 					t.Logf("Response Body for %s: %s", tc.name, string(bodyBytes))
 				} else {
@@ -174,6 +178,12 @@ func TestAuth_Authfunc(t *testing.T) {
 
 			// Verify status code
 			require.Equal(t, tc.expectedStatus, resp.StatusCode)
+			if tc.expectedStatus == fiber.StatusUnauthorized {
+				require.Equal(t, fiber.ErrUnauthorized.Message, string(bodyBytes))
+				require.NotContains(t, string(bodyBytes), testToken)
+				require.NotContains(t, string(bodyBytes), "caveat validation error")
+				require.NotContains(t, string(bodyBytes), macaroons.ErrMalformedToken.Error())
+			}
 		})
 	}
 }
@@ -399,7 +409,7 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 				mockMacaroons.EXPECT().Parse(gomock.Any(), macaroon.StringToken()).Return(nil, errors.New("parse failed"))
 			},
 			expectedGroup: "",
-			expectedError: errors.New("failed to parse macaroon token"),
+			expectedError: errors.New("failed to parse refresh token"),
 		},
 		{
 			name:         "no refresh caveat",
@@ -421,6 +431,7 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 			if tc.expectedError != nil {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tc.expectedError.Error())
+				require.NotContains(t, err.Error(), tc.refreshToken)
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, macaroon, token)
