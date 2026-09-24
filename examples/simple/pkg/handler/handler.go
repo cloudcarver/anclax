@@ -7,6 +7,7 @@ import (
 	"myexampleapp/pkg/zgen/taskgen"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/pkg/errors"
 )
 
 type Handler struct {
@@ -21,7 +22,7 @@ func NewHandler(model model.ModelInterface, taskrunner taskgen.TaskRunner) (apig
 func (h *Handler) GetCounter(c fiber.Ctx) error {
 	count, err := h.model.GetCounter(c.Context())
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
+		return errors.Wrap(err, "failed to get counter")
 	}
 	return c.JSON(counter.Counter{Count: count.Value})
 }

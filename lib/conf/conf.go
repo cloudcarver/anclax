@@ -40,7 +40,7 @@ func FetchConfig(configPath string, envPrefix string, cfg any) error {
 func marshallRawYAML(yamlRaw []byte, cfg any) error {
 	err := yaml.Unmarshal(yamlRaw, cfg)
 	if err != nil {
-		return errors.Wrapf(err, "failed to unmarshal yaml config %v", yamlRaw)
+		return errors.Wrap(err, "failed to unmarshal yaml config")
 	}
 	return nil
 }
