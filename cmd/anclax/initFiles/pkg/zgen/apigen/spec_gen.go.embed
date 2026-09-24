@@ -14,11 +14,32 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 const (
 	BearerAuthScopes = "BearerAuth.Scopes"
 )
+
+// DefaultHTTPClientTimeout bounds requests made by a generated default client.
+const DefaultHTTPClientTimeout = 30 * time.Second
+
+// MaxResponseBodyBytes is the largest response body buffered by response helpers.
+const MaxResponseBodyBytes int64 = 10 << 20
+
+// ErrResponseBodyTooLarge is returned when a response exceeds MaxResponseBodyBytes.
+var ErrResponseBodyTooLarge = errors.New("response body exceeds maximum size")
+
+func readResponseBody(body io.Reader) ([]byte, error) {
+	bodyBytes, err := io.ReadAll(io.LimitReader(body, MaxResponseBodyBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(bodyBytes)) > MaxResponseBodyBytes {
+		return nil, ErrResponseBodyTooLarge
+	}
+	return bodyBytes, nil
+}
 
 // RequestEditorFn is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -62,7 +83,7 @@ func NewClient(server string, opts ...ClientOption) (*Client, error) {
 		client.Server += "/"
 	}
 	if client.Client == nil {
-		client.Client = &http.Client{}
+		client.Client = &http.Client{Timeout: DefaultHTTPClientTimeout}
 	}
 	return &client, nil
 }
@@ -279,8 +300,8 @@ func (c *ClientWithResponses) IncrementCounterWithResponse(ctx context.Context, 
 
 // ParseGetCounterResponse parses an HTTP response from a GetCounterWithResponse call
 func ParseGetCounterResponse(rsp *http.Response) (*GetCounterResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
+	bodyBytes, err := readResponseBody(rsp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -301,8 +322,8 @@ func ParseGetCounterResponse(rsp *http.Response) (*GetCounterResponse, error) {
 
 // ParseIncrementCounterResponse parses an HTTP response from a IncrementCounterWithResponse call
 func ParseIncrementCounterResponse(rsp *http.Response) (*IncrementCounterResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
+	bodyBytes, err := readResponseBody(rsp.Body)
 	if err != nil {
 		return nil, err
 	}
