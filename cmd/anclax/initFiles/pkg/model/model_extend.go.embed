@@ -1,10 +1,9 @@
-// Code generate by anclax. DO NOT EDIT.
 package model
 
 import (
 	context "context"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/cloudcarver/anclax/core"
 	"go.uber.org/mock/gomock"
 )
 
@@ -21,10 +20,10 @@ func (e *ExtendMockModel) RunTransaction(ctx context.Context, f func(model Model
 	return f(e)
 }
 
-func (e *ExtendMockModel) RunTransactionWithTx(ctx context.Context, f func(tx pgx.Tx, model ModelInterface) error) error {
+func (e *ExtendMockModel) RunTransactionWithTx(ctx context.Context, f func(tx core.Tx, model ModelInterface) error) error {
 	return f(nil, e)
 }
 
-func (e *ExtendMockModel) SpawnWithTx(tx pgx.Tx) ModelInterface {
+func (e *ExtendMockModel) SpawnWithTx(tx core.Tx) ModelInterface {
 	return e
 }

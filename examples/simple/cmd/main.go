@@ -5,27 +5,32 @@ import (
 	"log"
 
 	"myexampleapp/app/wire"
-
-	"github.com/cloudcarver/anclax/pkg/utils"
 )
 
 func main() {
-	init := flag.Bool("init", false, "initialize the applicaiton only")
+	initOnly := flag.Bool("init", false, "initialize the application only")
 	flag.Parse()
 
-	app, err := wire.InitApp()
-	if err != nil {
+	if err := run(*initOnly); err != nil {
 		log.Fatal(err)
 	}
-	defer app.Close()
+}
 
-	if utils.UnwrapOrDefault(init, false) {
+func run(initOnly bool) error {
+	app, cleanup, err := wire.InitApp()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	if initOnly {
 		log.Println("initialization completed")
-		return
+		return nil
 	}
 
 	if err := app.Start(); err != nil {
-		log.Fatal(err)
+		return err
 	}
 	log.Println("bye.")
+	return nil
 }

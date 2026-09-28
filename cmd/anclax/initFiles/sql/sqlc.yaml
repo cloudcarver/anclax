@@ -24,12 +24,6 @@ sql:
             pointer: true
           nullable: true
 
-        - db_type: "sereial"
-          go_type:
-            type: "int32"
-            pointer: true
-          nullable: true
-
         - db_type: "text"
           go_type:
             type: "string"
