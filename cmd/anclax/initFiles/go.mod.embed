@@ -1,6 +1,6 @@
 module myexampleapp
 
-go 1.25.6
+go 1.27.1
 
 require (
 	github.com/cloudcarver/anclax v1.5.3
