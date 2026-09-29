@@ -12,7 +12,7 @@ CHAOS_TIMEOUT ?= 60m
 ANCLAX_TASKCORE_CHAOS_ITERATIONS ?= 200
 ANCLAX_TASKCORE_CHAOS_SMOKE_ITERATIONS ?= 10
 
-.PHONY: dev test check-docker ut smoke test-deterministic chaos chaos-smoke taskcore-perf benchmark
+.PHONY: dev test check-docker ut smoke test-deterministic chaos chaos-smoke taskcore-perf benchmark formal formal-proof verify-scheduler
 
 
 ###################################################
@@ -72,6 +72,15 @@ benchmark: check-docker
 test-deterministic:
 	GOCACHE=/tmp/go-cache go run ./cmd/anclax gen
 	GOCACHE=/tmp/go-cache go test ./pkg/taskcore/dtmtest -count=1 -v -timeout $(DST_TIMEOUT)
+
+formal:
+	python3 formal/check.py
+
+formal-proof:
+	python3 formal/prove.py
+
+verify-scheduler:
+	python3 formal/verify.py
 
 gen:
 	sed -i -E '/^replace github\.com\/cloudcarver\/anclax => \.\.\/\.\.\/?$$/d' examples/simple/go.mod

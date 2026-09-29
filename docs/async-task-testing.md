@@ -4,6 +4,8 @@ English | [中文](async-task-testing.zh.md)
 
 The suite checks task and tag-concurrency invariants at several layers. Passing mock tests alone does not establish that PostgreSQL locking, generated queries, executor processes or recovery behave like the mock.
 
+`make verify-scheduler` runs the full verification suite: reviewed source mappings, TLA+ model checks, parameterized TLAPS proofs, race tests with bounded exploration of the actual Engine, and PostgreSQL contract/regression tests. `make formal` runs the model checks alone; `make formal-proof` runs the six protocol proof modules. The models include lease/resource/budget composition, serial exclusion, scheduler fencing, conditional progress, and counterexamples to unconditional progress and exactly-once side effects. See the [scope](../formal/README.md), [implementation correspondence](../formal/IMPLEMENTATION.md), and [recorded results](../formal/RESULTS.md). These establish the stated abstract properties under their assumptions; they do not constitute a machine-checked refinement proof of the original Go/SQL program.
+
 | Layer | What it checks |
 | --- | --- |
 | Unit tests with mocks and controlled time | Error/cancellation propagation, maintenance failure preventing admission, coalescing concurrent sweeps, retry after failure, cooldown expiry, and committing blocked-claim markers. Existing tests cover engine decisions, local capacity, panic handling, shutdown and control-plane behavior. |
