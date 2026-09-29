@@ -1,7 +1,7 @@
 BEGIN;
 
 CREATE TABLE counter (
-    id    INTEGER NOT NULL,
+    id    INTEGER PRIMARY KEY,
     value INTEGER NOT NULL DEFAULT 0
 );
 
