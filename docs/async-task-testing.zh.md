@@ -4,6 +4,8 @@
 
 测试分层验证任务状态和 tag 并发约束。Mock 单测通过，只能证明模块在设定的依赖行为下处理正确；数据库锁、生成的 SQL、执行器进程和故障恢复需要分别验证。
 
+`make verify-scheduler` 运行整套验证：审查过的源码映射、TLA+ 模型检查、参数化 TLAPS 证明、含实际 Engine 有界遍历的 race 测试，以及 PostgreSQL 合同／回归测试。`make formal` 单独运行模型检查，`make formal-proof` 运行六组协议证明。模型包含租约／资源／预算组合、serial 排他、scheduler fencing、条件活性，以及无条件进度和外部副作用 exactly-once 的反例。详见[验证范围](../formal/README.md)、[实现对应论证](../formal/IMPLEMENTATION.md)和[验证记录](../formal/RESULTS.md)。结论适用于各自前提下的抽象性质，尚不是原始 Go／SQL 程序的机器检查 refinement 证明。
+
 | 层次 | 验证内容 |
 | --- | --- |
 | Mock 单测与可控时间 | 错误和取消传播、维护失败时停止领取、合并并发维护、失败后立即重试、冷却后恢复，以及阻塞领取提交等待标记。已有测试覆盖调度决策、本地容量、panic、停机和控制操作。 |
