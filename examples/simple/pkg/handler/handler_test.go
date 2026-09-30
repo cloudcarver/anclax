@@ -1,42 +1,51 @@
 package handler
 
 import (
-	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"myexampleapp/pkg/model"
+	"myexampleapp/pkg/zgen/apigen"
+	"myexampleapp/pkg/zgen/querier"
+	"myexampleapp/pkg/zgen/schemas/counter"
+	"myexampleapp/pkg/zgen/taskgen"
 
-	anclaxutils "github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/gofiber/fiber/v3"
-	"github.com/pkg/errors"
 	"go.uber.org/mock/gomock"
 )
 
-func TestGetCounterDoesNotReturnDatabaseErrors(t *testing.T) {
+func TestCounterAPI(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	m := model.NewMockModelInterface(ctrl)
-	m.EXPECT().GetCounter(gomock.Any()).Return(nil, errors.New("database-secret-canary"))
+	runner := taskgen.NewMockTaskRunner(ctrl)
+	h, err := NewHandler(m, runner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := fiber.New()
+	apigen.RegisterHandlers(app, h)
 
-	h := &Handler{model: m}
-	app := fiber.New(fiber.Config{ErrorHandler: anclaxutils.ErrorHandler})
-	app.Get("/counter", h.GetCounter)
-
+	m.EXPECT().GetCounter(gomock.Any()).Return(&querier.Counter{ID: 1, Value: 7}, nil)
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/counter", nil))
 	if err != nil {
-		t.Fatalf("request counter: %v", err)
+		t.Fatal(err)
+	}
+	parsed, err := apigen.ParseGetCounterResponse(resp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.JSON200 == nil || parsed.JSON200.Count != 7 {
+		t.Fatalf("response does not match the generated client contract: %s", parsed.Body)
+	}
+
+	runner.EXPECT().RunIncrementCounter(gomock.Any(), &counter.IncrementCounterParams{Amount: 1}).Return(int32(42), nil)
+	resp, err = app.Test(httptest.NewRequest(http.MethodPost, "/counter", nil))
+	if err != nil {
+		t.Fatal(err)
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("read response: %v", err)
-	}
-	if resp.StatusCode != fiber.StatusInternalServerError {
-		t.Fatalf("status = %d, want %d", resp.StatusCode, fiber.StatusInternalServerError)
-	}
-	if strings.Contains(string(body), "database-secret-canary") {
-		t.Fatalf("response disclosed database error: %s", body)
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("POST status = %d, want 202", resp.StatusCode)
 	}
 }

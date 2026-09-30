@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/cloudcarver/anclax/core"
@@ -47,6 +48,9 @@ func (s *TaskStore) PushTaskWithTx(ctx context.Context, tx core.Tx, task *apigen
 }
 
 func (s *TaskStore) pushTask(ctx context.Context, txm model.ModelInterface, task *apigen.Task) (int32, error) {
+	if task.Spec.Type == "prefetchTasks" || (task.UniqueTag != nil && strings.HasPrefix(*task.UniqueTag, "anclax:system:")) {
+		return 0, errors.New("prefetchTasks and anclax:system: unique tags are reserved for the worker runtime")
+	}
 	if task.UniqueTag != nil {
 		task, err := txm.GetTaskByUniqueTag(ctx, task.UniqueTag)
 		if err != nil {
@@ -65,6 +69,14 @@ func (s *TaskStore) pushTask(ctx context.Context, txm model.ModelInterface, task
 	if err != nil {
 		return 0, err
 	}
+	if task.Status == apigen.TaskStatusReady {
+		return 0, errors.New("ready is a framework-owned task state")
+	}
+	if types.IsSystemTask(task.Spec.Type) {
+		if (task.Attributes.Tags != nil && len(*task.Attributes.Tags) > 0) || serialKey != nil || weight != 1 {
+			return 0, errors.New("system tasks do not support tags, serial scheduling or weights")
+		}
+	}
 	task.Attributes.Priority = utils.Ptr(priority)
 	task.Attributes.Weight = utils.Ptr(weight)
 
@@ -80,6 +92,15 @@ func (s *TaskStore) pushTask(ctx context.Context, txm model.ModelInterface, task
 		Priority:     priority,
 		Weight:       weight,
 	})
+	if errors.Is(err, pgx.ErrNoRows) && task.UniqueTag != nil {
+		// A concurrent insertion may win after the initial lookup. A second
+		// statement sees its committed row under READ COMMITTED, including WithTx.
+		existing, lookupErr := txm.GetTaskByUniqueTag(ctx, task.UniqueTag)
+		if lookupErr != nil {
+			return 0, errors.Wrap(lookupErr, "get concurrently enqueued task")
+		}
+		return existing.ID, nil
+	}
 	if err != nil {
 		return 0, errors.Wrap(err, "failed to push task")
 	}

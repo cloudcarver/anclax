@@ -9,13 +9,15 @@ import (
 )
 
 func CopyToInitFiles(src string, dst string, excluded []string) error {
+	dst = filepath.Clean(dst)
+	generated := map[string]bool{dst: true}
 	// Create destination directory if it doesn't exist
 	if err := os.MkdirAll(dst, 0755); err != nil {
 		return fmt.Errorf("failed to create destination directory: %w", err)
 	}
 
 	// Walk through the source directory recursively
-	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -33,7 +35,14 @@ func CopyToInitFiles(src string, dst string, excluded []string) error {
 
 		// Check if path should be excluded
 		for _, excludePattern := range excluded {
-			if strings.Contains(relPath, excludePattern) {
+			matched, err := filepath.Match(excludePattern, relPath)
+			if err != nil {
+				return fmt.Errorf("invalid exclude pattern %q: %w", excludePattern, err)
+			}
+			if matched {
+				if info.IsDir() {
+					return filepath.SkipDir
+				}
 				return nil
 			}
 		}
@@ -43,6 +52,7 @@ func CopyToInitFiles(src string, dst string, excluded []string) error {
 
 		// Handle directories
 		if info.IsDir() {
+			generated[destPath] = true
 			return os.MkdirAll(destPath, 0755)
 		}
 
@@ -51,6 +61,7 @@ func CopyToInitFiles(src string, dst string, excluded []string) error {
 		if strings.HasSuffix(relPath, ".go") || relPath == "go.mod" {
 			destPath = destPath + ".embed"
 		}
+		generated[destPath] = true
 
 		// Copy file content
 		srcFile, err := os.Open(path)
@@ -69,6 +80,26 @@ func CopyToInitFiles(src string, dst string, excluded []string) error {
 			return fmt.Errorf("failed to copy content from %s to %s: %w", path, destPath, err)
 		}
 
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	// Deleted or excluded example files must not survive in new scaffolds.
+	return filepath.Walk(dst, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if generated[path] {
+			return nil
+		}
+		if err := os.RemoveAll(path); err != nil {
+			return fmt.Errorf("failed to remove stale template %s: %w", path, err)
+		}
+		if info.IsDir() {
+			return filepath.SkipDir
+		}
 		return nil
 	})
 }
