@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,15 +11,25 @@ import (
 
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/hooks"
+	"github.com/cloudcarver/anclax/pkg/logger"
 	"github.com/cloudcarver/anclax/pkg/macaroons"
+	"github.com/cloudcarver/anclax/pkg/macaroons/store"
 	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/gofiber/fiber/v3"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 func TestAuth_Authfunc(t *testing.T) {
+	core, observed := observer.New(zapcore.WarnLevel)
+	previousLog := log
+	log = logger.NewLogAgentWithLogger("auth", zap.New(core))
+	t.Cleanup(func() { log = previousLog })
+
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -63,6 +74,22 @@ func TestAuth_Authfunc(t *testing.T) {
 			expectedStatus: fiber.StatusUnauthorized,
 		},
 		{
+			name:       "missing key",
+			authHeader: testBearerToken,
+			setupMock: func() {
+				mockMacaroons.EXPECT().Parse(gomock.Any(), testToken).Return(nil, errors.Wrap(store.ErrKeyNotFound, "missing-key-canary"))
+			},
+			expectedStatus: fiber.StatusUnauthorized,
+		},
+		{
+			name:       "store failure containing credentials",
+			authHeader: testBearerToken,
+			setupMock: func() {
+				mockMacaroons.EXPECT().Parse(gomock.Any(), testToken).Return(nil, errors.New("store-sentinel-canary: "+testToken))
+			},
+			expectedStatus: fiber.StatusUnauthorized,
+		},
+		{
 			name:       "caveat validation error",
 			authHeader: testToken,
 			setupMock: func() {
@@ -74,7 +101,7 @@ func TestAuth_Authfunc(t *testing.T) {
 				require.NoError(t, err)
 
 				mockMacaroons.EXPECT().Parse(gomock.Any(), testToken).Return(macaroon, nil)
-				mockCaveat.EXPECT().Validate(gomock.Any()).Return(errors.New("caveat validation error"))
+				mockCaveat.EXPECT().Validate(gomock.Any()).Return(errors.New("caveat validation error: caveat-sentinel-canary: " + testToken))
 
 			},
 			expectedStatus: fiber.StatusUnauthorized,
@@ -133,6 +160,7 @@ func TestAuth_Authfunc(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			observed.TakeAll()
 			// Create a test Fiber app and set up error handling
 			app := fiber.New(fiber.Config{
 				ErrorHandler: utils.ErrorHandler,
@@ -162,19 +190,9 @@ func TestAuth_Authfunc(t *testing.T) {
 			resp, err := app.Test(req)
 			require.NoError(t, err)
 
-			// Read and validate the response body.
-			var (
-				bodyBytes []byte
-				readErr   error
-			)
-			if resp.Body != nil {
-				bodyBytes, readErr = io.ReadAll(resp.Body)
-				if readErr == nil {
-					t.Logf("Response Body for %s: %s", tc.name, string(bodyBytes))
-				} else {
-					t.Logf("Error reading response body: %v", readErr)
-				}
-			}
+			bodyBytes, readErr := io.ReadAll(resp.Body)
+			require.NoError(t, readErr)
+			require.NoError(t, resp.Body.Close())
 
 			// Verify status code
 			require.Equal(t, tc.expectedStatus, resp.StatusCode)
@@ -183,6 +201,26 @@ func TestAuth_Authfunc(t *testing.T) {
 				require.NotContains(t, string(bodyBytes), testToken)
 				require.NotContains(t, string(bodyBytes), "caveat validation error")
 				require.NotContains(t, string(bodyBytes), macaroons.ErrMalformedToken.Error())
+				for _, canary := range []string{"missing-key-canary", "store-sentinel-canary", "caveat-sentinel-canary"} {
+					require.NotContains(t, string(bodyBytes), canary)
+				}
+			}
+			entries := observed.All()
+			if tc.expectedStatus == fiber.StatusUnauthorized && tc.authHeader != "" {
+				require.Len(t, entries, 1)
+				if tc.name == "store failure containing credentials" || tc.name == "caveat validation error" {
+					require.Equal(t, zapcore.ErrorLevel, entries[0].Level)
+				} else {
+					require.Equal(t, zapcore.WarnLevel, entries[0].Level)
+				}
+			}
+			for _, entry := range entries {
+				require.Equal(t, "token validation failed", entry.Message)
+				require.Len(t, entry.ContextMap(), 2) // module and a fixed validation stage
+				fields, err := json.Marshal(entry.ContextMap())
+				require.NoError(t, err)
+				require.NotContains(t, string(fields), testToken)
+				require.NotContains(t, string(fields), "canary")
 			}
 		})
 	}
@@ -406,7 +444,7 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 			name:         "parse failure",
 			refreshToken: macaroon.StringToken(),
 			setupMock: func() {
-				mockMacaroons.EXPECT().Parse(gomock.Any(), macaroon.StringToken()).Return(nil, errors.New("parse failed"))
+				mockMacaroons.EXPECT().Parse(gomock.Any(), macaroon.StringToken()).Return(nil, errors.New("parse failed: "+macaroon.StringToken()))
 			},
 			expectedGroup: "",
 			expectedError: errors.New("failed to parse refresh token"),
@@ -432,6 +470,7 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tc.expectedError.Error())
 				require.NotContains(t, err.Error(), tc.refreshToken)
+				require.ErrorIs(t, err, ErrInvalidRefreshToken)
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, macaroon, token)

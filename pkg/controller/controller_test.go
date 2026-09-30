@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -51,14 +52,17 @@ var _ service.ServiceInterface = stubService{}
 
 func TestSimpleAuthEndpointsDisableResponseBodyLogging(t *testing.T) {
 	testCases := []struct {
-		name string
-		path string
-		call func(*Controller, fiber.Ctx) error
+		name   string
+		path   string
+		call   func(*Controller, fiber.Ctx) error
+		body   string
+		status int
 	}{
-		{name: "sign in", path: "/auth/sign-in", call: func(c *Controller, ctx fiber.Ctx) error { return c.SignIn(ctx) }},
-		{name: "refresh", path: "/auth/refresh", call: func(c *Controller, ctx fiber.Ctx) error { return c.RefreshToken(ctx) }},
-		{name: "sign up", path: "/auth/sign-up", call: func(c *Controller, ctx fiber.Ctx) error { return c.SignUp(ctx) }},
+		{name: "sign in", path: "/auth/sign-in", call: func(c *Controller, ctx fiber.Ctx) error { return c.SignIn(ctx) }, body: `{"name":"user","password":"password-canary"}`, status: fiber.StatusOK},
+		{name: "refresh", path: "/auth/refresh", call: func(c *Controller, ctx fiber.Ctx) error { return c.RefreshToken(ctx) }, body: `{"refreshToken":"submitted-refresh-canary"}`, status: fiber.StatusOK},
+		{name: "sign up", path: "/auth/sign-up", call: func(c *Controller, ctx fiber.Ctx) error { return c.SignUp(ctx) }, body: `{"name":"user","password":"password-canary"}`, status: fiber.StatusCreated},
 	}
+	credentials := &apigen.Credentials{AccessToken: "access-token-canary", RefreshToken: "refresh-token-canary", TokenType: apigen.Bearer}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -70,14 +74,27 @@ func TestSimpleAuthEndpointsDisableResponseBodyLogging(t *testing.T) {
 				return err
 			})
 
-			controller := &Controller{}
+			controller := &Controller{enableSimpleAuth: true, svc: stubService{
+				signInWithPassword: func(context.Context, apigen.SignInRequest) (*apigen.Credentials, error) { return credentials, nil },
+				refreshToken:       func(context.Context, string) (*apigen.Credentials, error) { return credentials, nil },
+				isUsernameExists:   func(context.Context, string) (bool, error) { return false, nil },
+				createNewUser: func(context.Context, string, string) (*service.UserMeta, error) {
+					return &service.UserMeta{UserID: 1}, nil
+				},
+				signIn: func(context.Context, int32) (*apigen.Credentials, error) { return credentials, nil },
+			}}
 			app.Post(tc.path, func(c fiber.Ctx) error { return tc.call(controller, c) })
 
-			req := httptest.NewRequest(http.MethodPost, tc.path, nil)
+			req := httptest.NewRequest(http.MethodPost, tc.path, bytes.NewBufferString(tc.body))
+			req.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSON)
 			resp, err := app.Test(req)
 			require.NoError(t, err)
 			defer resp.Body.Close()
 			require.True(t, disabled)
+			require.Equal(t, tc.status, resp.StatusCode)
+			var got apigen.Credentials
+			require.NoError(t, json.NewDecoder(resp.Body).Decode(&got))
+			require.Equal(t, *credentials, got)
 		})
 	}
 }
@@ -233,6 +250,13 @@ func TestControllerRefreshToken(t *testing.T) {
 			expectService:  true,
 		},
 		{
+			name:           "refresh error with private cause",
+			body:           `{"refreshToken":"refresh-token"}`,
+			serviceError:   fmt.Errorf("%w: store-sentinel-canary: refresh-token", service.ErrRefreshTokenExpired),
+			expectedStatus: fiber.StatusUnauthorized,
+			expectService:  true,
+		},
+		{
 			name: "success",
 			body: `{"refreshToken":"refresh-token"}`,
 			serviceResult: &apigen.Credentials{
@@ -273,6 +297,10 @@ func TestControllerRefreshToken(t *testing.T) {
 				var got apigen.Credentials
 				require.NoError(t, json.NewDecoder(resp.Body).Decode(&got))
 				require.Equal(t, *tc.serviceResult, got)
+			} else if tc.expectService {
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				require.Equal(t, http.StatusText(tc.expectedStatus), string(body))
 			}
 		})
 	}
