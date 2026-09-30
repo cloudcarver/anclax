@@ -871,6 +871,23 @@ func queryTag(param paramDef) string {
 }
 
 func renderClient(b *strings.Builder, doc *document) {
+	b.WriteString("// DefaultHTTPClientTimeout bounds requests made by a generated default client.\n")
+	b.WriteString("const DefaultHTTPClientTimeout = 30 * time.Second\n\n")
+	b.WriteString("// MaxResponseBodyBytes is the largest response body buffered by response helpers.\n")
+	b.WriteString("const MaxResponseBodyBytes int64 = 10 << 20\n\n")
+	b.WriteString("// ErrResponseBodyTooLarge is returned when a response exceeds MaxResponseBodyBytes.\n")
+	b.WriteString("var ErrResponseBodyTooLarge = errors.New(\"response body exceeds maximum size\")\n\n")
+	b.WriteString("var xClientLog = logger.NewLogAgent(\"api-client\")\n\n")
+	b.WriteString("func readResponseBody(body io.ReadCloser) ([]byte, error) {\n")
+	b.WriteString("\tdefer func() {\n")
+	b.WriteString("\t\tif err := body.Close(); err != nil {\n")
+	b.WriteString("\t\t\txClientLog.Warn(\"failed to close response body\")\n")
+	b.WriteString("\t\t}\n\t}()\n")
+	b.WriteString("\tbodyBytes, err := io.ReadAll(io.LimitReader(body, MaxResponseBodyBytes+1))\n")
+	b.WriteString("\tif err != nil {\n\t\treturn nil, err\n\t}\n")
+	b.WriteString("\tif int64(len(bodyBytes)) > MaxResponseBodyBytes {\n\t\treturn nil, ErrResponseBodyTooLarge\n\t}\n")
+	b.WriteString("\treturn bodyBytes, nil\n")
+	b.WriteString("}\n\n")
 	b.WriteString("// RequestEditorFn is the function signature for the RequestEditor callback function\n")
 	b.WriteString("type RequestEditorFn func(ctx context.Context, req *http.Request) error\n\n")
 	b.WriteString("// Doer performs HTTP requests.\n")
@@ -899,7 +916,7 @@ func renderClient(b *strings.Builder, doc *document) {
 	b.WriteString("\tfor _, o := range opts {\n")
 	b.WriteString("\t\tif err := o(&client); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t}\n")
 	b.WriteString("\tif !strings.HasSuffix(client.Server, \"/\") {\n\t\tclient.Server += \"/\"\n\t}\n")
-	b.WriteString("\tif client.Client == nil {\n\t\tclient.Client = &http.Client{}\n\t}\n")
+	b.WriteString("\tif client.Client == nil {\n\t\tclient.Client = &http.Client{Timeout: DefaultHTTPClientTimeout}\n\t}\n")
 	b.WriteString("\treturn &client, nil\n")
 	b.WriteString("}\n\n")
 	b.WriteString("// WithHTTPClient allows overriding the default Doer, which is\n")
@@ -1571,8 +1588,7 @@ func renderParseResponse(b *strings.Builder, op operationDef) {
 	b.WriteString("Response(rsp *http.Response) (*")
 	b.WriteString(op.Name)
 	b.WriteString("Response, error) {\n")
-	b.WriteString("\tbodyBytes, err := io.ReadAll(rsp.Body)\n")
-	b.WriteString("\tdefer func() { _ = rsp.Body.Close() }()\n")
+	b.WriteString("\tbodyBytes, err := readResponseBody(rsp.Body)\n")
 	b.WriteString("\tif err != nil {\n\t\treturn nil, err\n\t}\n\n")
 	b.WriteString("\tresponse := &")
 	b.WriteString(op.Name)
@@ -1676,6 +1692,7 @@ func specImports(doc *document) []string {
 		"net/http": {},
 		"net/url":  {},
 		"strings":  {},
+		"time":     {},
 		"github.com/cloudcarver/anclax/pkg/logger":         {},
 		"github.com/gofiber/fiber/v3":                      {},
 		"github.com/gofiber/fiber/v3/middleware/requestid": {},

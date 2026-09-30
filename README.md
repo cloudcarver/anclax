@@ -176,6 +176,12 @@ func (h *Handler) GetCounter(c *fiber.Ctx) error {
 
 ## Showcase: unique features 🧰
 
+### Generated Go API clients
+
+Generated default clients use a 30-second timeout for the whole request, including reading the response body. `WithResponse` methods and `Parse…Response` helpers buffer at most 10 MiB of response data; larger bodies return `ErrResponseBodyTooLarge`, which can be checked with `errors.Is`. Parsing closes the response body on both success and failure, and read errors (including context cancellation) are returned to the caller.
+
+For large downloads, use the raw `Client` methods and stream and close the returned `http.Response.Body`. For longer requests, pass your own HTTP client with `WithHTTPClient`; its timeout is preserved. Regenerate existing clients with `anclax gen` to apply these defaults.
+
 ### OpenAPI-powered middleware (no DSL)
 ```yaml
 x-check-rules:
