@@ -17,21 +17,11 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 )
 
 const (
 	BearerAuthScopes = "BearerAuth.Scopes"
 )
-
-// DefaultHTTPClientTimeout bounds requests made by a generated default client.
-const DefaultHTTPClientTimeout = 30 * time.Second
-
-// MaxResponseBodyBytes is the largest response body buffered by response helpers.
-const MaxResponseBodyBytes int64 = 10 << 20
-
-// ErrResponseBodyTooLarge is returned when a response exceeds MaxResponseBodyBytes.
-var ErrResponseBodyTooLarge = errors.New("response body exceeds maximum size")
 
 var xClientLog = logger.NewLogAgent("api-client")
 
@@ -41,14 +31,7 @@ func readResponseBody(body io.ReadCloser) ([]byte, error) {
 			xClientLog.Warn("failed to close response body")
 		}
 	}()
-	bodyBytes, err := io.ReadAll(io.LimitReader(body, MaxResponseBodyBytes+1))
-	if err != nil {
-		return nil, err
-	}
-	if int64(len(bodyBytes)) > MaxResponseBodyBytes {
-		return nil, ErrResponseBodyTooLarge
-	}
-	return bodyBytes, nil
+	return io.ReadAll(body)
 }
 
 // RequestEditorFn is the function signature for the RequestEditor callback function
@@ -93,7 +76,7 @@ func NewClient(server string, opts ...ClientOption) (*Client, error) {
 		client.Server += "/"
 	}
 	if client.Client == nil {
-		client.Client = &http.Client{Timeout: DefaultHTTPClientTimeout}
+		client.Client = &http.Client{}
 	}
 	return &client, nil
 }

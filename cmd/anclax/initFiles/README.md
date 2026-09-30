@@ -49,6 +49,32 @@ make ut        # run tests with the race detector and coverage
 
 Edit `pkg/model/model.go` to extend model behavior. It is scaffold source; only `pkg/model/mock_gen.go`, `pkg/zgen/`, and `app/wire/wire_gen.go` are generated.
 
+## Outbound API client policy
+
+Use `pkg/apiclient` when calling this API from Go. Its `client.go` is ordinary application code: you own the timeout, response limit, HTTP transport, and response handling, and `anclax gen` preserves your changes.
+
+`apiclient.DefaultConfig()` sets a 30-second timeout for the whole request, including reading its body, and a 10 MiB response limit. Edit these defaults in `pkg/apiclient/client.go`, or choose settings for one client:
+
+```go
+cfg := apiclient.DefaultConfig()
+cfg.Timeout = 2 * time.Minute
+cfg.MaxResponseBodyBytes = 64 << 20
+client, err := apiclient.New(baseURL, cfg)
+if err != nil {
+    return err
+}
+response, err := client.GetCounterWithResponse(ctx)
+if err != nil {
+    return err
+}
+```
+
+The size limit applies to both parsed and raw responses. Overflows return `apiclient.ErrResponseBodyTooLarge`, checkable with `errors.Is`. Set `MaxResponseBodyBytes` to zero to disable the size limit, and `Timeout` to zero to disable the request timeout. For large downloads, choose those settings as needed and stream and close the raw response body.
+
+Generated `pkg/zgen/apigen` clients handle the API protocol and accept application HTTP clients through `WithHTTPClient`. Keep custom client policy in `pkg/apiclient`, where regeneration preserves it.
+
+## Transactions and tasks
+
 Use `core.Tx` from `github.com/cloudcarver/anclax/core` for transaction callbacks and `SpawnWithTx`. This matches generated task runners and failure hooks:
 
 ```go

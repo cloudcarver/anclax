@@ -42,8 +42,9 @@ func (b *trackedResponseBody) Close() error {
 	return b.closeErr
 }
 
-func TestGeneratedResponseParserAcceptsExactSizeLimit(t *testing.T) {
-	body := &trackedResponseBody{Reader: io.LimitReader(endlessZeroReader{}, MaxResponseBodyBytes)}
+func TestGeneratedResponseParserLeavesSizePolicyToApplication(t *testing.T) {
+	const bodySize = 10<<20 + 1
+	body := &trackedResponseBody{Reader: io.LimitReader(endlessZeroReader{}, bodySize)}
 	rsp := &http.Response{
 		StatusCode: http.StatusInternalServerError,
 		Header:     http.Header{"Content-Type": []string{"text/plain"}},
@@ -52,24 +53,8 @@ func TestGeneratedResponseParserAcceptsExactSizeLimit(t *testing.T) {
 
 	parsed, err := ParseListTasksResponse(rsp)
 	require.NoError(t, err)
-	require.Len(t, parsed.Body, int(MaxResponseBodyBytes))
-	require.Equal(t, MaxResponseBodyBytes, body.bytesRead)
-	require.Equal(t, 1, body.closes)
-}
-
-func TestGeneratedResponseParserRejectsStreamingBodyOverLimit(t *testing.T) {
-	body := &trackedResponseBody{Reader: endlessZeroReader{}}
-	rsp := &http.Response{
-		StatusCode: http.StatusInternalServerError,
-		Header:     http.Header{"Content-Type": []string{"text/plain"}},
-		Body:       body,
-	}
-
-	parsed, err := ParseListTasksResponse(rsp)
-	require.Nil(t, parsed)
-	require.ErrorIs(t, err, ErrResponseBodyTooLarge)
-	require.Equal(t, "response body exceeds maximum size", err.Error())
-	require.Equal(t, MaxResponseBodyBytes+1, body.bytesRead)
+	require.Len(t, parsed.Body, bodySize)
+	require.EqualValues(t, bodySize, body.bytesRead)
 	require.Equal(t, 1, body.closes)
 }
 
@@ -197,11 +182,11 @@ func TestGeneratedClientPreservesContextCancellationWhileReading(t *testing.T) {
 	require.NotNil(t, body)
 	require.Positive(t, body.bytesRead)
 	require.ErrorIs(t, err, context.Canceled)
-	require.NotErrorIs(t, err, ErrResponseBodyTooLarge)
 }
 
 func TestGeneratedRawClientKeepsLargeResponsesStreaming(t *testing.T) {
-	body := &trackedResponseBody{Reader: io.LimitReader(endlessZeroReader{}, MaxResponseBodyBytes+1)}
+	const bodySize = 10<<20 + 1
+	body := &trackedResponseBody{Reader: io.LimitReader(endlessZeroReader{}, bodySize)}
 	client, err := NewClient("http://example.test", WithHTTPClient(httpDoerFunc(func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusOK, Body: body}, nil
 	})))
@@ -213,19 +198,19 @@ func TestGeneratedRawClientKeepsLargeResponsesStreaming(t *testing.T) {
 	require.Zero(t, body.closes)
 	n, err := io.Copy(io.Discard, rsp.Body)
 	require.NoError(t, err)
-	require.Equal(t, MaxResponseBodyBytes+1, n)
+	require.EqualValues(t, bodySize, n)
 }
 
-func TestGeneratedClientUsesTimeoutUnlessOverridden(t *testing.T) {
+func TestGeneratedClientLeavesTimeoutPolicyToApplication(t *testing.T) {
 	client, err := NewClient("http://example.test")
 	require.NoError(t, err)
 	defaultClient, ok := client.Client.(*http.Client)
 	require.True(t, ok)
-	require.Equal(t, DefaultHTTPClientTimeout, defaultClient.Timeout)
+	require.Zero(t, defaultClient.Timeout)
 
-	override := &http.Client{}
+	override := &http.Client{Timeout: time.Minute}
 	client, err = NewClient("http://example.test", WithHTTPClient(override))
 	require.NoError(t, err)
 	require.Same(t, override, client.Client)
-	require.Zero(t, override.Timeout)
+	require.Equal(t, time.Minute, override.Timeout)
 }
