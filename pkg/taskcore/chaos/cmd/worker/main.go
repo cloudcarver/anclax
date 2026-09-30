@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 	"github.com/cloudcarver/anclax/pkg/asynctask"
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/globalctx"
+	"github.com/cloudcarver/anclax/pkg/taskcore/chaos"
 	"github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
@@ -47,7 +49,7 @@ func main() {
 	taskStore := store.NewTaskStore(m)
 	runner := taskgen.NewTaskRunner(taskStore)
 	executor := asynctask.NewExecutor(cfg, m, runner)
-	handler := taskgen.NewTaskHandler(executor)
+	handler := taskgen.NewTaskHandler(&gateExecutor{ExecutorInterface: executor, name: name})
 	gctx := globalctx.New()
 	w, err := worker.NewWorkerFromConfig(gctx, cfg, m, handler)
 	if err != nil {
@@ -57,6 +59,23 @@ func main() {
 	executor.SetLocalWorker(w)
 	log.Printf("worker %s starting labels=%v", name, labels)
 	w.Start()
+}
+
+// Only the test worker recognizes gate groups; production executors are unchanged.
+type gateExecutor struct {
+	taskgen.ExecutorInterface
+	name string
+}
+
+func (e *gateExecutor) ExecuteStressProbe(ctx context.Context, task worker.Task, params *taskgen.StressProbeParameters) error {
+	if strings.HasPrefix(params.Group, "chaos:gate:") {
+		if err := chaos.WaitAtGate(ctx, os.Getenv("CHAOS_GATE_BASE_URL"), chaos.GateAttempt{
+			Key: params.Group, TaskID: task.ID, LeaseVersion: task.LeaseVersion, Worker: e.name,
+		}); err != nil {
+			return err
+		}
+	}
+	return e.ExecutorInterface.ExecuteStressProbe(ctx, task, params)
 }
 
 func splitCSV(v string) []string {

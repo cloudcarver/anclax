@@ -31,6 +31,10 @@ func (uc *UserContextCaveat) Type() string {
 	return uc.Typ
 }
 
+func (uc *UserContextCaveat) Settings() macaroons.CaveatSettings {
+	return macaroons.CaveatSettings{}
+}
+
 func (uc *UserContextCaveat) Validate(ctx fiber.Ctx) error {
 	if ctx.Locals(ContextKeyUserID) != nil && ctx.Locals(ContextKeyOrgID) != nil {
 		return errors.Wrap(macaroons.ErrCaveatCheckFailed, "user_context caveat already exists")
@@ -57,6 +61,10 @@ func NewRefreshOnlyCaveat(group string, accessCaveats []string) *RefreshOnlyCave
 
 func (rc *RefreshOnlyCaveat) Type() string {
 	return rc.Typ
+}
+
+func (rc *RefreshOnlyCaveat) Settings() macaroons.CaveatSettings {
+	return macaroons.CaveatSettings{}
 }
 
 func (rc *RefreshOnlyCaveat) Validate(ctx fiber.Ctx) error {
