@@ -30,6 +30,11 @@ type HTTPDelegate interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
+const (
+	defaultHTTPClientTimeout     = 30 * time.Second
+	defaultResponseHeaderTimeout = 15 * time.Second
+)
+
 type HTTPClient struct {
 	base    string
 	m       sync.RWMutex
@@ -46,11 +51,7 @@ func NewHTTPClient(base string, httpDelegate ...HTTPDelegate) *HTTPClient {
 	if len(httpDelegate) != 0 {
 		delegate = httpDelegate[0]
 	} else {
-		delegate = &http.Client{
-			Transport: &http.Transport{
-				Proxy: http.ProxyFromEnvironment,
-			},
-		}
+		delegate = newDefaultHTTPClient(http.ProxyFromEnvironment)
 	}
 	return &HTTPClient{
 		base:    pathBase,
@@ -59,26 +60,28 @@ func NewHTTPClient(base string, httpDelegate ...HTTPDelegate) *HTTPClient {
 	}
 }
 
+func newDefaultHTTPClient(proxy func(*http.Request) (*neturl.URL, error)) *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = proxy
+	transport.ResponseHeaderTimeout = defaultResponseHeaderTimeout
+	return &http.Client{
+		Transport: transport,
+		Timeout:   defaultHTTPClientTimeout,
+	}
+}
+
 func (c *HTTPClient) SetProxy(proxy string) {
 	c.m.Lock()
 	defer c.m.Unlock()
-	c.client = &http.Client{
-		Transport: &http.Transport{
-			Proxy: func(req *http.Request) (*neturl.URL, error) {
-				return neturl.Parse(proxy)
-			},
-		},
-	}
+	c.client = newDefaultHTTPClient(func(req *http.Request) (*neturl.URL, error) {
+		return neturl.Parse(proxy)
+	})
 }
 
 func (c *HTTPClient) UnsetProxy() {
 	c.m.Lock()
 	defer c.m.Unlock()
-	c.client = &http.Client{
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-		},
-	}
+	c.client = newDefaultHTTPClient(http.ProxyFromEnvironment)
 }
 
 func (c *HTTPClient) SetHeader(key, val string) {
@@ -109,6 +112,9 @@ type ResponseHelper struct {
 }
 
 func (c *HTTPClient) startRequest(ctx context.Context, method string, path string) *RequestContext {
+	c.m.RLock()
+	defer c.m.RUnlock()
+
 	headers := http.Header{}
 	for k, l := range c.headers {
 		for _, v := range l {
@@ -117,12 +123,19 @@ func (c *HTTPClient) startRequest(ctx context.Context, method string, path strin
 	}
 	return &RequestContext{
 		c:       c,
-		ctx:     ctx,
+		ctx:     contextOrBackground(ctx),
 		method:  method,
 		query:   map[string][]string{},
 		headers: headers,
 		path:    path,
 	}
+}
+
+func contextOrBackground(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
 }
 
 func (c *HTTPClient) Get(ctx context.Context, path string) *RequestContext {
@@ -248,7 +261,7 @@ func (rc *RequestContext) Poll(onResponse func(*ResponseHelper) (bool, error), p
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			res, err := rc.Do()
+			res, err := rc.do(ctx)
 			if err != nil {
 				return err
 			}
@@ -264,6 +277,10 @@ func (rc *RequestContext) Poll(onResponse func(*ResponseHelper) (bool, error), p
 }
 
 func (rc *RequestContext) Do() (*ResponseHelper, error) {
+	return rc.do(rc.ctx)
+}
+
+func (rc *RequestContext) do(ctx context.Context) (*ResponseHelper, error) {
 	// handle previous errors
 	if len(rc.errors) != 0 {
 		msg := ""
@@ -280,7 +297,7 @@ func (rc *RequestContext) Do() (*ResponseHelper, error) {
 	}
 
 	// new request
-	req, err := http.NewRequest(rc.method, urlStr, rc.body)
+	req, err := http.NewRequestWithContext(contextOrBackground(ctx), rc.method, urlStr, rc.body)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to construct request, method: %s, url: %s", rc.method, urlStr)
 	}
@@ -298,7 +315,10 @@ func (rc *RequestContext) Do() (*ResponseHelper, error) {
 	req.Header = rc.headers
 
 	// send request
-	res, err := rc.c.client.Do(req)
+	rc.c.m.RLock()
+	client := rc.c.client
+	rc.c.m.RUnlock()
+	res, err := client.Do(req)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to send request, method: %s, path: %s, query: %v, headers: %v", rc.method, rc.path, rc.query, rc.headers)
 	}
