@@ -168,6 +168,12 @@ func (h *Handler) GetCounter(c *fiber.Ctx) error {
 
 ## 功能展示：核心能力 🧰
 
+### 自动生成的 Go API 客户端
+
+默认客户端的整个请求（包括读取响应体）最多等待 30 秒。`WithResponse` 方法和 `Parse…Response` 辅助函数最多缓冲 10 MiB 响应数据；超过限制会返回 `ErrResponseBodyTooLarge`，可以用 `errors.Is` 判断。解析成功或失败都会关闭响应体，读取错误（包括 context 取消）会返回给调用方。
+
+下载大文件时，使用原始 `Client` 方法流式读取返回的 `http.Response.Body`，并在使用后关闭。较长的请求可以通过 `WithHTTPClient` 传入自己的 HTTP 客户端，其超时设置会保留。已有项目重新运行 `anclax gen` 后会应用这些默认值。
+
 ### 基于 OpenAPI 的中间件（无需 DSL）
 ```yaml
 x-check-rules:

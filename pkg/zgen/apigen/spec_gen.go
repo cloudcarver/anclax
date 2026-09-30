@@ -208,7 +208,14 @@ const MaxResponseBodyBytes int64 = 10 << 20
 // ErrResponseBodyTooLarge is returned when a response exceeds MaxResponseBodyBytes.
 var ErrResponseBodyTooLarge = errors.New("response body exceeds maximum size")
 
-func readResponseBody(body io.Reader) ([]byte, error) {
+var xClientLog = logger.NewLogAgent("api-client")
+
+func readResponseBody(body io.ReadCloser) ([]byte, error) {
+	defer func() {
+		if err := body.Close(); err != nil {
+			xClientLog.Warn("failed to close response body")
+		}
+	}()
 	bodyBytes, err := io.ReadAll(io.LimitReader(body, MaxResponseBodyBytes+1))
 	if err != nil {
 		return nil, err
@@ -1005,7 +1012,6 @@ func (c *ClientWithResponses) TryExecuteTaskWithResponse(ctx context.Context, ta
 
 // ParseListTasksResponse parses an HTTP response from a ListTasksWithResponse call
 func ParseListTasksResponse(rsp *http.Response) (*ListTasksResponse, error) {
-	defer func() { _ = rsp.Body.Close() }()
 	bodyBytes, err := readResponseBody(rsp.Body)
 	if err != nil {
 		return nil, err
@@ -1027,7 +1033,6 @@ func ParseListTasksResponse(rsp *http.Response) (*ListTasksResponse, error) {
 
 // ParseListOrgsResponse parses an HTTP response from a ListOrgsWithResponse call
 func ParseListOrgsResponse(rsp *http.Response) (*ListOrgsResponse, error) {
-	defer func() { _ = rsp.Body.Close() }()
 	bodyBytes, err := readResponseBody(rsp.Body)
 	if err != nil {
 		return nil, err
@@ -1049,7 +1054,6 @@ func ParseListOrgsResponse(rsp *http.Response) (*ListOrgsResponse, error) {
 
 // ParseListEventsResponse parses an HTTP response from a ListEventsWithResponse call
 func ParseListEventsResponse(rsp *http.Response) (*ListEventsResponse, error) {
-	defer func() { _ = rsp.Body.Close() }()
 	bodyBytes, err := readResponseBody(rsp.Body)
 	if err != nil {
 		return nil, err
@@ -1071,7 +1075,6 @@ func ParseListEventsResponse(rsp *http.Response) (*ListEventsResponse, error) {
 
 // ParseSignUpResponse parses an HTTP response from a SignUpWithResponse call
 func ParseSignUpResponse(rsp *http.Response) (*SignUpResponse, error) {
-	defer func() { _ = rsp.Body.Close() }()
 	bodyBytes, err := readResponseBody(rsp.Body)
 	if err != nil {
 		return nil, err
@@ -1093,7 +1096,6 @@ func ParseSignUpResponse(rsp *http.Response) (*SignUpResponse, error) {
 
 // ParseSignOutResponse parses an HTTP response from a SignOutWithResponse call
 func ParseSignOutResponse(rsp *http.Response) (*SignOutResponse, error) {
-	defer func() { _ = rsp.Body.Close() }()
 	bodyBytes, err := readResponseBody(rsp.Body)
 	if err != nil {
 		return nil, err
@@ -1106,7 +1108,6 @@ func ParseSignOutResponse(rsp *http.Response) (*SignOutResponse, error) {
 
 // ParseSignInResponse parses an HTTP response from a SignInWithResponse call
 func ParseSignInResponse(rsp *http.Response) (*SignInResponse, error) {
-	defer func() { _ = rsp.Body.Close() }()
 	bodyBytes, err := readResponseBody(rsp.Body)
 	if err != nil {
 		return nil, err
@@ -1128,7 +1129,6 @@ func ParseSignInResponse(rsp *http.Response) (*SignInResponse, error) {
 
 // ParseRefreshTokenResponse parses an HTTP response from a RefreshTokenWithResponse call
 func ParseRefreshTokenResponse(rsp *http.Response) (*RefreshTokenResponse, error) {
-	defer func() { _ = rsp.Body.Close() }()
 	bodyBytes, err := readResponseBody(rsp.Body)
 	if err != nil {
 		return nil, err
@@ -1150,7 +1150,6 @@ func ParseRefreshTokenResponse(rsp *http.Response) (*RefreshTokenResponse, error
 
 // ParseTryExecuteTaskResponse parses an HTTP response from a TryExecuteTaskWithResponse call
 func ParseTryExecuteTaskResponse(rsp *http.Response) (*TryExecuteTaskResponse, error) {
-	defer func() { _ = rsp.Body.Close() }()
 	bodyBytes, err := readResponseBody(rsp.Body)
 	if err != nil {
 		return nil, err

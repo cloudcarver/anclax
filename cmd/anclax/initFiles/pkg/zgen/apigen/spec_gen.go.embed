@@ -33,7 +33,14 @@ const MaxResponseBodyBytes int64 = 10 << 20
 // ErrResponseBodyTooLarge is returned when a response exceeds MaxResponseBodyBytes.
 var ErrResponseBodyTooLarge = errors.New("response body exceeds maximum size")
 
-func readResponseBody(body io.Reader) ([]byte, error) {
+var xClientLog = logger.NewLogAgent("api-client")
+
+func readResponseBody(body io.ReadCloser) ([]byte, error) {
+	defer func() {
+		if err := body.Close(); err != nil {
+			xClientLog.Warn("failed to close response body")
+		}
+	}()
 	bodyBytes, err := io.ReadAll(io.LimitReader(body, MaxResponseBodyBytes+1))
 	if err != nil {
 		return nil, err
@@ -303,7 +310,6 @@ func (c *ClientWithResponses) IncrementCounterWithResponse(ctx context.Context, 
 
 // ParseGetCounterResponse parses an HTTP response from a GetCounterWithResponse call
 func ParseGetCounterResponse(rsp *http.Response) (*GetCounterResponse, error) {
-	defer func() { _ = rsp.Body.Close() }()
 	bodyBytes, err := readResponseBody(rsp.Body)
 	if err != nil {
 		return nil, err
@@ -325,7 +331,6 @@ func ParseGetCounterResponse(rsp *http.Response) (*GetCounterResponse, error) {
 
 // ParseIncrementCounterResponse parses an HTTP response from a IncrementCounterWithResponse call
 func ParseIncrementCounterResponse(rsp *http.Response) (*IncrementCounterResponse, error) {
-	defer func() { _ = rsp.Body.Close() }()
 	bodyBytes, err := readResponseBody(rsp.Body)
 	if err != nil {
 		return nil, err
