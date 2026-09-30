@@ -16,8 +16,8 @@ This guide explains how Anclax schedules async tasks with strict priority + weig
 
 ## Quick Summary
 
-- `priority > 0` => **strict lane** (urgent lane).
-- `priority == 0` => **normal lane** (weighted fairness lane).
+- Business task `priority > 0` => **strict lane** (urgent lane).
+- Business task `priority == 0` => **normal lane** (weighted fairness lane).
 - Strict lane admission is capped by `maxStrictPercentage` against worker concurrency.
 - Normal lane fairness is controlled by runtime label-group weights (`labelWeights`).
 - Within a selected normal group, tasks are ordered by `weight DESC`, then FIFO fields (`created_at`, `id`).
@@ -126,9 +126,9 @@ err := controlPlane.UpdateWorkerRuntimeConfig(ctx,
 )
 ```
 
-Why the control plane is required:
-- It always applies reserved strict priority (`math.MaxInt32`) for config-update tasks.
-- It prevents accidental lower-priority enqueueing of control-plane updates.
+Why use the control plane:
+- Reserved control types use an independent lane with one additional slot per worker.
+- Commands remain claimable when business capacity is full or the strict percentage is zero.
 - It hides worker snapshots, request IDs, and convergence polling from callers.
 
 ## Propagation Flow (Task Fanout + DB)
@@ -136,13 +136,11 @@ Why the control plane is required:
 ### Broadcast side
 
 1. Validate and normalize payload.
-2. Insert versioned row into `anclax.worker_runtime_configs`.
+2. Idempotently get or create a version in `anclax.worker_runtime_configs` by request ID.
 3. Snapshot alive target workers.
 4. Enqueue one `applyWorkerRuntimeConfigToWorker` command task per remote worker; local workers can be signaled directly.
-5. Loop until converged or superseded:
-   - query alive lagging workers (`applied_config_version < target_version`)
-   - cancel obsolete command tasks for workers that left the alive set
-   - poll until all targeted alive workers have applied the target version
+5. Check alive lagging workers and cancel obsolete command tasks for departed workers.
+6. If still waiting, persist a deferral and release the control slot. The next invocation reuses the request ID and version. Finish on convergence or supersession.
 
 ### Worker side
 

@@ -6,8 +6,11 @@ import (
 	counter "myexampleapp/pkg/zgen/schemas/counter"
 	"myexampleapp/pkg/zgen/taskgen"
 
+	"github.com/cloudcarver/anclax/pkg/logger"
 	"github.com/gofiber/fiber/v3"
 )
+
+var log = logger.NewLogAgent("handler")
 
 type Handler struct {
 	model      model.ModelInterface
@@ -21,7 +24,8 @@ func NewHandler(model model.ModelInterface, taskrunner taskgen.TaskRunner) (apig
 func (h *Handler) GetCounter(c fiber.Ctx) error {
 	count, err := h.model.GetCounter(c.Context())
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
+		log.Error("failed to get counter")
+		return fiber.ErrInternalServerError
 	}
 	return c.JSON(counter.Counter{Count: count.Value})
 }
@@ -31,7 +35,8 @@ func (h *Handler) IncrementCounter(c fiber.Ctx) error {
 		Amount: 1,
 	})
 	if err != nil {
-		return err
+		log.Error("failed to enqueue counter increment")
+		return fiber.ErrInternalServerError
 	}
-	return c.Status(fiber.StatusAccepted).SendString("Incremented")
+	return c.SendStatus(fiber.StatusAccepted)
 }

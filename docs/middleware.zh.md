@@ -57,29 +57,46 @@ func xCheckRuleStatusCode(err error) int {
     return fiber.StatusForbidden
 }
 
-func (x *XMiddleware) IncrementCounter(c *fiber.Ctx) error {
+func (x *XMiddleware) IncrementCounter(c fiber.Ctx) error {
     if err := x.AuthFunc(c); err != nil {
-        return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
+        return xSecurityError(c, fiber.StatusUnauthorized, "authentication")
     }
     if err := x.PreValidate(c); err != nil {
-        return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+        return xSecurityError(c, xCheckRuleStatusCode(err), "pre-validation")
     }
     
     operationID := "IncrementCounter"  // 引用时自动生成
     
     // 您的实际 Go 代码在这里执行：
     if err := x.OperationPermit(c, operationID); err != nil {
-        return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+        return xSecurityError(c, xCheckRuleStatusCode(err), "authorization")
     }
     
     if err := x.PostValidate(c); err != nil {
-        return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+        return xSecurityError(c, xCheckRuleStatusCode(err), "post-validation")
     }
     return x.ServerInterface.IncrementCounter(c)
 }
 ```
 
 验证钩子和 check rules 默认返回 `403 Forbidden`；如果返回的错误 wrap 了 `*fiber.Error`，生成的中间件会使用该错误的状态码。
+
+## 鉴权继承与备选方案
+
+操作未声明 `security` 时，继承顶层配置；显式设置 `security: []` 会关闭继承。空的鉴权要求（`{}`）允许匿名访问，即使它与其他受保护的方案同时出现。
+
+同一个鉴权要求中的所有认证方式和检查规则都必须通过；多个要求之间，只需一个完整方案通过。例如，下面的配置允许“Bearer 令牌与 API key 同时有效”，或者“会话 Cookie 有效”：
+
+```yaml
+security:
+  - BearerAuth: []
+    ApiKeyAuth: []
+  - CookieAuth: []
+```
+
+对于受保护的方案，生成的中间件依次执行 `AuthFunc`、`PreValidate`、当前方案的检查规则和 `PostValidate`，第一个成功方案通过后停止尝试。验证器需要检查当前方案要求的所有认证方式；生成的 `*Scopes` 上下文值标识当前方案，包括空的权限列表，其他方案的值不会混入。尝试后续方案时可能再次调用验证钩子，因此钩子应避免不可逆的副作用，并在每次认证成功时设置当前身份。
+
+失败方案会在下一次尝试前恢复原始响应。所有方案都失败时，不会调用业务处理器，响应只包含标准状态信息；日志记录失败阶段和状态码，不包含原始错误或凭证值。
 
 ## x-check-rules
 
