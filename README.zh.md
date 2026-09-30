@@ -170,9 +170,11 @@ func (h *Handler) GetCounter(c *fiber.Ctx) error {
 
 ### 自动生成的 Go API 客户端
 
-默认客户端的整个请求（包括读取响应体）最多等待 30 秒。`WithResponse` 方法和 `Parse…Response` 辅助函数最多缓冲 10 MiB 响应数据；超过限制会返回 `ErrResponseBodyTooLarge`，可以用 `errors.Is` 判断。解析成功或失败都会关闭响应体，读取错误（包括 context 取消）会返回给调用方。
+脚手架在普通应用代码 [`pkg/apiclient/client.go`](examples/simple/pkg/apiclient/client.go) 中定义客户端策略。`apiclient.DefaultConfig()` 提供 30 秒请求超时和 10 MiB 响应上限。可以直接修改默认值，也可以给 `apiclient.New` 传入自己的 `apiclient.Config`；`anclax gen` 会保留应用的客户端代码。
 
-下载大文件时，使用原始 `Client` 方法流式读取返回的 `http.Response.Body`，并在使用后关闭。较长的请求可以通过 `WithHTTPClient` 传入自己的 HTTP 客户端，其超时设置会保留。已有项目重新运行 `anclax gen` 后会应用这些默认值。
+脚手架的响应上限同时作用于自动解析和原始响应，超过限制返回 `apiclient.ErrResponseBodyTooLarge`，可以用 `errors.Is` 判断。下载大文件时，将 `MaxResponseBodyBytes` 设为零，再流式读取原始 `http.Response.Body` 并在使用后关闭。将 `Timeout` 设为零可以关闭请求超时。
+
+生成的 `apigen` 客户端负责 API 协议，应用通过 `WithHTTPClient` 提供自己的 HTTP 客户端和策略。解析成功或失败都会关闭响应体，读取错误（包括 context 取消）会返回给调用方。
 
 ### 基于 OpenAPI 的中间件（无需 DSL）
 ```yaml

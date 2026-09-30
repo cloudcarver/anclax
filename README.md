@@ -178,9 +178,11 @@ func (h *Handler) GetCounter(c *fiber.Ctx) error {
 
 ### Generated Go API clients
 
-Generated default clients use a 30-second timeout for the whole request, including reading the response body. `WithResponse` methods and `Parse…Response` helpers buffer at most 10 MiB of response data; larger bodies return `ErrResponseBodyTooLarge`, which can be checked with `errors.Is`. Parsing closes the response body on both success and failure, and read errors (including context cancellation) are returned to the caller.
+The scaffold owns outbound client policy in [`pkg/apiclient/client.go`](examples/simple/pkg/apiclient/client.go), an ordinary application source file. `apiclient.DefaultConfig()` provides a 30-second request timeout and a 10 MiB response limit. Edit those defaults or pass a different `apiclient.Config` to `apiclient.New`; `anclax gen` preserves application client code.
 
-For large downloads, use the raw `Client` methods and stream and close the returned `http.Response.Body`. For longer requests, pass your own HTTP client with `WithHTTPClient`; its timeout is preserved. Regenerate existing clients with `anclax gen` to apply these defaults.
+The scaffold's response limit applies to both parsed and raw responses and returns `apiclient.ErrResponseBodyTooLarge`, checkable with `errors.Is`. Set `MaxResponseBodyBytes` to zero for large downloads and stream and close the raw `http.Response.Body`. Set `Timeout` to zero to disable the request timeout.
+
+Generated `apigen` clients handle the API protocol; applications supply their HTTP transport and policy through `WithHTTPClient`. Parsing closes response bodies on success and failure, and returns read errors, including context cancellation.
 
 ### OpenAPI-powered middleware (no DSL)
 ```yaml
