@@ -34,3 +34,14 @@ func TaskToAPI(task *querier.AnclaxTask) apigen.Task {
 		Attributes:   attributes,
 	}
 }
+
+// IsSystemTask identifies the framework-owned lane. User task priority does not
+// confer system privileges.
+func IsSystemTask(taskType string) bool {
+	switch taskType {
+	case "prefetchTasks", "broadcastUpdateWorkerRuntimeConfig", "applyWorkerRuntimeConfigToWorker", "broadcastCancelTask", "cancelTaskOnWorker", "broadcastPauseTask", "pauseTaskOnWorker":
+		return true
+	default:
+		return false
+	}
+}

@@ -8,7 +8,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cloudcarver/anclax/pkg/logger"
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/requestid"
+	"go.uber.org/zap"
 	"io"
 	"myexampleapp/pkg/zgen/schemas/counter"
 	"net/http"
@@ -240,7 +243,7 @@ type ClientWithResponsesInterface interface {
 type GetCounterResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *[]counter.Counter
+	JSON200      *counter.Counter
 }
 
 // Status returns HTTPResponse.Status
@@ -310,7 +313,7 @@ func ParseGetCounterResponse(rsp *http.Response) (*GetCounterResponse, error) {
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest []counter.Counter
+		var dest counter.Counter
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -358,7 +361,6 @@ func (siw *ServerInterfaceWrapper) GetCounter(c fiber.Ctx) error {
 // IncrementCounter operation middleware
 func (siw *ServerInterfaceWrapper) IncrementCounter(c fiber.Ctx) error {
 	fiber.StoreInContext(c, BearerAuthScopes, []string{"x.OperationPermit(c, operationID)"})
-
 	return siw.Handler.IncrementCounter(c)
 }
 
@@ -388,7 +390,8 @@ func RegisterHandlersWithOptions(router fiber.Router, si ServerInterface, option
 }
 
 type Validator interface {
-	// AuthFunc is called before the request is processed. The response will be 401 if the auth fails.
+	// AuthFunc checks every scheme in the current security alternative. Scope context values contain only that alternative.
+	// It may be called again for another alternative. Authentication failures return 401.
 	AuthFunc(fiber.Ctx) error
 
 	// PreValidate is called before the request is processed. The response will use a wrapped *fiber.Error status code, or 403 otherwise.
@@ -408,6 +411,23 @@ func xCheckRuleStatusCode(err error) int {
 	return fiber.StatusForbidden
 }
 
+var xSecurityLog = logger.NewLogAgent("security")
+
+func xLogSecurityFailure(c fiber.Ctx, status int, stage string) {
+	fields := []zap.Field{zap.Int("status", status), zap.String("stage", stage), zap.String("request-id", requestid.FromContext(c))}
+	if status >= fiber.StatusInternalServerError {
+		xSecurityLog.Error("security check failed", fields...)
+	} else {
+		xSecurityLog.Warn("security check failed", fields...)
+	}
+}
+
+func xSecurityError(c fiber.Ctx, status int, stage string) error {
+	xLogSecurityFailure(c, status, stage)
+	c.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
+	return c.Status(status).SendString(http.StatusText(status))
+}
+
 type XMiddleware struct {
 	ServerInterface
 	Validator
@@ -421,17 +441,17 @@ func NewXMiddleware(handler ServerInterface, validator Validator) ServerInterfac
 // (POST /counter)
 func (x *XMiddleware) IncrementCounter(c fiber.Ctx) error {
 	if err := x.AuthFunc(c); err != nil {
-		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
+		return xSecurityError(c, fiber.StatusUnauthorized, "authentication")
 	}
 	if err := x.PreValidate(c); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return xSecurityError(c, xCheckRuleStatusCode(err), "pre-validation")
 	}
 	operationID := "IncrementCounter"
 	if err := x.OperationPermit(c, operationID); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return xSecurityError(c, xCheckRuleStatusCode(err), "authorization")
 	}
 	if err := x.PostValidate(c); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return xSecurityError(c, xCheckRuleStatusCode(err), "post-validation")
 	}
 	return x.ServerInterface.IncrementCounter(c)
 }

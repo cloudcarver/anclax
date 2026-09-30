@@ -57,29 +57,46 @@ func xCheckRuleStatusCode(err error) int {
     return fiber.StatusForbidden
 }
 
-func (x *XMiddleware) IncrementCounter(c *fiber.Ctx) error {
+func (x *XMiddleware) IncrementCounter(c fiber.Ctx) error {
     if err := x.AuthFunc(c); err != nil {
-        return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
+        return xSecurityError(c, fiber.StatusUnauthorized, "authentication")
     }
     if err := x.PreValidate(c); err != nil {
-        return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+        return xSecurityError(c, xCheckRuleStatusCode(err), "pre-validation")
     }
     
     operationID := "IncrementCounter"  // Auto-generated when referenced
     
     // Your actual Go code gets executed here:
     if err := x.OperationPermit(c, operationID); err != nil {
-        return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+        return xSecurityError(c, xCheckRuleStatusCode(err), "authorization")
     }
     
     if err := x.PostValidate(c); err != nil {
-        return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+        return xSecurityError(c, xCheckRuleStatusCode(err), "post-validation")
     }
     return x.ServerInterface.IncrementCounter(c)
 }
 ```
 
 Validation hooks and check rules default to `403 Forbidden`, but if they return an error wrapping `*fiber.Error`, the generated middleware uses that error's status code.
+
+## Security inheritance and alternatives
+
+An operation inherits top-level `security` when it omits its own field. An explicit `security: []` disables that inheritance. An empty requirement (`{}`) permits anonymous requests, including when it appears alongside protected alternatives.
+
+Within one security requirement, every named scheme and check rule must succeed. Between requirements, any one complete alternative is sufficient. For example, this accepts a bearer token together with an API key, or a session cookie:
+
+```yaml
+security:
+  - BearerAuth: []
+    ApiKeyAuth: []
+  - CookieAuth: []
+```
+
+For protected alternatives, the generated middleware runs `AuthFunc`, `PreValidate`, the alternative's check rules, and `PostValidate` in order. It stops at the first successful alternative. The validator must verify every scheme in the active alternative; its generated `*Scopes` context values identify those schemes, including empty scope lists. Values from other alternatives are absent. A later alternative can invoke the validation hooks again, so these hooks should validate without irreversible side effects and establish the current authenticated identity on each successful authentication.
+
+Failed alternatives restore the original response before another attempt. If all alternatives fail, the handler is not called and the response uses a standard status message without raw errors. Failed checks are logged with their stage and status, without credential values.
 
 ## x-check-rules
 

@@ -1,21 +1,25 @@
-SHELL := /bin/zsh
-PROJECT_DIR=$(shell pwd)
+SHELL := /bin/sh
+
+.PHONY: dev reload db gen test ut
 
 ###################################################
 ### Dev 
 ###################################################
 
 dev:
-	docker-compose up
+	docker compose up
 
 reload:
-	docker-compose restart dev
+	docker compose restart dev
 
 db:
 	psql "postgresql://postgres:postgres@localhost:5432/postgres?sslmode=disable"
 
+gen:
+	anclax gen
+
 test:
-	TEST_DIR=$(PROJECT_DIR)/e2e HOLD="$(HOLD)" ./scripts/run-local-test.sh "$(K)" 
+	go test ./...
 
 ut:
 	@COLOR=ALWAYS go test -race -covermode=atomic -coverprofile=coverage.out -tags ut ./... 

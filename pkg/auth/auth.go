@@ -7,10 +7,13 @@ import (
 
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/hooks"
+	"github.com/cloudcarver/anclax/pkg/logger"
 	"github.com/cloudcarver/anclax/pkg/macaroons"
+	"github.com/cloudcarver/anclax/pkg/macaroons/store"
 	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/gofiber/fiber/v3"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 const (
@@ -25,6 +28,7 @@ const (
 )
 
 var (
+	log                     = logger.NewLogAgent("auth")
 	ErrUserIdentityNotExist = errors.New("user identity not exists")
 	ErrInvalidRefreshToken  = errors.New("invalid refresh token")
 )
@@ -99,7 +103,7 @@ func NewAuth(cfg *config.Config, macaroonManager macaroons.MacaroonManagerInterf
 func (a *Auth) Authfunc(c fiber.Ctx) error {
 	authHeader := c.Get("Authorization")
 	if authHeader == "" {
-		return errors.Wrap(fiber.ErrUnauthorized, "missing authorization header")
+		return fiber.ErrUnauthorized
 	}
 
 	// Remove "Bearer " prefix if present
@@ -110,18 +114,33 @@ func (a *Auth) Authfunc(c fiber.Ctx) error {
 
 	token, err := a.macaroonManager.Parse(c.Context(), tokenString)
 	if err != nil {
-		return errors.Wrapf(fiber.ErrUnauthorized, "failed to parse macaroon token, token: %s, err: %v", tokenString, err)
+		logTokenFailure("access-token parsing", err)
+		return fiber.ErrUnauthorized
 	}
 
 	c.Locals(ContextKeyMacaroon, token)
 
 	for _, caveat := range token.Caveats {
 		if err := caveat.Validate(c); err != nil {
-			return errors.Wrapf(fiber.ErrUnauthorized, "failed to validate caveat, token: %s, err: %v", tokenString, err)
+			logTokenFailure("access-token caveat validation", err)
+			return fiber.ErrUnauthorized
 		}
 	}
 
 	return nil
+}
+
+// Parser, store, and custom caveat errors can contain credentials. Record only
+// the validation stage, and distinguish invalid credentials from internal failures.
+func logTokenFailure(stage string, err error) {
+	fields := []zap.Field{zap.String("stage", stage)}
+	if errors.Is(err, macaroons.ErrMalformedToken) || errors.Is(err, macaroons.ErrInvalidSignature) ||
+		errors.Is(err, macaroons.ErrDuplicateCaveat) || errors.Is(err, macaroons.ErrCaveatCheckFailed) ||
+		errors.Is(err, store.ErrKeyNotFound) {
+		log.Warn("token validation failed", fields...)
+		return
+	}
+	log.Error("token validation failed", fields...)
 }
 
 func (a *Auth) CreateUserTokens(ctx context.Context, userID int32, orgID int32, caveats ...macaroons.Caveat) (*macaroons.Macaroon, *macaroons.Macaroon, error) {
@@ -177,7 +196,8 @@ func (a *Auth) CreateRefreshToken(ctx context.Context, group string, accessToken
 func (a *Auth) ParseRefreshToken(ctx context.Context, refreshToken string) (*macaroons.Macaroon, *RefreshOnlyCaveat, error) {
 	token, err := a.macaroonManager.Parse(ctx, refreshToken)
 	if err != nil {
-		return nil, nil, errors.Wrapf(err, "failed to parse macaroon token, token: %s", refreshToken)
+		logTokenFailure("refresh-token parsing", err)
+		return nil, nil, errors.Wrap(ErrInvalidRefreshToken, "failed to parse refresh token")
 	}
 
 	if len(token.Caveats) != 1 {
@@ -193,6 +213,7 @@ func (a *Auth) ParseRefreshToken(ctx context.Context, refreshToken string) (*mac
 	for i, encoded := range roc.AccessCaveats {
 		caveat, err := a.caveatParser.Parse(encoded)
 		if err != nil {
+			logTokenFailure("refresh-token access caveat parsing", err)
 			return nil, nil, errors.Wrap(ErrInvalidRefreshToken, "failed to parse access token caveat")
 		}
 		parsedCaveats[i] = caveat

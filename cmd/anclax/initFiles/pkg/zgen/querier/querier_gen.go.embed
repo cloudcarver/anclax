@@ -10,7 +10,7 @@ import (
 
 type Querier interface {
 	GetCounter(ctx context.Context) (*Counter, error)
-	IncrementCounter(ctx context.Context) error
+	IncrementCounter(ctx context.Context, amount int32) error
 }
 
 var _ Querier = (*Queries)(nil)

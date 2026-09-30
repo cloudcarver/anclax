@@ -21,6 +21,8 @@ func init() {
 }
 
 const (
+	PrefetchTasks = "prefetchTasks"
+
 	DeleteOpaqueKey = "deleteOpaqueKey"
 
 	BroadcastUpdateWorkerRuntimeConfig = "broadcastUpdateWorkerRuntimeConfig"
@@ -41,6 +43,11 @@ const (
 )
 
 type TaskRunner interface {
+	// Internal system task that admits and recovers bounded ready reservations
+	RunPrefetchTasks(ctx context.Context, params *map[string]any, overrides ...taskcore.TaskOverride) (int32, error)
+	// Internal system task that admits and recovers bounded ready reservations
+	RunPrefetchTasksWithTx(ctx context.Context, tx core.Tx, params *map[string]any, overrides ...taskcore.TaskOverride) (int32, error)
+
 	// Delete an opaque key
 	RunDeleteOpaqueKey(ctx context.Context, params *DeleteOpaqueKeyParameters, overrides ...taskcore.TaskOverride) (int32, error)
 	// Delete an opaque key
@@ -97,6 +104,61 @@ func NewTaskRunner(taskStore taskcore.TaskStoreInterface) TaskRunner {
 	}
 }
 
+func (c *Client) RunPrefetchTasks(ctx context.Context, params *map[string]any, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runPrefetchTasks(ctx, c.taskStore, nil, params, overrides...)
+}
+
+func (c *Client) RunPrefetchTasksWithTx(ctx context.Context, tx core.Tx, params *map[string]any, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runPrefetchTasks(ctx, c.taskStore, tx, params, overrides...)
+}
+
+func (c *Client) runPrefetchTasks(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *map[string]any, overrides ...taskcore.TaskOverride) (int32, error) {
+	task, err := NewPrefetchTasksTask(params, overrides...)
+	if err != nil {
+		return 0, err
+	}
+	var taskID int32
+	if tx == nil {
+		taskID, err = taskstore.PushTask(ctx, task)
+	} else {
+		taskID, err = taskstore.PushTaskWithTx(ctx, tx, task)
+	}
+	if err != nil {
+		return 0, err
+	}
+	return taskID, nil
+}
+
+func NewPrefetchTasksTask(params *map[string]any, overrides ...taskcore.TaskOverride) (*apigen.Task, error) {
+	payload, err := json.Marshal(params)
+	if err != nil {
+		return nil, err
+	}
+
+	spec := apigen.TaskSpec{
+		Type:    PrefetchTasks,
+		Payload: payload,
+	}
+	attributes := apigen.TaskAttributes{}
+
+	attributes.RetryPolicy = &apigen.TaskRetryPolicy{
+		Interval:    "100ms",
+		MaxAttempts: -1,
+	}
+
+	task := &apigen.Task{
+		Attributes: attributes,
+		Spec:       spec,
+		Status:     apigen.Pending,
+	}
+
+	for _, override := range overrides {
+		if err := override(task); err != nil {
+			return nil, errors.Wrap(err, "failed to apply task override")
+		}
+	}
+	return task, nil
+}
 func (c *Client) RunDeleteOpaqueKey(ctx context.Context, params *DeleteOpaqueKeyParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 	return c.runDeleteOpaqueKey(ctx, c.taskStore, nil, params, overrides...)
 }
@@ -792,6 +854,9 @@ func (r *CancelObservableProbeParameters) Marshal() (json.RawMessage, error) {
 }
 
 type ExecutorInterface interface {
+	// Internal system task that admits and recovers bounded ready reservations
+	ExecutePrefetchTasks(ctx context.Context, task worker.Task, params *map[string]any) error
+
 	// Delete an opaque key
 	ExecuteDeleteOpaqueKey(ctx context.Context, task worker.Task, params *DeleteOpaqueKeyParameters) error
 
@@ -851,6 +916,13 @@ func (f *TaskHandler) HandleTask(ctx context.Context, task worker.Task) error {
 	}
 
 	switch task.GetType() {
+	case PrefetchTasks:
+		var params map[string]any
+		if err := json.Unmarshal(task.GetPayload(), &params); err != nil {
+			return fmt.Errorf("failed to parse prefetchTasks parameters: %w", err)
+		}
+		return f.executor.ExecutePrefetchTasks(ctx, task, &params)
+
 	case DeleteOpaqueKey:
 		var params DeleteOpaqueKeyParameters
 		if err := json.Unmarshal(task.GetPayload(), &params); err != nil {
