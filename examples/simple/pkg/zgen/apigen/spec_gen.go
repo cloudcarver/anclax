@@ -340,7 +340,6 @@ func (siw *ServerInterfaceWrapper) GetCounter(c fiber.Ctx) error {
 // IncrementCounter operation middleware
 func (siw *ServerInterfaceWrapper) IncrementCounter(c fiber.Ctx) error {
 	fiber.StoreInContext(c, BearerAuthScopes, []string{"x.OperationPermit(c, operationID)"})
-
 	return siw.Handler.IncrementCounter(c)
 }
 
@@ -370,7 +369,8 @@ func RegisterHandlersWithOptions(router fiber.Router, si ServerInterface, option
 }
 
 type Validator interface {
-	// AuthFunc is called before the request is processed. The response will be 401 if the auth fails.
+	// AuthFunc checks every scheme in the current security alternative. Scope context values contain only that alternative.
+	// It may be called again for another alternative. Authentication failures return 401.
 	AuthFunc(fiber.Ctx) error
 
 	// PreValidate is called before the request is processed. The response will use a wrapped *fiber.Error status code, or 403 otherwise.
@@ -392,13 +392,17 @@ func xCheckRuleStatusCode(err error) int {
 
 var xSecurityLog = logger.NewLogAgent("security")
 
-func xSecurityError(c fiber.Ctx, status int, stage string) error {
+func xLogSecurityFailure(c fiber.Ctx, status int, stage string) {
 	fields := []zap.Field{zap.Int("status", status), zap.String("stage", stage), zap.String("request-id", requestid.FromContext(c))}
 	if status >= fiber.StatusInternalServerError {
 		xSecurityLog.Error("security check failed", fields...)
 	} else {
 		xSecurityLog.Warn("security check failed", fields...)
 	}
+}
+
+func xSecurityError(c fiber.Ctx, status int, stage string) error {
+	xLogSecurityFailure(c, status, stage)
 	c.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
 	return c.Status(status).SendString(http.StatusText(status))
 }

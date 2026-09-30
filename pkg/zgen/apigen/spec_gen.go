@@ -1179,21 +1179,18 @@ type MiddlewareFunc fiber.Handler
 // ListTasks operation middleware
 func (siw *ServerInterfaceWrapper) ListTasks(c fiber.Ctx) error {
 	fiber.StoreInContext(c, BearerAuthScopes, []string{})
-
 	return siw.Handler.ListTasks(c)
 }
 
 // ListOrgs operation middleware
 func (siw *ServerInterfaceWrapper) ListOrgs(c fiber.Ctx) error {
 	fiber.StoreInContext(c, BearerAuthScopes, []string{})
-
 	return siw.Handler.ListOrgs(c)
 }
 
 // ListEvents operation middleware
 func (siw *ServerInterfaceWrapper) ListEvents(c fiber.Ctx) error {
 	fiber.StoreInContext(c, BearerAuthScopes, []string{})
-
 	return siw.Handler.ListEvents(c)
 }
 
@@ -1205,7 +1202,6 @@ func (siw *ServerInterfaceWrapper) SignUp(c fiber.Ctx) error {
 // SignOut operation middleware
 func (siw *ServerInterfaceWrapper) SignOut(c fiber.Ctx) error {
 	fiber.StoreInContext(c, BearerAuthScopes, []string{})
-
 	return siw.Handler.SignOut(c)
 }
 
@@ -1229,7 +1225,6 @@ func (siw *ServerInterfaceWrapper) TryExecuteTask(c fiber.Ctx) error {
 	taskID = int32(parsedTaskID)
 
 	fiber.StoreInContext(c, BearerAuthScopes, []string{})
-
 	return siw.Handler.TryExecuteTask(c, taskID)
 }
 
@@ -1271,7 +1266,8 @@ func RegisterHandlersWithOptions(router fiber.Router, si ServerInterface, option
 }
 
 type Validator interface {
-	// AuthFunc is called before the request is processed. The response will be 401 if the auth fails.
+	// AuthFunc checks every scheme in the current security alternative. Scope context values contain only that alternative.
+	// It may be called again for another alternative. Authentication failures return 401.
 	AuthFunc(fiber.Ctx) error
 
 	// PreValidate is called before the request is processed. The response will use a wrapped *fiber.Error status code, or 403 otherwise.
@@ -1293,13 +1289,17 @@ func xCheckRuleStatusCode(err error) int {
 
 var xSecurityLog = logger.NewLogAgent("security")
 
-func xSecurityError(c fiber.Ctx, status int, stage string) error {
+func xLogSecurityFailure(c fiber.Ctx, status int, stage string) {
 	fields := []zap.Field{zap.Int("status", status), zap.String("stage", stage), zap.String("request-id", requestid.FromContext(c))}
 	if status >= fiber.StatusInternalServerError {
 		xSecurityLog.Error("security check failed", fields...)
 	} else {
 		xSecurityLog.Warn("security check failed", fields...)
 	}
+}
+
+func xSecurityError(c fiber.Ctx, status int, stage string) error {
+	xLogSecurityFailure(c, status, stage)
 	c.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
 	return c.Status(status).SendString(http.StatusText(status))
 }
