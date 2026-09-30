@@ -41,6 +41,8 @@ const (
 // Defines values for TaskStatus.
 const (
 	TaskStatusPending   TaskStatus = "pending"
+	TaskStatusReady     TaskStatus = "ready"
+	TaskStatusRunning   TaskStatus = "running"
 	TaskStatusCompleted TaskStatus = "completed"
 	TaskStatusFailed    TaskStatus = "failed"
 	TaskStatusPaused    TaskStatus = "paused"

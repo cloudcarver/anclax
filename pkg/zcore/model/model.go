@@ -41,15 +41,31 @@ type Model struct {
 	querier.Querier
 	beginTx       func(ctx context.Context) (core.Tx, error)
 	p             *pgxpool.Pool
+	leasePool     *pgxpool.Pool
 	inTransaction bool
 }
 
 func (m *Model) Close() {
 	log.Info("gracefully closing model")
+	if m.leasePool != nil {
+		m.leasePool.Close()
+	}
 	if m.p != nil {
 		m.p.Close()
 	}
 }
+
+// TaskLeaseQueries provides the isolated renewal pool to task workers. Custom
+// model adapters may implement this method to supply their own renewal store.
+func (m *Model) TaskLeaseQueries() querier.Querier {
+	if m.leasePool == nil {
+		return nil
+	}
+	return querier.New(m.leasePool)
+}
+
+func (m *Model) TaskLeasePoolStats() *pgxpool.Stat { return m.leasePool.Stat() }
+func (m *Model) PoolStats() *pgxpool.Stat          { return m.p.Stat() }
 
 func (m *Model) InTransaction() bool {
 	return m.inTransaction
@@ -100,6 +116,10 @@ func (m *Model) RunTransaction(ctx context.Context, f func(model ModelInterface)
 }
 
 func NewModel(cfg *config.Config, libCfg *config.LibConfig, cm *closer.CloserManager) (ModelInterface, error) {
+	leaseMaxConnections, err := cfg.Worker.LeaseRenewalConnectionLimit()
+	if err != nil {
+		return nil, err
+	}
 	var dsn string
 	if cfg.Pg.DSN != nil {
 		dsn = *cfg.Pg.DSN
@@ -161,6 +181,12 @@ func NewModel(cfg *config.Config, libCfg *config.LibConfig, cm *closer.CloserMan
 		time.Sleep(3 * time.Second)
 	}
 
+	poolReady := false
+	defer func() {
+		if !poolReady {
+			p.Close()
+		}
+	}()
 	d, err := iofs.New(anclax.Migrations, "sql/migrations")
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create migration source driver")
@@ -179,10 +205,21 @@ func NewModel(cfg *config.Config, libCfg *config.LibConfig, cm *closer.CloserMan
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to init migrate")
 	}
+	defer m.Close()
 	if err := m.Up(); err != nil {
 		if !errors.Is(err, migrate.ErrNoChange) {
 			return nil, errors.Wrap(err, "failed to migrate up")
 		}
+	}
+
+	leaseConfig := config.Copy()
+	leaseConfig.MaxConns = leaseMaxConnections
+	leaseConfig.MinConns = 0
+	leaseConfig.MinIdleConns = 0
+	leaseConfig.ConnConfig.RuntimeParams["application_name"] = "anclax-lease-renewal"
+	leasePool, err := pgxpool.NewWithConfig(context.Background(), leaseConfig)
+	if err != nil {
+		return nil, errors.Wrap(err, "create task lease renewal pool")
 	}
 
 	ret := &Model{
@@ -190,13 +227,15 @@ func NewModel(cfg *config.Config, libCfg *config.LibConfig, cm *closer.CloserMan
 		beginTx: func(ctx context.Context) (core.Tx, error) {
 			return p.Begin(ctx)
 		},
-		p: p,
+		p:         p,
+		leasePool: leasePool,
 	}
 
 	cm.Register(func(ctx context.Context) error {
 		ret.Close()
 		return nil
 	})
+	poolReady = true
 
 	return ret, nil
 }

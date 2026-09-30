@@ -1,0 +1,131 @@
+{
+  "reviewed_at": "2026-09-30",
+  "implementation_commit": "c37a6e647bec541b0cf82ce57205f17169c0ebe8",
+  "status": "Manual source-to-model mapping with bounded implementation checks; NOT a machine-checked source refinement proof.",
+  "sources": {
+    "pkg/taskcore/worker/batch.go": "1e3d1666594d0ffb141777f5a70488f73861319ea1063ad861a514294c47ceaa",
+    "pkg/taskcore/worker/engine.go": "33f9cc2041b836115b328d43cf0f7ee94c25f458be39949c20c683f9566a0776",
+    "pkg/taskcore/worker/finalize_retry.go": "cf1d7e951ba0a4cb2b51a4db4e741b1d05b70a007917fcf826a5ef4bffd75ccf",
+    "pkg/taskcore/worker/lease_manager.go": "63b4634f66201b738ab3e2196db49e412797eac89c48b795f074b421cb803fe2",
+    "pkg/taskcore/worker/lifecycle_handler.go": "0421b32638db958842c86b66b9e7d2052cca9ad160eebf0d257ae24c1d8b747c",
+    "pkg/taskcore/worker/lifecycle_policy.go": "e9af72060e8de52e67f3d5f69dfc9bf76ea7277f4dc715c19c8dabd0b6076ff8",
+    "pkg/taskcore/worker/prefetch.go": "0b76ae9920ef3d3f62a3ab3c99af901fc9fe40e47fab521afbbb387cd0ea644c",
+    "pkg/taskcore/worker/prefetch_pacing.go": "f5d8a27e00bb4ff8443440a5f884ffab76589c94cb1709cdc307da71cda2e06b",
+    "pkg/taskcore/worker/runtime.go": "cdc32072c9370d17a6307ee8188dc489f34f4e252da7c80419ef0e15417c4f1e",
+    "pkg/taskcore/worker/types.go": "4c5ea7aea907cb284e35c5b92c3c723629b2addef947babe8ca286ebf7bbebe8",
+    "pkg/zgen/querier/task_batch.sql.gen.go": "1a8b2cafcf35592c970c61259ee7fee0f8de8532c71c0597972c0c387ed1dffe",
+    "pkg/zgen/querier/task_prefetch.sql.gen.go": "d65db4e786edf11392a687dc9b487e13141745fc7ca7f1bbf6482d3a311e8ffa",
+    "pkg/zgen/querier/tasks.sql.gen.go": "e873c1af296fda16cb0fc69e4a54c3f08819742f7e6e572c4a6d75af891ccf42",
+    "sql/migrations/0013_task_attempt_lifecycle.up.sql": "a262a790b7fcc889e68ab342ef0d1019214b1384fd8d9acae983145017a67432",
+    "sql/migrations/0015_task_admission.up.sql": "2ee0463909a1d19f268a2658691e420c4327aeb56365e743875ae4a58237e0d7",
+    "sql/migrations/0016_ready_task_prefetch.up.sql": "e5bcbdfaa74000dddcb096394e276f7978618c09fe7bbe9eb5e457174ab7405b",
+    "sql/queries/task_batch.sql": "ebdb840a48b1939654016f82b6ae77c6857ffa0d0855a1677c995bd097e957fb",
+    "sql/queries/task_prefetch.sql": "0adbaacf75abd3a157bb298442c87e3fc103a093227e67e4d8eae5860af90505",
+    "sql/queries/task_tag_concurrency.sql": "c7d8db89680096783359cfb47edf29d784bfc99fbe85ce5a1d5e1c71255065e5",
+    "sql/queries/tasks.sql": "f8365ff5c375d7827362e691b320ce7b877511066e9c872c1b7f3f544546fb0e",
+    "sql/queries/workers.sql": "7ed383236a9015b1e797666fbae291fa0cf1a8d14aece14bfec40a6334409f34"
+  },
+  "mappings": [
+    {
+      "contract": "lease",
+      "sources": [
+        "sql/queries/tasks.sql",
+        "sql/migrations/0013_task_attempt_lifecycle.up.sql",
+        "pkg/taskcore/worker/finalize_retry.go",
+        "pkg/taskcore/worker/lifecycle_handler.go",
+        "pkg/zgen/querier/tasks.sql.gen.go"
+      ],
+      "specifications": [
+        "formal/tasklease/TaskLease.tla",
+        "formal/proofs/LeaseProofs.tla"
+      ],
+      "implementation_checks": [
+        "pkg/taskcore/e2e/lifecycle_regression_smoke_test.go",
+        "pkg/taskcore/worker/finalize_retry_test.go"
+      ]
+    },
+    {
+      "contract": "tag_slots",
+      "sources": [
+        "sql/migrations/0015_task_admission.up.sql",
+        "sql/migrations/0016_ready_task_prefetch.up.sql",
+        "sql/queries/task_tag_concurrency.sql"
+      ],
+      "specifications": [
+        "formal/tagslots/TagSlots.tla",
+        "formal/proofs/QuotaProofs.tla",
+        "formal/composed/Scheduler.tla"
+      ],
+      "implementation_checks": [
+        "pkg/taskcore/e2e/task_slot_smoke_test.go",
+        "pkg/taskcore/e2e/task_admission_smoke_test.go"
+      ]
+    },
+    {
+      "contract": "batch_contract",
+      "sources": [
+        "sql/queries/task_batch.sql",
+        "pkg/zgen/querier/task_batch.sql.gen.go",
+        "pkg/taskcore/worker/batch.go"
+      ],
+      "specifications": [
+        "formal/proofs/AdmissionProofs.tla",
+        "formal/composed/Scheduler.tla"
+      ],
+      "implementation_checks": [
+        "pkg/taskcore/e2e/formal_contract_smoke_test.go",
+        "pkg/taskcore/worker/batch_test.go"
+      ]
+    },
+    {
+      "contract": "engine_budget",
+      "sources": [
+        "pkg/taskcore/worker/engine.go",
+        "pkg/taskcore/worker/types.go",
+        "pkg/taskcore/worker/runtime.go"
+      ],
+      "specifications": [
+        "formal/workerbudget/WorkerBudget.tla",
+        "formal/proofs/SchedulerProofs.tla",
+        "formal/proofs/ProgressProofs.tla"
+      ],
+      "implementation_checks": [
+        "pkg/taskcore/worker/formal_conformance_test.go",
+        "pkg/taskcore/worker/runtime_admission_test.go"
+      ]
+    },
+    {
+      "contract": "prefetch_serial_and_renewal",
+      "sources": [
+        "pkg/taskcore/worker/prefetch.go",
+        "pkg/taskcore/worker/prefetch_pacing.go",
+        "pkg/taskcore/worker/lease_manager.go",
+        "sql/queries/task_prefetch.sql",
+        "sql/queries/workers.sql",
+        "pkg/zgen/querier/task_prefetch.sql.gen.go"
+      ],
+      "specifications": [
+        "formal/composed/Scheduler.tla",
+        "formal/proofs/AdmissionProofs.tla"
+      ],
+      "implementation_checks": [
+        "pkg/taskcore/e2e/ready_prefetch_smoke_test.go",
+        "pkg/taskcore/e2e/lease_renewal_smoke_test.go",
+        "pkg/taskcore/worker/lease_manager_test.go"
+      ]
+    },
+    {
+      "contract": "lifecycle_policy",
+      "sources": [
+        "pkg/taskcore/worker/lifecycle_policy.go"
+      ],
+      "specifications": [
+        "formal/proofs/PolicyProofs.tla"
+      ],
+      "implementation_checks": [
+        "pkg/taskcore/worker/lifecycle_handler_test.go",
+        "pkg/taskcore/e2e/lifecycle_regression_smoke_test.go"
+      ]
+    }
+  ]
+}

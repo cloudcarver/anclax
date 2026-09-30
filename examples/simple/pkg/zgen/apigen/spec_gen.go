@@ -219,7 +219,7 @@ type ClientWithResponsesInterface interface {
 type GetCounterResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *[]counter.Counter
+	JSON200      *counter.Counter
 }
 
 // Status returns HTTPResponse.Status
@@ -289,7 +289,7 @@ func ParseGetCounterResponse(rsp *http.Response) (*GetCounterResponse, error) {
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest []counter.Counter
+		var dest counter.Counter
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

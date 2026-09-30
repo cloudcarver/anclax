@@ -205,6 +205,70 @@ x-check-rules:
 	}
 }
 
+func TestGenerateSupportsRelativeWorkdir(t *testing.T) {
+	t.Chdir(t.TempDir())
+	workdir := "nile-backend"
+	mustWriteFile(t, filepath.Join(workdir, "go.mod"), "module example.com/test\n\ngo 1.24\n")
+	mustWriteFile(t, filepath.Join(workdir, "api", "openapi", "root.yaml"), `openapi: 3.0.3
+info:
+  title: test
+  version: 1.0.0
+paths:
+  /counter:
+    get:
+      operationId: getCounter
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/counter.yaml#schemas/Counter
+`)
+	mustWriteFile(t, filepath.Join(workdir, "api", "schemas", "counter.yaml"), `schemas:
+  Counter:
+    type: object
+    required: [count]
+    properties:
+      count:
+        type: integer
+        format: int32
+`)
+
+	for _, tt := range []struct {
+		name string
+		path string
+	}{
+		{name: "directory", path: filepath.Join("api", "openapi")},
+		{name: "file", path: filepath.Join("api", "openapi", "root.yaml")},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			outPath := filepath.Join("pkg", "zgen", tt.name, "spec_gen.go")
+			if err := Generate(workdir, Config{
+				Path:    tt.path,
+				Out:     outPath,
+				Package: "apigen",
+				Schemas: &schema_codegen.Config{Path: filepath.Join("api", "schemas"), Output: filepath.Join("pkg", "zgen", "schemas")},
+			}); err != nil {
+				t.Fatalf("generate: %v", err)
+			}
+
+			raw, err := os.ReadFile(filepath.Join(workdir, outPath))
+			if err != nil {
+				t.Fatalf("read output: %v", err)
+			}
+			for _, needle := range []string{
+				`"example.com/test/pkg/zgen/schemas"`,
+				"GetCounter(c fiber.Ctx) error",
+			} {
+				if !strings.Contains(string(raw), needle) {
+					t.Fatalf("generated output missing %q", needle)
+				}
+			}
+		})
+	}
+}
+
 func TestGenerateMiddlewareUsesWrappedFiberErrorStatus(t *testing.T) {
 	t.Parallel()
 

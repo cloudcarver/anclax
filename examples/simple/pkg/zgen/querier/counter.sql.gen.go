@@ -21,10 +21,10 @@ func (q *Queries) GetCounter(ctx context.Context) (*Counter, error) {
 }
 
 const incrementCounter = `-- name: IncrementCounter :exec
-UPDATE counter SET value = value + 1 WHERE id = 1
+UPDATE counter SET value = value + $1::integer WHERE id = 1
 `
 
-func (q *Queries) IncrementCounter(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, incrementCounter)
+func (q *Queries) IncrementCounter(ctx context.Context, amount int32) error {
+	_, err := q.db.Exec(ctx, incrementCounter, amount)
 	return err
 }

@@ -173,15 +173,11 @@ func Generate(workdir string, config Config) error {
 		return errors.New("oapi-codegen package is required")
 	}
 
-	specPath := config.Path
-	if !filepath.IsAbs(specPath) {
-		specPath = filepath.Join(workdir, specPath)
-	}
 	schemaManager, err := schema_codegen.Load(workdir, derefSchemaConfig(config.Schemas))
 	if err != nil {
 		return errors.Wrap(err, "failed to load schemas config")
 	}
-	swagger, sourcePath, err := loadSwagger(workdir, specPath)
+	swagger, sourcePath, err := loadSwagger(workdir, config.Path)
 	if err != nil {
 		return errors.Wrap(err, "failed to load OpenAPI spec")
 	}
