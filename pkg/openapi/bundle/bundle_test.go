@@ -272,6 +272,60 @@ components:
 	}
 }
 
+func TestLoadSupportsRelativeWorkdir(t *testing.T) {
+	t.Chdir(t.TempDir())
+	workdir := "project"
+	mustWriteFile(t, filepath.Join(workdir, "api", "openapi", "root.yaml"), `openapi: 3.0.3
+info:
+  title: test
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    Local:
+      $ref: ../schemas/local.yaml#/Local
+`)
+	mustWriteFile(t, filepath.Join(workdir, "api", "schemas", "local.yaml"), "Local:\n  type: string\n")
+	for _, input := range []string{"api/openapi/root.yaml", "api/openapi"} {
+		doc, _, err := Load(workdir, input)
+		if err != nil {
+			t.Fatalf("Load(%q, %q): %v", workdir, input, err)
+		}
+		if got := doc.Components.Schemas["Local"].Value.Type; !got.Is("string") {
+			t.Fatalf("resolved type = %v", got)
+		}
+	}
+}
+
+func TestLoadAllowsSymlinkReferenceInsideWorkdir(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation is not generally available on Windows")
+	}
+	t.Parallel()
+	workdir := t.TempDir()
+	mustWriteFile(t, filepath.Join(workdir, "schemas", "local.yaml"), "Local:\n  type: string\n")
+	mustWriteFile(t, filepath.Join(workdir, "openapi.yaml"), `openapi: 3.0.3
+info:
+  title: test
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    Local:
+      $ref: linked.yaml#/Local
+`)
+	if err := os.Symlink(filepath.Join("schemas", "local.yaml"), filepath.Join(workdir, "linked.yaml")); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+	doc, _, err := Load(workdir, "openapi.yaml")
+	if err != nil {
+		t.Fatalf("load internal symlink: %v", err)
+	}
+	if got := doc.Components.Schemas["Local"].Value.Type; !got.Is("string") {
+		t.Fatalf("resolved type = %v", got)
+	}
+}
+
 func mustWriteFile(t *testing.T, path string, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {

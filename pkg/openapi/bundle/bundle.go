@@ -1,6 +1,7 @@
 package bundle
 
 import (
+	stderrors "errors"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -104,7 +105,7 @@ func Prepare(workdir, inputPath string) (*Source, error) {
 	}, nil
 }
 
-func Load(workdir, inputPath string) (*openapi3.T, string, error) {
+func Load(workdir, inputPath string) (ret *openapi3.T, sourcePath string, retErr error) {
 	source, err := Prepare(workdir, inputPath)
 	if err != nil {
 		return nil, "", err
@@ -117,10 +118,19 @@ func Load(workdir, inputPath string) (*openapi3.T, string, error) {
 	if err != nil {
 		return nil, "", errors.Wrap(err, "failed to resolve virtual OpenAPI path")
 	}
+	refRoot, err := os.OpenRoot(workdirRoot)
+	if err != nil {
+		return nil, "", errors.Wrap(err, "failed to open OpenAPI workdir")
+	}
+	defer func() {
+		if err := refRoot.Close(); err != nil {
+			retErr = stderrors.Join(retErr, errors.Wrap(err, "failed to close OpenAPI workdir"))
+		}
+	}()
 
 	loader := openapi3.NewLoader()
 	loader.IsExternalRefsAllowed = true
-	rootURIPath := filepath.ToSlash(source.VirtualPath)
+	rootURIPath := filepath.ToSlash(virtualPath)
 	loader.ReadFromURIFunc = func(loader *openapi3.Loader, location *url.URL) ([]byte, error) {
 		path, err := localReferencePath(workdirRoot, location)
 		if err != nil {
@@ -133,17 +143,19 @@ func Load(workdir, inputPath string) (*openapi3.T, string, error) {
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to resolve local OpenAPI reference")
 		}
-		if !pathWithin(resolvedPath, workdirRoot) {
-			return nil, errors.Errorf("OpenAPI reference resolves outside workdir: %s", location.String())
+		name, err := localReferenceName(resolvedPath, workdirRoot)
+		if err != nil {
+			return nil, err
 		}
-		info, err := os.Stat(resolvedPath)
+		// Root keeps reads confined even if a symlink changes after validation.
+		info, err := refRoot.Stat(name)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to inspect local OpenAPI reference")
 		}
 		if !info.Mode().IsRegular() {
 			return nil, errors.Errorf("OpenAPI reference is not a regular file: %s", location.String())
 		}
-		data, err := os.ReadFile(resolvedPath)
+		data, err := refRoot.ReadFile(name)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to read local OpenAPI reference")
 		}
@@ -196,12 +208,15 @@ func localReferencePath(workdir string, location *url.URL) (string, error) {
 	return filepath.Clean(abs), nil
 }
 
-func pathWithin(path, root string) bool {
+func localReferenceName(path, root string) (string, error) {
 	rel, err := filepath.Rel(root, path)
 	if err != nil {
-		return false
+		return "", errors.Wrap(err, "failed to resolve local OpenAPI reference relative to workdir")
 	}
-	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", errors.Errorf("OpenAPI reference resolves outside workdir: %s", path)
+	}
+	return rel, nil
 }
 
 func (m *merger) mergeFile(doc map[string]any, file string) error {
