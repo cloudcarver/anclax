@@ -31,7 +31,7 @@ func init() {
 }
 
 const ( {{range .Functions}}
-	{{upperFirst .Name}} = "{{.Name}}" 
+	{{upperFirst .Name}} = {{quote .Name}}
 {{end}})
 
 
@@ -90,23 +90,23 @@ func New{{upperFirst .Name}}Task(params *{{.ParameterType}}, overrides ...taskco
 		Payload: payload,
 	}
 	attributes := apigen.TaskAttributes{}
-	{{if .Timeout }}attributes.Timeout = utils.Ptr("{{.Timeout}}"){{end}}
+	{{if .Timeout }}attributes.Timeout = utils.Ptr({{quote .Timeout}}){{end}}
 	{{if .RetryPolicy }}attributes.RetryPolicy = &apigen.TaskRetryPolicy{
-		Interval:    "{{.RetryPolicy.Interval}}",
+		Interval:    {{quote .RetryPolicy.Interval}},
 		MaxAttempts: {{.RetryPolicy.MaxAttempts}},
 	}{{end}}
 	{{if .Cronjob }}attributes.Cronjob = &apigen.TaskCronjob{
-		CronExpression: "{{.Cronjob.CronExpression}}",
+		CronExpression: {{quote .Cronjob.CronExpression}},
 	}{{end}}
-	{{if .Labels }}attributes.Labels = &[]string{ {{range $idx, $label := .Labels}}{{if $idx}}, {{end}}"{{$label}}"{{end}} }{{end}}
-	{{if .Tags }}attributes.Tags = &[]string{ {{range $idx, $tag := .Tags}}{{if $idx}}, {{end}}"{{$tag}}"{{end}} }{{end}}
+	{{if .Labels }}attributes.Labels = &[]string{ {{range $idx, $label := .Labels}}{{if $idx}}, {{end}}{{quote $label}}{{end}} }{{end}}
+	{{if .Tags }}attributes.Tags = &[]string{ {{range $idx, $tag := .Tags}}{{if $idx}}, {{end}}{{quote $tag}}{{end}} }{{end}}
 	{{if .Priority}}attributes.Priority = utils.Ptr(int32({{derefInt32 .Priority}})){{end}}
 	task := &apigen.Task{
 		Attributes: attributes,
 		Spec:       spec,
 		Status:     apigen.Pending,
 	}
-	{{if .Delay }}delay, err := time.ParseDuration("{{.Delay}}")
+	{{if .Delay }}delay, err := time.ParseDuration({{quote .Delay}})
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse delay: %w", err)
 	}
@@ -168,7 +168,7 @@ func (f *TaskHandler) HandleTask(ctx context.Context, task worker.Task) error {
 	case {{upperFirst .Name}}:
 		var params {{.ParameterType}}
 		if err := json.Unmarshal(task.GetPayload(), &params); err != nil {
-			return fmt.Errorf("failed to parse {{.Name}} parameters: %w", err)
+			return fmt.Errorf({{quote (printf "failed to parse %s parameters: %%w" .Name)}}, err)
 		}
 		return f.executor.Execute{{upperFirst .Name}}(ctx, task, &params)
 		{{end}}
@@ -193,7 +193,7 @@ func (f *TaskHandler) OnTaskFailed(ctx context.Context, tx core.Tx, failedTaskSp
 	case {{upperFirst .Name}}:
 		var params {{.ParameterType}}
 		if err := json.Unmarshal(failedTaskSpec.GetPayload(), &params); err != nil {
-			return fmt.Errorf("failed to parse {{.Name}} parameters: %w", err)
+			return fmt.Errorf({{quote (printf "failed to parse %s parameters: %%w" .Name)}}, err)
 		}
 		return f.executor.On{{upperFirst .Name}}Failed(ctx, taskID, &params, tx){{end}}{{end}}{{end}}
 	default:

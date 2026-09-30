@@ -57,7 +57,8 @@ func TestResolvePrimitive(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			goType, imports, ok := ResolvePrimitive(tt.schema)
+			goType, imports, ok, err := ResolvePrimitive(tt.schema)
+			require.NoError(t, err)
 			require.Equal(t, tt.goType, goType)
 			require.Equal(t, tt.imports, imports)
 			require.Equal(t, tt.ok, ok)
@@ -66,7 +67,58 @@ func TestResolvePrimitive(t *testing.T) {
 }
 
 func TestPrimitive(t *testing.T) {
-	require.Equal(t, "int32", Primitive(&openapi3.Schema{Type: &openapi3.Types{"integer"}, Format: "int32"}))
-	require.Equal(t, "float32", Primitive(&openapi3.Schema{Type: &openapi3.Types{"number"}, Format: "float"}))
-	require.Equal(t, "string", Primitive(&openapi3.Schema{Type: &openapi3.Types{"string"}, Format: "uuid"}))
+	goType, err := Primitive(&openapi3.Schema{Type: &openapi3.Types{"integer"}, Format: "int32"})
+	require.NoError(t, err)
+	require.Equal(t, "int32", goType)
+	goType, err = Primitive(&openapi3.Schema{Type: &openapi3.Types{"number"}, Format: "float"})
+	require.NoError(t, err)
+	require.Equal(t, "float32", goType)
+	goType, err = Primitive(&openapi3.Schema{Type: &openapi3.Types{"string"}, Format: "uuid"})
+	require.NoError(t, err)
+	require.Equal(t, "string", goType)
+}
+
+func TestRejectsUnknownNumericFormats(t *testing.T) {
+	_, _, _, err := ResolvePrimitive(&openapi3.Schema{
+		Type:   &openapi3.Types{"integer"},
+		Format: "int32; func injected() {}",
+	})
+	require.ErrorContains(t, err, "unsupported integer format")
+
+}
+
+func TestValidateTypeExpression(t *testing.T) {
+	for _, valid := range []string{"json.RawMessage", "[]*example.Value", "map[string]uuid.UUID", "Option[string]", "[16]byte"} {
+		require.NoError(t, ValidateTypeExpression(valid), valid)
+	}
+	for _, invalid := range []string{
+		"int; func injected() {}",
+		"int // hide generated code",
+		"func() string",
+		"struct{ Injected string }",
+		"chan string",
+	} {
+		require.Error(t, ValidateTypeExpression(invalid), invalid)
+	}
+}
+
+func TestValidateIdentifier(t *testing.T) {
+	require.NoError(t, ValidateIdentifier("TaskName"))
+	require.Error(t, ValidateIdentifier("for"))
+	require.Error(t, ValidateIdentifier("123Name"))
+	require.Error(t, ValidateIdentifier("_"))
+}
+
+func TestEnumLiteralRejectsCodeExpressions(t *testing.T) {
+	literal, err := EnumLiteral("int32", -12)
+	require.NoError(t, err)
+	require.Equal(t, "-12", literal)
+	literal, err = EnumLiteral("string", "value\"\nfunc Injected() {}")
+	require.NoError(t, err)
+	require.Equal(t, `"value\"\nfunc Injected() {}"`, literal)
+
+	_, err = EnumLiteral("int32", "1; func Injected() {}")
+	require.Error(t, err)
+	_, err = EnumLiteral("float64", "func() {}")
+	require.Error(t, err)
 }

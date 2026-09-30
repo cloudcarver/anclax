@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"go/format"
 	"log"
 	"math"
 	"os"
@@ -55,6 +56,12 @@ func process(data map[string]any, onFunc func(f Function) error, onParam func(na
 		if !ok {
 			return errors.New("function name cannot be parsed to a string")
 		}
+		if err := gotypes.ValidateIdentifier(fnName); err != nil {
+			return fmt.Errorf("invalid task name: %w", err)
+		}
+		if err := gotypes.ValidateIdentifier(utils.UpperFirst(fnName)); err != nil {
+			return fmt.Errorf("invalid generated task identifier: %w", err)
+		}
 
 		var description string
 
@@ -100,9 +107,11 @@ func process(data map[string]any, onFunc func(f Function) error, onParam func(na
 			if !ok {
 				return errors.New("cronjob cannot be parsed to a map")
 			}
-			cronjob = &Cronjob{
-				CronExpression: cronjobStr["cronExpression"].(string),
+			cronExpression, ok := cronjobStr["cronExpression"].(string)
+			if !ok {
+				return errors.New("cronExpression cannot be parsed to a string")
 			}
+			cronjob = &Cronjob{CronExpression: cronExpression}
 		}
 
 		// parse retry policy
@@ -311,6 +320,9 @@ func indent(s string, spaces int) string {
 }
 
 func Generate(workdir, packageName, taskDefPath, outPath string, schemaConfig *schema_codegen.Config) error {
+	if err := gotypes.ValidateIdentifier(packageName); err != nil {
+		return fmt.Errorf("invalid task package: %w", err)
+	}
 	raw, err := os.ReadFile(filepath.Join(workdir, taskDefPath))
 	if err != nil {
 		return err
@@ -341,6 +353,9 @@ func Generate(workdir, packageName, taskDefPath, outPath string, schemaConfig *s
 }
 
 func generateToolInterfaces(workdir, packageName, taskDefFile string, data map[string]any, schemaManager *schema_codegen.Manager) (string, error) {
+	if err := gotypes.ValidateIdentifier(packageName); err != nil {
+		return "", fmt.Errorf("invalid task package: %w", err)
+	}
 	var structDef string
 	functions := []Function{}
 	importSet := map[string]struct{}{}
@@ -374,6 +389,19 @@ func generateToolInterfaces(workdir, packageName, taskDefFile string, data map[s
 
 	tcTemplate, err := template.New("file").Funcs(template.FuncMap{
 		"upperFirst": utils.UpperFirst,
+		"quote": func(value any) (string, error) {
+			switch typed := value.(type) {
+			case string:
+				return strconv.Quote(typed), nil
+			case *string:
+				if typed == nil {
+					return "", errors.New("cannot quote a nil string")
+				}
+				return strconv.Quote(*typed), nil
+			default:
+				return "", fmt.Errorf("cannot quote %T as a string", value)
+			}
+		},
 		"derefInt32": func(v *int32) int32 {
 			if v == nil {
 				return 0
@@ -403,8 +431,11 @@ func generateToolInterfaces(workdir, packageName, taskDefFile string, data map[s
 	}); err != nil {
 		return "", err
 	}
-
-	return buf.String(), nil
+	formatted, err := format.Source(buf.Bytes())
+	if err != nil {
+		return "", fmt.Errorf("failed to format generated task code: %w", err)
+	}
+	return string(formatted), nil
 }
 
 func addGlobalType(name string) string {
@@ -443,7 +474,11 @@ func parseSchemaToType(currentFile, typeName string, ref *openapi3.SchemaRef, sc
 	if ref.Value == nil {
 		return "any", "", nil
 	}
-	if customType, customImports := customGoType(ref.Value); customType != "" {
+	customType, customImports, err := customGoType(ref.Value)
+	if err != nil {
+		return "", "", err
+	}
+	if customType != "" {
 		for _, imp := range customImports {
 			imports[imp] = struct{}{}
 		}
@@ -452,7 +487,9 @@ func parseSchemaToType(currentFile, typeName string, ref *openapi3.SchemaRef, sc
 	if ref.Value.Type == nil {
 		return "any", "", nil
 	}
-	if goType, typeImports, ok := gotypes.ResolvePrimitive(ref.Value); ok {
+	if goType, typeImports, ok, err := gotypes.ResolvePrimitive(ref.Value); err != nil {
+		return "", "", err
+	} else if ok {
 		for _, imp := range typeImports {
 			imports[imp] = struct{}{}
 		}
@@ -476,6 +513,9 @@ func parseSchemaToType(currentFile, typeName string, ref *openapi3.SchemaRef, sc
 }
 
 func parseObjectSchema(currentFile, structName string, schema *openapi3.Schema, schemaManager *schema_codegen.Manager, imports map[string]struct{}) (string, string, error) {
+	if err := gotypes.ValidateIdentifier(structName); err != nil {
+		return "", "", fmt.Errorf("invalid generated struct name: %w", err)
+	}
 	requiredFields := map[string]struct{}{}
 	for _, r := range schema.Required {
 		requiredFields[r] = struct{}{}
@@ -508,11 +548,20 @@ func parseObjectSchema(currentFile, structName string, schema *openapi3.Schema, 
 		if propRef != nil && propRef.Value != nil {
 			description = propRef.Value.Description
 		}
+		fieldName := utils.UpperFirst(propName)
+		if err := gotypes.ValidateIdentifier(fieldName); err != nil {
+			return "", "", fmt.Errorf("invalid generated field name for property %q: %w", propName, err)
+		}
+		tagValue := "json:" + strconv.Quote(propName) + " yaml:" + strconv.Quote(propName)
+		tagLiteral := "`" + tagValue + "`"
+		if strings.Contains(tagValue, "`") {
+			tagLiteral = strconv.Quote(tagValue)
+		}
 		fields = append(fields, Field{
-			Name:        utils.UpperFirst(propName),
+			Name:        fieldName,
 			Type:        propType,
 			Description: descriptionToComment(description),
-			Tag:         "`json:\"" + propName + "\" yaml:\"" + propName + "\"`",
+			Tag:         tagLiteral,
 		})
 	}
 	buf := bytes.NewBuffer(nil)
@@ -522,17 +571,20 @@ func parseObjectSchema(currentFile, structName string, schema *openapi3.Schema, 
 	return structName, nestedDefs + "\n" + buf.String(), nil
 }
 
-func customGoType(schema *openapi3.Schema) (string, []string) {
+func customGoType(schema *openapi3.Schema) (string, []string, error) {
 	if schema == nil || schema.Extensions == nil {
-		return "", nil
+		return "", nil, nil
 	}
 	value, ok := schema.Extensions["x-go-type"]
 	if !ok {
-		return "", nil
+		return "", nil, nil
 	}
 	goType, ok := value.(string)
 	if !ok {
-		return "", nil
+		return "", nil, errors.New("x-go-type must be a string")
+	}
+	if err := gotypes.ValidateTypeExpression(goType); err != nil {
+		return "", nil, fmt.Errorf("invalid x-go-type: %w", err)
 	}
 	var imports []string
 	if rawImports, ok := schema.Extensions["x-go-type-imports"]; ok {
@@ -545,7 +597,7 @@ func customGoType(schema *openapi3.Schema) (string, []string) {
 			}
 		}
 	}
-	return goType, imports
+	return goType, imports, nil
 }
 
 func derefSchemaConfig(cfg *schema_codegen.Config) schema_codegen.Config {
