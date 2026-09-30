@@ -101,13 +101,7 @@ func (h *Hub) broadcastExcept(topic string, data any, exceptID string) {
 			continue
 		}
 		if err := s.WriteTextMessage(data); err != nil {
-			broadcastErrorCounter.Inc()
-			wslog.Error(
-				"failed to write text message while broadcasting",
-				zap.Error(err),
-				zap.String("topic", topic),
-				zap.String("session_id", s.id),
-			)
+			logBroadcastError(topic, s, err)
 		}
 	}
 }
@@ -115,13 +109,7 @@ func (h *Hub) broadcastExcept(topic string, data any, exceptID string) {
 func (h *Hub) Broadcast(topic string, data any) {
 	for _, s := range h.snapshotSessions(topic) {
 		if err := s.WriteTextMessage(data); err != nil {
-			broadcastErrorCounter.Inc()
-			wslog.Error(
-				"failed to write text message while broadcasting",
-				zap.Error(err),
-				zap.String("topic", topic),
-				zap.String("session_id", s.id),
-			)
+			logBroadcastError(topic, s, err)
 		}
 	}
 }
@@ -133,13 +121,27 @@ func (h *Hub) broadcastExceptBinary(topic string, data []byte, exceptID string) 
 		if s.id == exceptID {
 			continue
 		}
-		s.WriteBinaryMessage(data)
+		if err := s.WriteBinaryMessage(data); err != nil {
+			logBroadcastError(topic, s, err)
+		}
 	}
 }
 
 // BroadcastBinary sends a binary payload to all subscribers of a topic.
 func (h *Hub) BroadcastBinary(topic string, data []byte) {
 	for _, s := range h.snapshotSessions(topic) {
-		s.WriteBinaryMessage(data)
+		if err := s.WriteBinaryMessage(data); err != nil {
+			logBroadcastError(topic, s, err)
+		}
 	}
+}
+
+func logBroadcastError(topic string, s *Session, err error) {
+	fields := []zap.Field{zap.Error(err), zap.String("topic", topic), zap.String("session_id", s.id)}
+	if errors.Is(err, ErrSessionClosed) {
+		wslog.Warn("skipped closed websocket subscriber", fields...)
+		return
+	}
+	broadcastErrorCounter.Inc()
+	wslog.Error("failed to write message while broadcasting", fields...)
 }

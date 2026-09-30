@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"errors"
 	"fmt"
 	"runtime"
 	"sync"
@@ -86,4 +87,46 @@ func TestHubConcurrentSubscriptionChangesAndBroadcasts(t *testing.T) {
 
 	close(start)
 	wg.Wait()
+}
+
+func TestSubscriberSnapshotCanOutliveSession(t *testing.T) {
+	hub := NewHub()
+	require.NoError(t, hub.AddTopic("updates"))
+	session, _ := newHubTestSession("closing", 1)
+	require.NoError(t, hub.Subscribe("updates", session))
+	snapshot := hub.snapshotSessions("updates")
+	require.NoError(t, hub.Unsubscribe("updates", session))
+	session.release()
+	close(session.writeBuf)
+
+	require.NotPanics(t, func() {
+		for _, stale := range snapshot {
+			require.ErrorIs(t, stale.WriteTextMessage("after close"), ErrSessionClosed)
+			require.ErrorIs(t, stale.WriteBinaryMessage([]byte("after close")), ErrSessionClosed)
+		}
+	})
+}
+
+func TestSessionReleaseWaitsForConcurrentEnqueues(t *testing.T) {
+	session, _ := newHubTestSession("closing", 4096)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			for j := 0; j < 200; j++ {
+				if err := session.WriteBinaryMessage([]byte("payload")); err != nil && !errors.Is(err, ErrSessionClosed) {
+					t.Errorf("write: %v", err)
+					return
+				}
+			}
+		}()
+	}
+	close(start)
+	session.release()
+	close(session.writeBuf)
+	wg.Wait()
+	require.ErrorIs(t, session.WriteBinaryMessage(nil), ErrSessionClosed)
 }
