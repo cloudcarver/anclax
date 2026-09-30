@@ -139,7 +139,7 @@ func NewModel(cfg *config.Config, libCfg *config.LibConfig, cm *closer.CloserMan
 
 	config, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to parse pgxpool config: %s", utils.ReplaceSensitiveStringBySha256(dsn, cfg.Pg.Password))
+		return nil, errors.New("failed to parse database configuration")
 	}
 	config.MaxConns = libCfg.Pg.MaxConnections
 	config.MinConns = libCfg.Pg.MinConnections
@@ -158,16 +158,16 @@ func NewModel(cfg *config.Config, libCfg *config.LibConfig, cm *closer.CloserMan
 
 			pool, err := pgxpool.NewWithConfig(ctx, config)
 			if err != nil {
-				log.Warnf("failed to init pgxpool: %s", err.Error())
-				return errors.Wrapf(err, "failed to init pgxpool: %s", dsn)
+				log.Warn("failed to initialize database connection")
+				return errors.New("failed to initialize database connection")
 			}
 
 			p = pool
 
 			if err := pool.Ping(ctx); err != nil {
-				log.Warnf("failed to ping database: %s", err.Error())
+				log.Warn("failed to ping database")
 				pool.Close()
-				return errors.Wrap(err, "failed to ping db")
+				return errors.New("failed to ping database")
 			}
 			return nil
 		}()
@@ -187,28 +187,38 @@ func NewModel(cfg *config.Config, libCfg *config.LibConfig, cm *closer.CloserMan
 			p.Close()
 		}
 	}()
-	d, err := iofs.New(anclax.Migrations, "sql/migrations")
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create migration source driver")
-	}
-
 	dsnURL, err := url.Parse(dsn)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to parse dsn: %s", utils.ReplaceSensitiveStringBySha256(dsn, cfg.Pg.Password))
+		return nil, errors.New("failed to parse database configuration")
 	}
 	dsnURL.Scheme = "pgx5"
 	q := dsnURL.Query()
 	q.Set("x-migrations-table", "anchor_migrations")
 	dsnURL.RawQuery = q.Encode()
 
+	d, err := iofs.New(anclax.Migrations, "sql/migrations")
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create migration source driver")
+	}
 	m, err := migrate.NewWithSourceInstance("iofs", d, dsnURL.String())
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to init migrate")
+		if err := d.Close(); err != nil {
+			log.Warn("failed to close migration source")
+		}
+		return nil, errors.New("failed to initialize database migrations")
 	}
-	defer m.Close()
+	defer func() {
+		sourceErr, databaseErr := m.Close()
+		if sourceErr != nil {
+			log.Warn("failed to close migration source")
+		}
+		if databaseErr != nil {
+			log.Warn("failed to close migration database")
+		}
+	}()
 	if err := m.Up(); err != nil {
 		if !errors.Is(err, migrate.ErrNoChange) {
-			return nil, errors.Wrap(err, "failed to migrate up")
+			return nil, errors.New("failed to apply database migrations")
 		}
 	}
 
@@ -219,7 +229,7 @@ func NewModel(cfg *config.Config, libCfg *config.LibConfig, cm *closer.CloserMan
 	leaseConfig.ConnConfig.RuntimeParams["application_name"] = "anclax-lease-renewal"
 	leasePool, err := pgxpool.NewWithConfig(context.Background(), leaseConfig)
 	if err != nil {
-		return nil, errors.Wrap(err, "create task lease renewal pool")
+		return nil, errors.New("failed to initialize task lease renewal pool")
 	}
 
 	ret := &Model{

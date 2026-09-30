@@ -3,17 +3,31 @@ package model
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
+	"myexampleapp/pkg/config"
 	"myexampleapp/pkg/zgen/schemas/counter"
 	"myexampleapp/pkg/zgen/taskgen"
 
 	"github.com/cloudcarver/anclax/core"
+	anclaxconfig "github.com/cloudcarver/anclax/pkg/config"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"go.uber.org/mock/gomock"
 )
+
+func TestNewModelDoesNotDiscloseDSNCredentials(t *testing.T) {
+	dsn := "postgres://audit-user:database-secret-canary@%zz/database"
+	_, err := NewModel(&config.Config{Anclax: anclaxconfig.Config{Pg: anclaxconfig.Pg{DSN: &dsn}}}, nil)
+	if err == nil {
+		t.Fatal("expected invalid database configuration error")
+	}
+	if strings.Contains(err.Error(), "database-secret-canary") || strings.Contains(err.Error(), dsn) {
+		t.Fatalf("error disclosed database credentials: %v", err)
+	}
+}
 
 func TestTransactionSharesCoreTxWithQueriesAndTaskRunner(t *testing.T) {
 	ctrl := gomock.NewController(t)

@@ -40,7 +40,8 @@ func FetchConfig(configPath string, envPrefix string, cfg any) error {
 func marshallRawYAML(yamlRaw []byte, cfg any) error {
 	err := yaml.Unmarshal(yamlRaw, cfg)
 	if err != nil {
-		return errors.Wrapf(err, "failed to unmarshal yaml config %v", yamlRaw)
+		// YAML conversion errors may include the rejected configuration value.
+		return errors.New("failed to unmarshal yaml config")
 	}
 	return nil
 }
@@ -88,7 +89,7 @@ func readFromConfigFile(configPath string) (map[string]any, error) {
 	}
 	err = yaml.Unmarshal(raw, &config)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to unmarshal config file %s", configPath)
+		return nil, errors.Errorf("failed to unmarshal config file %s", configPath)
 	}
 
 	return config, nil
@@ -135,7 +136,7 @@ func patchMap(o map[string]any, p map[string]any) error {
 		if _, ok := o[k]; ok { // if o has the same key
 			if _, ok := o[k].(map[string]any); ok {
 				if _, ok := p[k].(map[string]any); !ok {
-					return errors.Errorf("%s of %s is not a map[string]any", k, p)
+					return errors.Errorf("configuration field %q must be a map", k)
 				}
 				// o[k] and p[k] are both map
 				if err := patchMap(o[k].(map[string]any), p[k].(map[string]any)); err != nil {
