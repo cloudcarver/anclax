@@ -1,4 +1,3 @@
-// Code generate by anclax. DO NOT EDIT.
 package model
 
 import (
@@ -11,6 +10,7 @@ import (
 	"myexampleapp/pkg/config"
 	"myexampleapp/pkg/zgen/querier"
 
+	"github.com/cloudcarver/anclax/core"
 	anclaxapp "github.com/cloudcarver/anclax/pkg/app"
 	"github.com/cloudcarver/anclax/pkg/logger"
 	anclaxutils "github.com/cloudcarver/anclax/pkg/utils"
@@ -33,15 +33,15 @@ var (
 type ModelInterface interface {
 	querier.Querier
 	RunTransaction(ctx context.Context, f func(model ModelInterface) error) error
-	RunTransactionWithTx(ctx context.Context, f func(tx pgx.Tx, model ModelInterface) error) error
+	RunTransactionWithTx(ctx context.Context, f func(tx core.Tx, model ModelInterface) error) error
 	InTransaction() bool
-	SpawnWithTx(tx pgx.Tx) ModelInterface
+	SpawnWithTx(tx core.Tx) ModelInterface
 	Close()
 }
 
 type Model struct {
 	querier.Querier
-	beginTx       func(ctx context.Context) (pgx.Tx, error)
+	beginTx       func(ctx context.Context) (core.Tx, error)
 	p             *pgxpool.Pool
 	inTransaction bool
 }
@@ -57,22 +57,29 @@ func (m *Model) Close() {
 	}
 }
 
-func (m *Model) SpawnWithTx(tx pgx.Tx) ModelInterface {
+func (m *Model) SpawnWithTx(tx core.Tx) ModelInterface {
 	return &Model{
 		Querier: querier.New(tx),
-		beginTx: func(ctx context.Context) (pgx.Tx, error) {
+		beginTx: func(ctx context.Context) (core.Tx, error) {
 			return nil, ErrAlreadyInTransaction
 		},
 		inTransaction: true,
 	}
 }
 
-func (m *Model) RunTransactionWithTx(ctx context.Context, f func(tx pgx.Tx, model ModelInterface) error) error {
+func (m *Model) RunTransactionWithTx(ctx context.Context, f func(tx core.Tx, model ModelInterface) error) error {
 	tx, err := m.beginTx(ctx)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+		// A cancelled request must not prevent the connection from being released.
+		rbCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := tx.Rollback(rbCtx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			log.Errorf("failed to rollback transaction: %s", err.Error())
+		}
+	}()
 
 	txm := m.SpawnWithTx(tx)
 
@@ -84,7 +91,7 @@ func (m *Model) RunTransactionWithTx(ctx context.Context, f func(tx pgx.Tx, mode
 }
 
 func (m *Model) RunTransaction(ctx context.Context, f func(model ModelInterface) error) error {
-	return m.RunTransactionWithTx(ctx, func(_ pgx.Tx, model ModelInterface) error {
+	return m.RunTransactionWithTx(ctx, func(_ core.Tx, model ModelInterface) error {
 		return f(model)
 	})
 }
@@ -111,7 +118,7 @@ func NewModel(cfg *config.Config, app *anclaxapp.Application) (ModelInterface, e
 
 	config, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to parse pgxpool config: %s", anclaxutils.ReplaceSensitiveStringBySha256(dsn, anclaxCfg.Pg.Password))
+		return nil, errors.New("failed to parse pgxpool config")
 	}
 	config.MaxConns = 50
 	config.MinConns = 1
@@ -131,7 +138,7 @@ func NewModel(cfg *config.Config, app *anclaxapp.Application) (ModelInterface, e
 			pool, err := pgxpool.NewWithConfig(ctx, config)
 			if err != nil {
 				log.Warnf("failed to init pgxpool: %s", err.Error())
-				return errors.Wrapf(err, "failed to init pgxpool: %s", dsn)
+				return errors.Wrap(err, "failed to init pgxpool")
 			}
 
 			p = pool
@@ -153,36 +160,51 @@ func NewModel(cfg *config.Config, app *anclaxapp.Application) (ModelInterface, e
 		time.Sleep(3 * time.Second)
 	}
 
+	poolReady := false
+	defer func() {
+		if !poolReady {
+			p.Close()
+		}
+	}()
+
+	dsnURL, err := url.Parse(dsn)
+	if err != nil {
+		return nil, errors.New("failed to parse migration dsn")
+	}
+	dsnURL.Scheme = "pgx5"
+	dsnQuery := dsnURL.Query()
+	dsnQuery.Set("x-migrations-table", migrationTable)
+	dsnURL.RawQuery = dsnQuery.Encode()
+
 	d, err := iofs.New(root.Migrations, "sql/migrations")
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create migration source driver")
 	}
-
-	dsnURL, err := url.Parse(dsn)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to parse dsn: %s", anclaxutils.ReplaceSensitiveStringBySha256(dsn, anclaxCfg.Pg.Password))
-	}
-	dsnURL.Scheme = "pgx5"
-	dsnQuery := dsnURL.Query()
-	dsnQuery.Add("x-migrations-table", migrationTable)
-	dsnURL.RawQuery = dsnQuery.Encode()
-
 	m, err := migrate.NewWithSourceInstance("iofs", d, dsnURL.String())
 	if err != nil {
+		_ = d.Close()
 		return nil, errors.Wrap(err, "failed to init migrate")
 	}
+	defer m.Close()
 	if err := m.Up(); err != nil {
 		if !errors.Is(err, migrate.ErrNoChange) {
 			return nil, errors.Wrap(err, "failed to migrate up")
 		}
 	}
 
-	ret := &Model{Querier: querier.New(p), beginTx: p.Begin, p: p}
+	ret := &Model{
+		Querier: querier.New(p),
+		beginTx: func(ctx context.Context) (core.Tx, error) {
+			return p.Begin(ctx)
+		},
+		p: p,
+	}
 
 	app.GetCloserManager().Register(func(ctx context.Context) error {
 		ret.Close()
 		return nil
 	})
+	poolReady = true
 
 	return ret, nil
 }

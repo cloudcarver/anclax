@@ -73,7 +73,6 @@ scenarios:
           runtime:
             - ResetCaptured(ctx)
             - CreateRuntimeConfig(ctx, "SPWG_CFG", "req-spwg-1", 20, 1, 1, 3, false)
-            - StartWorker(ctx, "spwg_w1", "capture", "dst-taskstore", []string{"w1", "w2"}, 20, 20, 200, 20, 1, 50, false, "")
           taskStore:
             - Enqueue(ctx, "S_LOW", 1, 1, []string{})
             - Enqueue(ctx, "S_HIGH", 9, 1, []string{})
@@ -85,6 +84,7 @@ scenarios:
       - id: s2
         parallel:
           runtime:
+            - StartWorker(ctx, "spwg_w1", "capture", "dst-taskstore", []string{"w1", "w2"}, 20, 20, 200, 20, 1, 50, false, "")
             - WaitNoPendingTasks(ctx, 8000)
             - WaitCapturedCount(ctx, 6, 8000)
             - AssertCapturedContains(ctx, []string{"S_HIGH", "S_LOW", "N_W2_HIGH", "N_W2_LOW", "N_W1", "N_DEF"})
@@ -95,7 +95,7 @@ scenarios:
 
       - id: s3
         script: |
-          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 
@@ -139,7 +139,7 @@ scenarios:
           rows, err := actors.Validator.Query(ctx, "select status from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"K2"})
           require.NoError(t, err)
           require.Equal(t, [][]any{{"failed"}}, rows)
-          rows, err = actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          rows, err = actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 
@@ -167,7 +167,7 @@ scenarios:
 
       - id: s3
         script: |
-          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 
@@ -207,7 +207,7 @@ scenarios:
         script: |
           rows, err := actors.Validator.Query(ctx, "select status from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"L1"})
           require.NoError(t, err)
-          require.Equal(t, [][]any{{"pending"}}, rows)
+          require.Equal(t, [][]any{{"running"}}, rows)
 
       - id: s7
         parallel:
@@ -220,7 +220,7 @@ scenarios:
 
       - id: s8
         script: |
-          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 
@@ -263,7 +263,7 @@ scenarios:
 
       - id: s6
         script: |
-          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 
@@ -293,7 +293,7 @@ scenarios:
 
       - id: s4
         script: |
-          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 
@@ -335,7 +335,7 @@ scenarios:
 
       - id: s5
         script: |
-          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 
@@ -365,7 +365,7 @@ scenarios:
 
       - id: s4
         script: |
-          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 
@@ -404,7 +404,7 @@ scenarios:
 
       - id: s5
         script: |
-          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 
@@ -466,7 +466,7 @@ scenarios:
 
       - id: s9
         script: |
-          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 
@@ -531,7 +531,7 @@ scenarios:
 
       - id: s5
         script: |
-          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 
@@ -543,7 +543,6 @@ scenarios:
           runtime:
             - ResetCaptured(ctx)
             - CreateRuntimeConfig(ctx, "SPW_CFG", "req-spw-1", 20, 1, 1, 3, false)
-            - StartWorker(ctx, "spw_w1", "capture", "dst-taskstore", []string{"w1", "w2"}, 20, 20, 200, 20, 1, 50, false, "")
           taskStore:
             - Enqueue(ctx, "SPW_S_LOW", 1, 1, []string{})
             - Enqueue(ctx, "SPW_S_HIGH", 9, 1, []string{})
@@ -554,6 +553,7 @@ scenarios:
       - id: s2
         parallel:
           runtime:
+            - StartWorker(ctx, "spw_w1", "capture", "dst-taskstore", []string{"w1", "w2"}, 20, 20, 200, 20, 1, 50, false, "")
             - WaitNoPendingTasks(ctx, 8000)
             - WaitCapturedCount(ctx, 5, 8000)
             - AssertCapturedContains(ctx, []string{"SPW_S_HIGH", "SPW_S_LOW", "SPW_N_W2", "SPW_N_W1", "SPW_N_DEF"})
@@ -903,7 +903,7 @@ scenarios:
           require.NoError(t, err)
           require.Equal(t, [][]any{{"cancelled"}}, rows)
 
-          rows, err = actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending' and spec->>'type' in ('broadcastPauseTask','broadcastCancelTask','pauseTaskOnWorker','cancelTaskOnWorker')", []any{})
+          rows, err = actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks' and spec->>'type' in ('broadcastPauseTask','broadcastCancelTask','pauseTaskOnWorker','cancelTaskOnWorker')", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 
@@ -1231,7 +1231,7 @@ scenarios:
         script: |
           rows, err := actors.Validator.Query(ctx, "select status from anclax.tasks where spec->'payload'->>'name' = $1 order by created_at desc limit 1", []any{"CRRF_LEASE"})
           require.NoError(t, err)
-          require.Equal(t, [][]any{{"pending"}}, rows)
+          require.Equal(t, [][]any{{"running"}}, rows)
 
       - id: s10
         parallel:
@@ -1255,7 +1255,7 @@ scenarios:
 
       - id: s12
         script: |
-          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status = 'pending'", []any{})
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type'<>'prefetchTasks'", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 
@@ -1299,7 +1299,7 @@ scenarios:
 
       - id: s4
         script: |
-          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','running')", []any{})
+          rows, err := actors.Validator.Query(ctx, "select count(*) from anclax.tasks where status in ('pending','ready','running') and spec->>'type' <> 'prefetchTasks'", []any{})
           require.NoError(t, err)
           require.Equal(t, [][]any{{int64(0)}}, rows)
 

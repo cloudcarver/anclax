@@ -14,7 +14,7 @@ import (
 	"github.com/google/wire"
 )
 
-func InitApp() (*app.App, error) {
+func InitApp() (*app.App, func(), error) {
 	wire.Build(
 		app.InjectAuth,
 		app.InjectTaskStore,
@@ -29,5 +29,5 @@ func InitApp() (*app.App, error) {
 		app.InitAnclaxApplication,
 		app.NewPlugin,
 	)
-	return nil, nil
+	return nil, nil, nil
 }

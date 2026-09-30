@@ -14,7 +14,7 @@ import (
 	querier "myexampleapp/pkg/zgen/querier"
 	reflect "reflect"
 
-	pgx "github.com/jackc/pgx/v5"
+	core "github.com/cloudcarver/anclax/core"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -84,17 +84,17 @@ func (mr *MockModelInterfaceMockRecorder) InTransaction() *gomock.Call {
 }
 
 // IncrementCounter mocks base method.
-func (m *MockModelInterface) IncrementCounter(ctx context.Context) error {
+func (m *MockModelInterface) IncrementCounter(ctx context.Context, amount int32) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "IncrementCounter", ctx)
+	ret := m.ctrl.Call(m, "IncrementCounter", ctx, amount)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // IncrementCounter indicates an expected call of IncrementCounter.
-func (mr *MockModelInterfaceMockRecorder) IncrementCounter(ctx any) *gomock.Call {
+func (mr *MockModelInterfaceMockRecorder) IncrementCounter(ctx, amount any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IncrementCounter", reflect.TypeOf((*MockModelInterface)(nil).IncrementCounter), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IncrementCounter", reflect.TypeOf((*MockModelInterface)(nil).IncrementCounter), ctx, amount)
 }
 
 // RunTransaction mocks base method.
@@ -112,7 +112,7 @@ func (mr *MockModelInterfaceMockRecorder) RunTransaction(ctx, f any) *gomock.Cal
 }
 
 // RunTransactionWithTx mocks base method.
-func (m *MockModelInterface) RunTransactionWithTx(ctx context.Context, f func(pgx.Tx, ModelInterface) error) error {
+func (m *MockModelInterface) RunTransactionWithTx(ctx context.Context, f func(core.Tx, ModelInterface) error) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RunTransactionWithTx", ctx, f)
 	ret0, _ := ret[0].(error)
@@ -126,7 +126,7 @@ func (mr *MockModelInterfaceMockRecorder) RunTransactionWithTx(ctx, f any) *gomo
 }
 
 // SpawnWithTx mocks base method.
-func (m *MockModelInterface) SpawnWithTx(tx pgx.Tx) ModelInterface {
+func (m *MockModelInterface) SpawnWithTx(tx core.Tx) ModelInterface {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SpawnWithTx", tx)
 	ret0, _ := ret[0].(ModelInterface)

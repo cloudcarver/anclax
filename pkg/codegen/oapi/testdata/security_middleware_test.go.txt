@@ -1,0 +1,128 @@
+package apigen
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/cloudcarver/anclax/pkg/logger"
+	"github.com/gofiber/fiber/v3"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
+)
+
+type testValidator struct {
+	t         *testing.T
+	stage     string
+	err       error
+	writeBody bool
+	calls     []string
+}
+
+func (v *testValidator) check(c fiber.Ctx, stage string) error {
+	v.calls = append(v.calls, stage)
+	if stage != v.stage {
+		return nil
+	}
+	if v.writeBody {
+		if err := c.JSON(map[string]string{"secret": "response-body-canary"}); err != nil {
+			return err
+		}
+	}
+	return v.err
+}
+
+func (v *testValidator) AuthFunc(c fiber.Ctx) error     { return v.check(c, "authentication") }
+func (v *testValidator) PreValidate(c fiber.Ctx) error  { return v.check(c, "pre-validation") }
+func (v *testValidator) PostValidate(c fiber.Ctx) error { return v.check(c, "post-validation") }
+func (v *testValidator) OperationPermit(c fiber.Ctx, operationID string) error {
+	if operationID != "ListWidgets" {
+		v.t.Errorf("operation ID = %q", operationID)
+	}
+	return v.check(c, "authorization")
+}
+
+type testHandler struct{ called bool }
+
+func (h *testHandler) ListWidgets(c fiber.Ctx) error {
+	h.called = true
+	return c.SendString("ok")
+}
+
+func TestSecurityResponsesAndLogs(t *testing.T) {
+	stages := []string{"authentication", "pre-validation", "authorization", "post-validation"}
+	for _, tc := range []struct {
+		stage  string
+		err    error
+		status int
+	}{
+		{"authentication", errors.New("auth-error-canary: submitted-token-canary"), 401},
+		{"pre-validation", errors.New("validation-error-canary"), 403},
+		{"pre-validation", fmt.Errorf("private-cause-canary: %w", fiber.NewError(400, "fiber-error-canary")), 400},
+		{"authorization", errors.New("permit-error-canary"), 403},
+		{"authorization", fmt.Errorf("private-cause-canary: %w", fiber.NewError(429, "fiber-error-canary")), 429},
+		{"post-validation", fmt.Errorf("private-cause-canary: %w", fiber.NewError(500, "fiber-error-canary")), 500},
+	} {
+		for _, writeBody := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/%d/body=%t", tc.stage, tc.status, writeBody), func(t *testing.T) {
+				core, observed := observer.New(zapcore.WarnLevel)
+				previousLog := xSecurityLog
+				xSecurityLog = logger.NewLogAgentWithLogger("security", zap.New(core))
+				t.Cleanup(func() { xSecurityLog = previousLog })
+
+				app := fiber.New()
+				validator := &testValidator{t: t, stage: tc.stage, err: tc.err, writeBody: writeBody}
+				handler := &testHandler{}
+				RegisterHandlers(app, NewXMiddleware(handler, validator))
+				req := httptest.NewRequest(http.MethodGet, "/widgets", nil)
+				req.Header.Set("Authorization", "Bearer submitted-token-canary")
+				resp, err := app.Test(req)
+				if err != nil {
+					t.Fatal(err)
+				}
+				body, err := io.ReadAll(resp.Body)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := resp.Body.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if resp.StatusCode != tc.status || string(body) != http.StatusText(tc.status) {
+					t.Fatalf("response = %d %q, want %d %q", resp.StatusCode, body, tc.status, http.StatusText(tc.status))
+				}
+				if got := resp.Header.Get("Content-Type"); got != fiber.MIMETextPlainCharsetUTF8 {
+					t.Errorf("content type = %q", got)
+				}
+				if handler.called {
+					t.Error("protected handler was called after rejection")
+				}
+				for i, stage := range stages {
+					if stage == tc.stage && !reflect.DeepEqual(validator.calls, stages[:i+1]) {
+						t.Errorf("validation calls = %v, want %v", validator.calls, stages[:i+1])
+					}
+				}
+				entries := observed.All()
+				if len(entries) != 1 {
+					t.Fatalf("security logs = %v", entries)
+				}
+				entry := entries[0]
+				level := zapcore.WarnLevel
+				if tc.status >= 500 {
+					level = zapcore.ErrorLevel
+				}
+				if entry.Level != level || entry.ContextMap()["stage"] != tc.stage {
+					t.Errorf("log = %v %v", entry.Level, entry.ContextMap())
+				}
+				if strings.Contains(entry.Message+fmt.Sprint(entry.ContextMap()), "canary") {
+					t.Errorf("security log leaks a credential or private cause: %v", entry)
+				}
+			})
+		}
+	}
+}
