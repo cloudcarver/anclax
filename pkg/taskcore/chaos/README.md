@@ -118,6 +118,11 @@ It is intentionally small, but already covers:
 - Postgres restart
 - runtime config update through control plane
 - user pause / resume / cancel operations through the control plane
+- mixed limited/unlimited batch traffic: roughly one third of tasks carry two concurrency tags (global limit 3, group limit 2), with rotating selection across routing groups and pause/cancel probes
+- durable admission audits across faults, permit cleanup after recovery, and reported workload counts/global and group peaks
+- deterministic executor gates: fill each limit, observe a blocked task with no attempt/permits, release a holder and observe the waiter execute; unlimited traffic must progress while the group remains full
+- kill a known lease owner, change/remove limits while it is down, and verify that the same interrupted task is reclaimed by a replacement
+- cut one worker's existing/new database connections while its process and executor gate connection stay alive; verify lease-loss cancellation, takeover, stale-owner fencing and reconnection
 - eventual completion / cancellation assertions through DB inspection
 
 ## Naming and run IDs
@@ -143,6 +148,20 @@ go test -tags smoke ./pkg/taskcore/chaos -run TestContainerizedTaskcoreChaosSmok
 ```
 
 The test logs the artifact directory at the end of the run.
+
+`make test` includes `make chaos-smoke`, which runs the deterministic fault scenarios plus 10 random iterations. `make chaos` runs the same mandatory scenarios plus 200 random iterations with seed `424242` by default. The direct test command defaults to 28 iterations. Both Make targets and direct tests fail when Docker is unavailable; install and start Docker before running them. Use the environment variables to select a reproducible run and locally available images:
+
+```bash
+ANCLAX_TASKCORE_CHAOS_SEED=424242 \
+ANCLAX_TASKCORE_CHAOS_ITERATIONS=200 \
+ANCLAX_TASKCORE_CHAOS_POSTGRES_IMAGE=postgres:17 \
+ANCLAX_TASKCORE_CHAOS_RUNTIME_IMAGE=alpine:latest \
+go test -tags smoke ./pkg/taskcore/chaos -run TestContainerizedTaskcoreChaosSmoke -count=1 -v -timeout 60m
+```
+
+Images default to `postgres:15` and `alpine:3.20`. Helpers are built for Linux for use in containers, including when the test runner is on macOS. Docker and the build target must use compatible CPU architectures. Container-to-container test traffic bypasses inherited HTTP proxy settings. Progress is logged every ten iterations.
+
+The initial tag-control probes are scheduled in the future while pause/resume/cancel and exclusion rules are asserted. The fixture then makes the remaining pending probes due, without changing their states. This keeps the test independent of broadcast latency: a completed task cannot be retroactively cancelled.
 
 ## Artifact layout
 
@@ -208,7 +227,13 @@ The current smoke test is trying to verify these properties:
 - paused tasks can be resumed and eventually complete
 - cancelled tasks remain cancelled
 - cancellation of a running task can be observed by user-visible signal emission stopping
-- when there has been disruption, at least some tasks should show takeover/retry evidence (`attempts >= 2`)
+- the specifically interrupted `TAG-takeover` and `TAG-partition` tasks must each acquire a new lease version under a different worker, retain both permits, reject the old owner's finalization and complete
+
+The deterministic `TAG-*` fixtures are reported through `assert.tag_wait_release` and `assert.tag_takeover` events. The task summary continues to describe the `LONG-*` mixed workload. Its initial infinite-retry probes do not count as evidence of fault-induced takeover. Global and group peaks must reach 3 and 2; observing lower peaks fails the suite.
+
+The database-partition fixture extends the isolated owner's heartbeat interval to exercise lease-renewal expiry independently of heartbeat-triggered runtime shutdown. It does not disable lease renewal or restart the isolated process. The production heartbeat failure path has separate runtime tests.
+
+See [testing layers and performance runs](../../../docs/async-task-testing.md) for local PostgreSQL and seed selection, load reports and migration compatibility checks.
 
 ## Current limitations
 
@@ -237,22 +262,22 @@ But it does **not** yet validate richer semantics such as:
 - nested parent/child descendant behavior in the long soak
 - business-level task payload validation
 
-### 4. Chaos actions are currently container lifecycle oriented
+### 4. Fault coverage is still bounded
 Current actions focus on:
 
 - stop/remove/restart containers
+- isolated worker-to-database disconnection and reconnection through a TCP proxy
 
 Not yet covered here:
 
 - `docker pause` / `unpause`
-- network disconnect/reconnect
+- broader multi-node network partitions
 - packet loss / latency / `tc netem`
 - CPU or memory pressure
 - connection-pool starvation
 
-### 5. Final-state assertions are stronger than intermediate assertions
-The current test is mostly an eventual-convergence check.
-That means it may miss some transient bugs that self-heal before the final assertions.
+### 5. Intermediate assertions are targeted
+Tag admission has durable counter audits and deterministic waiting/takeover checks. Other parts of the random workload still primarily assert eventual convergence, so transient bugs outside the audited invariants may self-heal before final assertions.
 
 ## Important implementation details
 
@@ -361,7 +386,7 @@ Recommended next steps for this package:
    - event snapshot
 3. add more chaos types
    - pause/unpause
-   - network partition
+   - broader multi-node network partitions
    - latency/loss injection
 4. make some long runs configurable
    - iterations

@@ -2,7 +2,9 @@ package codegen
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -205,6 +207,70 @@ x-check-rules:
 	}
 }
 
+func TestGenerateSupportsRelativeWorkdir(t *testing.T) {
+	t.Chdir(t.TempDir())
+	workdir := "nile-backend"
+	mustWriteFile(t, filepath.Join(workdir, "go.mod"), "module example.com/test\n\ngo 1.24\n")
+	mustWriteFile(t, filepath.Join(workdir, "api", "openapi", "root.yaml"), `openapi: 3.0.3
+info:
+  title: test
+  version: 1.0.0
+paths:
+  /counter:
+    get:
+      operationId: getCounter
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: ../schemas/counter.yaml#schemas/Counter
+`)
+	mustWriteFile(t, filepath.Join(workdir, "api", "schemas", "counter.yaml"), `schemas:
+  Counter:
+    type: object
+    required: [count]
+    properties:
+      count:
+        type: integer
+        format: int32
+`)
+
+	for _, tt := range []struct {
+		name string
+		path string
+	}{
+		{name: "directory", path: filepath.Join("api", "openapi")},
+		{name: "file", path: filepath.Join("api", "openapi", "root.yaml")},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			outPath := filepath.Join("pkg", "zgen", tt.name, "spec_gen.go")
+			if err := Generate(workdir, Config{
+				Path:    tt.path,
+				Out:     outPath,
+				Package: "apigen",
+				Schemas: &schema_codegen.Config{Path: filepath.Join("api", "schemas"), Output: filepath.Join("pkg", "zgen", "schemas")},
+			}); err != nil {
+				t.Fatalf("generate: %v", err)
+			}
+
+			raw, err := os.ReadFile(filepath.Join(workdir, outPath))
+			if err != nil {
+				t.Fatalf("read output: %v", err)
+			}
+			for _, needle := range []string{
+				`"example.com/test/pkg/zgen/schemas"`,
+				"GetCounter(c fiber.Ctx) error",
+			} {
+				if !strings.Contains(string(raw), needle) {
+					t.Fatalf("generated output missing %q", needle)
+				}
+			}
+		})
+	}
+}
+
 func TestGenerateMiddlewareUsesWrappedFiberErrorStatus(t *testing.T) {
 	t.Parallel()
 
@@ -239,12 +305,56 @@ func TestGenerateMiddlewareUsesWrappedFiberErrorStatus(t *testing.T) {
 		}
 	}
 
-	statusCall := "return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())"
+	statusCall := "return xSecurityError(c, xCheckRuleStatusCode(err),"
 	if got := strings.Count(out, statusCall); got != 3 {
 		t.Fatalf("generated output contains %q %d times, want 3", statusCall, got)
 	}
-	if strings.Contains(out, "return c.Status(fiber.StatusForbidden).SendString(err.Error())") {
-		t.Fatal("generated output still returns fixed 403 for check-rule errors")
+	if strings.Contains(out, "SendString(err.Error())") {
+		t.Fatal("generated security middleware still returns raw errors")
+	}
+	if !strings.Contains(out, `return xSecurityError(c, fiber.StatusUnauthorized, "authentication")`) {
+		t.Fatal("generated authentication middleware does not return a stable 401")
+	}
+	if !strings.Contains(out, "return c.Status(status).SendString(http.StatusText(status))") {
+		t.Fatal("generated security middleware does not replace existing response bodies")
+	}
+}
+
+func TestGeneratedSecurityMiddlewareRuntime(t *testing.T) {
+	workdir := t.TempDir()
+	if err := Generate(".", Config{
+		Path:    filepath.Join("testdata", "x_check_rules_status.yaml"),
+		Out:     filepath.Join(workdir, "spec_gen.go"),
+		Package: "apigen",
+	}); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	module, err := os.ReadFile(filepath.Join(root, "go.mod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	moduleText := strings.Replace(string(module), "module github.com/cloudcarver/anclax", "module example.com/generated-security-test", 1)
+	moduleText += "\nrequire github.com/cloudcarver/anclax v0.0.0\nreplace github.com/cloudcarver/anclax => " + strconv.Quote(root) + "\n"
+	mustWriteFile(t, filepath.Join(workdir, "go.mod"), moduleText)
+	for _, file := range []struct{ src, dst string }{
+		{filepath.Join(root, "go.sum"), "go.sum"},
+		{filepath.Join("testdata", "security_middleware_test.go.txt"), "security_middleware_test.go"},
+	} {
+		contents, err := os.ReadFile(file.src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		mustWriteFile(t, filepath.Join(workdir, file.dst), string(contents))
+	}
+	cmd := exec.Command("go", "test", "-mod=mod", "-count=1", ".")
+	cmd.Dir = workdir
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("generated security middleware failed: %v\n%s", err, output)
 	}
 }
 

@@ -33,5 +33,5 @@ func (h *Handler) IncrementCounter(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return c.Status(fiber.StatusAccepted).SendString("Incremented")
+	return c.SendStatus(fiber.StatusAccepted)
 }

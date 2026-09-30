@@ -1,14 +1,90 @@
 package server
 
 import (
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/cloudcarver/anclax/pkg/config"
+	"github.com/cloudcarver/anclax/pkg/globalctx"
+	"github.com/cloudcarver/anclax/pkg/logger"
+	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 func stringPtr(s string) *string {
 	return &s
+}
+
+type failingAuthValidator struct {
+	apigen.Validator
+}
+
+func (failingAuthValidator) AuthFunc(c fiber.Ctx) error {
+	if err := c.SendString("response-secret-canary"); err != nil {
+		return err
+	}
+	return errors.New("internal-auth-canary: request-secret-canary")
+}
+
+func TestResponseLogsExcludeAuthorizationAndDisabledBodies(t *testing.T) {
+	core, observed := observer.New(zapcore.InfoLevel)
+	previousLog := log
+	log = logger.NewLogAgentWithLogger("server", zap.New(core))
+	t.Cleanup(func() { log = previousLog })
+
+	globalCtx := globalctx.New()
+	t.Cleanup(globalCtx.Cancel)
+
+	s, err := NewServer(&config.Config{}, config.DefaultLibConfig(), globalCtx, nil, nil, failingAuthValidator{})
+	require.NoError(t, err)
+	s.GetApp().Get("/credential-response", func(c fiber.Ctx) error {
+		DisableBodyLog(c)
+		return c.SendString("response-secret-canary")
+	})
+	s.GetApp().Get("/ordinary-response", func(c fiber.Ctx) error {
+		return c.SendString("ordinary response")
+	})
+
+	for _, tc := range []struct {
+		path   string
+		status int
+		body   string
+	}{
+		{"/credential-response", fiber.StatusOK, "response-secret-canary"},
+		{"/api/v1/tasks", fiber.StatusUnauthorized, "Unauthorized"},
+		{"/ordinary-response", fiber.StatusOK, "ordinary response"},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			observed.TakeAll()
+			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			req.Header.Set("Authorization", "Bearer request-secret-canary")
+			resp, err := s.GetApp().Test(req)
+			require.NoError(t, err)
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.NoError(t, resp.Body.Close())
+			require.Equal(t, tc.status, resp.StatusCode)
+			require.Equal(t, tc.body, string(body))
+
+			entries := observed.FilterMessage("response").All()
+			require.Len(t, entries, 1)
+			fields, err := json.Marshal(entries[0].ContextMap())
+			require.NoError(t, err)
+			require.NotContains(t, string(fields), "canary")
+			require.NotContains(t, entries[0].ContextMap(), "token")
+			if tc.path == "/ordinary-response" {
+				require.Equal(t, tc.body, entries[0].ContextMap()["body"])
+			}
+		})
+	}
 }
 
 func TestLogRules(t *testing.T) {

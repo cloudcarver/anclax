@@ -173,15 +173,11 @@ func Generate(workdir string, config Config) error {
 		return errors.New("oapi-codegen package is required")
 	}
 
-	specPath := config.Path
-	if !filepath.IsAbs(specPath) {
-		specPath = filepath.Join(workdir, specPath)
-	}
 	schemaManager, err := schema_codegen.Load(workdir, derefSchemaConfig(config.Schemas))
 	if err != nil {
 		return errors.Wrap(err, "failed to load schemas config")
 	}
-	swagger, sourcePath, err := loadSwagger(workdir, specPath)
+	swagger, sourcePath, err := loadSwagger(workdir, config.Path)
 	if err != nil {
 		return errors.Wrap(err, "failed to load OpenAPI spec")
 	}
@@ -584,6 +580,17 @@ func renderMiddlewareDefinitions(b *strings.Builder, doc *document) {
 	b.WriteString("\t}\n")
 	b.WriteString("\treturn fiber.StatusForbidden\n")
 	b.WriteString("}\n\n")
+	b.WriteString("var xSecurityLog = logger.NewLogAgent(\"security\")\n\n")
+	b.WriteString("func xSecurityError(c fiber.Ctx, status int, stage string) error {\n")
+	b.WriteString("\tfields := []zap.Field{zap.Int(\"status\", status), zap.String(\"stage\", stage), zap.String(\"request-id\", requestid.FromContext(c))}\n")
+	b.WriteString("\tif status >= fiber.StatusInternalServerError {\n")
+	b.WriteString("\t\txSecurityLog.Error(\"security check failed\", fields...)\n")
+	b.WriteString("\t} else {\n")
+	b.WriteString("\t\txSecurityLog.Warn(\"security check failed\", fields...)\n")
+	b.WriteString("\t}\n")
+	b.WriteString("\tc.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)\n")
+	b.WriteString("\treturn c.Status(status).SendString(http.StatusText(status))\n")
+	b.WriteString("}\n\n")
 
 	b.WriteString("type XMiddleware struct {\n\tServerInterface\n\tValidator\n}\n\n")
 	b.WriteString("func NewXMiddleware(handler ServerInterface, validator Validator) ServerInterface {\n")
@@ -617,10 +624,10 @@ func renderMiddlewareDefinitions(b *strings.Builder, doc *document) {
 		}
 		b.WriteString(") error {\n")
 		b.WriteString("\tif err := x.AuthFunc(c); err != nil {\n")
-		b.WriteString("\t\treturn c.Status(fiber.StatusUnauthorized).SendString(err.Error())\n")
+		b.WriteString("\t\treturn xSecurityError(c, fiber.StatusUnauthorized, \"authentication\")\n")
 		b.WriteString("\t}\n")
 		b.WriteString("\tif err := x.PreValidate(c); err != nil {\n")
-		b.WriteString("\t\treturn c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())\n")
+		b.WriteString("\t\treturn xSecurityError(c, xCheckRuleStatusCode(err), \"pre-validation\")\n")
 		b.WriteString("\t}\n")
 		if operationNeedsOperationID(op) {
 			b.WriteString("\toperationID := ")
@@ -632,12 +639,12 @@ func renderMiddlewareDefinitions(b *strings.Builder, doc *document) {
 				b.WriteString("\tif err := ")
 				b.WriteString(scope)
 				b.WriteString("; err != nil {\n")
-				b.WriteString("\t\treturn c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())\n")
+				b.WriteString("\t\treturn xSecurityError(c, xCheckRuleStatusCode(err), \"authorization\")\n")
 				b.WriteString("\t}\n")
 			}
 		}
 		b.WriteString("\tif err := x.PostValidate(c); err != nil {\n")
-		b.WriteString("\t\treturn c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())\n")
+		b.WriteString("\t\treturn xSecurityError(c, xCheckRuleStatusCode(err), \"post-validation\")\n")
 		b.WriteString("\t}\n")
 		b.WriteString("\treturn x.ServerInterface.")
 		b.WriteString(op.Name)
@@ -1546,14 +1553,17 @@ func renderPathParamParse(b *strings.Builder, param paramDef) {
 
 func specImports(doc *document) []string {
 	imports := map[string]struct{}{
-		"context":                     {},
-		"errors":                      {},
-		"fmt":                         {},
-		"io":                          {},
-		"net/http":                    {},
-		"net/url":                     {},
-		"strings":                     {},
-		"github.com/gofiber/fiber/v3": {},
+		"context":  {},
+		"errors":   {},
+		"fmt":      {},
+		"io":       {},
+		"net/http": {},
+		"net/url":  {},
+		"strings":  {},
+		"github.com/cloudcarver/anclax/pkg/logger":         {},
+		"github.com/gofiber/fiber/v3":                      {},
+		"github.com/gofiber/fiber/v3/middleware/requestid": {},
+		"go.uber.org/zap":                                  {},
 	}
 	for imp := range doc.SpecTypeImports {
 		imports[imp] = struct{}{}
