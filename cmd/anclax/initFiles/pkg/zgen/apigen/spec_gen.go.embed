@@ -8,7 +8,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cloudcarver/anclax/pkg/logger"
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/requestid"
+	"go.uber.org/zap"
 	"io"
 	"myexampleapp/pkg/zgen/schemas/counter"
 	"net/http"
@@ -387,6 +390,19 @@ func xCheckRuleStatusCode(err error) int {
 	return fiber.StatusForbidden
 }
 
+var xSecurityLog = logger.NewLogAgent("security")
+
+func xSecurityError(c fiber.Ctx, status int, stage string) error {
+	fields := []zap.Field{zap.Int("status", status), zap.String("stage", stage), zap.String("request-id", requestid.FromContext(c))}
+	if status >= fiber.StatusInternalServerError {
+		xSecurityLog.Error("security check failed", fields...)
+	} else {
+		xSecurityLog.Warn("security check failed", fields...)
+	}
+	c.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
+	return c.Status(status).SendString(http.StatusText(status))
+}
+
 type XMiddleware struct {
 	ServerInterface
 	Validator
@@ -400,17 +416,17 @@ func NewXMiddleware(handler ServerInterface, validator Validator) ServerInterfac
 // (POST /counter)
 func (x *XMiddleware) IncrementCounter(c fiber.Ctx) error {
 	if err := x.AuthFunc(c); err != nil {
-		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
+		return xSecurityError(c, fiber.StatusUnauthorized, "authentication")
 	}
 	if err := x.PreValidate(c); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return xSecurityError(c, xCheckRuleStatusCode(err), "pre-validation")
 	}
 	operationID := "IncrementCounter"
 	if err := x.OperationPermit(c, operationID); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return xSecurityError(c, xCheckRuleStatusCode(err), "authorization")
 	}
 	if err := x.PostValidate(c); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return xSecurityError(c, xCheckRuleStatusCode(err), "post-validation")
 	}
 	return x.ServerInterface.IncrementCounter(c)
 }

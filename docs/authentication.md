@@ -310,6 +310,9 @@ Reference for the existing auth injector pattern: `examples/simple/app/injection
 
 ## Recommendations
 
+- Built-in sign-in, sign-up, and refresh endpoints suppress response-body logging. In custom handlers that return credentials, call `server.DisableBodyLog(c)` before issuing tokens or processing the request.
+- Authentication failures return a generic 401. Generated validation and permission checks preserve a wrapped `*fiber.Error` status, or use 403, and replace any existing response body with the standard HTTP status text. Security logs record fixed validation stages and status codes without raw errors or credentials.
+- `auth.ParseRefreshToken` returns `auth.ErrInvalidRefreshToken` for parsing failures; parser and store causes are excluded from the returned error text.
 - Keep built-in simple auth disabled unless you explicitly want the default username/password endpoints.
 - Use service methods for user lifecycle and standard credential issuance.
 - Use `auth.AuthInterface` when you need custom token issuance or revocation behavior.

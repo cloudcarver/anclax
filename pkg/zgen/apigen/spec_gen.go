@@ -9,7 +9,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cloudcarver/anclax/pkg/logger"
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/requestid"
+	"go.uber.org/zap"
 	"io"
 	"net/http"
 	"net/url"
@@ -1288,6 +1291,19 @@ func xCheckRuleStatusCode(err error) int {
 	return fiber.StatusForbidden
 }
 
+var xSecurityLog = logger.NewLogAgent("security")
+
+func xSecurityError(c fiber.Ctx, status int, stage string) error {
+	fields := []zap.Field{zap.Int("status", status), zap.String("stage", stage), zap.String("request-id", requestid.FromContext(c))}
+	if status >= fiber.StatusInternalServerError {
+		xSecurityLog.Error("security check failed", fields...)
+	} else {
+		xSecurityLog.Warn("security check failed", fields...)
+	}
+	c.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
+	return c.Status(status).SendString(http.StatusText(status))
+}
+
 type XMiddleware struct {
 	ServerInterface
 	Validator
@@ -1301,13 +1317,13 @@ func NewXMiddleware(handler ServerInterface, validator Validator) ServerInterfac
 // (GET /tasks)
 func (x *XMiddleware) ListTasks(c fiber.Ctx) error {
 	if err := x.AuthFunc(c); err != nil {
-		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
+		return xSecurityError(c, fiber.StatusUnauthorized, "authentication")
 	}
 	if err := x.PreValidate(c); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return xSecurityError(c, xCheckRuleStatusCode(err), "pre-validation")
 	}
 	if err := x.PostValidate(c); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return xSecurityError(c, xCheckRuleStatusCode(err), "post-validation")
 	}
 	return x.ServerInterface.ListTasks(c)
 }
@@ -1316,13 +1332,13 @@ func (x *XMiddleware) ListTasks(c fiber.Ctx) error {
 // (GET /orgs)
 func (x *XMiddleware) ListOrgs(c fiber.Ctx) error {
 	if err := x.AuthFunc(c); err != nil {
-		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
+		return xSecurityError(c, fiber.StatusUnauthorized, "authentication")
 	}
 	if err := x.PreValidate(c); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return xSecurityError(c, xCheckRuleStatusCode(err), "pre-validation")
 	}
 	if err := x.PostValidate(c); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return xSecurityError(c, xCheckRuleStatusCode(err), "post-validation")
 	}
 	return x.ServerInterface.ListOrgs(c)
 }
@@ -1331,13 +1347,13 @@ func (x *XMiddleware) ListOrgs(c fiber.Ctx) error {
 // (GET /events)
 func (x *XMiddleware) ListEvents(c fiber.Ctx) error {
 	if err := x.AuthFunc(c); err != nil {
-		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
+		return xSecurityError(c, fiber.StatusUnauthorized, "authentication")
 	}
 	if err := x.PreValidate(c); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return xSecurityError(c, xCheckRuleStatusCode(err), "pre-validation")
 	}
 	if err := x.PostValidate(c); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return xSecurityError(c, xCheckRuleStatusCode(err), "post-validation")
 	}
 	return x.ServerInterface.ListEvents(c)
 }
@@ -1346,13 +1362,13 @@ func (x *XMiddleware) ListEvents(c fiber.Ctx) error {
 // (POST /auth/sign-out)
 func (x *XMiddleware) SignOut(c fiber.Ctx) error {
 	if err := x.AuthFunc(c); err != nil {
-		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
+		return xSecurityError(c, fiber.StatusUnauthorized, "authentication")
 	}
 	if err := x.PreValidate(c); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return xSecurityError(c, xCheckRuleStatusCode(err), "pre-validation")
 	}
 	if err := x.PostValidate(c); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return xSecurityError(c, xCheckRuleStatusCode(err), "post-validation")
 	}
 	return x.ServerInterface.SignOut(c)
 }
@@ -1361,13 +1377,13 @@ func (x *XMiddleware) SignOut(c fiber.Ctx) error {
 // (POST /tasks/{taskID}/try-execute)
 func (x *XMiddleware) TryExecuteTask(c fiber.Ctx, taskID int32) error {
 	if err := x.AuthFunc(c); err != nil {
-		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
+		return xSecurityError(c, fiber.StatusUnauthorized, "authentication")
 	}
 	if err := x.PreValidate(c); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return xSecurityError(c, xCheckRuleStatusCode(err), "pre-validation")
 	}
 	if err := x.PostValidate(c); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return xSecurityError(c, xCheckRuleStatusCode(err), "post-validation")
 	}
 	return x.ServerInterface.TryExecuteTask(c, taskID)
 }
