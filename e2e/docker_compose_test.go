@@ -28,7 +28,7 @@ func TestComposeDatabasePublicationIsLoopbackOnly(t *testing.T) {
 	if !ok {
 		t.Fatal("Compose file has no database service")
 	}
-	if len(database.Ports) != 1 || database.Ports[0] != "127.0.0.1:7432:7432" {
+	if len(database.Ports) != 1 || database.Ports[0] != "127.0.0.1::7432" {
 		t.Fatalf("database port must be published only on loopback, got %v", database.Ports)
 	}
 

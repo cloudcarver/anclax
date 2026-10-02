@@ -2,7 +2,8 @@ package server
 
 import (
 	"context"
-	"fmt"
+	"net"
+	"strconv"
 	"strings"
 	"time"
 
@@ -205,7 +206,6 @@ func (s *Server) registerMiddleware() {
 				zap.Int("status", c.Response().StatusCode()),
 				zap.String("method", c.Method()),
 				zap.String("path", c.Path()),
-				zap.String("token", fmt.Sprintf("%v", c.Get("Authorization"))),
 				zap.String("request-id", requestid.FromContext(c)),
 				zap.Float32("latency-ms", float32(end.Sub(start).Milliseconds())),
 				zap.Error(err),
@@ -229,11 +229,11 @@ func (s *Server) Websocket() *ws.WebsocketController {
 
 func (s *Server) Listen() error {
 	// Create a channel to receive shutdown signal
-	shutdownChan := make(chan error)
+	shutdownChan := make(chan error, 1)
 
 	// Start the server in a goroutine
 	go func() {
-		if err := s.app.Listen(fmt.Sprintf(":%d", s.port)); err != nil {
+		if err := s.app.Listen(s.listenAddress(), fiber.ListenConfig{ListenerNetwork: fiber.NetworkTCP}); err != nil {
 			shutdownChan <- err
 		}
 	}()
@@ -246,6 +246,10 @@ func (s *Server) Listen() error {
 		log.Info("shutting down server due to context cancellation")
 		return s.app.Shutdown()
 	}
+}
+
+func (s *Server) listenAddress() string {
+	return net.JoinHostPort(s.host, strconv.Itoa(s.port))
 }
 
 func (s *Server) Shutdown() error {

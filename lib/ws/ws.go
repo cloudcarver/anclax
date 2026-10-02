@@ -20,6 +20,7 @@ var wslog = logger.NewLogAgent("websocket")
 
 var (
 	ErrCloseReceived        = errors.New("close frame received")
+	ErrSessionClosed        = errors.New("session closed")
 	ErrBackpressure         = errors.New("backpressure encountered")
 	ErrBiz                  = errors.New("business error")
 	ErrBadRequest           = errors.New("bad request")
@@ -43,6 +44,8 @@ type Session struct {
 	id           string
 	conn         *websocket.Conn
 	writeBuf     chan<- BufMsg
+	writeMu      sync.RWMutex
+	closed       bool
 	onClose      []func() error
 	cancel       context.CancelCauseFunc
 	close        func(err error)
@@ -64,6 +67,12 @@ func NewSession(conn *websocket.Conn, writeBuf chan<- BufMsg, cancel context.Can
 	}
 }
 func (s *Session) release() {
+	// Wait for in-flight enqueues before HandleConn closes the write buffer.
+	// Subscriber snapshots and application-held sessions may outlive the connection.
+	s.writeMu.Lock()
+	s.closed = true
+	s.writeMu.Unlock()
+
 	for _, closer := range s.onClose {
 		if err := closer(); err != nil {
 			wslog.Error("failed to close resource", zap.Error(err), zap.String(s.sessionIDKey, s.ID()))
@@ -103,21 +112,24 @@ func (s *Session) WriteTextMessage(data any) error {
 		return err
 	}
 
-	select {
-	case s.writeBuf <- BufMsg{mt: websocket.TextMessage, msg: msg}:
-		return nil
-	default:
-		s.cancel(ErrBackpressure)
-		return ErrBackpressure
-	}
+	return s.enqueue(BufMsg{mt: websocket.TextMessage, msg: msg})
 }
 
 func (s *Session) WriteBinaryMessage(data []byte) error {
 	if data == nil {
 		data = []byte{}
 	}
+	return s.enqueue(BufMsg{mt: websocket.BinaryMessage, msg: data})
+}
+
+func (s *Session) enqueue(msg BufMsg) error {
+	s.writeMu.RLock()
+	defer s.writeMu.RUnlock()
+	if s.closed {
+		return ErrSessionClosed
+	}
 	select {
-	case s.writeBuf <- BufMsg{mt: websocket.BinaryMessage, msg: data}:
+	case s.writeBuf <- msg:
 		return nil
 	default:
 		s.cancel(ErrBackpressure)

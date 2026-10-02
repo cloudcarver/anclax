@@ -1,8 +1,11 @@
 package config
 
 import (
+	"fmt"
 	"time"
 )
+
+const DefaultLeaseRenewalMaxConnections int32 = 10
 
 type Pg struct {
 	// (Required) The DSN (Data Source Name) for postgres database connection. If specified, Host, Port, User, Password, Db, and SSLMode settings will be ignored.
@@ -39,8 +42,12 @@ type Worker struct {
 
 	EnableHTTPTrigger bool `yaml:"enableHttpTrigger"`
 
-	// (Optional) Max number of tasks to run in parallel, default is 10
+	// (Optional) Max business tasks admitted through finalization, default is 10.
+	// Built-in worker control tasks have one additional independent slot.
 	Concurrency *int `yaml:"concurrency"`
+
+	// (Optional) Tasks per automatic claim, 1..256, default 32. One batch is in flight per worker.
+	ClaimBatchSize *int `yaml:"claimBatchSize"`
 
 	// (Optional) The interval of the poll, default is 1 second
 	PollInterval *time.Duration `yaml:"pollinterval"`
@@ -53,6 +60,9 @@ type Worker struct {
 
 	// (Optional) Task lock refresh interval, default is heartbeat interval
 	LockRefreshInterval *time.Duration `yaml:"lockRefreshInterval"`
+
+	// (Optional) Maximum connections in the dedicated task lease renewal pool, default is 10.
+	LeaseRenewalMaxConnections *int32 `yaml:"leaseRenewalMaxConnections"`
 
 	// (Optional) Worker labels for task filtering
 	Labels []string `yaml:"labels"`
@@ -70,11 +80,39 @@ type Worker struct {
 	UseLegacyWorker bool `yaml:"useLegacyWorker"`
 }
 
+func (w Worker) LeaseRenewalConnectionLimit() (int32, error) {
+	if w.LeaseRenewalMaxConnections == nil {
+		return DefaultLeaseRenewalMaxConnections, nil
+	}
+	if *w.LeaseRenewalMaxConnections < 1 {
+		return 0, fmt.Errorf("worker.leaseRenewalMaxConnections must be positive")
+	}
+	return *w.LeaseRenewalMaxConnections, nil
+}
+
 type Debug struct {
 	// (Optional) Whether to enable the debug server, default is false
 	Enable bool `yaml:"enable"`
 
-	// (Optional) The port of the debug server, default is 8080
+	// (Optional) The host of the debug server, default is 127.0.0.1.
+	// Set an external address only when the listener is protected by a trusted
+	// management network.
+	Host string `yaml:"host"`
+
+	// (Optional) The port of the debug server, default is 8777
+	Port int `yaml:"port"`
+}
+
+type Metrics struct {
+	// (Optional) Whether to enable the metrics server, default is false.
+	Enable bool `yaml:"enable"`
+
+	// (Optional) The host of the metrics server, default is 127.0.0.1.
+	// Set an external address only when the listener is protected by a trusted
+	// management network.
+	Host string `yaml:"host"`
+
+	// (Optional) The port of the metrics server, default is 9020.
 	Port int `yaml:"port"`
 }
 
@@ -82,7 +120,7 @@ type Config struct {
 	// (Optional) The path of file to store the initialization data, if not set, skip the initialization
 	Init string `yaml:"init"`
 
-	// (Optional) The host of the anclax server.
+	// (Optional) The host of the anclax server, default is localhost.
 	Host string `yaml:"host"`
 
 	// (Optional) The port of the anclax server, default is 8020
@@ -103,8 +141,12 @@ type Config struct {
 	// (Optional, deprecated) Whether to disable the default sign-up endpoint, default is false.
 	DisableDefaultSignUp bool `yaml:"disableDefaultSignUp"`
 
-	// (Optional) The port of the metrics server, default is 9020
+	// Deprecated: use Metrics. Setting this field keeps the legacy metrics
+	// listener enabled on the configured port, binding to loopback unless
+	// Metrics.Host explicitly selects another address. Metrics.Port takes precedence.
 	MetricsPort int `yaml:"metricsport"`
+
+	Metrics Metrics `yaml:"metrics"`
 
 	Worker Worker `yaml:"worker"`
 

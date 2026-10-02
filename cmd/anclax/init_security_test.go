@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cloudcarver/anclax/pkg/config"
 	"gopkg.in/yaml.v3"
 )
 
@@ -15,6 +16,15 @@ func TestGeneratedProjectRequiresExplicitAccountCreation(t *testing.T) {
 	appSource := readGeneratedFile(t, projectDir, "app", "app.go")
 	if strings.Contains(appSource, "CreateNewUser(") {
 		t.Fatal("generated application startup must not create a preset user")
+	}
+	var development struct {
+		Anclax config.Config `yaml:"anclax"`
+	}
+	if err := yaml.Unmarshal([]byte(readGeneratedFile(t, projectDir, "dev", "app.yaml")), &development); err != nil {
+		t.Fatal(err)
+	}
+	if !development.Anclax.EnableSimpleAuth || development.Anclax.TestAccount != nil {
+		t.Fatal("development config must allow registration without a preset account")
 	}
 
 	readme := readGeneratedFile(t, projectDir, "README.md")
@@ -28,6 +38,9 @@ func TestGeneratedProjectRequiresExplicitAccountCreation(t *testing.T) {
 	gitignore := readGeneratedFile(t, projectDir, ".gitignore")
 	if !containsLine(gitignore, ".env") {
 		t.Fatal("generated project must ignore the local environment file")
+	}
+	if _, err := os.Stat(filepath.Join(projectDir, ".env")); !os.IsNotExist(err) {
+		t.Fatalf("local credentials were embedded in the scaffold: %v", err)
 	}
 }
 
@@ -62,12 +75,15 @@ func TestGeneratedComposeKeepsDatabasePrivateAndRequiresPassword(t *testing.T) {
 	if !ok {
 		t.Fatal("generated Compose file has no application service")
 	}
-	dsn, ok := application.Environment["MYAPP_ANCLAX_PG_DSN"].(string)
-	if !ok || !strings.Contains(dsn, "${POSTGRES_PASSWORD:?") {
-		t.Fatalf("generated application DSN must use the configured database password, got %v", application.Environment["MYAPP_ANCLAX_PG_DSN"])
+	applicationPassword, ok := application.Environment["MYAPP_ANCLAX_PG_PASSWORD"].(string)
+	if !ok || applicationPassword != password {
+		t.Fatal("generated application must use the configured database password")
 	}
-	if strings.Contains(dsn, "postgres:postgres@") {
-		t.Fatal("generated application DSN must not contain the old fixed password")
+	if _, ok := application.Environment["MYAPP_ANCLAX_PG_DSN"]; ok {
+		t.Fatal("generated application must pass passwords separately instead of interpolating a URI")
+	}
+	if application.Environment["MYAPP_ANCLAX_PG_HOST"] != "db" || application.Environment["MYAPP_ANCLAX_PG_SSLMODE"] != "disable" {
+		t.Fatal("generated application must connect to its development database")
 	}
 }
 

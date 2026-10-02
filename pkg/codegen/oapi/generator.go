@@ -71,21 +71,21 @@ type enumValue struct {
 }
 
 type operationDef struct {
-	Name          string
-	Summary       string
-	Method        string
-	Path          string
-	FiberPath     string
-	PathFormat    string
-	PathArgs      string
-	PathParams    []paramDef
-	QueryParams   []paramDef
-	RequestBody   *requestBodyDef
-	Responses     []responseDef
-	Securities    []operationSecurity
-	NeedsAuth     bool
-	NeedsBody     bool
-	NeedsResponse bool
+	Name                 string
+	Summary              string
+	Method               string
+	Path                 string
+	FiberPath            string
+	PathFormat           string
+	PathArgs             string
+	PathParams           []paramDef
+	QueryParams          []paramDef
+	RequestBody          *requestBodyDef
+	Responses            []responseDef
+	SecurityAlternatives []operationSecurityAlternative
+	NeedsAuth            bool
+	NeedsBody            bool
+	NeedsResponse        bool
 }
 
 type requestBodyDef struct {
@@ -106,6 +106,10 @@ type responseDef struct {
 type operationSecurity struct {
 	ConstName string
 	Scopes    []string
+}
+
+type operationSecurityAlternative struct {
+	Schemes []operationSecurity
 }
 
 type paramDef struct {
@@ -173,15 +177,11 @@ func Generate(workdir string, config Config) error {
 		return errors.New("oapi-codegen package is required")
 	}
 
-	specPath := config.Path
-	if !filepath.IsAbs(specPath) {
-		specPath = filepath.Join(workdir, specPath)
-	}
 	schemaManager, err := schema_codegen.Load(workdir, derefSchemaConfig(config.Schemas))
 	if err != nil {
 		return errors.Wrap(err, "failed to load schemas config")
 	}
-	swagger, sourcePath, err := loadSwagger(workdir, specPath)
+	swagger, sourcePath, err := loadSwagger(workdir, config.Path)
 	if err != nil {
 		return errors.Wrap(err, "failed to load OpenAPI spec")
 	}
@@ -248,13 +248,16 @@ func buildDocument(spec *openapi3.T, specPath string, packageName string, schema
 				continue
 			}
 			for _, opItem := range orderedOperations(pathItem) {
-				op, err := buildOperation(specPath, path, pathItem, opItem.method, opItem.operation, enumMap, doc.SpecTypeImports, schemaManager)
+				effectiveSecurity := effectiveSecurityRequirements(spec.Security, opItem.operation.Security)
+				op, err := buildOperation(specPath, path, pathItem, opItem.method, opItem.operation, effectiveSecurity, enumMap, doc.SpecTypeImports, schemaManager)
 				if err != nil {
 					return nil, errors.Wrapf(err, "failed to build operation %s %s", opItem.method, path)
 				}
 				doc.Operations = append(doc.Operations, op)
-				for _, sec := range op.Securities {
-					securityMap[sec.ConstName] = securityConst{Name: sec.ConstName, Value: strings.TrimSuffix(sec.ConstName, "Scopes") + ".Scopes"}
+				for _, alternative := range op.SecurityAlternatives {
+					for _, sec := range alternative.Schemes {
+						securityMap[sec.ConstName] = securityConst{Name: sec.ConstName, Value: strings.TrimSuffix(sec.ConstName, "Scopes") + ".Scopes"}
+					}
 				}
 			}
 		}
@@ -347,7 +350,7 @@ func buildSchemaDef(currentFile, name string, ref *openapi3.SchemaRef, enumMap m
 	return schema, nil
 }
 
-func buildOperation(currentFile, path string, pathItem *openapi3.PathItem, method string, op *openapi3.Operation, enumMap map[string]*enumDef, imports map[string]struct{}, schemaManager *schema_codegen.Manager) (operationDef, error) {
+func buildOperation(currentFile, path string, pathItem *openapi3.PathItem, method string, op *openapi3.Operation, security openapi3.SecurityRequirements, enumMap map[string]*enumDef, imports map[string]struct{}, schemaManager *schema_codegen.Manager) (operationDef, error) {
 	name := exportName(op.OperationID)
 	if name == "" {
 		name = exportName(strings.Trim(path, "/")) + exportName(strings.ToLower(method))
@@ -422,19 +425,50 @@ func buildOperation(currentFile, path string, pathItem *openapi3.PathItem, metho
 	}
 	ret.NeedsResponse = true
 
-	if op.Security != nil {
-		for _, requirement := range *op.Security {
-			for scheme, scopes := range requirement {
-				ret.Securities = append(ret.Securities, operationSecurity{
-					ConstName: exportName(scheme) + "Scopes",
-					Scopes:    append([]string(nil), scopes...),
-				})
-			}
-		}
-	}
-	ret.NeedsAuth = len(ret.Securities) > 0
+	ret.SecurityAlternatives, ret.NeedsAuth = normalizeSecurityRequirements(security)
 
 	return ret, nil
+}
+
+func effectiveSecurityRequirements(global openapi3.SecurityRequirements, operation *openapi3.SecurityRequirements) openapi3.SecurityRequirements {
+	// A non-nil operation value, including an explicit empty array, overrides
+	// top-level security. Only an absent operation value inherits the global one.
+	if operation != nil {
+		return *operation
+	}
+	return global
+}
+
+func normalizeSecurityRequirements(requirements openapi3.SecurityRequirements) ([]operationSecurityAlternative, bool) {
+	if len(requirements) == 0 {
+		return nil, false
+	}
+
+	alternatives := make([]operationSecurityAlternative, 0, len(requirements))
+	needsAuth := true
+	for _, requirement := range requirements {
+		alternative := operationSecurityAlternative{}
+		// An empty requirement is the anonymous alternative. If one is present,
+		// callers may satisfy the operation without authentication.
+		if len(requirement) == 0 {
+			needsAuth = false
+		}
+
+		schemes := make([]string, 0, len(requirement))
+		for scheme := range requirement {
+			schemes = append(schemes, scheme)
+		}
+		sort.Strings(schemes)
+		for _, scheme := range schemes {
+			alternative.Schemes = append(alternative.Schemes, operationSecurity{
+				ConstName: exportName(scheme) + "Scopes",
+				Scopes:    append([]string(nil), requirement[scheme]...),
+			})
+		}
+		alternatives = append(alternatives, alternative)
+	}
+
+	return alternatives, needsAuth
 }
 
 func renderSpec(doc *document) (string, error) {
@@ -525,7 +559,8 @@ func renderSpec(doc *document) (string, error) {
 
 func renderMiddlewareDefinitions(b *strings.Builder, doc *document) {
 	b.WriteString("type Validator interface {\n")
-	b.WriteString("\t// AuthFunc is called before the request is processed. The response will be 401 if the auth fails.\n")
+	b.WriteString("\t// AuthFunc checks every scheme in the current security alternative. Scope context values contain only that alternative.\n")
+	b.WriteString("\t// It may be called again for another alternative. Authentication failures return 401.\n")
 	b.WriteString("\tAuthFunc(fiber.Ctx) error\n\n")
 	b.WriteString("\t// PreValidate is called before the request is processed. The response will use a wrapped *fiber.Error status code, or 403 otherwise.\n")
 	b.WriteString("\tPreValidate(fiber.Ctx) error\n\n")
@@ -584,6 +619,20 @@ func renderMiddlewareDefinitions(b *strings.Builder, doc *document) {
 	b.WriteString("\t}\n")
 	b.WriteString("\treturn fiber.StatusForbidden\n")
 	b.WriteString("}\n\n")
+	b.WriteString("var xSecurityLog = logger.NewLogAgent(\"security\")\n\n")
+	b.WriteString("func xLogSecurityFailure(c fiber.Ctx, status int, stage string) {\n")
+	b.WriteString("\tfields := []zap.Field{zap.Int(\"status\", status), zap.String(\"stage\", stage), zap.String(\"request-id\", requestid.FromContext(c))}\n")
+	b.WriteString("\tif status >= fiber.StatusInternalServerError {\n")
+	b.WriteString("\t\txSecurityLog.Error(\"security check failed\", fields...)\n")
+	b.WriteString("\t} else {\n")
+	b.WriteString("\t\txSecurityLog.Warn(\"security check failed\", fields...)\n")
+	b.WriteString("\t}\n")
+	b.WriteString("}\n\n")
+	b.WriteString("func xSecurityError(c fiber.Ctx, status int, stage string) error {\n")
+	b.WriteString("\txLogSecurityFailure(c, status, stage)\n")
+	b.WriteString("\tc.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)\n")
+	b.WriteString("\treturn c.Status(status).SendString(http.StatusText(status))\n")
+	b.WriteString("}\n\n")
 
 	b.WriteString("type XMiddleware struct {\n\tServerInterface\n\tValidator\n}\n\n")
 	b.WriteString("func NewXMiddleware(handler ServerInterface, validator Validator) ServerInterface {\n")
@@ -616,28 +665,35 @@ func renderMiddlewareDefinitions(b *strings.Builder, doc *document) {
 			b.WriteString(operationParamsTypeName(op))
 		}
 		b.WriteString(") error {\n")
+		if len(op.SecurityAlternatives) > 1 {
+			renderSecurityAlternatives(b, op)
+			b.WriteString("}\n\n")
+			continue
+		}
 		b.WriteString("\tif err := x.AuthFunc(c); err != nil {\n")
-		b.WriteString("\t\treturn c.Status(fiber.StatusUnauthorized).SendString(err.Error())\n")
+		b.WriteString("\t\treturn xSecurityError(c, fiber.StatusUnauthorized, \"authentication\")\n")
 		b.WriteString("\t}\n")
 		b.WriteString("\tif err := x.PreValidate(c); err != nil {\n")
-		b.WriteString("\t\treturn c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())\n")
+		b.WriteString("\t\treturn xSecurityError(c, xCheckRuleStatusCode(err), \"pre-validation\")\n")
 		b.WriteString("\t}\n")
 		if operationNeedsOperationID(op) {
 			b.WriteString("\toperationID := ")
 			b.WriteString(strconv.Quote(op.Name))
 			b.WriteString("\n")
 		}
-		for _, sec := range op.Securities {
-			for _, scope := range sec.Scopes {
-				b.WriteString("\tif err := ")
-				b.WriteString(scope)
-				b.WriteString("; err != nil {\n")
-				b.WriteString("\t\treturn c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())\n")
-				b.WriteString("\t}\n")
+		for _, alternative := range op.SecurityAlternatives {
+			for _, sec := range alternative.Schemes {
+				for _, scope := range sec.Scopes {
+					b.WriteString("\tif err := ")
+					b.WriteString(scope)
+					b.WriteString("; err != nil {\n")
+					b.WriteString("\t\treturn xSecurityError(c, xCheckRuleStatusCode(err), \"authorization\")\n")
+					b.WriteString("\t}\n")
+				}
 			}
 		}
 		b.WriteString("\tif err := x.PostValidate(c); err != nil {\n")
-		b.WriteString("\t\treturn c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())\n")
+		b.WriteString("\t\treturn xSecurityError(c, xCheckRuleStatusCode(err), \"post-validation\")\n")
 		b.WriteString("\t}\n")
 		b.WriteString("\treturn x.ServerInterface.")
 		b.WriteString(op.Name)
@@ -651,6 +707,80 @@ func renderMiddlewareDefinitions(b *strings.Builder, doc *document) {
 		}
 		b.WriteString(")\n")
 		b.WriteString("}\n\n")
+	}
+}
+
+// Each alternative has its own credential and check-rule context. A failed
+// alternative must not overwrite another one's scopes or response state.
+func renderSecurityAlternatives(b *strings.Builder, op operationDef) {
+	b.WriteString("\tsecurityContext := c.Context()\n")
+	b.WriteString("\tsecurityResponse := fasthttp.AcquireResponse()\n")
+	b.WriteString("\tdefer fasthttp.ReleaseResponse(securityResponse)\n")
+	b.WriteString("\tc.Response().CopyTo(securityResponse)\n")
+	b.WriteString("\tsecurityMatched := false\n")
+	b.WriteString("\tsecurityStatus, securityStage := fiber.StatusUnauthorized, \"authentication\"\n")
+	if operationNeedsOperationID(op) {
+		b.WriteString("\toperationID := " + strconv.Quote(op.Name) + "\n")
+	}
+	for _, alternative := range op.SecurityAlternatives {
+		b.WriteString("\tif !securityMatched {\n")
+		b.WriteString("\t\tc.SetContext(securityContext)\n")
+		for _, name := range operationSecurityConstants(op) {
+			b.WriteString("\t\tc.RequestCtx().RemoveUserValue(" + name + ")\n")
+		}
+		renderSecurityScopes(b, alternative, "\t\t")
+		b.WriteString("\t\tstatus, stage := func() (int, string) {\n")
+		b.WriteString("\t\t\tif err := x.AuthFunc(c); err != nil {\n\t\t\t\treturn fiber.StatusUnauthorized, \"authentication\"\n\t\t\t}\n")
+		b.WriteString("\t\t\tif err := x.PreValidate(c); err != nil {\n\t\t\t\treturn xCheckRuleStatusCode(err), \"pre-validation\"\n\t\t\t}\n")
+		for _, sec := range alternative.Schemes {
+			for _, scope := range sec.Scopes {
+				b.WriteString("\t\t\tif err := " + scope + "; err != nil {\n")
+				b.WriteString("\t\t\t\treturn xCheckRuleStatusCode(err), \"authorization\"\n\t\t\t}\n")
+			}
+		}
+		b.WriteString("\t\t\tif err := x.PostValidate(c); err != nil {\n\t\t\t\treturn xCheckRuleStatusCode(err), \"post-validation\"\n\t\t\t}\n")
+		b.WriteString("\t\t\treturn 0, \"\"\n\t\t}()\n")
+		b.WriteString("\t\tif stage == \"\" {\n\t\t\tsecurityMatched = true\n\t\t} else {\n")
+		b.WriteString("\t\t\txLogSecurityFailure(c, status, stage)\n")
+		b.WriteString("\t\t\tif securityStage == \"authentication\" || stage != \"authentication\" {\n\t\t\t\tsecurityStatus, securityStage = status, stage\n\t\t\t}\n")
+		b.WriteString("\t\t\tsecurityResponse.CopyTo(c.Response())\n\t\t}\n\t}\n")
+	}
+	b.WriteString("\tif !securityMatched {\n\t\treturn xSecurityError(c, securityStatus, securityStage)\n\t}\n")
+	b.WriteString("\treturn x.ServerInterface." + op.Name + "(c")
+	for _, param := range op.PathParams {
+		b.WriteString(", " + param.VarName)
+	}
+	if len(op.QueryParams) > 0 {
+		b.WriteString(", params")
+	}
+	b.WriteString(")\n")
+}
+
+func operationSecurityConstants(op operationDef) []string {
+	names := map[string]struct{}{}
+	for _, alternative := range op.SecurityAlternatives {
+		for _, scheme := range alternative.Schemes {
+			names[scheme.ConstName] = struct{}{}
+		}
+	}
+	ret := make([]string, 0, len(names))
+	for name := range names {
+		ret = append(ret, name)
+	}
+	sort.Strings(ret)
+	return ret
+}
+
+func renderSecurityScopes(b *strings.Builder, alternative operationSecurityAlternative, indent string) {
+	for _, sec := range alternative.Schemes {
+		b.WriteString(indent + "fiber.StoreInContext(c, " + sec.ConstName + ", []string{")
+		for i, scope := range sec.Scopes {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(strconv.Quote(scope))
+		}
+		b.WriteString("})\n")
 	}
 }
 
@@ -741,6 +871,14 @@ func queryTag(param paramDef) string {
 }
 
 func renderClient(b *strings.Builder, doc *document) {
+	b.WriteString("var xClientLog = logger.NewLogAgent(\"api-client\")\n\n")
+	b.WriteString("func readResponseBody(body io.ReadCloser) ([]byte, error) {\n")
+	b.WriteString("\tdefer func() {\n")
+	b.WriteString("\t\tif err := body.Close(); err != nil {\n")
+	b.WriteString("\t\t\txClientLog.Warn(\"failed to close response body\")\n")
+	b.WriteString("\t\t}\n\t}()\n")
+	b.WriteString("\treturn io.ReadAll(body)\n")
+	b.WriteString("}\n\n")
 	b.WriteString("// RequestEditorFn is the function signature for the RequestEditor callback function\n")
 	b.WriteString("type RequestEditorFn func(ctx context.Context, req *http.Request) error\n\n")
 	b.WriteString("// Doer performs HTTP requests.\n")
@@ -1003,17 +1141,10 @@ func renderServer(b *strings.Builder, doc *document) {
 			b.WriteString("\t\treturn fiber.NewError(fiber.StatusBadRequest, err.Error())\n")
 			b.WriteString("\t}\n\n")
 		}
-		for _, sec := range op.Securities {
-			b.WriteString("\tfiber.StoreInContext(c, ")
-			b.WriteString(sec.ConstName)
-			b.WriteString(", []string{")
-			for i, scope := range sec.Scopes {
-				if i > 0 {
-					b.WriteString(", ")
-				}
-				b.WriteString(strconv.Quote(scope))
+		if !op.NeedsAuth || len(op.SecurityAlternatives) == 1 {
+			for _, alternative := range op.SecurityAlternatives {
+				renderSecurityScopes(b, alternative, "\t")
 			}
-			b.WriteString("})\n\n")
 		}
 		b.WriteString("\treturn siw.Handler.")
 		b.WriteString(op.Name)
@@ -1448,8 +1579,7 @@ func renderParseResponse(b *strings.Builder, op operationDef) {
 	b.WriteString("Response(rsp *http.Response) (*")
 	b.WriteString(op.Name)
 	b.WriteString("Response, error) {\n")
-	b.WriteString("\tbodyBytes, err := io.ReadAll(rsp.Body)\n")
-	b.WriteString("\tdefer func() { _ = rsp.Body.Close() }()\n")
+	b.WriteString("\tbodyBytes, err := readResponseBody(rsp.Body)\n")
 	b.WriteString("\tif err != nil {\n\t\treturn nil, err\n\t}\n\n")
 	b.WriteString("\tresponse := &")
 	b.WriteString(op.Name)
@@ -1546,14 +1676,23 @@ func renderPathParamParse(b *strings.Builder, param paramDef) {
 
 func specImports(doc *document) []string {
 	imports := map[string]struct{}{
-		"context":                     {},
-		"errors":                      {},
-		"fmt":                         {},
-		"io":                          {},
-		"net/http":                    {},
-		"net/url":                     {},
-		"strings":                     {},
-		"github.com/gofiber/fiber/v3": {},
+		"context":  {},
+		"errors":   {},
+		"fmt":      {},
+		"io":       {},
+		"net/http": {},
+		"net/url":  {},
+		"strings":  {},
+		"github.com/cloudcarver/anclax/pkg/logger":         {},
+		"github.com/gofiber/fiber/v3":                      {},
+		"github.com/gofiber/fiber/v3/middleware/requestid": {},
+		"go.uber.org/zap":                                  {},
+	}
+	for _, op := range doc.Operations {
+		if op.NeedsAuth && len(op.SecurityAlternatives) > 1 {
+			imports["github.com/valyala/fasthttp"] = struct{}{}
+			break
+		}
 	}
 	for imp := range doc.SpecTypeImports {
 		imports[imp] = struct{}{}
@@ -1996,10 +2135,12 @@ func scopeReceiver(useContext bool) string {
 }
 
 func operationNeedsOperationID(op operationDef) bool {
-	for _, sec := range op.Securities {
-		for _, scope := range sec.Scopes {
-			if strings.Contains(scope, "operationID") {
-				return true
+	for _, alternative := range op.SecurityAlternatives {
+		for _, sec := range alternative.Schemes {
+			for _, scope := range sec.Scopes {
+				if strings.Contains(scope, "operationID") {
+					return true
+				}
 			}
 		}
 	}

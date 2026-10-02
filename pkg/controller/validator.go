@@ -21,7 +21,7 @@ func (v *Validator) AuthFunc(c fiber.Ctx) error {
 }
 
 func (v *Validator) PreValidate(c fiber.Ctx) error {
-	return v.auth.Authfunc(c)
+	return nil
 }
 
 func (v *Validator) PostValidate(c fiber.Ctx) error {

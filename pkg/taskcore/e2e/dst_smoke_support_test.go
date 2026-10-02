@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -45,16 +46,20 @@ const (
 func withSmokePostgres(t *testing.T, fn func(ctx context.Context, m model.ModelInterface)) {
 	t.Helper()
 	if !dockerAvailable() {
-		t.Skip("docker not available")
+		t.Fatal("Docker is unavailable; ensure Docker is installed and running")
 	}
 
 	cleanupContainer(t)
+	postgresImage := os.Getenv("ANCLAX_SMOKE_POSTGRES_IMAGE")
+	if postgresImage == "" {
+		postgresImage = "postgres:15"
+	}
 	if err := runDocker(t, "run", "-d", "--name", smokeContainerName,
 		"-e", "POSTGRES_PASSWORD=postgres",
 		"-e", "POSTGRES_USER=postgres",
 		"-e", "POSTGRES_DB=postgres",
 		"-p", smokePort+":5432",
-		"postgres:15",
+		postgresImage,
 	); err != nil {
 		t.Fatalf("failed to start postgres container: %v", err)
 	}
@@ -862,6 +867,15 @@ func (a *runtimeActor) WaitTaskStartedAfterNow(ctx context.Context, task string,
 }
 
 func (a *runtimeActor) WaitNoPendingTasks(ctx context.Context, timeoutMs int32) error {
+	businessTasks := func(tasks []*querier.AnclaxTask) []*querier.AnclaxTask {
+		out := tasks[:0]
+		for _, task := range tasks {
+			if task.Spec.Type != worker.PrefetchTaskType {
+				out = append(out, task)
+			}
+		}
+		return out
+	}
 	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
 	for time.Now().Before(deadline) {
 		select {
@@ -870,12 +884,14 @@ func (a *runtimeActor) WaitNoPendingTasks(ctx context.Context, timeoutMs int32) 
 		default:
 		}
 		pending, err := a.model.ListAllPendingTasks(ctx)
+		pending = businessTasks(pending)
 		if err == nil && len(pending) == 0 {
 			return nil
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	pending, err := a.model.ListAllPendingTasks(ctx)
+	pending = businessTasks(pending)
 	if err != nil {
 		return fmt.Errorf("pending tasks did not drain and list failed: %w", err)
 	}

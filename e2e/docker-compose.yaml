@@ -19,7 +19,7 @@ services:
   db:
     image: "postgres:17"
     ports:
-      - "127.0.0.1:7432:7432"
+      - "127.0.0.1::7432"
     environment:
       POSTGRES_PASSWORD: "${ANCLAX_E2E_POSTGRES_PASSWORD:?ANCLAX_E2E_POSTGRES_PASSWORD must be set}"
     command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]

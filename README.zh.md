@@ -6,7 +6,11 @@
 
 以光速 ⚡、并且更有把握 🛡️ 地构建无服务器、可靠的应用。
 
-Anclax 是面向小到中型应用（单个 PostgreSQL）。以模式定义 API 与任务，代码生成把正确性前移到编译期。
+Anclax 是面向小到中型应用（单个 PostgreSQL）。提供：
+- 强schema，利用代码生成把正确性验证前移到编译期
+- 内置最佳Golang工具链
+- 依赖反转和白盒测试框架
+- 高性能异步任务调度框架
 
 ### 推荐用法
 
@@ -38,18 +42,14 @@ Anclax 是面向小到中型应用（单个 PostgreSQL）。以模式定义 API 
   npx skills add cloudcarver/anclax
   ```
 
-### 亮点（Highlights）✨
+### 亮点✨
 
-- **YAML 优先 + 代码生成**：用 YAML 定义 HTTP 与任务的模式，自动生成强类型接口；缺失实现会在编译期暴露，而不是线上。
-- **靠谱的异步任务**：内置至少一次投递、自动重试、cron 调度，并支持优先级/权重队列与运行时调优。
-- **任务串行执行**：使用 `taskcore.WithSerialKey`/`WithSerialID` 让同一 key 的任务严格串行。
-- **事务安全的流程**：`WithTx` 模式确保钩子必定执行、状态一致。
+- **YAML 优先 + 代码生成**：用 YAML 定义 HTTP 与任务的schema，自动生成强类型接口；缺失实现会在编译期暴露，而不是线上。
+- **靠谱的异步任务**：支持同一事务处理异步任务与业务，提供至少一次投递、自动重试、定时调度、严格串行执行、任务组管理、任务组并发限制及优先级/权重调度。具有优异的调度性能，实测1核30条连接支撑5,000任务，见[调度容量benchmark](docs/scheduling-capacity-benchmark.md)
 - **类型化数据库层**：基于 `sqlc`，快速且安全。
-- **高性能 HTTP**：基于 Fiber，易用又高效。
+- **高性能 HTTP**：基于 Fiber，扩展openapi语法，易用又高效。
 - **内建认证与鉴权**：基于 Macaroons 的 AuthN/AuthZ。
-- **可插拔架构**：一等公民的插件系统，模块清晰、扩展容易。
-- **E2E 场景即代码**：DST YAML 描述分布式流程并生成强类型 runner。
-- **顺手的依赖注入**：基于 Wire，显式、可测试。
+- **顺手的依赖注入**：基于 Wire 的强制依赖反转实践，显式、可测试。
 
 ### 为什么是 Anclax？它解决了什么问题 🤔
 
@@ -101,23 +101,46 @@ anclax init demo github.com/you/demo
 cd demo
 anclax gen
 
-# 3）可选：开启内置的 sign-in / sign-up 接口
-cat > app.yaml <<'EOF'
-anclax:
-  enableSimpleAuth: true
-EOF
-
-# 4）启动整套服务（DB + API + worker）
-docker compose up
+# 3）生成本地数据库密码，启动 DB + API + worker
+make dev
 ```
 
-在另一个终端：
+`make dev` 会在 `.env` 不存在时生成随机数据库密码，文件仅允许当前用户访问。数据库不发布宿主机端口，使用 `make db` 进入数据库控制台。复用数据库卷时保留 `.env`；已有数据的迁移方式见生成项目的 README。
+
+在另一个终端选择用户名并注册（需要 `jq`）：
 
 ```bash
+ANCLAX_USERNAME=your-name
+ANCLAX_PASSWORD=$(openssl rand -hex 24)
+TOKEN=$(jq -n --arg name "$ANCLAX_USERNAME" --arg password "$ANCLAX_PASSWORD" \
+  '{name: $name, password: $password}' | \
+  curl -fsS http://localhost:2910/api/v1/auth/sign-up \
+    -H "Content-Type: application/json" --data-binary @- | jq -er '.accessToken')
+curl -X POST http://localhost:2910/api/v1/counter -H "Authorization: Bearer $TOKEN"
 curl http://localhost:2910/api/v1/counter
-# 如果模板包含 auth，且 enableSimpleAuth=true，则可以登录
-curl -X POST http://localhost:2910/api/v1/auth/sign-in -H "Content-Type: application/json" -d '{"name":"test","password":"test"}'
 ```
+
+开发配置开启 simple auth，但不创建预设账号。请保留所选用户名和密码，以便后续登录。
+
+## 监听地址配置
+
+业务 API 现在会实际使用 `anclax.host`，默认监听 `localhost:8020`。容器部署需要显式设置 `anclax.host: 0.0.0.0`，脚手架也可以使用环境变量 `MYAPP_ANCLAX_HOST=0.0.0.0`。生成的 Compose 配置已经包含此设置。
+
+监控指标和 pprof 默认关闭；开启后默认监听 `127.0.0.1`，端口分别为 9020 和 8777。本机采集监控指标可以这样配置：
+
+```yaml
+anclax:
+  metrics:
+    enable: true
+    host: 127.0.0.1
+    port: 9020
+  debug:
+    enable: false
+    host: 127.0.0.1
+    port: 8777
+```
+
+远程采集或分析需要显式配置可访问的 `metrics.host` 或 `debug.host`，并在管理网络设置访问控制。旧的 `metricsport` 仍会开启监控，除非设置了新的 `metrics.port`；要关闭监控，应移除旧配置。新端口优先，并由 `metrics.enable` 控制是否开启。框架不会为这些监听服务设置固定的 HTTP 请求超时。
 
 ## 1 分钟上手 🧭
 
@@ -168,6 +191,14 @@ func (h *Handler) GetCounter(c *fiber.Ctx) error {
 
 ## 功能展示：核心能力 🧰
 
+### 自动生成的 Go API 客户端
+
+脚手架在普通应用代码 [`pkg/apiclient/client.go`](examples/simple/pkg/apiclient/client.go) 中定义客户端策略。`apiclient.DefaultConfig()` 提供 30 秒请求超时和 10 MiB 响应上限。可以直接修改默认值，也可以给 `apiclient.New` 传入自己的 `apiclient.Config`；`anclax gen` 会保留应用的客户端代码。
+
+脚手架的响应上限同时作用于自动解析和原始响应，超过限制返回 `apiclient.ErrResponseBodyTooLarge`，可以用 `errors.Is` 判断。下载大文件时，将 `MaxResponseBodyBytes` 设为零，再流式读取原始 `http.Response.Body` 并在使用后关闭。将 `Timeout` 设为零可以关闭请求超时。
+
+生成的 `apigen` 客户端负责 API 协议，应用通过 `WithHTTPClient` 提供自己的 HTTP 客户端和策略。解析成功或失败都会关闭响应体，读取错误（包括 context 取消）会返回给调用方。
+
 ### 基于 OpenAPI 的中间件（无需 DSL）
 ```yaml
 x-check-rules:
@@ -206,6 +237,7 @@ components:
 ```
 
 ### 异步任务：至少一次投递、重试、定时与优先级/权重
+
 - **之前的痛点**：手动构建 `apigen.Task` payload 与 attributes，重复且易错。
 - **之前的痛点**：重试/cronjob/unique-tag 逻辑在服务间复制并逐渐漂移。
 - **之前的痛点**：在数据库事务内入队需要自定义胶水代码。
