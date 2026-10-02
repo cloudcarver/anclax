@@ -17,33 +17,38 @@ import (
 
 // Injectors from wire.go:
 
-func InitApp() (*app.App, error) {
+func InitApp() (*app.App, func(), error) {
 	configConfig, err := config.NewConfig()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	application, err := app.InitAnclaxApplication(configConfig)
+	application, cleanup, err := app.InitAnclaxApplication(configConfig)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	modelInterface, err := model.NewModel(configConfig, application)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
 	}
 	taskStoreInterface := app.InjectTaskStore(application)
 	taskRunner := taskgen.NewTaskRunner(taskStoreInterface)
-	modelInterface, err := model.NewModel(configConfig, application)
-	if err != nil {
-		return nil, err
-	}
 	serverInterface, err := handler.NewHandler(modelInterface, taskRunner)
 	if err != nil {
-		return nil, err
+		cleanup()
+		return nil, nil, err
 	}
 	authInterface := app.InjectAuth(application)
 	validator := handler.NewValidator(authInterface)
 	executorInterface := asynctask.NewExecutor(modelInterface)
 	taskHandler := taskgen.NewTaskHandler(executorInterface)
 	plugin := app.NewPlugin(serverInterface, validator, taskHandler)
-	appApp, err := app.Init(application, taskRunner, plugin, modelInterface)
+	appApp, err := app.Init(application, plugin)
 	if err != nil {
-		return nil, err
+		cleanup()
+		return nil, nil, err
 	}
-	return appApp, nil
+	return appApp, func() {
+		cleanup()
+	}, nil
 }

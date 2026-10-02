@@ -53,13 +53,6 @@ func parseConfig(configPath string) (*Config, error) {
 	return &config, nil
 }
 
-var goModules = []string{
-	"github.com/jackc/pgx/v5",
-	"github.com/gofiber/fiber/v3",
-	"github.com/google/wire",
-	"github.com/cloudcarver/anclax",
-}
-
 func runGenInit(c *cli.Context) error {
 	projectDir := c.Args().Get(0)
 	if projectDir == "" {
@@ -86,18 +79,7 @@ func runGenInit(c *cli.Context) error {
 		return errors.Wrap(err, "failed to initialize project files")
 	}
 
-	// init go modules
-	for _, module := range goModules {
-		cmd := exec.Command("go", "get", "-u", module)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		cmd.Dir = projectDir
-		if err := cmd.Run(); err != nil {
-			return errors.Wrap(err, "failed to get go module")
-		}
-	}
-
-	// go mod tidy
+	// Resolve the versions shipped with the template without upgrading them.
 	cmd := exec.Command("go", "mod", "tidy")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

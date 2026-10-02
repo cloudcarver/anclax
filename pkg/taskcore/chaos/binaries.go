@@ -40,7 +40,8 @@ func runGoBuild(ctx context.Context, moduleDir string, binDir string, output str
 	}
 	cmd := exec.CommandContext(ctx, "go", "build", "-o", filepath.Join(binDir, output), pkg)
 	cmd.Dir = moduleDir
-	cmd.Env = append(cmd.Environ(), "CGO_ENABLED=0")
+	// The helpers run in Linux containers even when the test runs on macOS.
+	cmd.Env = append(cmd.Environ(), "CGO_ENABLED=0", "GOOS=linux")
 	combined, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("go build %s failed: %w: %s", pkg, err, string(combined))

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -24,6 +25,45 @@ func TestNewHTTPClient(t *testing.T) {
 	baseWithTrailingSlash := fmt.Sprintf("%s/", base)
 	c = NewHTTPClient(baseWithTrailingSlash)
 	assert.Equal(t, base, c.base)
+}
+
+func TestNewHTTPClientUsesBoundedDefaults(t *testing.T) {
+	c := NewHTTPClient("http://test.example")
+
+	client, ok := c.client.(*http.Client)
+	require.True(t, ok)
+	require.Equal(t, defaultHTTPClientTimeout, client.Timeout)
+	transport, ok := client.Transport.(*http.Transport)
+	require.True(t, ok)
+	require.Equal(t, defaultResponseHeaderTimeout, transport.ResponseHeaderTimeout)
+	require.NotNil(t, transport.DialContext)
+	require.Greater(t, transport.TLSHandshakeTimeout, time.Duration(0))
+}
+
+func TestNewHTTPClientDoesNotOverrideCallerDelegate(t *testing.T) {
+	delegate := &http.Client{}
+	c := NewHTTPClient("http://test.example", delegate)
+
+	require.Same(t, delegate, c.client)
+	require.Zero(t, delegate.Timeout)
+}
+
+func TestProxyChangesPreserveBoundedDefaults(t *testing.T) {
+	c := NewHTTPClient("http://test.example")
+
+	for _, configure := range []func(){
+		func() { c.SetProxy("http://proxy.example") },
+		c.UnsetProxy,
+	} {
+		configure()
+		client, ok := c.client.(*http.Client)
+		require.True(t, ok)
+		require.Equal(t, defaultHTTPClientTimeout, client.Timeout)
+		transport, ok := client.Transport.(*http.Transport)
+		require.True(t, ok)
+		require.Equal(t, defaultResponseHeaderTimeout, transport.ResponseHeaderTimeout)
+		require.NotNil(t, transport.Proxy)
+	}
 }
 
 func TestStartRequest(t *testing.T) {
@@ -213,6 +253,58 @@ func TestPoll(t *testing.T) {
 		timeout,
 	)
 	assert.True(t, errors.Is(err, testErr))
+}
+
+func TestDoPropagatesRequestCancellation(t *testing.T) {
+	started := make(chan struct{})
+	finished := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-r.Context().Done()
+		close(finished)
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := NewHTTPClient(server.URL).Get(ctx, "/").Do()
+		errCh <- err
+	}()
+
+	<-started
+	cancel()
+	require.ErrorIs(t, <-errCh, context.Canceled)
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("server request context was not canceled")
+	}
+}
+
+func TestPollAppliesPollTimeoutToBlockingRequest(t *testing.T) {
+	started := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	rc := NewHTTPClient(server.URL, &http.Client{}).Get(context.Background(), "/")
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- rc.Poll(func(*ResponseHelper) (bool, error) {
+			return false, nil
+		}, time.Millisecond, 50*time.Millisecond)
+	}()
+
+	<-started
+	select {
+	case err := <-errCh:
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+	case <-time.After(time.Second):
+		t.Fatal("poll timeout did not cancel the blocking request")
+	}
 }
 
 func TestGlobalHeaders(t *testing.T) {

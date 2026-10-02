@@ -91,6 +91,21 @@ func (mr *MockModelInterfaceMockRecorder) ClaimTask(ctx, arg any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClaimTask", reflect.TypeOf((*MockModelInterface)(nil).ClaimTask), ctx, arg)
 }
 
+// ClaimTaskBatch mocks base method.
+func (m *MockModelInterface) ClaimTaskBatch(ctx context.Context, arg querier.ClaimTaskBatchParams) ([]*querier.AnclaxTask, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClaimTaskBatch", ctx, arg)
+	ret0, _ := ret[0].([]*querier.AnclaxTask)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ClaimTaskBatch indicates an expected call of ClaimTaskBatch.
+func (mr *MockModelInterfaceMockRecorder) ClaimTaskBatch(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClaimTaskBatch", reflect.TypeOf((*MockModelInterface)(nil).ClaimTaskBatch), ctx, arg)
+}
+
 // ClaimTaskByID mocks base method.
 func (m *MockModelInterface) ClaimTaskByID(ctx context.Context, arg querier.ClaimTaskByIDParams) (*querier.AnclaxTask, error) {
 	m.ctrl.T.Helper()
@@ -106,6 +121,21 @@ func (mr *MockModelInterfaceMockRecorder) ClaimTaskByID(ctx, arg any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClaimTaskByID", reflect.TypeOf((*MockModelInterface)(nil).ClaimTaskByID), ctx, arg)
 }
 
+// ClaimWorkerCommand mocks base method.
+func (m *MockModelInterface) ClaimWorkerCommand(ctx context.Context, arg querier.ClaimWorkerCommandParams) (*querier.AnclaxTask, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClaimWorkerCommand", ctx, arg)
+	ret0, _ := ret[0].(*querier.AnclaxTask)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ClaimWorkerCommand indicates an expected call of ClaimWorkerCommand.
+func (mr *MockModelInterfaceMockRecorder) ClaimWorkerCommand(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClaimWorkerCommand", reflect.TypeOf((*MockModelInterface)(nil).ClaimWorkerCommand), ctx, arg)
+}
+
 // Close mocks base method.
 func (m *MockModelInterface) Close() {
 	m.ctrl.T.Helper()
@@ -116,6 +146,20 @@ func (m *MockModelInterface) Close() {
 func (mr *MockModelInterfaceMockRecorder) Close() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockModelInterface)(nil).Close))
+}
+
+// ConfigureWorkerPrefetch mocks base method.
+func (m *MockModelInterface) ConfigureWorkerPrefetch(ctx context.Context, arg querier.ConfigureWorkerPrefetchParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ConfigureWorkerPrefetch", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ConfigureWorkerPrefetch indicates an expected call of ConfigureWorkerPrefetch.
+func (mr *MockModelInterfaceMockRecorder) ConfigureWorkerPrefetch(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConfigureWorkerPrefetch", reflect.TypeOf((*MockModelInterface)(nil).ConfigureWorkerPrefetch), ctx, arg)
 }
 
 // CreateKeyPair mocks base method.
@@ -208,6 +252,21 @@ func (mr *MockModelInterfaceMockRecorder) CreateWorkerRuntimeConfig(ctx, payload
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateWorkerRuntimeConfig", reflect.TypeOf((*MockModelInterface)(nil).CreateWorkerRuntimeConfig), ctx, payload)
 }
 
+// CreateWorkerRuntimeConfigForRequest mocks base method.
+func (m *MockModelInterface) CreateWorkerRuntimeConfigForRequest(ctx context.Context, arg querier.CreateWorkerRuntimeConfigForRequestParams) (*querier.AnclaxWorkerRuntimeConfig, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateWorkerRuntimeConfigForRequest", ctx, arg)
+	ret0, _ := ret[0].(*querier.AnclaxWorkerRuntimeConfig)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateWorkerRuntimeConfigForRequest indicates an expected call of CreateWorkerRuntimeConfigForRequest.
+func (mr *MockModelInterfaceMockRecorder) CreateWorkerRuntimeConfigForRequest(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateWorkerRuntimeConfigForRequest", reflect.TypeOf((*MockModelInterface)(nil).CreateWorkerRuntimeConfigForRequest), ctx, arg)
+}
+
 // DeleteKeyPair mocks base method.
 func (m *MockModelInterface) DeleteKeyPair(ctx context.Context, accessKey string) error {
 	m.ctrl.T.Helper()
@@ -277,6 +336,35 @@ func (m *MockModelInterface) DeleteUserByNameReturningID(ctx context.Context, na
 func (mr *MockModelInterfaceMockRecorder) DeleteUserByNameReturningID(ctx, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteUserByNameReturningID", reflect.TypeOf((*MockModelInterface)(nil).DeleteUserByNameReturningID), ctx, name)
+}
+
+// EnsureTaskPrefetch mocks base method.
+func (m *MockModelInterface) EnsureTaskPrefetch(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EnsureTaskPrefetch", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// EnsureTaskPrefetch indicates an expected call of EnsureTaskPrefetch.
+func (mr *MockModelInterfaceMockRecorder) EnsureTaskPrefetch(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureTaskPrefetch", reflect.TypeOf((*MockModelInterface)(nil).EnsureTaskPrefetch), ctx)
+}
+
+// FinalizeTaskAttempt mocks base method.
+func (m *MockModelInterface) FinalizeTaskAttempt(ctx context.Context, arg querier.FinalizeTaskAttemptParams) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FinalizeTaskAttempt", ctx, arg)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FinalizeTaskAttempt indicates an expected call of FinalizeTaskAttempt.
+func (mr *MockModelInterfaceMockRecorder) FinalizeTaskAttempt(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FinalizeTaskAttempt", reflect.TypeOf((*MockModelInterface)(nil).FinalizeTaskAttempt), ctx, arg)
 }
 
 // GetKeyPair mocks base method.
@@ -369,6 +457,21 @@ func (mr *MockModelInterfaceMockRecorder) GetOrgByName(ctx, name any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOrgByName", reflect.TypeOf((*MockModelInterface)(nil).GetOrgByName), ctx, name)
 }
 
+// GetTaskAttemptStatus mocks base method.
+func (m *MockModelInterface) GetTaskAttemptStatus(ctx context.Context, arg querier.GetTaskAttemptStatusParams) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetTaskAttemptStatus", ctx, arg)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetTaskAttemptStatus indicates an expected call of GetTaskAttemptStatus.
+func (mr *MockModelInterfaceMockRecorder) GetTaskAttemptStatus(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTaskAttemptStatus", reflect.TypeOf((*MockModelInterface)(nil).GetTaskAttemptStatus), ctx, arg)
+}
+
 // GetTaskByID mocks base method.
 func (m *MockModelInterface) GetTaskByID(ctx context.Context, id int32) (*querier.AnclaxTask, error) {
 	m.ctrl.T.Helper()
@@ -397,6 +500,21 @@ func (m *MockModelInterface) GetTaskByUniqueTag(ctx context.Context, uniqueTag *
 func (mr *MockModelInterfaceMockRecorder) GetTaskByUniqueTag(ctx, uniqueTag any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTaskByUniqueTag", reflect.TypeOf((*MockModelInterface)(nil).GetTaskByUniqueTag), ctx, uniqueTag)
+}
+
+// GetTaskTagConcurrency mocks base method.
+func (m *MockModelInterface) GetTaskTagConcurrency(ctx context.Context, tag string) (*querier.AnclaxTaskTagConcurrency, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetTaskTagConcurrency", ctx, tag)
+	ret0, _ := ret[0].(*querier.AnclaxTaskTagConcurrency)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetTaskTagConcurrency indicates an expected call of GetTaskTagConcurrency.
+func (mr *MockModelInterfaceMockRecorder) GetTaskTagConcurrency(ctx, tag any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTaskTagConcurrency", reflect.TypeOf((*MockModelInterface)(nil).GetTaskTagConcurrency), ctx, tag)
 }
 
 // GetTaskWaitStatusByID mocks base method.
@@ -547,6 +665,21 @@ func (mr *MockModelInterfaceMockRecorder) InsertOrgUser(ctx, arg any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertOrgUser", reflect.TypeOf((*MockModelInterface)(nil).InsertOrgUser), ctx, arg)
 }
 
+// InspectTaskPrefetch mocks base method.
+func (m *MockModelInterface) InspectTaskPrefetch(ctx context.Context, arg querier.InspectTaskPrefetchParams) ([]*querier.InspectTaskPrefetchRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InspectTaskPrefetch", ctx, arg)
+	ret0, _ := ret[0].([]*querier.InspectTaskPrefetchRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InspectTaskPrefetch indicates an expected call of InspectTaskPrefetch.
+func (mr *MockModelInterfaceMockRecorder) InspectTaskPrefetch(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InspectTaskPrefetch", reflect.TypeOf((*MockModelInterface)(nil).InspectTaskPrefetch), ctx, arg)
+}
+
 // IsUsernameExists mocks base method.
 func (m *MockModelInterface) IsUsernameExists(ctx context.Context, name string) (bool, error) {
 	m.ctrl.T.Helper()
@@ -652,6 +785,36 @@ func (mr *MockModelInterfaceMockRecorder) ListTaskIDsByTags(ctx, arg any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTaskIDsByTags", reflect.TypeOf((*MockModelInterface)(nil).ListTaskIDsByTags), ctx, arg)
 }
 
+// ListTaskTagConcurrencyLimits mocks base method.
+func (m *MockModelInterface) ListTaskTagConcurrencyLimits(ctx context.Context, arg querier.ListTaskTagConcurrencyLimitsParams) ([]*querier.AnclaxTaskTagConcurrency, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListTaskTagConcurrencyLimits", ctx, arg)
+	ret0, _ := ret[0].([]*querier.AnclaxTaskTagConcurrency)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListTaskTagConcurrencyLimits indicates an expected call of ListTaskTagConcurrencyLimits.
+func (mr *MockModelInterfaceMockRecorder) ListTaskTagConcurrencyLimits(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTaskTagConcurrencyLimits", reflect.TypeOf((*MockModelInterface)(nil).ListTaskTagConcurrencyLimits), ctx, arg)
+}
+
+// ListTaskWaitStatuses mocks base method.
+func (m *MockModelInterface) ListTaskWaitStatuses(ctx context.Context, ids []int32) ([]*querier.ListTaskWaitStatusesRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListTaskWaitStatuses", ctx, ids)
+	ret0, _ := ret[0].([]*querier.ListTaskWaitStatusesRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListTaskWaitStatuses indicates an expected call of ListTaskWaitStatuses.
+func (mr *MockModelInterfaceMockRecorder) ListTaskWaitStatuses(ctx, ids any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTaskWaitStatuses", reflect.TypeOf((*MockModelInterface)(nil).ListTaskWaitStatuses), ctx, ids)
+}
+
 // ListTerminalTaskWaitStatuses mocks base method.
 func (m *MockModelInterface) ListTerminalTaskWaitStatuses(ctx context.Context, ids []int32) ([]*querier.ListTerminalTaskWaitStatusesRow, error) {
 	m.ctrl.T.Helper()
@@ -667,6 +830,20 @@ func (mr *MockModelInterfaceMockRecorder) ListTerminalTaskWaitStatuses(ctx, ids 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTerminalTaskWaitStatuses", reflect.TypeOf((*MockModelInterface)(nil).ListTerminalTaskWaitStatuses), ctx, ids)
 }
 
+// MaintainTaskConcurrency mocks base method.
+func (m *MockModelInterface) MaintainTaskConcurrency(ctx context.Context, legacyTtlMs int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MaintainTaskConcurrency", ctx, legacyTtlMs)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MaintainTaskConcurrency indicates an expected call of MaintainTaskConcurrency.
+func (mr *MockModelInterfaceMockRecorder) MaintainTaskConcurrency(ctx, legacyTtlMs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MaintainTaskConcurrency", reflect.TypeOf((*MockModelInterface)(nil).MaintainTaskConcurrency), ctx, legacyTtlMs)
+}
+
 // MarkWorkerOffline mocks base method.
 func (m *MockModelInterface) MarkWorkerOffline(ctx context.Context, id uuid.UUID) error {
 	m.ctrl.T.Helper()
@@ -679,6 +856,36 @@ func (m *MockModelInterface) MarkWorkerOffline(ctx context.Context, id uuid.UUID
 func (mr *MockModelInterfaceMockRecorder) MarkWorkerOffline(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkWorkerOffline", reflect.TypeOf((*MockModelInterface)(nil).MarkWorkerOffline), ctx, id)
+}
+
+// PrefetchReadyTasks mocks base method.
+func (m *MockModelInterface) PrefetchReadyTasks(ctx context.Context, arg querier.PrefetchReadyTasksParams) (int32, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PrefetchReadyTasks", ctx, arg)
+	ret0, _ := ret[0].(int32)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PrefetchReadyTasks indicates an expected call of PrefetchReadyTasks.
+func (mr *MockModelInterfaceMockRecorder) PrefetchReadyTasks(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PrefetchReadyTasks", reflect.TypeOf((*MockModelInterface)(nil).PrefetchReadyTasks), ctx, arg)
+}
+
+// PrefetchTaskSupply mocks base method.
+func (m *MockModelInterface) PrefetchTaskSupply(ctx context.Context, arg querier.PrefetchTaskSupplyParams) (*querier.PrefetchTaskSupplyRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PrefetchTaskSupply", ctx, arg)
+	ret0, _ := ret[0].(*querier.PrefetchTaskSupplyRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PrefetchTaskSupply indicates an expected call of PrefetchTaskSupply.
+func (mr *MockModelInterfaceMockRecorder) PrefetchTaskSupply(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PrefetchTaskSupply", reflect.TypeOf((*MockModelInterface)(nil).PrefetchTaskSupply), ctx, arg)
 }
 
 // RefreshTaskLock mocks base method.
@@ -696,6 +903,21 @@ func (mr *MockModelInterfaceMockRecorder) RefreshTaskLock(ctx, arg any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RefreshTaskLock", reflect.TypeOf((*MockModelInterface)(nil).RefreshTaskLock), ctx, arg)
 }
 
+// RefreshTaskLocks mocks base method.
+func (m *MockModelInterface) RefreshTaskLocks(ctx context.Context, arg querier.RefreshTaskLocksParams) ([]*querier.RefreshTaskLocksRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RefreshTaskLocks", ctx, arg)
+	ret0, _ := ret[0].([]*querier.RefreshTaskLocksRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RefreshTaskLocks indicates an expected call of RefreshTaskLocks.
+func (mr *MockModelInterfaceMockRecorder) RefreshTaskLocks(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RefreshTaskLocks", reflect.TypeOf((*MockModelInterface)(nil).RefreshTaskLocks), ctx, arg)
+}
+
 // ReleaseTaskLockByWorker mocks base method.
 func (m *MockModelInterface) ReleaseTaskLockByWorker(ctx context.Context, arg querier.ReleaseTaskLockByWorkerParams) (int32, error) {
 	m.ctrl.T.Helper()
@@ -709,6 +931,20 @@ func (m *MockModelInterface) ReleaseTaskLockByWorker(ctx context.Context, arg qu
 func (mr *MockModelInterfaceMockRecorder) ReleaseTaskLockByWorker(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReleaseTaskLockByWorker", reflect.TypeOf((*MockModelInterface)(nil).ReleaseTaskLockByWorker), ctx, arg)
+}
+
+// RemoveTaskTagConcurrencyLimit mocks base method.
+func (m *MockModelInterface) RemoveTaskTagConcurrencyLimit(ctx context.Context, tag string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RemoveTaskTagConcurrencyLimit", ctx, tag)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RemoveTaskTagConcurrencyLimit indicates an expected call of RemoveTaskTagConcurrencyLimit.
+func (mr *MockModelInterfaceMockRecorder) RemoveTaskTagConcurrencyLimit(ctx, tag any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveTaskTagConcurrencyLimit", reflect.TypeOf((*MockModelInterface)(nil).RemoveTaskTagConcurrencyLimit), ctx, tag)
 }
 
 // RestoreUserByName mocks base method.
@@ -751,6 +987,20 @@ func (m *MockModelInterface) RunTransactionWithTx(ctx context.Context, f func(co
 func (mr *MockModelInterfaceMockRecorder) RunTransactionWithTx(ctx, f any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunTransactionWithTx", reflect.TypeOf((*MockModelInterface)(nil).RunTransactionWithTx), ctx, f)
+}
+
+// SetTaskTagConcurrencyLimit mocks base method.
+func (m *MockModelInterface) SetTaskTagConcurrencyLimit(ctx context.Context, arg querier.SetTaskTagConcurrencyLimitParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetTaskTagConcurrencyLimit", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetTaskTagConcurrencyLimit indicates an expected call of SetTaskTagConcurrencyLimit.
+func (mr *MockModelInterfaceMockRecorder) SetTaskTagConcurrencyLimit(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetTaskTagConcurrencyLimit", reflect.TypeOf((*MockModelInterface)(nil).SetTaskTagConcurrencyLimit), ctx, arg)
 }
 
 // SetUserDefaultOrg mocks base method.

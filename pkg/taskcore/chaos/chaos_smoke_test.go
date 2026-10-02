@@ -56,12 +56,19 @@ type chaosState struct {
 
 func TestContainerizedTaskcoreChaosSmoke(t *testing.T) {
 	if !dockerAvailable() {
-		t.Skip("docker not available")
+		t.Fatal("Docker is unavailable; ensure Docker is installed and running")
 	}
 
 	cfg := DefaultRunConfig()
 	cfg.Seed = readChaosInt64Env(t, "ANCLAX_TASKCORE_CHAOS_SEED", 424242)
 	cfg.KeepArtifacts = true
+	if image := os.Getenv("ANCLAX_TASKCORE_CHAOS_POSTGRES_IMAGE"); image != "" {
+		cfg.PostgresImage = image
+	}
+	if image := os.Getenv("ANCLAX_TASKCORE_CHAOS_RUNTIME_IMAGE"); image != "" {
+		cfg.RuntimeImage = image
+	}
+	t.Logf("chaos seed=%d postgres=%s runtime=%s", cfg.Seed, cfg.PostgresImage, cfg.RuntimeImage)
 
 	h, err := NewHarness(cfg)
 	require.NoError(t, err)
@@ -92,6 +99,7 @@ func TestContainerizedTaskcoreChaosSmoke(t *testing.T) {
 	}
 
 	must(h.Start(ctx))
+	must(installTagConcurrencyAudit(ctx, h.Inspector()))
 	state = &chaosState{
 		rng: rand.New(rand.NewSource(cfg.Seed)),
 		workers: []*chaosWorkerSlot{
@@ -111,6 +119,11 @@ func TestContainerizedTaskcoreChaosSmoke(t *testing.T) {
 	}
 
 	user := h.User()
+	if !t.Run("tag_concurrency_faults", func(t *testing.T) {
+		runTagConcurrencyFaultScenarios(t, ctx, h)
+	}) {
+		must(fmt.Errorf("deterministic tag concurrency fault scenario failed"))
+	}
 	must(runInitialUserCancel(ctx, user, state))
 	must(runInitialUserPauseResume(ctx, user, state))
 	must(runInitialUserTagControl(ctx, user, state))
@@ -125,6 +138,9 @@ func TestContainerizedTaskcoreChaosSmoke(t *testing.T) {
 		}
 		must(runRandomAction(ctx, h, state, iter))
 		time.Sleep(interIterSleep)
+		if iter%10 == 0 || iter == iterations {
+			t.Logf("chaos progress=%d/%d tasks=%d worker disruptions=%d postgres restarts=%d control outages=%d", iter, iterations, state.tasksSubmitted, state.workerDisruptions, state.postgresRestarts, state.controlPlaneOutages)
+		}
 	}
 
 	must(restoreCluster(ctx, h, state, iterations+1))
@@ -138,18 +154,16 @@ func TestContainerizedTaskcoreChaosSmoke(t *testing.T) {
 		}
 	}
 
-	pending, err := h.Inspector().CountTasksByStatuses(ctx, []string{"pending", "running"}, "LONG-")
+	pending, err := h.Inspector().CountTasksByStatuses(ctx, []string{"pending", "ready", "running"}, "LONG-")
 	must(err)
 	require.Equal(t, int64(0), pending)
-	if state.workerDisruptions > 0 || state.postgresRestarts > 0 {
-		retried, err := h.Inspector().CountRetriedTasks(ctx, "LONG-")
-		must(err)
-		require.Greater(t, retried, int64(0))
-	}
+	// Recovery is asserted against the specific interrupted tasks above. The
+	// initial infinite-retry probes cannot stand in for fault-induced retries.
 	require.Greater(t, len(state.tasks), 0)
 	require.Greater(t, state.userPauses, 0)
 	require.Greater(t, state.userResumes, 0)
 	require.Greater(t, state.userCancels, 0)
+	must(checkTagConcurrencyAudit(ctx, h.Inspector(), h.Report()))
 }
 
 func buildSmokeSummary(ctx context.Context, h *Harness, state *chaosState) (*ReportSummary, error) {
@@ -166,6 +180,10 @@ func buildSmokeSummary(ctx context.Context, h *Harness, state *chaosState) (*Rep
 		return nil, err
 	}
 	pending, err := inspector.CountTasksByStatuses(ctx, []string{"pending"}, "LONG-")
+	if err != nil {
+		return nil, err
+	}
+	ready, err := inspector.CountTasksByStatuses(ctx, []string{"ready"}, "LONG-")
 	if err != nil {
 		return nil, err
 	}
@@ -208,6 +226,7 @@ func buildSmokeSummary(ctx context.Context, h *Harness, state *chaosState) (*Rep
 			Processed: processed,
 			Completed: completed,
 			Pending:   pending,
+			Ready:     ready,
 			Running:   running,
 			Failed:    failed,
 			Cancelled: cancelled,
@@ -383,10 +402,13 @@ func runInitialUserTagControl(ctx context.Context, user *User, state *chaosState
 			TaskName: item.name,
 			JobID:    item.jobID,
 			SleepMs:  50,
-			DelayMs:  2000,
-			Group:    "tag-control",
-			Labels:   item.labels,
-			Tags:     item.tags,
+			// Keep the probes pending until every tag-control assertion has run.
+			// Control broadcasts can outlast a short scheduling delay, in which
+			// case cancelling an already completed probe must be a no-op.
+			DelayMs: int32(time.Hour / time.Millisecond),
+			Group:   "tag-control",
+			Labels:  item.labels,
+			Tags:    item.tags,
 		})
 		if err != nil {
 			return err
@@ -417,11 +439,32 @@ func runInitialUserTagControl(ctx context.Context, user *User, state *chaosState
 	}
 	state.userCancels++
 
-	for _, name := range []string{
+	remaining := []string{
 		"LONG-000-tags-pause-target",
 		"LONG-000-tags-pause-except",
 		"LONG-000-tags-cancel-except",
-	} {
+	}
+	for _, name := range remaining {
+		if err := user.ExpectPending(ctx, name, 20*time.Second); err != nil {
+			return err
+		}
+	}
+	// Release the fixture's scheduling gate without changing task states.
+	result, err := user.DB.pool.Exec(ctx, `
+		update anclax.tasks
+		set started_at = statement_timestamp()
+		where unique_tag = any($1::text[]) and status = 'pending'
+	`, remaining)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() != int64(len(remaining)) {
+		return fmt.Errorf("tag-control fixture released %d tasks, want %d", result.RowsAffected(), len(remaining))
+	}
+	if user.Report != nil {
+		user.Report.AddEvent("fixture.release_tasks", commonTag, "tag-control assertions passed; scheduled probes are now due", map[string]any{"tasks": remaining})
+	}
+	for _, name := range remaining {
 		if err := user.ExpectCompleted(ctx, name, 30*time.Second); err != nil {
 			return err
 		}
@@ -504,6 +547,7 @@ func submitChaosBatch(ctx context.Context, user *User, state *chaosState, iter i
 			SleepMs:  taskSleepMs,
 			Group:    group,
 			Labels:   labels,
+			Tags:     chaosConcurrencyTags(group, iter, j),
 		})
 		if err != nil {
 			return err
@@ -521,6 +565,7 @@ func submitChaosBatch(ctx context.Context, user *User, state *chaosState, iter i
 		SleepMs:  taskSleepMs,
 		Group:    group,
 		Labels:   labels,
+		Tags:     chaosConcurrencyTags(group, iter, batchSize),
 	})
 	if err != nil {
 		return err
@@ -541,6 +586,7 @@ func submitChaosBatch(ctx context.Context, user *User, state *chaosState, iter i
 		DelayMs:  pauseDelayMs,
 		Group:    group,
 		Labels:   labels,
+		Tags:     chaosConcurrencyTags(group, iter, batchSize+1),
 	})
 	if err != nil {
 		return err

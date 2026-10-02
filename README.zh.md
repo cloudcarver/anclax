@@ -6,7 +6,11 @@
 
 以光速 ⚡、并且更有把握 🛡️ 地构建无服务器、可靠的应用。
 
-Anclax 是面向小到中型应用（单个 PostgreSQL）。以模式定义 API 与任务，代码生成把正确性前移到编译期。
+Anclax 是面向小到中型应用（单个 PostgreSQL）。提供：
+- 强schema，利用代码生成把正确性验证前移到编译期
+- 内置最佳Golang工具链
+- 依赖反转和白盒测试框架
+- 高性能异步任务调度框架
 
 ### 推荐用法
 
@@ -38,18 +42,14 @@ Anclax 是面向小到中型应用（单个 PostgreSQL）。以模式定义 API 
   npx skills add cloudcarver/anclax
   ```
 
-### 亮点（Highlights）✨
+### 亮点✨
 
-- **YAML 优先 + 代码生成**：用 YAML 定义 HTTP 与任务的模式，自动生成强类型接口；缺失实现会在编译期暴露，而不是线上。
-- **靠谱的异步任务**：内置至少一次投递、自动重试、cron 调度，并支持优先级/权重队列与运行时调优。
-- **任务串行执行**：使用 `taskcore.WithSerialKey`/`WithSerialID` 让同一 key 的任务严格串行。
-- **事务安全的流程**：`WithTx` 模式确保钩子必定执行、状态一致。
+- **YAML 优先 + 代码生成**：用 YAML 定义 HTTP 与任务的schema，自动生成强类型接口；缺失实现会在编译期暴露，而不是线上。
+- **靠谱的异步任务**：支持同一事务处理异步任务与业务，提供至少一次投递、自动重试、定时调度、严格串行执行、任务组管理、任务组并发限制及优先级/权重调度。具有优异的调度性能，实测1核30条连接支撑5,000任务，见[调度容量benchmark](docs/scheduling-capacity-benchmark.md)
 - **类型化数据库层**：基于 `sqlc`，快速且安全。
-- **高性能 HTTP**：基于 Fiber，易用又高效。
+- **高性能 HTTP**：基于 Fiber，扩展openapi语法，易用又高效。
 - **内建认证与鉴权**：基于 Macaroons 的 AuthN/AuthZ。
-- **可插拔架构**：一等公民的插件系统，模块清晰、扩展容易。
-- **E2E 场景即代码**：DST YAML 描述分布式流程并生成强类型 runner。
-- **顺手的依赖注入**：基于 Wire，显式、可测试。
+- **顺手的依赖注入**：基于 Wire 的强制依赖反转实践，显式、可测试。
 
 ### 为什么是 Anclax？它解决了什么问题 🤔
 
@@ -168,6 +168,14 @@ func (h *Handler) GetCounter(c *fiber.Ctx) error {
 
 ## 功能展示：核心能力 🧰
 
+### 自动生成的 Go API 客户端
+
+脚手架在普通应用代码 [`pkg/apiclient/client.go`](examples/simple/pkg/apiclient/client.go) 中定义客户端策略。`apiclient.DefaultConfig()` 提供 30 秒请求超时和 10 MiB 响应上限。可以直接修改默认值，也可以给 `apiclient.New` 传入自己的 `apiclient.Config`；`anclax gen` 会保留应用的客户端代码。
+
+脚手架的响应上限同时作用于自动解析和原始响应，超过限制返回 `apiclient.ErrResponseBodyTooLarge`，可以用 `errors.Is` 判断。下载大文件时，将 `MaxResponseBodyBytes` 设为零，再流式读取原始 `http.Response.Body` 并在使用后关闭。将 `Timeout` 设为零可以关闭请求超时。
+
+生成的 `apigen` 客户端负责 API 协议，应用通过 `WithHTTPClient` 提供自己的 HTTP 客户端和策略。解析成功或失败都会关闭响应体，读取错误（包括 context 取消）会返回给调用方。
+
 ### 基于 OpenAPI 的中间件（无需 DSL）
 ```yaml
 x-check-rules:
@@ -206,6 +214,7 @@ components:
 ```
 
 ### 异步任务：至少一次投递、重试、定时与优先级/权重
+
 - **之前的痛点**：手动构建 `apigen.Task` payload 与 attributes，重复且易错。
 - **之前的痛点**：重试/cronjob/unique-tag 逻辑在服务间复制并逐渐漂移。
 - **之前的痛点**：在数据库事务内入队需要自定义胶水代码。

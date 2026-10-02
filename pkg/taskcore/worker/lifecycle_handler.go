@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"time"
 
 	"github.com/cloudcarver/anclax/core"
@@ -14,16 +15,13 @@ import (
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"
 )
 
 var lifecycleLog = logger.NewLogAgent("worker.lifecycle")
 
 type TaskLifeCycleHandlerInterface interface {
-	HandleAttributes(ctx context.Context, tx core.Tx, task apigen.Task) error
-	HandleFailed(ctx context.Context, tx core.Tx, task apigen.Task, execErr error) error
-	HandleCompleted(ctx context.Context, tx core.Tx, task apigen.Task) error
+	FinalizeAttempt(context.Context, core.Tx, Task, error) error
 }
 
 type TaskLifeCycleHandler struct {
@@ -33,191 +31,68 @@ type TaskLifeCycleHandler struct {
 	now         func() time.Time
 }
 
-func NewTaskLifeCycleHandler(model model.ModelInterface, taskHandler TaskHandler, workerID uuid.UUID) TaskLifeCycleHandlerInterface {
-	return &TaskLifeCycleHandler{
-		model:       model,
-		taskHandler: taskHandler,
-		workerID:    workerID,
-		now:         time.Now,
-	}
+func NewTaskLifeCycleHandler(m model.ModelInterface, handler TaskHandler, workerID uuid.UUID) TaskLifeCycleHandlerInterface {
+	return &TaskLifeCycleHandler{model: m, taskHandler: handler, workerID: workerID, now: time.Now}
 }
 
-func (h *TaskLifeCycleHandler) HandleAttributes(ctx context.Context, tx core.Tx, task apigen.Task) error {
-	return nil
-}
-
-func (h *TaskLifeCycleHandler) HandleFailed(ctx context.Context, tx core.Tx, task apigen.Task, execErr error) error {
-	if execErr == nil {
-		return nil
+func (h *TaskLifeCycleHandler) FinalizeAttempt(ctx context.Context, tx core.Tx, task Task, execErr error) error {
+	outcome, err := decideAttempt(task, execErr, h.now())
+	if err != nil {
+		return err
 	}
-	if errors.Is(execErr, taskcore.ErrTaskLockLost) {
+	txm := h.model.SpawnWithTx(tx)
+	status, err := txm.FinalizeTaskAttempt(ctx, querier.FinalizeTaskAttemptParams{
+		ID: task.ID, WorkerID: uuid.NullUUID{UUID: h.workerID, Valid: true}, LeaseVersion: task.LeaseVersion,
+		Status: string(outcome.status), StartedAt: outcome.startedAt, Attempts: outcome.attempts,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
 		return taskcore.ErrTaskLockLost
 	}
-
-	txm := h.model.SpawnWithTx(tx)
-	statusOverride := failureStatusOverride(execErr)
-	if statusOverride != "" {
-		if err := h.updateTaskStatusByWorker(ctx, txm, task.ID, statusOverride); err != nil {
-			return err
-		}
-		return nil
-	}
-
-	skipErrorEvent := errors.Is(execErr, taskcore.ErrRetryTaskWithoutErrorEvent)
-	retryPolicy := task.Attributes.RetryPolicy
-	shouldRetry := shouldRetryTask(execErr, retryPolicy, task.Attempts)
-	if shouldRetry {
-		if retryPolicy == nil {
-			return h.handlePermanentFailure(ctx, tx, txm, task, execErr, false)
-		}
-		nextTime, err := nextRetryTime(retryPolicy.Interval, h.now())
-		if err != nil {
-			return err
-		}
-		if err := h.updateTaskStartedAtByWorker(ctx, txm, task.ID, nextTime); err != nil {
-			return err
-		}
-		if !skipErrorEvent {
-			if err := h.insertTaskErrorEvent(ctx, txm, task.ID, execErr); err != nil {
-				return err
-			}
-		}
-		if err := h.releaseTaskLockByWorker(ctx, txm, task.ID); err != nil {
-			return err
-		}
-		return nil
-	}
-
-	return h.handlePermanentFailure(ctx, tx, txm, task, execErr, false)
-}
-
-func (h *TaskLifeCycleHandler) HandleCompleted(ctx context.Context, tx core.Tx, task apigen.Task) error {
-	txm := h.model.SpawnWithTx(tx)
-	if task.Attributes.Cronjob != nil {
-		nextTime, err := nextCronTime(task.Attributes.Cronjob.CronExpression, h.now())
-		if err != nil {
-			return err
-		}
-		if err := h.updateTaskStartedAtByWorker(ctx, txm, task.ID, nextTime); err != nil {
-			return err
-		}
-		if err := h.releaseTaskLockByWorker(ctx, txm, task.ID); err != nil {
-			return err
-		}
-		return nil
-	}
-
-	if err := h.updateTaskStatusByWorker(ctx, txm, task.ID, apigen.Completed); err != nil {
+	if err != nil {
 		return err
 	}
-	if err := h.insertTaskCompletedEvent(ctx, txm, task.ID); err != nil {
-		return err
+	// A pause/cancel committed after execution started wins over this result.
+	if status == string(apigen.Paused) || status == string(apigen.Cancelled) {
+		return nil
 	}
-	return nil
-}
-
-func failureStatusOverride(execErr error) apigen.TaskStatus {
-	switch {
-	case errors.Is(execErr, taskcore.ErrTaskCancelled):
-		return apigen.Cancelled
-	case errors.Is(execErr, taskcore.ErrTaskPaused):
-		return apigen.Paused
-	default:
-		return ""
-	}
-}
-
-func shouldRetryTask(execErr error, policy *apigen.TaskRetryPolicy, attempts int32) bool {
-	if errors.Is(execErr, taskcore.ErrFatalTask) {
-		return false
-	}
-	if policy == nil {
-		return false
-	}
-	if policy.MaxAttempts < 0 {
-		return true
-	}
-	return attempts < policy.MaxAttempts
-}
-
-func nextRetryTime(interval string, now time.Time) (time.Time, error) {
-	if interval == "" {
-		return time.Time{}, errors.New("retry policy interval is empty")
-	}
-	duration, err := time.ParseDuration(interval)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("invalid retry policy interval: %w", err)
-	}
-	return now.Add(duration), nil
-}
-
-func nextCronTime(expr string, now time.Time) (time.Time, error) {
-	parser := cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
-	cronExpr, err := parser.Parse(expr)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("invalid cron expression: %w", err)
-	}
-	return cronExpr.Next(now), nil
-}
-
-func (h *TaskLifeCycleHandler) handlePermanentFailure(ctx context.Context, tx core.Tx, txm model.ModelInterface, task apigen.Task, execErr error, skipErrorEvent bool) error {
-	if !skipErrorEvent {
+	if outcome.errorEvent {
 		if err := h.insertTaskErrorEvent(ctx, txm, task.ID, execErr); err != nil {
 			return err
 		}
 	}
-	if err := h.updateTaskStatusByWorker(ctx, txm, task.ID, apigen.Failed); err != nil {
+	if outcome.completedEvent {
+		if err := h.insertTaskCompletedEvent(ctx, txm, task.ID); err != nil {
+			return err
+		}
+	}
+	if outcome.failureHook && h.taskHandler != nil {
+		return h.runFailureHook(ctx, tx, task)
+	}
+	return nil
+}
+
+func (h *TaskLifeCycleHandler) runFailureHook(ctx context.Context, tx core.Tx, task Task) error {
+	if _, err := tx.Exec(ctx, "SAVEPOINT anclax_failure_hook"); err != nil {
 		return err
 	}
-	if h.taskHandler != nil {
-		if err := h.taskHandler.OnTaskFailed(ctx, tx, TaskSpec{Spec: task.Spec}, task.ID); err != nil {
-			if !errors.Is(err, ErrUnknownTaskType) {
-				lifecycleLog.Error("task onFailed handler error", zap.Error(err))
+	hookErr := func() (err error) {
+		defer func() {
+			if value := recover(); value != nil {
+				err = fmt.Errorf("failure hook panic: %v\n%s", value, debug.Stack())
 			}
+		}()
+		return h.taskHandler.OnTaskFailed(ctx, tx, TaskSpec{Spec: task.Spec}, task.ID)
+	}()
+	if hookErr != nil {
+		if _, err := tx.Exec(ctx, "ROLLBACK TO SAVEPOINT anclax_failure_hook"); err != nil {
+			return err
+		}
+		if !errors.Is(hookErr, ErrUnknownTaskType) {
+			lifecycleLog.Error("task onFailed handler error", zap.Error(hookErr))
 		}
 	}
-	return nil
-}
-
-func (h *TaskLifeCycleHandler) updateTaskStatusByWorker(ctx context.Context, txm model.ModelInterface, taskID int32, status apigen.TaskStatus) error {
-	if _, err := txm.UpdateTaskStatusByWorker(ctx, querier.UpdateTaskStatusByWorkerParams{
-		ID:       taskID,
-		Status:   string(status),
-		WorkerID: uuid.NullUUID{UUID: h.workerID, Valid: true},
-	}); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return taskcore.ErrTaskLockLost
-		}
-		return err
-	}
-	return nil
-}
-
-func (h *TaskLifeCycleHandler) updateTaskStartedAtByWorker(ctx context.Context, txm model.ModelInterface, taskID int32, startedAt time.Time) error {
-	if _, err := txm.UpdateTaskStartedAtByWorker(ctx, querier.UpdateTaskStartedAtByWorkerParams{
-		ID:        taskID,
-		StartedAt: &startedAt,
-		WorkerID:  uuid.NullUUID{UUID: h.workerID, Valid: true},
-	}); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return taskcore.ErrTaskLockLost
-		}
-		return err
-	}
-	return nil
-}
-
-func (h *TaskLifeCycleHandler) releaseTaskLockByWorker(ctx context.Context, txm model.ModelInterface, taskID int32) error {
-	if _, err := txm.ReleaseTaskLockByWorker(ctx, querier.ReleaseTaskLockByWorkerParams{
-		ID:       taskID,
-		WorkerID: uuid.NullUUID{UUID: h.workerID, Valid: true},
-	}); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return taskcore.ErrTaskLockLost
-		}
-		return err
-	}
-	return nil
+	_, err := tx.Exec(ctx, "RELEASE SAVEPOINT anclax_failure_hook")
+	return err
 }
 
 func (h *TaskLifeCycleHandler) insertTaskErrorEvent(ctx context.Context, txm model.ModelInterface, taskID int32, execErr error) error {

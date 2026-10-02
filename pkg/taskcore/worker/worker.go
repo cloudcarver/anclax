@@ -23,7 +23,6 @@ type Worker struct {
 	port    *ModelPort
 
 	taskHandler TaskHandler
-	semaphore   chan struct{}
 }
 
 type WorkerComponents struct {
@@ -72,6 +71,13 @@ func BuildWorkerComponents(cfg *config.Config, m model.ModelInterface, taskHandl
 	if concurrency < 1 {
 		concurrency = 1
 	}
+	batchSize := DefaultClaimBatchSize
+	if cfg.Worker.ClaimBatchSize != nil {
+		batchSize = *cfg.Worker.ClaimBatchSize
+	}
+	if batchSize < 1 || batchSize > 256 {
+		return nil, fmt.Errorf("worker.claimBatchSize must be between 1 and 256")
+	}
 
 	workerID := uuid.New()
 	if cfg.Worker.WorkerID != nil {
@@ -94,7 +100,15 @@ func BuildWorkerComponents(cfg *config.Config, m model.ModelInterface, taskHandl
 		return nil, err
 	}
 
+	port.prefetchCapacity = int32(concurrency)
+	port.prefetchStrictPercentage = maxStrictPercentage
+	port.prefetchHeartbeatTTL = max(9*time.Second, heartbeatInterval*3).Milliseconds()
+
 	engine := NewEngine(EngineConfig{
+		ClaimBatchSize: batchSize,
+		// The singleton prefetch job is long-lived. Keep another control slot
+		// available for cancellation, pause and configuration commands.
+		ControlConcurrency:  2,
 		WorkerID:            workerID.String(),
 		Labels:              labels,
 		Concurrency:         concurrency,
@@ -137,17 +151,12 @@ func NewWorker(globalCtx *globalctx.GlobalContext, components *WorkerComponents,
 	if components == nil || components.Engine == nil || components.Runtime == nil || components.Port == nil {
 		return nil, fmt.Errorf("worker components are incomplete")
 	}
-	concurrency := components.Concurrency
-	if concurrency < 1 {
-		concurrency = 1
-	}
 	return &Worker{
 		globalCtx:   globalCtx,
 		engine:      components.Engine,
 		runtime:     components.Runtime,
 		port:        components.Port,
 		taskHandler: taskHandler,
-		semaphore:   make(chan struct{}, concurrency),
 	}, nil
 }
 
@@ -199,27 +208,11 @@ func (w *Worker) Start() {
 }
 
 func (w *Worker) RunTask(ctx context.Context, taskID int32) error {
-	if err := w.acquireSlot(ctx); err != nil {
-		return err
-	}
-	defer w.releaseSlot()
+	return w.runtime.RunTask(ctx, taskID)
+}
 
-	task, err := w.port.ClaimByID(ctx, taskID, ClaimRequest{})
-	if err != nil {
-		if err == ErrNoTask {
-			return nil
-		}
-		return err
-	}
-	if task == nil {
-		return nil
-	}
-
-	execErr := w.port.ExecuteTask(ctx, *task)
-	if err := w.port.FinalizeTask(ctx, *task, execErr); err != nil {
-		return err
-	}
-	return nil
+func (w *Worker) TaskRuntimesActive(taskIDs []int32) bool {
+	return w.port != nil && w.port.TaskRuntimesActive(taskIDs)
 }
 
 func (w *Worker) RegisterTaskHandler(handler TaskHandler) {
@@ -227,21 +220,4 @@ func (w *Worker) RegisterTaskHandler(handler TaskHandler) {
 		return
 	}
 	w.taskHandler.RegisterTaskHandler(handler)
-}
-
-func (w *Worker) acquireSlot(ctx context.Context) error {
-	select {
-	case w.semaphore <- struct{}{}:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
-func (w *Worker) releaseSlot() {
-	select {
-	case <-w.semaphore:
-	default:
-		panic("worker releaseSlot called without acquire")
-	}
 }
