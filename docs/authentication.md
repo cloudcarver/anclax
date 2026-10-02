@@ -21,8 +21,6 @@ anclax:
     accessexp: 15m
     refreshexp: 24h
     singlesession: true
-  testaccount:
-    password: test
 ```
 
 Key fields:
@@ -97,11 +95,13 @@ func (v *Validator) AuthFunc(c fiber.Ctx) error {
 }
 
 func (v *Validator) PreValidate(c fiber.Ctx) error {
-	return v.auth.Authfunc(c)
+	return nil
 }
 ```
 
 Reference: `pkg/controller/validator.go`
+
+`AuthFunc` establishes the authenticated identity. Put additional request policy in `PreValidate`; calling `Authfunc` there again revalidates the same user-context caveat and rejects the request.
 
 ### What the token carries
 

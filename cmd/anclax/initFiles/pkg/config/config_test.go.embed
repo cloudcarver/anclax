@@ -15,15 +15,21 @@ func TestDevelopmentConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("MYAPP_ANCLAX_PORT", "2910")
-	t.Setenv("MYAPP_ANCLAX_PG_DSN", "postgres://postgres:postgres@db:5432/postgres?sslmode=disable")
+	t.Setenv("MYAPP_ANCLAX_PG_HOST", "db")
+	t.Setenv("MYAPP_ANCLAX_PG_PORT", "5432")
+	t.Setenv("MYAPP_ANCLAX_PG_USER", "postgres")
+	t.Setenv("MYAPP_ANCLAX_PG_PASSWORD", "custom:@/?#$%password")
+	t.Setenv("MYAPP_ANCLAX_PG_DB", "postgres")
+	t.Setenv("MYAPP_ANCLAX_PG_SSLMODE", "disable")
 	cfg, err := NewConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.Anclax.EnableSimpleAuth || cfg.Anclax.TestAccount == nil || cfg.Anclax.TestAccount.Password != "test" {
-		t.Fatal("development auth and test account are not configured")
+	if !cfg.Anclax.EnableSimpleAuth || cfg.Anclax.TestAccount != nil {
+		t.Fatal("development config must enable registration without creating a preset account")
 	}
-	if cfg.Anclax.Port != 2910 || cfg.Anclax.Pg.DSN == nil || *cfg.Anclax.Pg.DSN != os.Getenv("MYAPP_ANCLAX_PG_DSN") {
+	pg := cfg.Anclax.Pg
+	if cfg.Anclax.Port != 2910 || pg.DSN != nil || pg.Host != "db" || pg.Port != 5432 || pg.User != "postgres" || pg.Db != "postgres" || pg.SSLMode != "disable" || pg.Password != os.Getenv("MYAPP_ANCLAX_PG_PASSWORD") {
 		t.Fatal("Compose environment overrides were not loaded")
 	}
 }

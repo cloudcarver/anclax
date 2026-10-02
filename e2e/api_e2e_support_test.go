@@ -5,10 +5,14 @@ package e2e_test
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,41 +26,65 @@ import (
 )
 
 const (
-	composeProject = "anclax_e2e"
-	composeFile    = "docker-compose.yaml"
-	e2eDBDSN       = "postgres://postgres:postgres@127.0.0.1:7432/postgres?sslmode=disable"
-	e2eBaseURL     = "http://anclax.test/api/v1"
+	composeFile = "docker-compose.yaml"
+	e2eBaseURL  = "http://anclax.test/api/v1"
 )
 
-var e2eSkipReason string
+var (
+	composeProject string
+	e2eDBDSN       string
+	e2eDBPassword  string
+	e2eSkipReason  string
+)
 
 func TestMain(m *testing.M) {
+	os.Exit(runE2ETests(m))
+}
+
+func runE2ETests(m *testing.M) (code int) {
 	if !dockerAvailable() {
 		e2eSkipReason = "docker not available"
-		os.Exit(m.Run())
+		return m.Run()
 	}
 
-	_ = compose("down", "--remove-orphans")
+	entropy := make([]byte, 48)
+	if _, err := rand.Read(entropy); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to generate e2e database password: %v\n", err)
+		return 1
+	}
+	e2eDBPassword = hex.EncodeToString(entropy[:32])
+	composeProject = "anclax_e2e_" + hex.EncodeToString(entropy[32:])
+	defer func() {
+		if err := compose("down", "--remove-orphans", "--volumes"); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to stop e2e compose project: %v\n", err)
+			if code == 0 {
+				code = 1
+			}
+		}
+	}()
+
 	if err := compose("up", "-d", "db"); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to start e2e compose project: %v\n", err)
-		_ = compose("down", "--remove-orphans")
-		os.Exit(1)
+		return 1
 	}
-
+	address, err := composeOutput("port", "db", "7432")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to locate e2e database port: %v\n", err)
+		return 1
+	}
+	databaseURL := url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword("postgres", e2eDBPassword),
+		Host:     strings.TrimSpace(string(address)),
+		Path:     "postgres",
+		RawQuery: "sslmode=disable",
+	}
+	e2eDBDSN = databaseURL.String()
 	if err := waitForPostgres(e2eDBDSN, 30*time.Second); err != nil {
 		fmt.Fprintf(os.Stderr, "postgres not ready: %v\n", err)
-		_ = compose("down", "--remove-orphans")
-		os.Exit(1)
+		return 1
 	}
-
-	code := m.Run()
-	if err := compose("down", "--remove-orphans"); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to stop e2e compose project: %v\n", err)
-		if code == 0 {
-			code = 1
-		}
-	}
-	os.Exit(code)
+	return m.Run()
 }
 
 type fiberHTTPClient struct {
@@ -133,27 +161,35 @@ func dockerAvailable() bool {
 }
 
 func compose(args ...string) error {
+	_, err := composeOutput(args...)
+	return err
+}
+
+func composeOutput(args ...string) ([]byte, error) {
 	fullArgs := append([]string{"compose", "-p", composeProject, "-f", composeFile}, args...)
 	cmd := exec.Command("docker", fullArgs...)
+	cmd.Env = append(os.Environ(), "ANCLAX_E2E_POSTGRES_PASSWORD="+e2eDBPassword)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("docker %v failed: %w: %s", fullArgs, err, string(output))
+		return nil, fmt.Errorf("docker %v failed: %w: %s", fullArgs, err, string(output))
 	}
-	return nil
+	return output, nil
 }
 
 func waitForPostgres(dsn string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
+	var lastErr error
 	for time.Now().Before(deadline) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		conn, err := pgx.Connect(ctx, dsn)
 		if err == nil {
-			_ = conn.Close(ctx)
+			err := conn.Close(ctx)
 			cancel()
-			return nil
+			return err
 		}
+		lastErr = err
 		cancel()
 		time.Sleep(500 * time.Millisecond)
 	}
-	return fmt.Errorf("timed out waiting for postgres")
+	return fmt.Errorf("timed out waiting for postgres: %w", lastErr)
 }

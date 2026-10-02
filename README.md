@@ -109,23 +109,26 @@ anclax init demo github.com/you/demo
 cd demo
 anclax gen
 
-# 3) Optional: enable the built-in sign-in/sign-up endpoints
-cat > app.yaml <<'EOF'
-anclax:
-  enableSimpleAuth: true
-EOF
-
-# 4) Start the stack (DB + API + worker)
-docker compose up
+# 3) Generate local database credentials and start DB + API + worker
+make dev
 ```
 
-In another terminal:
+`make dev` creates a private `.env` with a random database password if it is missing. The database publishes no host port; use `make db` for its console. Preserve `.env` when reusing the database volume. See the generated README for existing-volume migration.
+
+In another terminal, choose a username and register (requires `jq`):
 
 ```bash
+ANCLAX_USERNAME=your-name
+ANCLAX_PASSWORD=$(openssl rand -hex 24)
+TOKEN=$(jq -n --arg name "$ANCLAX_USERNAME" --arg password "$ANCLAX_PASSWORD" \
+  '{name: $name, password: $password}' | \
+  curl -fsS http://localhost:2910/api/v1/auth/sign-up \
+    -H "Content-Type: application/json" --data-binary @- | jq -er '.accessToken')
+curl -X POST http://localhost:2910/api/v1/counter -H "Authorization: Bearer $TOKEN"
 curl http://localhost:2910/api/v1/counter
-# Optional sign-in if your template includes auth and enableSimpleAuth is true
-curl -X POST http://localhost:2910/api/v1/auth/sign-in -H "Content-Type: application/json" -d '{"name":"test","password":"test"}'
 ```
+
+The development configuration enables simple auth without creating a preset account. Retain your chosen username and password for later sign-in.
 
 ## Listener configuration
 

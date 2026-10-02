@@ -2,3 +2,5 @@
 /app.yaml
 coverage.out
 coverage.html
+.env
+.env.*

@@ -183,6 +183,8 @@ func TestCopyToInitFilesRemovesStaleAndExcludedFiles(t *testing.T) {
 	write(src, "anclax.yaml", "schemas: {}\n")
 	write(src, "dev/app.yaml", "anclax: {}\n")
 	write(src, "app.yaml", "local configuration")
+	write(src, ".env", "POSTGRES_PASSWORD=local-secret")
+	write(src, ".env.local", "POSTGRES_PASSWORD=another-secret")
 	write(src, "go.sum", "excluded")
 	write(src, ".anclax/bin/tool", "excluded")
 	write(dst, "anchor.yaml", "stale")
@@ -190,8 +192,10 @@ func TestCopyToInitFilesRemovesStaleAndExcludedFiles(t *testing.T) {
 	write(dst, ".anclax/bin/tool", "stale")
 	write(dst, "go.sum", "stale")
 	write(dst, "app.yaml", "stale")
+	write(dst, ".env", "stale secret")
+	write(dst, ".env.local", "stale secret")
 
-	excluded := []string{".anclax", "go.sum", "app.yaml"}
+	excluded := []string{".anclax", "go.sum", "app.yaml", ".env*"}
 	if err := CopyToInitFiles(src, dst, excluded); err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +212,7 @@ func TestCopyToInitFilesRemovesStaleAndExcludedFiles(t *testing.T) {
 			t.Fatalf("template %s = %q, %v; want %q", target, got, err, want)
 		}
 	}
-	for _, stale := range []string{"anchor.yaml", "old", ".anclax", "go.sum", "app.yaml"} {
+	for _, stale := range []string{"anchor.yaml", "old", ".anclax", "go.sum", "app.yaml", ".env", ".env.local"} {
 		if _, err := os.Stat(filepath.Join(dst, stale)); !os.IsNotExist(err) {
 			t.Fatalf("stale path %s survived: %v", stale, err)
 		}

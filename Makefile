@@ -85,7 +85,7 @@ verify-scheduler:
 gen:
 	sed -i -E '/^replace github\.com\/cloudcarver\/anclax => \.\.\/\.\.\/?$$/d' examples/simple/go.mod
 	sed -i -E 's@(github.com/cloudcarver/anclax )v[^ ]+@\1$(ANCLAX_VERSION)@' examples/simple/go.mod
-	go run cmd/dev/main.go copy-templates --src examples/simple --dst cmd/anclax/initFiles --exclude .anclax,go.sum,coverage.out,coverage.html,app.yaml
+	go run cmd/dev/main.go copy-templates --src examples/simple --dst cmd/anclax/initFiles --exclude .anclax,go.sum,coverage.out,coverage.html,app.yaml,'.env*'
 	sed -i -E '/^replace github\.com\/cloudcarver\/anclax => \.\.\/\.\.\/?$$/d' cmd/anclax/initFiles/go.mod.embed
 	sed -i -E 's@(github.com/cloudcarver/anclax )v[^ ]+@\1$(ANCLAX_VERSION)@' cmd/anclax/initFiles/go.mod.embed
 

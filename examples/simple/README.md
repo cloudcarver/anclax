@@ -20,23 +20,30 @@ npx skills add cloudcarver/anclax
 ## Quick test
 
 ```bash
-docker compose up
+make dev
 ```
 
-In another terminal (the token extraction uses `jq`):
+`make dev` runs `dev/setup.sh` to copy the development defaults into `app.yaml` and create a private `.env` containing a random PostgreSQL password, then starts Compose. Existing files are preserved. To run Compose directly, run `sh dev/setup.sh` first. This setup script is ordinary application source and can be customized.
+
+In another terminal (JSON encoding and token extraction use `jq`):
 
 ```bash
+ANCLAX_USERNAME=your-name
+ANCLAX_PASSWORD=$(openssl rand -hex 24)
+TOKEN=$(jq -n --arg name "$ANCLAX_USERNAME" --arg password "$ANCLAX_PASSWORD" \
+  '{name: $name, password: $password}' | \
+  curl -fsS http://localhost:2910/api/v1/auth/sign-up \
+    -H "Content-Type: application/json" --data-binary @- | jq -er '.accessToken')
 curl http://localhost:2910/api/v1/counter
-TOKEN=$(curl -fsS http://localhost:2910/api/v1/auth/sign-in \
-  -H "Content-Type: application/json" \
-  -d '{"name": "test", "password": "test"}' | jq -r '.accessToken')
 curl -X POST http://localhost:2910/api/v1/counter -H "Authorization: Bearer $TOKEN"
 curl http://localhost:2910/api/v1/counter
 ```
 
+Choose your username and retain the password for later sign-in. The development `app.yaml` enables simple auth without creating a preset account. Edit that file to customize your application settings. Outside this development configuration, simple auth stays disabled unless explicitly enabled.
+
 The POST returns `202 Accepted`; the worker updates the counter asynchronously, so poll GET until the new value appears. GET returns an object such as `{"count": 1}`.
 
-Compose mounts `dev/app.yaml` as `app.yaml` to enable simple auth and create the `test` / `test` development account. Account creation is safe across restarts. Outside this development configuration, the scaffold does not create a test account or enable simple auth automatically.
+The database is available to the application over the Compose network and publishes no host port. Run `make db` to open a database console inside the container. `.env` and `.env.*` stay outside Git and the embedded scaffold. Keep `.env` with the database volume: changing the file does not change an existing database password. To migrate an existing development volume, set `.env` to its current password first, then rotate that password in PostgreSQL and update `.env`; creating a new random value alone will prevent login.
 
 ## Development
 

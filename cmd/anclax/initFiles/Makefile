@@ -1,19 +1,22 @@
 SHELL := /bin/sh
 
-.PHONY: dev reload db gen test ut
+.PHONY: setup dev reload db gen test ut
 
 ###################################################
 ### Dev 
 ###################################################
 
-dev:
+dev: setup
 	docker compose up
+
+setup:
+	sh dev/setup.sh
 
 reload:
 	docker compose restart dev
 
 db:
-	psql "postgresql://postgres:postgres@localhost:5432/postgres?sslmode=disable"
+	docker compose exec db psql -U postgres -d postgres
 
 gen:
 	anclax gen

@@ -101,23 +101,26 @@ anclax init demo github.com/you/demo
 cd demo
 anclax gen
 
-# 3）可选：开启内置的 sign-in / sign-up 接口
-cat > app.yaml <<'EOF'
-anclax:
-  enableSimpleAuth: true
-EOF
-
-# 4）启动整套服务（DB + API + worker）
-docker compose up
+# 3）生成本地数据库密码，启动 DB + API + worker
+make dev
 ```
 
-在另一个终端：
+`make dev` 会在 `.env` 不存在时生成随机数据库密码，文件仅允许当前用户访问。数据库不发布宿主机端口，使用 `make db` 进入数据库控制台。复用数据库卷时保留 `.env`；已有数据的迁移方式见生成项目的 README。
+
+在另一个终端选择用户名并注册（需要 `jq`）：
 
 ```bash
+ANCLAX_USERNAME=your-name
+ANCLAX_PASSWORD=$(openssl rand -hex 24)
+TOKEN=$(jq -n --arg name "$ANCLAX_USERNAME" --arg password "$ANCLAX_PASSWORD" \
+  '{name: $name, password: $password}' | \
+  curl -fsS http://localhost:2910/api/v1/auth/sign-up \
+    -H "Content-Type: application/json" --data-binary @- | jq -er '.accessToken')
+curl -X POST http://localhost:2910/api/v1/counter -H "Authorization: Bearer $TOKEN"
 curl http://localhost:2910/api/v1/counter
-# 如果模板包含 auth，且 enableSimpleAuth=true，则可以登录
-curl -X POST http://localhost:2910/api/v1/auth/sign-in -H "Content-Type: application/json" -d '{"name":"test","password":"test"}'
 ```
+
+开发配置开启 simple auth，但不创建预设账号。请保留所选用户名和密码，以便后续登录。
 
 ## 监听地址配置
 
