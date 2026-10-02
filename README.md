@@ -127,6 +127,26 @@ curl http://localhost:2910/api/v1/counter
 curl -X POST http://localhost:2910/api/v1/auth/sign-in -H "Content-Type: application/json" -d '{"name":"test","password":"test"}'
 ```
 
+## Listener configuration
+
+The API now honors `anclax.host`, which defaults to `localhost` on port 8020. Container deployments must explicitly set `anclax.host: 0.0.0.0` (or `MYAPP_ANCLAX_HOST=0.0.0.0` for the scaffold). The generated Compose configuration already does this.
+
+Metrics and pprof are disabled by default. When enabled, they bind to `127.0.0.1`, on ports 9020 and 8777 respectively. For local metrics scraping:
+
+```yaml
+anclax:
+  metrics:
+    enable: true
+    host: 127.0.0.1
+    port: 9020
+  debug:
+    enable: false
+    host: 127.0.0.1
+    port: 8777
+```
+
+Remote scrapers or profilers need an explicit `metrics.host` or `debug.host` that they can reach, and access controls on that management network. The legacy `metricsport` setting still enables metrics unless the new `metrics.port` is set; remove it to disable metrics. The new port takes precedence, with `metrics.enable` controlling the listener. These listeners do not impose fixed HTTP request timeouts in the framework.
+
 ## One‑minute tour 🧭
 
 1) Define an endpoint (OpenAPI YAML) 🧩

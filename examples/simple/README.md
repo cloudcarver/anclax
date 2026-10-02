@@ -40,6 +40,10 @@ Compose mounts `dev/app.yaml` as `app.yaml` to enable simple auth and create the
 
 ## Development
 
+The API honors `anclax.host` and defaults to `localhost:8020`. Compose explicitly sets `MYAPP_ANCLAX_HOST=0.0.0.0` and port 2910 so its published port accepts traffic. Existing container deployments also need an explicit reachable host.
+
+Metrics are disabled by default. To enable local scraping, add `anclax.metrics.enable: true` in `app.yaml`; the listener defaults to `127.0.0.1:9020`. Remote scrapers need an explicit reachable `anclax.metrics.host` and a published port. Pprof is also disabled by default; enabling `anclax.debug.enable` uses `127.0.0.1:8777`, with `anclax.debug.host` controlling exposure. Keep management listeners behind your network access controls.
+
 ```bash
 anclax install  # install the generators pinned in anclax.yaml
 make gen       # regenerate after changing API/task specs, SQL, or Wire providers

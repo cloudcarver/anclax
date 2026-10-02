@@ -2,8 +2,9 @@ package metrics
 
 import (
 	"context"
-	"fmt"
+	"net"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/cloudcarver/anclax/pkg/config"
@@ -98,67 +99,67 @@ var TaskListenerPollDurationSeconds = promauto.NewHistogram(
 )
 
 type MetricsServer struct {
+	enable    bool
+	host      string
 	port      int
 	server    *http.Server
 	globalCtx *globalctx.GlobalContext
 }
 
 func (m *MetricsServer) Start() {
+	if !m.enable {
+		return
+	}
+	listener, err := net.Listen("tcp", m.server.Addr)
+	if err != nil {
+		log.Error("metrics server failed to listen", zap.Error(err))
+		return
+	}
+
 	go func() {
-		log.Infof("metrics server is listening on port %d", m.port)
-		if err := m.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := m.server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			log.Error("metrics server exited", zap.Error(err))
 		}
 	}()
 
-	// Shutdown the server when the global context is done
 	go func() {
 		<-m.globalCtx.Context().Done()
-		if err := m.server.Shutdown(context.Background()); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := m.server.Shutdown(ctx); err != nil {
 			log.Error("metrics server shutdown error", zap.Error(err))
 		} else {
 			log.Info("metrics server shutdown gracefully")
 		}
 	}()
-
-	ready := make(chan struct{})
-
-	go func() {
-		for range 5 {
-			resp, err := http.Get(fmt.Sprintf("http://localhost:%d/metrics", m.port))
-			if err == nil {
-				resp.Body.Close()
-				close(ready)
-				return
-			}
-			time.Sleep(time.Second)
-		}
-	}()
-
-	// Wait for the server to be ready or timeout
-	select {
-	case <-ready:
-		log.Info("metrics server started successfully")
-	case <-time.After(5 * time.Second):
-		panic("timed out waiting for metrics server to start")
-	}
+	log.Infof("metrics server is listening on %s", listener.Addr())
 }
 
 func NewMetricsServer(cfg *config.Config, globalCtx *globalctx.GlobalContext) *MetricsServer {
+	enable := cfg.Metrics.Enable
+	host := cfg.Metrics.Host
+	if host == "" {
+		host = "127.0.0.1"
+	}
 	port := 9020
-	if cfg.MetricsPort != 0 {
+	if cfg.Metrics.Port != 0 {
+		port = cfg.Metrics.Port
+	} else if cfg.MetricsPort != 0 {
 		port = cfg.MetricsPort
+		enable = true
 	}
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
 
 	server := &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
+		Addr:    net.JoinHostPort(host, strconv.Itoa(port)),
 		Handler: mux,
 	}
 
 	return &MetricsServer{
+		enable:    enable,
+		host:      host,
 		port:      port,
 		server:    server,
 		globalCtx: globalCtx,

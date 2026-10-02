@@ -4,9 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/globalctx"
@@ -21,6 +24,85 @@ import (
 
 func stringPtr(s string) *string {
 	return &s
+}
+
+func TestListenAddressUsesConfiguredHost(t *testing.T) {
+	tests := []struct {
+		name string
+		host string
+		port int
+		want string
+	}{
+		{name: "loopback", host: "127.0.0.1", port: 8020, want: "127.0.0.1:8020"},
+		{name: "hostname", host: "localhost", port: 2910, want: "localhost:2910"},
+		{name: "ipv6", host: "::1", port: 8020, want: "[::1]:8020"},
+		{name: "explicit wildcard", host: "0.0.0.0", port: 8020, want: "0.0.0.0:8020"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Server{host: tt.host, port: tt.port}
+			require.Equal(t, tt.want, s.listenAddress())
+		})
+	}
+}
+
+func TestListenBindsOnlyTheConfiguredInterface(t *testing.T) {
+	reserved, err := net.Listen("tcp", net.JoinHostPort("::1", "0"))
+	require.NoError(t, err)
+	port := reserved.Addr().(*net.TCPAddr).Port
+	require.NoError(t, reserved.Close())
+
+	globalCtx := globalctx.New()
+	s, err := NewServer(&config.Config{Host: "::1", Port: port}, config.DefaultLibConfig(), globalCtx, nil, nil, failingAuthValidator{})
+	require.NoError(t, err)
+	s.GetApp().Get("/listener-test", func(c fiber.Ctx) error {
+		return c.SendString("ready")
+	})
+	ready := make(chan struct{})
+	s.GetApp().Hooks().OnListen(func(fiber.ListenData) error {
+		close(ready)
+		return nil
+	})
+	done := make(chan error, 1)
+	go func() { done <- s.Listen() }()
+	t.Cleanup(func() {
+		globalCtx.Cancel()
+		select {
+		case err := <-done:
+			require.NoError(t, err)
+		case <-time.After(5 * time.Second):
+			t.Error("business listener did not stop after cancellation")
+		}
+	})
+	select {
+	case <-ready:
+	case <-time.After(5 * time.Second):
+		t.Fatal("business listener did not start")
+	}
+
+	client := &http.Client{Transport: &http.Transport{}, Timeout: time.Second}
+	t.Cleanup(client.CloseIdleConnections)
+	resp, err := client.Get("http://" + net.JoinHostPort("::1", strconv.Itoa(port)) + "/listener-test")
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, resp.Body.Close())
+	require.NoError(t, err)
+	require.Equal(t, "ready", string(body))
+
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), time.Second)
+	if conn != nil {
+		require.NoError(t, conn.Close())
+	}
+	require.Error(t, err, "listener unexpectedly accepted traffic on another interface")
+}
+
+func TestNewServerDefaultsToLocalhost(t *testing.T) {
+	globalCtx := globalctx.New()
+	t.Cleanup(globalCtx.Cancel)
+	s, err := NewServer(&config.Config{}, config.DefaultLibConfig(), globalCtx, nil, nil, failingAuthValidator{})
+	require.NoError(t, err)
+	require.Equal(t, "localhost:8020", s.listenAddress())
 }
 
 type failingAuthValidator struct {

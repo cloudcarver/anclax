@@ -119,6 +119,26 @@ curl http://localhost:2910/api/v1/counter
 curl -X POST http://localhost:2910/api/v1/auth/sign-in -H "Content-Type: application/json" -d '{"name":"test","password":"test"}'
 ```
 
+## 监听地址配置
+
+业务 API 现在会实际使用 `anclax.host`，默认监听 `localhost:8020`。容器部署需要显式设置 `anclax.host: 0.0.0.0`，脚手架也可以使用环境变量 `MYAPP_ANCLAX_HOST=0.0.0.0`。生成的 Compose 配置已经包含此设置。
+
+监控指标和 pprof 默认关闭；开启后默认监听 `127.0.0.1`，端口分别为 9020 和 8777。本机采集监控指标可以这样配置：
+
+```yaml
+anclax:
+  metrics:
+    enable: true
+    host: 127.0.0.1
+    port: 9020
+  debug:
+    enable: false
+    host: 127.0.0.1
+    port: 8777
+```
+
+远程采集或分析需要显式配置可访问的 `metrics.host` 或 `debug.host`，并在管理网络设置访问控制。旧的 `metricsport` 仍会开启监控，除非设置了新的 `metrics.port`；要关闭监控，应移除旧配置。新端口优先，并由 `metrics.enable` 控制是否开启。框架不会为这些监听服务设置固定的 HTTP 请求超时。
+
 ## 1 分钟上手 🧭
 
 1）定义一个接口（OpenAPI YAML）🧩

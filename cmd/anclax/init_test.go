@@ -6,7 +6,32 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
+
+func TestInitializedComposeExposesApplication(t *testing.T) {
+	dir := t.TempDir()
+	if err := initFiles(dir, "example.com/scaffold"); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(filepath.Join(dir, "docker-compose.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var compose struct {
+		Services map[string]struct {
+			Environment map[string]string `yaml:"environment"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(content, &compose); err != nil {
+		t.Fatal(err)
+	}
+	env := compose.Services["dev"].Environment
+	if env["MYAPP_ANCLAX_HOST"] != "0.0.0.0" || env["MYAPP_ANCLAX_PORT"] != "2910" {
+		t.Fatalf("scaffold listener does not match its published port: %v", env)
+	}
+}
 
 func TestInitializedProject(t *testing.T) {
 	if testing.Short() {
