@@ -1,4 +1,4 @@
-# myexampleapp 
+# myexampleapp
 
 This project is initialized by `anclax init`.
 
@@ -21,11 +21,75 @@ npx skills add cloudcarver/anclax
 
 ```bash
 docker compose up
+```
+
+In another terminal (the token extraction uses `jq`):
+
+```bash
 curl http://localhost:2910/api/v1/counter
-curl -X POST http://localhost:2910/api/v1/auth/sign-in -H "Content-Type: application/json" -d '{"name": "test", "password": "test"}'
-curl -X POST http://localhost:2910/api/v1/counter -H "Content-Type: application/json" -H "Authorization: your_access_token"
+TOKEN=$(curl -fsS http://localhost:2910/api/v1/auth/sign-in \
+  -H "Content-Type: application/json" \
+  -d '{"name": "test", "password": "test"}' | jq -r '.accessToken')
+curl -X POST http://localhost:2910/api/v1/counter -H "Authorization: Bearer $TOKEN"
 curl http://localhost:2910/api/v1/counter
 ```
+
+The POST returns `202 Accepted`; the worker updates the counter asynchronously, so poll GET until the new value appears. GET returns an object such as `{"count": 1}`.
+
+Compose mounts `dev/app.yaml` as `app.yaml` to enable simple auth and create the `test` / `test` development account. Account creation is safe across restarts. Outside this development configuration, the scaffold does not create a test account or enable simple auth automatically.
+
+## Development
+
+The API honors `anclax.host` and defaults to `localhost:8020`. Compose explicitly sets `MYAPP_ANCLAX_HOST=0.0.0.0` and port 2910 so its published port accepts traffic. Existing container deployments also need an explicit reachable host.
+
+Metrics are disabled by default. To enable local scraping, add `anclax.metrics.enable: true` in `app.yaml`; the listener defaults to `127.0.0.1:9020`. Remote scrapers need an explicit reachable `anclax.metrics.host` and a published port. Pprof is also disabled by default; enabling `anclax.debug.enable` uses `127.0.0.1:8777`, with `anclax.debug.host` controlling exposure. Keep management listeners behind your network access controls.
+
+```bash
+anclax install  # install the generators pinned in anclax.yaml
+make gen       # regenerate after changing API/task specs, SQL, or Wire providers
+make test      # run Go tests
+make ut        # run tests with the race detector and coverage
+```
+
+Edit `pkg/model/model.go` to extend model behavior. It is scaffold source; only `pkg/model/mock_gen.go`, `pkg/zgen/`, and `app/wire/wire_gen.go` are generated.
+
+## Outbound API client policy
+
+Use `pkg/apiclient` when calling this API from Go. Its `client.go` is ordinary application code: you own the timeout, response limit, HTTP transport, and response handling, and `anclax gen` preserves your changes.
+
+`apiclient.DefaultConfig()` sets a 30-second timeout for the whole request, including reading its body, and a 10 MiB response limit. Edit these defaults in `pkg/apiclient/client.go`, or choose settings for one client:
+
+```go
+cfg := apiclient.DefaultConfig()
+cfg.Timeout = 2 * time.Minute
+cfg.MaxResponseBodyBytes = 64 << 20
+client, err := apiclient.New(baseURL, cfg)
+if err != nil {
+    return err
+}
+response, err := client.GetCounterWithResponse(ctx)
+if err != nil {
+    return err
+}
+```
+
+The size limit applies to both parsed and raw responses. Overflows return `apiclient.ErrResponseBodyTooLarge`, checkable with `errors.Is`. Set `MaxResponseBodyBytes` to zero to disable the size limit, and `Timeout` to zero to disable the request timeout. For large downloads, choose those settings as needed and stream and close the raw response body.
+
+Generated `pkg/zgen/apigen` clients handle the API protocol and accept application HTTP clients through `WithHTTPClient`. Keep custom client policy in `pkg/apiclient`, where regeneration preserves it.
+
+## Transactions and tasks
+
+Use `core.Tx` from `github.com/cloudcarver/anclax/core` for transaction callbacks and `SpawnWithTx`. This matches generated task runners and failure hooks:
+
+```go
+err := m.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface) error {
+    // Combine your business writes through txm with task enqueueing.
+    _, err := runner.RunIncrementCounterWithTx(ctx, tx, &counter.IncrementCounterParams{Amount: 1})
+    return err
+})
+```
+
+An `onFailed` hook receives an existing `core.Tx`; use `m.SpawnWithTx(tx)` inside it. Executors run outside that transaction. The counter demonstrates task delivery and honors `Amount`; it can increment again if delivery is repeated. For business operations that must apply once, persist an idempotency key with the write. The `AutoIncrementCounter` task definition is available as a cron example and must be enqueued explicitly to start it.
 
 ## Multi-service pattern
 

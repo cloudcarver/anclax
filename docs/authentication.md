@@ -116,6 +116,36 @@ The built-in auth flow uses two caveat types:
 
 Reference: `pkg/auth/caveats.go`
 
+### Caveat settings and duplicates
+
+Every custom `macaroons.Caveat` must implement `Settings() macaroons.CaveatSettings`
+in addition to `Type()` and `Validate(fiber.Ctx) error`:
+
+```go
+func (c *MyCaveat) Settings() macaroons.CaveatSettings {
+	return macaroons.CaveatSettings{}
+}
+```
+
+The zero value rejects multiple caveats with the same `Type()` in a single token,
+even if their values are identical. Both built-in caveats (`user_context` and
+`refresh_only`) use this default. Token creation, `AddCaveat`, and server-side token
+parsing enforce this rule and return `macaroons.ErrDuplicateCaveat` for violations.
+A rejected `AddCaveat` leaves the original token unchanged.
+
+For a restriction that supports repetition, return
+`macaroons.CaveatSettings{AllowDuplicates: true}`. Every occurrence must allow
+duplicates, and authentication still requires every caveat's `Validate` to pass.
+Settings describe the caveat type's policy and must not depend on fields decoded
+from the token. Appending a caveat must only restrict access, so validation must
+not let a later occurrence overwrite or loosen an earlier restriction.
+
+**Migration:** adding `Settings()` is a breaking interface change. Existing custom
+caveats must add this method, and their mocks must be regenerated. Use named fields
+in settings literals so future settings can be added without updating them.
+Previously issued tokens containing repeated caveat types are rejected unless
+those types explicitly allow duplicates.
+
 ### Reading auth context in handlers/controllers
 
 After token validation, use helpers from `pkg/auth`:
@@ -280,6 +310,9 @@ Reference for the existing auth injector pattern: `examples/simple/app/injection
 
 ## Recommendations
 
+- Built-in sign-in, sign-up, and refresh endpoints suppress response-body logging. In custom handlers that return credentials, call `server.DisableBodyLog(c)` before issuing tokens or processing the request.
+- Authentication failures return a generic 401. Generated validation and permission checks preserve a wrapped `*fiber.Error` status, or use 403, and replace any existing response body with the standard HTTP status text. Security logs record fixed validation stages and status codes without raw errors or credentials.
+- `auth.ParseRefreshToken` returns `auth.ErrInvalidRefreshToken` for parsing failures; parser and store causes are excluded from the returned error text.
 - Keep built-in simple auth disabled unless you explicitly want the default username/password endpoints.
 - Use service methods for user lifecycle and standard credential issuance.
 - Use `auth.AuthInterface` when you need custom token issuance or revocation behavior.

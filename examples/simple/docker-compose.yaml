@@ -1,29 +1,40 @@
 services:
   dev:
-    build: 
+    build:
+      context: .
       dockerfile: ./dev/Dockerfile.dev
     ports:
       - "2910:2910"
     command:
     - go
     - run
-    - cmd/main.go
+    - ./cmd
+    depends_on:
+      db:
+        condition: service_healthy
     environment:
-      MYAPP_ENABLESIMPLEAUTH: true
       MYAPP_ANCLAX_HOST: 0.0.0.0
       MYAPP_ANCLAX_PORT: 2910
-      MYAPP_ANCLAX_PG_DSN: postgres://postgres:postgres@db:5432/postgres
+      MYAPP_ANCLAX_PG_DSN: postgres://postgres:postgres@db:5432/postgres?sslmode=disable
     volumes:
       - ./:/app
+      - ./dev/app.yaml:/app/app.yaml:ro
       - go-data:/go/pkg/mod
       - go-build-data:/root/.cache/go-build
 
-  db: 
-    image: "postgres:latest"
+  db:
+    image: "postgres:17-bookworm"
     ports:
       - "5432:5432"
     environment:
       POSTGRES_PASSWORD: postgres
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
 
 volumes:
   db-data:

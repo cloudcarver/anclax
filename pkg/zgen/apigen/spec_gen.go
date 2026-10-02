@@ -9,7 +9,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cloudcarver/anclax/pkg/logger"
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/requestid"
+	"go.uber.org/zap"
 	"io"
 	"net/http"
 	"net/url"
@@ -41,6 +44,8 @@ const (
 // Defines values for TaskStatus.
 const (
 	TaskStatusPending   TaskStatus = "pending"
+	TaskStatusReady     TaskStatus = "ready"
+	TaskStatusRunning   TaskStatus = "running"
 	TaskStatusCompleted TaskStatus = "completed"
 	TaskStatusFailed    TaskStatus = "failed"
 	TaskStatusPaused    TaskStatus = "paused"
@@ -193,6 +198,17 @@ type SignInJSONRequestBody = SignInRequest
 
 // RefreshTokenJSONRequestBody defines body for RefreshToken for application/json ContentType.
 type RefreshTokenJSONRequestBody = RefreshTokenRequest
+
+var xClientLog = logger.NewLogAgent("api-client")
+
+func readResponseBody(body io.ReadCloser) ([]byte, error) {
+	defer func() {
+		if err := body.Close(); err != nil {
+			xClientLog.Warn("failed to close response body")
+		}
+	}()
+	return io.ReadAll(body)
+}
 
 // RequestEditorFn is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -980,8 +996,7 @@ func (c *ClientWithResponses) TryExecuteTaskWithResponse(ctx context.Context, ta
 
 // ParseListTasksResponse parses an HTTP response from a ListTasksWithResponse call
 func ParseListTasksResponse(rsp *http.Response) (*ListTasksResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
+	bodyBytes, err := readResponseBody(rsp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -1002,8 +1017,7 @@ func ParseListTasksResponse(rsp *http.Response) (*ListTasksResponse, error) {
 
 // ParseListOrgsResponse parses an HTTP response from a ListOrgsWithResponse call
 func ParseListOrgsResponse(rsp *http.Response) (*ListOrgsResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
+	bodyBytes, err := readResponseBody(rsp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -1024,8 +1038,7 @@ func ParseListOrgsResponse(rsp *http.Response) (*ListOrgsResponse, error) {
 
 // ParseListEventsResponse parses an HTTP response from a ListEventsWithResponse call
 func ParseListEventsResponse(rsp *http.Response) (*ListEventsResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
+	bodyBytes, err := readResponseBody(rsp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -1046,8 +1059,7 @@ func ParseListEventsResponse(rsp *http.Response) (*ListEventsResponse, error) {
 
 // ParseSignUpResponse parses an HTTP response from a SignUpWithResponse call
 func ParseSignUpResponse(rsp *http.Response) (*SignUpResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
+	bodyBytes, err := readResponseBody(rsp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -1068,8 +1080,7 @@ func ParseSignUpResponse(rsp *http.Response) (*SignUpResponse, error) {
 
 // ParseSignOutResponse parses an HTTP response from a SignOutWithResponse call
 func ParseSignOutResponse(rsp *http.Response) (*SignOutResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
+	bodyBytes, err := readResponseBody(rsp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -1081,8 +1092,7 @@ func ParseSignOutResponse(rsp *http.Response) (*SignOutResponse, error) {
 
 // ParseSignInResponse parses an HTTP response from a SignInWithResponse call
 func ParseSignInResponse(rsp *http.Response) (*SignInResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
+	bodyBytes, err := readResponseBody(rsp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -1103,8 +1113,7 @@ func ParseSignInResponse(rsp *http.Response) (*SignInResponse, error) {
 
 // ParseRefreshTokenResponse parses an HTTP response from a RefreshTokenWithResponse call
 func ParseRefreshTokenResponse(rsp *http.Response) (*RefreshTokenResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
+	bodyBytes, err := readResponseBody(rsp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -1125,8 +1134,7 @@ func ParseRefreshTokenResponse(rsp *http.Response) (*RefreshTokenResponse, error
 
 // ParseTryExecuteTaskResponse parses an HTTP response from a TryExecuteTaskWithResponse call
 func ParseTryExecuteTaskResponse(rsp *http.Response) (*TryExecuteTaskResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
+	bodyBytes, err := readResponseBody(rsp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -1174,21 +1182,18 @@ type MiddlewareFunc fiber.Handler
 // ListTasks operation middleware
 func (siw *ServerInterfaceWrapper) ListTasks(c fiber.Ctx) error {
 	fiber.StoreInContext(c, BearerAuthScopes, []string{})
-
 	return siw.Handler.ListTasks(c)
 }
 
 // ListOrgs operation middleware
 func (siw *ServerInterfaceWrapper) ListOrgs(c fiber.Ctx) error {
 	fiber.StoreInContext(c, BearerAuthScopes, []string{})
-
 	return siw.Handler.ListOrgs(c)
 }
 
 // ListEvents operation middleware
 func (siw *ServerInterfaceWrapper) ListEvents(c fiber.Ctx) error {
 	fiber.StoreInContext(c, BearerAuthScopes, []string{})
-
 	return siw.Handler.ListEvents(c)
 }
 
@@ -1200,7 +1205,6 @@ func (siw *ServerInterfaceWrapper) SignUp(c fiber.Ctx) error {
 // SignOut operation middleware
 func (siw *ServerInterfaceWrapper) SignOut(c fiber.Ctx) error {
 	fiber.StoreInContext(c, BearerAuthScopes, []string{})
-
 	return siw.Handler.SignOut(c)
 }
 
@@ -1224,7 +1228,6 @@ func (siw *ServerInterfaceWrapper) TryExecuteTask(c fiber.Ctx) error {
 	taskID = int32(parsedTaskID)
 
 	fiber.StoreInContext(c, BearerAuthScopes, []string{})
-
 	return siw.Handler.TryExecuteTask(c, taskID)
 }
 
@@ -1266,7 +1269,8 @@ func RegisterHandlersWithOptions(router fiber.Router, si ServerInterface, option
 }
 
 type Validator interface {
-	// AuthFunc is called before the request is processed. The response will be 401 if the auth fails.
+	// AuthFunc checks every scheme in the current security alternative. Scope context values contain only that alternative.
+	// It may be called again for another alternative. Authentication failures return 401.
 	AuthFunc(fiber.Ctx) error
 
 	// PreValidate is called before the request is processed. The response will use a wrapped *fiber.Error status code, or 403 otherwise.
@@ -1286,6 +1290,23 @@ func xCheckRuleStatusCode(err error) int {
 	return fiber.StatusForbidden
 }
 
+var xSecurityLog = logger.NewLogAgent("security")
+
+func xLogSecurityFailure(c fiber.Ctx, status int, stage string) {
+	fields := []zap.Field{zap.Int("status", status), zap.String("stage", stage), zap.String("request-id", requestid.FromContext(c))}
+	if status >= fiber.StatusInternalServerError {
+		xSecurityLog.Error("security check failed", fields...)
+	} else {
+		xSecurityLog.Warn("security check failed", fields...)
+	}
+}
+
+func xSecurityError(c fiber.Ctx, status int, stage string) error {
+	xLogSecurityFailure(c, status, stage)
+	c.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
+	return c.Status(status).SendString(http.StatusText(status))
+}
+
 type XMiddleware struct {
 	ServerInterface
 	Validator
@@ -1299,13 +1320,13 @@ func NewXMiddleware(handler ServerInterface, validator Validator) ServerInterfac
 // (GET /tasks)
 func (x *XMiddleware) ListTasks(c fiber.Ctx) error {
 	if err := x.AuthFunc(c); err != nil {
-		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
+		return xSecurityError(c, fiber.StatusUnauthorized, "authentication")
 	}
 	if err := x.PreValidate(c); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return xSecurityError(c, xCheckRuleStatusCode(err), "pre-validation")
 	}
 	if err := x.PostValidate(c); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return xSecurityError(c, xCheckRuleStatusCode(err), "post-validation")
 	}
 	return x.ServerInterface.ListTasks(c)
 }
@@ -1314,13 +1335,13 @@ func (x *XMiddleware) ListTasks(c fiber.Ctx) error {
 // (GET /orgs)
 func (x *XMiddleware) ListOrgs(c fiber.Ctx) error {
 	if err := x.AuthFunc(c); err != nil {
-		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
+		return xSecurityError(c, fiber.StatusUnauthorized, "authentication")
 	}
 	if err := x.PreValidate(c); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return xSecurityError(c, xCheckRuleStatusCode(err), "pre-validation")
 	}
 	if err := x.PostValidate(c); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return xSecurityError(c, xCheckRuleStatusCode(err), "post-validation")
 	}
 	return x.ServerInterface.ListOrgs(c)
 }
@@ -1329,13 +1350,13 @@ func (x *XMiddleware) ListOrgs(c fiber.Ctx) error {
 // (GET /events)
 func (x *XMiddleware) ListEvents(c fiber.Ctx) error {
 	if err := x.AuthFunc(c); err != nil {
-		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
+		return xSecurityError(c, fiber.StatusUnauthorized, "authentication")
 	}
 	if err := x.PreValidate(c); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return xSecurityError(c, xCheckRuleStatusCode(err), "pre-validation")
 	}
 	if err := x.PostValidate(c); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return xSecurityError(c, xCheckRuleStatusCode(err), "post-validation")
 	}
 	return x.ServerInterface.ListEvents(c)
 }
@@ -1344,13 +1365,13 @@ func (x *XMiddleware) ListEvents(c fiber.Ctx) error {
 // (POST /auth/sign-out)
 func (x *XMiddleware) SignOut(c fiber.Ctx) error {
 	if err := x.AuthFunc(c); err != nil {
-		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
+		return xSecurityError(c, fiber.StatusUnauthorized, "authentication")
 	}
 	if err := x.PreValidate(c); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return xSecurityError(c, xCheckRuleStatusCode(err), "pre-validation")
 	}
 	if err := x.PostValidate(c); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return xSecurityError(c, xCheckRuleStatusCode(err), "post-validation")
 	}
 	return x.ServerInterface.SignOut(c)
 }
@@ -1359,13 +1380,13 @@ func (x *XMiddleware) SignOut(c fiber.Ctx) error {
 // (POST /tasks/{taskID}/try-execute)
 func (x *XMiddleware) TryExecuteTask(c fiber.Ctx, taskID int32) error {
 	if err := x.AuthFunc(c); err != nil {
-		return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
+		return xSecurityError(c, fiber.StatusUnauthorized, "authentication")
 	}
 	if err := x.PreValidate(c); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return xSecurityError(c, xCheckRuleStatusCode(err), "pre-validation")
 	}
 	if err := x.PostValidate(c); err != nil {
-		return c.Status(xCheckRuleStatusCode(err)).SendString(err.Error())
+		return xSecurityError(c, xCheckRuleStatusCode(err), "post-validation")
 	}
 	return x.ServerInterface.TryExecuteTask(c, taskID)
 }

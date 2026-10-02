@@ -7,7 +7,12 @@ English | [中文](README.zh.md)
 
 Build serverless, reliable apps at lightspeed ⚡ — with confidence 🛡️.
 
-Anclax is a definition‑first framework for small–medium apps (single PostgreSQL). Define APIs and tasks as schemas; generated code moves correctness to compile time.
+Anclax is a framework for small to medium-sized applications backed by a single PostgreSQL database. It provides:
+
+- Strong schemas and code generation that move correctness checks to compile time
+- An integrated toolchain of best-in-class Go tools
+- Dependency inversion and a white-box testing framework
+- A high-performance async task scheduling framework
 
 Join our [Discord server](https://discord.gg/XxXXbyF59H).
 
@@ -48,15 +53,11 @@ Contact: mike@anclax.com
 ### Highlights ✨
 
 - **YAML-first, codegen-backed**: Define HTTP and task schemas in YAML; Anclax generates strongly-typed interfaces so missing implementations fail at compile time, not in prod.
-- **Async tasks you can trust**: At-least-once delivery, automatic retries, cron scheduling, plus priority/weight lanes you can tune at runtime.
-- **Serial task execution**: Use `taskcore.WithSerialKey`/`WithSerialID` to run related tasks strictly one-by-one.
-- **Transaction-safe flows**: A `WithTx` pattern ensures hooks always run and side effects are consistent.
+- **Async tasks you can trust**: Enqueue tasks atomically with business changes in one database transaction, with at-least-once delivery, automatic retries, cron scheduling, strict serial execution, task group management, per-tag concurrency quotas, and priority/weight scheduling. Benchmarks sustained about 5,000 concurrent tasks with 30 database connections and less than one PostgreSQL CPU core on average; see the [scheduling capacity benchmark](docs/scheduling-capacity-benchmark.md).
 - **Typed database layer**: Powered by `sqlc` for safe, fast queries.
-- **Fast HTTP server**: Built on Fiber for performance and ergonomics.
+- **Fast HTTP server**: Built on Fiber with OpenAPI syntax extensions for performance and ease of use.
 - **AuthN/Z built-in**: Macaroons-based authentication and authorization.
-- **Pluggable architecture**: First-class plugin system for clean modularity.
-- **E2E scenarios as code**: Describe distributed flows in DST YAML and generate typed runners.
-- **Ergonomic DI**: Wire-based dependency injection keeps code testable and explicit.
+- **Ergonomic DI**: Wire-based dependency inversion keeps dependencies explicit and code testable.
 
 ### Why Anclax? (The problem it solves) 🤔
 
@@ -126,6 +127,26 @@ curl http://localhost:2910/api/v1/counter
 curl -X POST http://localhost:2910/api/v1/auth/sign-in -H "Content-Type: application/json" -d '{"name":"test","password":"test"}'
 ```
 
+## Listener configuration
+
+The API now honors `anclax.host`, which defaults to `localhost` on port 8020. Container deployments must explicitly set `anclax.host: 0.0.0.0` (or `MYAPP_ANCLAX_HOST=0.0.0.0` for the scaffold). The generated Compose configuration already does this.
+
+Metrics and pprof are disabled by default. When enabled, they bind to `127.0.0.1`, on ports 9020 and 8777 respectively. For local metrics scraping:
+
+```yaml
+anclax:
+  metrics:
+    enable: true
+    host: 127.0.0.1
+    port: 9020
+  debug:
+    enable: false
+    host: 127.0.0.1
+    port: 8777
+```
+
+Remote scrapers or profilers need an explicit `metrics.host` or `debug.host` that they can reach, and access controls on that management network. The legacy `metricsport` setting still enables metrics unless the new `metrics.port` is set; remove it to disable metrics. The new port takes precedence, with `metrics.enable` controlling the listener. These listeners do not impose fixed HTTP request timeouts in the framework.
+
 ## One‑minute tour 🧭
 
 1) Define an endpoint (OpenAPI YAML) 🧩
@@ -175,6 +196,14 @@ func (h *Handler) GetCounter(c *fiber.Ctx) error {
 
 ## Showcase: unique features 🧰
 
+### Generated Go API clients
+
+The scaffold owns outbound client policy in [`pkg/apiclient/client.go`](examples/simple/pkg/apiclient/client.go), an ordinary application source file. `apiclient.DefaultConfig()` provides a 30-second request timeout and a 10 MiB response limit. Edit those defaults or pass a different `apiclient.Config` to `apiclient.New`; `anclax gen` preserves application client code.
+
+The scaffold's response limit applies to both parsed and raw responses and returns `apiclient.ErrResponseBodyTooLarge`, checkable with `errors.Is`. Set `MaxResponseBodyBytes` to zero for large downloads and stream and close the raw `http.Response.Body`. Set `Timeout` to zero to disable the request timeout.
+
+Generated `apigen` clients handle the API protocol; applications supply their HTTP transport and policy through `WithHTTPClient`. Parsing closes response bodies on success and failure, and returns read errors, including context cancellation.
+
 ### OpenAPI-powered middleware (no DSL)
 ```yaml
 x-check-rules:
@@ -213,6 +242,7 @@ components:
 ```
 
 ### Async tasks: at-least-once, retries, cron, priority/weight
+
 - **Pain points before**: hand-building `apigen.Task` payloads and attributes was repetitive and easy to get wrong.
 - **Pain points before**: retry/cronjob/unique-tag logic got duplicated and drifted across services.
 - **Pain points before**: enqueueing inside a DB transaction required custom glue code.

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,15 +11,25 @@ import (
 
 	"github.com/cloudcarver/anclax/pkg/config"
 	"github.com/cloudcarver/anclax/pkg/hooks"
+	"github.com/cloudcarver/anclax/pkg/logger"
 	"github.com/cloudcarver/anclax/pkg/macaroons"
+	"github.com/cloudcarver/anclax/pkg/macaroons/store"
 	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/gofiber/fiber/v3"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 func TestAuth_Authfunc(t *testing.T) {
+	core, observed := observer.New(zapcore.WarnLevel)
+	previousLog := log
+	log = logger.NewLogAgentWithLogger("auth", zap.New(core))
+	t.Cleanup(func() { log = previousLog })
+
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -63,16 +74,34 @@ func TestAuth_Authfunc(t *testing.T) {
 			expectedStatus: fiber.StatusUnauthorized,
 		},
 		{
+			name:       "missing key",
+			authHeader: testBearerToken,
+			setupMock: func() {
+				mockMacaroons.EXPECT().Parse(gomock.Any(), testToken).Return(nil, errors.Wrap(store.ErrKeyNotFound, "missing-key-canary"))
+			},
+			expectedStatus: fiber.StatusUnauthorized,
+		},
+		{
+			name:       "store failure containing credentials",
+			authHeader: testBearerToken,
+			setupMock: func() {
+				mockMacaroons.EXPECT().Parse(gomock.Any(), testToken).Return(nil, errors.New("store-sentinel-canary: "+testToken))
+			},
+			expectedStatus: fiber.StatusUnauthorized,
+		},
+		{
 			name:       "caveat validation error",
 			authHeader: testToken,
 			setupMock: func() {
 				mockCaveat := macaroons.NewMockCaveat(ctrl)
+				mockCaveat.EXPECT().Type().Return("test")
+				mockCaveat.EXPECT().Settings().Return(macaroons.CaveatSettings{})
 
 				macaroon, err := macaroons.CreateMacaroon(123, []byte("key"), []macaroons.Caveat{mockCaveat})
 				require.NoError(t, err)
 
 				mockMacaroons.EXPECT().Parse(gomock.Any(), testToken).Return(macaroon, nil)
-				mockCaveat.EXPECT().Validate(gomock.Any()).Return(errors.New("caveat validation error"))
+				mockCaveat.EXPECT().Validate(gomock.Any()).Return(errors.New("caveat validation error: caveat-sentinel-canary: " + testToken))
 
 			},
 			expectedStatus: fiber.StatusUnauthorized,
@@ -81,13 +110,34 @@ func TestAuth_Authfunc(t *testing.T) {
 			name:       "duplicate user context caveat",
 			authHeader: testToken,
 			setupMock: func() {
-				macaroon, err := macaroons.CreateMacaroon(123, []byte("key"), []macaroons.Caveat{
+				// Preserve coverage of the user-context guard even when a custom
+				// manager returns a token without enforcing duplicate settings.
+				macaroon := &macaroons.Macaroon{Caveats: []macaroons.Caveat{
 					NewUserContextCaveat(101, 202),
 					NewUserContextCaveat(303, 404),
-				})
-				require.NoError(t, err)
+				}}
 
 				mockMacaroons.EXPECT().Parse(gomock.Any(), testToken).Return(macaroon, nil)
+			},
+			expectedStatus: fiber.StatusUnauthorized,
+		},
+		{
+			name:       "repeatable caveats still require every validation to pass",
+			authHeader: testToken,
+			setupMock: func() {
+				first := macaroons.NewMockCaveat(ctrl)
+				second := macaroons.NewMockCaveat(ctrl)
+				for _, caveat := range []*macaroons.MockCaveat{first, second} {
+					caveat.EXPECT().Type().Return("test")
+					caveat.EXPECT().Settings().Return(macaroons.CaveatSettings{AllowDuplicates: true})
+				}
+				macaroon, err := macaroons.CreateMacaroon(123, []byte("key"), []macaroons.Caveat{first, second})
+				require.NoError(t, err)
+				mockMacaroons.EXPECT().Parse(gomock.Any(), testToken).Return(macaroon, nil)
+				gomock.InOrder(
+					first.EXPECT().Validate(gomock.Any()).Return(nil),
+					second.EXPECT().Validate(gomock.Any()).Return(macaroons.ErrCaveatCheckFailed),
+				)
 			},
 			expectedStatus: fiber.StatusUnauthorized,
 		},
@@ -96,6 +146,8 @@ func TestAuth_Authfunc(t *testing.T) {
 			authHeader: testToken,
 			setupMock: func() {
 				mockCaveat := macaroons.NewMockCaveat(ctrl)
+				mockCaveat.EXPECT().Type().Return("test")
+				mockCaveat.EXPECT().Settings().Return(macaroons.CaveatSettings{})
 				macaroon, err := macaroons.CreateMacaroon(123, []byte("key"), []macaroons.Caveat{mockCaveat})
 				require.NoError(t, err)
 
@@ -108,6 +160,7 @@ func TestAuth_Authfunc(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			observed.TakeAll()
 			// Create a test Fiber app and set up error handling
 			app := fiber.New(fiber.Config{
 				ErrorHandler: utils.ErrorHandler,
@@ -137,18 +190,38 @@ func TestAuth_Authfunc(t *testing.T) {
 			resp, err := app.Test(req)
 			require.NoError(t, err)
 
-			// Read and print the response body
-			if resp.Body != nil {
-				bodyBytes, readErr := io.ReadAll(resp.Body)
-				if readErr == nil {
-					t.Logf("Response Body for %s: %s", tc.name, string(bodyBytes))
-				} else {
-					t.Logf("Error reading response body: %v", readErr)
-				}
-			}
+			bodyBytes, readErr := io.ReadAll(resp.Body)
+			require.NoError(t, readErr)
+			require.NoError(t, resp.Body.Close())
 
 			// Verify status code
 			require.Equal(t, tc.expectedStatus, resp.StatusCode)
+			if tc.expectedStatus == fiber.StatusUnauthorized {
+				require.Equal(t, fiber.ErrUnauthorized.Message, string(bodyBytes))
+				require.NotContains(t, string(bodyBytes), testToken)
+				require.NotContains(t, string(bodyBytes), "caveat validation error")
+				require.NotContains(t, string(bodyBytes), macaroons.ErrMalformedToken.Error())
+				for _, canary := range []string{"missing-key-canary", "store-sentinel-canary", "caveat-sentinel-canary"} {
+					require.NotContains(t, string(bodyBytes), canary)
+				}
+			}
+			entries := observed.All()
+			if tc.expectedStatus == fiber.StatusUnauthorized && tc.authHeader != "" {
+				require.Len(t, entries, 1)
+				if tc.name == "store failure containing credentials" || tc.name == "caveat validation error" {
+					require.Equal(t, zapcore.ErrorLevel, entries[0].Level)
+				} else {
+					require.Equal(t, zapcore.WarnLevel, entries[0].Level)
+				}
+			}
+			for _, entry := range entries {
+				require.Equal(t, "token validation failed", entry.Message)
+				require.Len(t, entry.ContextMap(), 2) // module and a fixed validation stage
+				fields, err := json.Marshal(entry.ContextMap())
+				require.NoError(t, err)
+				require.NotContains(t, string(fields), testToken)
+				require.NotContains(t, string(fields), "canary")
+			}
 		})
 	}
 }
@@ -343,6 +416,8 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 	require.NoError(t, err)
 
 	noRefreshCaveat := macaroons.NewMockCaveat(ctrl)
+	noRefreshCaveat.EXPECT().Type().Return("test")
+	noRefreshCaveat.EXPECT().Settings().Return(macaroons.CaveatSettings{})
 	noRefreshMacaroon, err := macaroons.CreateMacaroon(0, []byte("key"), []macaroons.Caveat{noRefreshCaveat})
 	require.NoError(t, err)
 
@@ -369,10 +444,10 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 			name:         "parse failure",
 			refreshToken: macaroon.StringToken(),
 			setupMock: func() {
-				mockMacaroons.EXPECT().Parse(gomock.Any(), macaroon.StringToken()).Return(nil, errors.New("parse failed"))
+				mockMacaroons.EXPECT().Parse(gomock.Any(), macaroon.StringToken()).Return(nil, errors.New("parse failed: "+macaroon.StringToken()))
 			},
 			expectedGroup: "",
-			expectedError: errors.New("failed to parse macaroon token"),
+			expectedError: errors.New("failed to parse refresh token"),
 		},
 		{
 			name:         "no refresh caveat",
@@ -394,6 +469,8 @@ func TestAuth_ParseRefreshToken(t *testing.T) {
 			if tc.expectedError != nil {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tc.expectedError.Error())
+				require.NotContains(t, err.Error(), tc.refreshToken)
+				require.ErrorIs(t, err, ErrInvalidRefreshToken)
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, macaroon, token)
@@ -430,6 +507,26 @@ func TestRefreshOnlyCaveat_JSONRoundTrip(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, accessCaveat.UserID, uc.UserID)
 	require.Equal(t, accessCaveat.OrgID, uc.OrgID)
+}
+
+func TestBuiltInCaveatsRejectDuplicates(t *testing.T) {
+	tests := []struct {
+		name    string
+		caveats []macaroons.Caveat
+	}{
+		{"same user", []macaroons.Caveat{NewUserContextCaveat(1, 1), NewUserContextCaveat(1, 1)}},
+		{"different user", []macaroons.Caveat{NewUserContextCaveat(1, 1), NewUserContextCaveat(2, 1)}},
+		{"refresh only", []macaroons.Caveat{NewRefreshOnlyCaveat("one", nil), NewRefreshOnlyCaveat("two", nil)}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := macaroons.CreateMacaroon(1, []byte("key"), tt.caveats)
+			require.ErrorIs(t, err, macaroons.ErrDuplicateCaveat)
+			token, err := macaroons.CreateMacaroon(1, []byte("key"), tt.caveats[:1])
+			require.NoError(t, err)
+			require.ErrorIs(t, token.AddCaveat(tt.caveats[1]), macaroons.ErrDuplicateCaveat)
+		})
+	}
 }
 
 func TestUserContextCaveat_ValidateRejectsDuplicateContext(t *testing.T) {

@@ -1,4 +1,13 @@
 tasks:
+  - name: prefetchTasks
+    description: Internal system task that admits and recovers bounded ready reservations
+    parameters:
+      type: object
+      properties: {}
+    retryPolicy:
+      interval: 100ms
+      maxAttempts: -1
+
   - name: deleteOpaqueKey
     description: Delete an opaque key
     parameters:

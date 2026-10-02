@@ -4,7 +4,6 @@ import (
 	"context"
 	"net"
 	"net/http"
-	"net/url"
 	"strconv"
 	"time"
 
@@ -94,7 +93,7 @@ var RuntimeConfigSupersededTotal = promauto.NewCounter(
 var TaskListenerPollDurationSeconds = promauto.NewHistogram(
 	prometheus.HistogramOpts{
 		Name:    "anclax_task_listener_poll_duration_seconds",
-		Help:    "Time spent querying terminal task statuses in the polling task listener.",
+		Help:    "Time spent querying a batch of task statuses in the polling task listener.",
 		Buckets: prometheus.DefBuckets,
 	},
 )
@@ -111,15 +110,18 @@ func (m *MetricsServer) Start() {
 	if !m.enable {
 		return
 	}
+	listener, err := net.Listen("tcp", m.server.Addr)
+	if err != nil {
+		log.Error("metrics server failed to listen", zap.Error(err))
+		return
+	}
 
 	go func() {
-		log.Infof("metrics server is listening on %s", m.server.Addr)
-		if err := m.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := m.server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			log.Error("metrics server exited", zap.Error(err))
 		}
 	}()
 
-	// Shutdown the server when the global context is done
 	go func() {
 		<-m.globalCtx.Context().Done()
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -130,34 +132,7 @@ func (m *MetricsServer) Start() {
 			log.Info("metrics server shutdown gracefully")
 		}
 	}()
-
-	ready := make(chan struct{})
-
-	go func() {
-		client := &http.Client{Timeout: time.Second}
-		probeURL := url.URL{
-			Scheme: "http",
-			Host:   net.JoinHostPort(metricsProbeHost(m.host), strconv.Itoa(m.port)),
-			Path:   "/metrics",
-		}
-		for range 5 {
-			resp, err := client.Get(probeURL.String())
-			if err == nil {
-				resp.Body.Close()
-				close(ready)
-				return
-			}
-			time.Sleep(time.Second)
-		}
-	}()
-
-	// Wait for the server to be ready or timeout
-	select {
-	case <-ready:
-		log.Info("metrics server started successfully")
-	case <-time.After(5 * time.Second):
-		panic("timed out waiting for metrics server to start")
-	}
+	log.Infof("metrics server is listening on %s", listener.Addr())
 }
 
 func NewMetricsServer(cfg *config.Config, globalCtx *globalctx.GlobalContext) *MetricsServer {
@@ -178,12 +153,8 @@ func NewMetricsServer(cfg *config.Config, globalCtx *globalctx.GlobalContext) *M
 	mux.Handle("/metrics", promhttp.Handler())
 
 	server := &http.Server{
-		Addr:              net.JoinHostPort(host, strconv.Itoa(port)),
-		Handler:           mux,
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		Addr:    net.JoinHostPort(host, strconv.Itoa(port)),
+		Handler: mux,
 	}
 
 	return &MetricsServer{
@@ -193,15 +164,4 @@ func NewMetricsServer(cfg *config.Config, globalCtx *globalctx.GlobalContext) *M
 		server:    server,
 		globalCtx: globalCtx,
 	}
-}
-
-func metricsProbeHost(host string) string {
-	ip := net.ParseIP(host)
-	if ip == nil || !ip.IsUnspecified() {
-		return host
-	}
-	if ip.To4() != nil {
-		return "127.0.0.1"
-	}
-	return "::1"
 }

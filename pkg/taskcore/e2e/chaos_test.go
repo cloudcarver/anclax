@@ -132,7 +132,7 @@ func TestChaosLockRefreshTakeoverAfterDBRestart(t *testing.T) {
 	})
 }
 
-func TestChaosWorkerKillRecoveryWithInFlightTasks(t *testing.T) {
+func TestChaosWorkerShutdownRecoveryWithInFlightTasks(t *testing.T) {
 	withSmokePostgres(t, func(ctx context.Context, m model.ModelInterface) {
 		env, err := newDSTEnv(m)
 		require.NoError(t, err)
@@ -145,6 +145,12 @@ func TestChaosWorkerKillRecoveryWithInFlightTasks(t *testing.T) {
 
 		require.NoError(t, env.runtime.StartWorker(ctx, "kill_owner", "blocking", "kill-chaos", []string{}, 20, 20, 200, 3600000, 1, 0, false, ""))
 		require.NoError(t, env.runtime.WaitSignal(ctx, "kill_owner", "started", 5000))
+		rows, err := env.validator.Query(ctx, "select id from anclax.tasks where spec->'payload'->>'name' = any($1::text[]) and status = 'running'", []any{tasks})
+		require.NoError(t, err)
+		require.Len(t, rows, 1)
+		held, err := m.GetTaskByID(ctx, rows[0][0].(int32))
+		require.NoError(t, err)
+		require.Equal(t, int32(1), held.Attempts)
 		require.NoError(t, env.runtime.StopWorker(ctx, "kill_owner"))
 
 		require.NoError(t, env.runtime.StartWorker(ctx, "kill_recover1", "signal", "kill-chaos", []string{}, 20, 20, 200, 3600000, 1, 0, false, ""))
@@ -153,11 +159,14 @@ func TestChaosWorkerKillRecoveryWithInFlightTasks(t *testing.T) {
 			require.NoError(t, env.runtime.WaitTaskCompletion(ctx, task, 12000))
 		}
 
-		rows, err := env.validator.Query(ctx, "select count(*) from anclax.tasks where spec->'payload'->>'name' = any($1::text[]) and attempts >= 2", []any{tasks})
+		// StopWorker gracefully interrupts the handler and refunds its attempt.
+		// Prove that the same interrupted task was admitted again, rather than
+		// treating graceful shutdown as a failure that consumes retry budget.
+		recovered, err := m.GetTaskByID(ctx, held.ID)
 		require.NoError(t, err)
-		require.Len(t, rows, 1)
-		require.Len(t, rows[0], 1)
-		require.GreaterOrEqual(t, rows[0][0].(int64), int64(1))
+		require.Equal(t, "completed", recovered.Status)
+		require.Greater(t, recovered.LeaseVersion, held.LeaseVersion)
+		require.Equal(t, int32(1), recovered.Attempts)
 
 		require.NoError(t, env.runtime.StopWorker(ctx, "kill_recover1"))
 		require.NoError(t, env.runtime.StopWorker(ctx, "kill_recover2"))

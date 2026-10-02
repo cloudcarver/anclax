@@ -74,11 +74,7 @@ func (d *DebugServer) newHTTPServer() *http.Server {
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
 	return &http.Server{
-		Addr:              net.JoinHostPort(d.host, strconv.Itoa(d.port)),
-		Handler:           mux,
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      2 * time.Minute,
-		IdleTimeout:       60 * time.Second,
+		Addr:    net.JoinHostPort(d.host, strconv.Itoa(d.port)),
+		Handler: mux,
 	}
 }
