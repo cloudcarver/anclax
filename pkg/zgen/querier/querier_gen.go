@@ -89,6 +89,7 @@ type Querier interface {
 	UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error
 	UpdateWorkerAppliedConfigVersion(ctx context.Context, arg UpdateWorkerAppliedConfigVersionParams) error
 	UpdateWorkerHeartbeat(ctx context.Context, id uuid.UUID) (*AnclaxWorker, error)
+	UpgradeUserPasswordHash(ctx context.Context, arg UpgradeUserPasswordHashParams) (int64, error)
 	UpsertWorker(ctx context.Context, arg UpsertWorkerParams) (*AnclaxWorker, error)
 	VerifyTaskOwnership(ctx context.Context, arg VerifyTaskOwnershipParams) (int32, error)
 }

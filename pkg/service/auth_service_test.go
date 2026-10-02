@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"testing"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/cloudcarver/anclax/pkg/hooks"
 	"github.com/cloudcarver/anclax/pkg/macaroons"
 	macaroonstore "github.com/cloudcarver/anclax/pkg/macaroons/store"
+	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	"github.com/cloudcarver/anclax/pkg/zgen/querier"
@@ -19,6 +21,158 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
+
+func TestSignInWithPasswordUpgradesLegacyHash(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockModel := model.NewMockModelInterfaceWithTransaction(ctrl)
+	mockAuth := auth.NewMockAuthInterface(ctrl)
+
+	const (
+		userID   = int32(102)
+		orgID    = int32(201)
+		username = "legacy-user"
+		password = "legacy-password"
+		salt     = "salt-123456"
+	)
+	digest := sha256.Sum256([]byte(password + "-" + salt))
+	legacyHash := fmt.Sprintf("%x", digest)
+	ctx := context.Background()
+
+	mockModel.EXPECT().GetUserByName(ctx, username).Return(&querier.AnclaxUser{
+		ID:           userID,
+		Name:         username,
+		PasswordHash: legacyHash,
+		PasswordSalt: salt,
+	}, nil)
+
+	var upgraded querier.UpgradeUserPasswordHashParams
+	mockModel.EXPECT().UpgradeUserPasswordHash(ctx, gomock.Any()).DoAndReturn(
+		func(_ context.Context, params querier.UpgradeUserPasswordHashParams) (int64, error) {
+			upgraded = params
+			return 1, nil
+		},
+	)
+	mockModel.EXPECT().GetUserDefaultOrg(ctx, userID).Return(orgID, nil)
+	mockAuth.EXPECT().CreateUserTokens(ctx, userID, orgID).Return(
+		&macaroons.Macaroon{},
+		&macaroons.Macaroon{},
+		nil,
+	)
+
+	svc := &Service{
+		m:                   mockModel,
+		auth:                mockAuth,
+		generateSaltAndHash: utils.GenerateSaltAndHash,
+	}
+	_, err := svc.SignInWithPassword(ctx, apigen.SignInRequest{
+		Name:     username,
+		Password: password,
+	})
+	require.NoError(t, err)
+	require.Equal(t, userID, upgraded.ID)
+	require.NotEmpty(t, upgraded.PasswordSalt)
+	require.NotEqual(t, legacyHash, upgraded.PasswordHash)
+	require.Equal(t, legacyHash, upgraded.PreviousPasswordHash)
+	require.Equal(t, salt, upgraded.PreviousPasswordSalt)
+
+	valid, needsUpgrade, err := utils.VerifyPassword(password, upgraded.PasswordHash, upgraded.PasswordSalt)
+	require.NoError(t, err)
+	require.True(t, valid)
+	require.False(t, needsUpgrade)
+}
+
+func TestSignInWithPasswordDoesNotUpgradeLegacyHashForWrongPassword(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockModel := model.NewMockModelInterfaceWithTransaction(ctrl)
+
+	const (
+		userID   = int32(102)
+		username = "legacy-user"
+		password = "legacy-password"
+		salt     = "salt-123456"
+	)
+	digest := sha256.Sum256([]byte(password + "-" + salt))
+	ctx := context.Background()
+
+	mockModel.EXPECT().GetUserByName(ctx, username).Return(&querier.AnclaxUser{
+		ID:           userID,
+		Name:         username,
+		PasswordHash: fmt.Sprintf("%x", digest),
+		PasswordSalt: salt,
+	}, nil)
+
+	svc := &Service{m: mockModel}
+	_, err := svc.SignInWithPassword(ctx, apigen.SignInRequest{
+		Name:     username,
+		Password: "wrong-password",
+	})
+	require.ErrorIs(t, err, ErrInvalidPassword)
+}
+
+func TestSignInWithPasswordDoesNotIssueTokensWhenUpgradeCannotPersist(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockModel := model.NewMockModelInterfaceWithTransaction(ctrl)
+
+	const (
+		userID   = int32(102)
+		username = "legacy-user"
+		password = "legacy-password"
+		salt     = "salt-123456"
+	)
+	digest := sha256.Sum256([]byte(password + "-" + salt))
+	ctx := context.Background()
+	persistErr := errors.New("update failed")
+
+	mockModel.EXPECT().GetUserByName(ctx, username).Return(&querier.AnclaxUser{
+		ID:           userID,
+		Name:         username,
+		PasswordHash: fmt.Sprintf("%x", digest),
+		PasswordSalt: salt,
+	}, nil)
+	mockModel.EXPECT().UpgradeUserPasswordHash(ctx, gomock.Any()).Return(int64(0), persistErr)
+
+	svc := &Service{
+		m:                   mockModel,
+		generateSaltAndHash: utils.GenerateSaltAndHash,
+	}
+	_, err := svc.SignInWithPassword(ctx, apigen.SignInRequest{
+		Name:     username,
+		Password: password,
+	})
+	require.ErrorIs(t, err, persistErr)
+}
+
+func TestSignInWithPasswordDoesNotIssueTokensAfterConcurrentPasswordChange(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockModel := model.NewMockModelInterfaceWithTransaction(ctrl)
+
+	const (
+		userID   = int32(102)
+		username = "legacy-user"
+		password = "legacy-password"
+		salt     = "salt-123456"
+	)
+	digest := sha256.Sum256([]byte(password + "-" + salt))
+	ctx := context.Background()
+
+	mockModel.EXPECT().GetUserByName(ctx, username).Return(&querier.AnclaxUser{
+		ID:           userID,
+		Name:         username,
+		PasswordHash: fmt.Sprintf("%x", digest),
+		PasswordSalt: salt,
+	}, nil)
+	mockModel.EXPECT().UpgradeUserPasswordHash(ctx, gomock.Any()).Return(int64(0), nil)
+
+	svc := &Service{
+		m:                   mockModel,
+		generateSaltAndHash: utils.GenerateSaltAndHash,
+	}
+	_, err := svc.SignInWithPassword(ctx, apigen.SignInRequest{
+		Name:     username,
+		Password: password,
+	})
+	require.ErrorIs(t, err, ErrInvalidPassword)
+}
 
 func TestCreateNewUser(t *testing.T) {
 	ctrl := gomock.NewController(t)
