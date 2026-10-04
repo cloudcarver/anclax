@@ -20,8 +20,10 @@ func (v *Validator) AuthFunc(c fiber.Ctx) error {
 	return v.auth.Authfunc(c)
 }
 
-func (v *Validator) PreValidate(c fiber.Ctx) error {
-	return v.auth.Authfunc(c)
+func (v *Validator) PreValidate(fiber.Ctx) error {
+	// Generated middleware has already authenticated protected operations via
+	// AuthFunc. Repeating it would validate user_context twice on one request.
+	return nil
 }
 
 func (v *Validator) PostValidate(c fiber.Ctx) error {
