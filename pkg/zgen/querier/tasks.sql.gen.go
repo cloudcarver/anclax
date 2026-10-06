@@ -14,6 +14,19 @@ import (
 	"github.com/google/uuid"
 )
 
+const cancelWorkerCommandTaskByUniqueTag = `-- name: CancelWorkerCommandTaskByUniqueTag :exec
+UPDATE anclax.tasks
+SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
+WHERE unique_tag = $1
+    AND spec->>'type' IN ('cancelTaskOnWorker', 'pauseTaskOnWorker', 'applyWorkerRuntimeConfigToWorker')
+    AND status IN ('pending', 'ready', 'running', 'paused')
+`
+
+func (q *Queries) CancelWorkerCommandTaskByUniqueTag(ctx context.Context, uniqueTag *string) error {
+	_, err := q.db.Exec(ctx, cancelWorkerCommandTaskByUniqueTag, uniqueTag)
+	return err
+}
+
 const claimNormalTaskByGroup = `-- name: ClaimNormalTaskByGroup :one
 WITH unavailable_tags AS MATERIALIZED (
     SELECT c.tag FROM anclax.task_tag_limits c
