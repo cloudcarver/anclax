@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cloudcarver/anclax/core"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/taskcore/worker"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
@@ -17,10 +18,10 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func expectWorkerCommandCleanup(t *testing.T, runner *taskgen.MockTaskRunner, parentTaskID int32) *gomock.Call {
+func expectWorkerCommandCleanup(t *testing.T, runner *taskgen.MockTaskRunner, tx core.Tx, parentTaskID int32) *gomock.Call {
 	t.Helper()
-	return runner.EXPECT().RunCleanupWorkerCommandTasks(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, params *taskgen.CleanupWorkerCommandTasksParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return runner.EXPECT().RunCleanupWorkerCommandTasksWithTx(gomock.Any(), tx, gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ core.Tx, params *taskgen.CleanupWorkerCommandTasksParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 			require.Equal(t, parentTaskID, params.ParentTaskID)
 			task, err := taskgen.NewCleanupWorkerCommandTasksTask(params, overrides...)
 			require.NoError(t, err)
@@ -33,7 +34,7 @@ func expectWorkerCommandCleanup(t *testing.T, runner *taskgen.MockTaskRunner, pa
 	)
 }
 
-func TestBroadcastWorkerCommandCleanupAfterWorkerDiesBetweenAttempts(t *testing.T) {
+func TestBroadcastDoesNotEnqueueCleanupBeforeFinalization(t *testing.T) {
 	for _, command := range []string{"cancel", "pause"} {
 		t.Run(command, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
@@ -62,27 +63,92 @@ func TestBroadcastWorkerCommandCleanupAfterWorkerDiesBetweenAttempts(t *testing.
 			}
 			var deferred *taskcore.TaskDeferred
 			require.ErrorAs(t, execute(), &deferred)
-			// The dead target is filtered before the old cleanup branch. Completion
-			// must still durably enqueue cleanup using the parent ID.
-			expectWorkerCommandCleanup(t, runner, parent.ID)
+			// The target disappears between attempts. Neither deferral nor handler
+			// success enqueues cleanup; the terminal transaction is responsible.
 			require.NoError(t, execute())
 		})
 	}
 }
 
-func TestBroadcastRetriesWhenCleanupEnqueueFails(t *testing.T) {
+func TestBroadcastTerminalHookEnqueuesCleanupInFinalizationTransaction(t *testing.T) {
+	for _, taskType := range []string{taskgen.BroadcastCancelTask, taskgen.BroadcastPauseTask, taskgen.BroadcastUpdateWorkerRuntimeConfig} {
+		for _, status := range []apigen.TaskStatus{apigen.Completed, apigen.Failed, apigen.Cancelled} {
+			t.Run(taskType+"/"+string(status), func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				runner := taskgen.NewMockTaskRunner(ctrl)
+				tx := core.NewMockTx(ctrl)
+				parent := worker.Task{ID: 42, Spec: apigen.TaskSpec{Type: taskType}}
+				expectWorkerCommandCleanup(t, runner, tx, parent.ID)
+				// Exercise the generated handler's optional executor hook forwarding.
+				handler := taskgen.NewTaskHandler(&Executor{runner: runner}).(worker.TaskTerminalHandler)
+				require.NoError(t, handler.OnTaskTerminal(context.Background(), tx, parent, status))
+			})
+		}
+	}
+}
+
+func TestBroadcastTerminalHookSkipsNonterminalAndUnrelatedTasks(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	m := model.NewMockModelInterface(ctrl)
+	executor := &Executor{runner: taskgen.NewMockTaskRunner(ctrl)}
+	parent := worker.Task{ID: 42, Spec: apigen.TaskSpec{Type: taskgen.BroadcastCancelTask}}
+	for _, status := range []apigen.TaskStatus{apigen.Pending, apigen.TaskStatusReady, apigen.TaskStatusRunning, apigen.Paused} {
+		require.NoError(t, executor.OnTaskTerminal(context.Background(), nil, parent, status))
+	}
+	for _, taskType := range []string{taskgen.CleanupWorkerCommandTasks, taskgen.CancelTaskOnWorker, "business-task"} {
+		parent.Spec.Type = taskType
+		require.ErrorIs(t, executor.OnTaskTerminal(context.Background(), nil, parent, apigen.Completed), worker.ErrUnknownTaskType)
+	}
+}
+
+func TestBroadcastTerminalHookPropagatesEnqueueFailure(t *testing.T) {
+	ctrl := gomock.NewController(t)
 	runner := taskgen.NewMockTaskRunner(ctrl)
-	executor := &Executor{model: m, runner: runner, now: time.Now}
-	parent := worker.Task{ID: 42}
-	params := &taskgen.BroadcastCancelTaskParameters{TaskIDs: []int32{7}}
-	m.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{}, nil).Times(2)
+	tx := core.NewMockTx(ctrl)
+	executor := &Executor{runner: runner}
+	parent := worker.Task{ID: 42, Spec: apigen.TaskSpec{Type: taskgen.BroadcastCancelTask}}
 	enqueueErr := fmt.Errorf("database unavailable")
-	runner.EXPECT().RunCleanupWorkerCommandTasks(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int32(0), enqueueErr)
-	require.ErrorIs(t, executor.ExecuteBroadcastCancelTask(context.Background(), parent, params), enqueueErr)
-	expectWorkerCommandCleanup(t, runner, parent.ID)
-	require.NoError(t, executor.ExecuteBroadcastCancelTask(context.Background(), parent, params))
+	runner.EXPECT().RunCleanupWorkerCommandTasksWithTx(gomock.Any(), tx, gomock.Any(), gomock.Any(), gomock.Any()).Return(int32(0), enqueueErr)
+	require.ErrorIs(t, executor.OnTaskTerminal(context.Background(), tx, parent, apigen.Completed), enqueueErr)
+	require.ErrorContains(t, executor.OnTaskTerminal(context.Background(), nil, parent, apigen.Completed), "finalization transaction")
+}
+
+type cleanupTerminalHandler struct {
+	worker.TaskHandler
+	worker.TaskTerminalHandler
+}
+
+func TestGeneratedTerminalHookRoutesExternalHandlers(t *testing.T) {
+	externalErr := fmt.Errorf("external terminal hook failed")
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{"handled externally", nil},
+		{"unhandled falls back to executor", worker.ErrUnknownTaskType},
+		{"external error aborts", externalErr},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			runner := taskgen.NewMockTaskRunner(ctrl)
+			tx := core.NewMockTx(ctrl)
+			parent := worker.Task{ID: 42, Spec: apigen.TaskSpec{Type: taskgen.BroadcastCancelTask}}
+			handler := taskgen.NewTaskHandler(&Executor{runner: runner})
+			// Existing handlers without the optional hook remain compatible.
+			handler.RegisterTaskHandler(worker.NewMockTaskHandler(ctrl))
+			external := worker.NewMockTaskTerminalHandler(ctrl)
+			handler.RegisterTaskHandler(cleanupTerminalHandler{worker.NewMockTaskHandler(ctrl), external})
+			external.EXPECT().OnTaskTerminal(gomock.Any(), tx, parent, apigen.Completed).Return(tc.err)
+			if tc.err == worker.ErrUnknownTaskType {
+				expectWorkerCommandCleanup(t, runner, tx, parent.ID)
+			}
+			err := handler.(worker.TaskTerminalHandler).OnTaskTerminal(context.Background(), tx, parent, apigen.Completed)
+			if tc.err == externalErr {
+				require.ErrorIs(t, err, externalErr)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }
 
 func TestCleanupWorkerCommandsWaitsForParentTerminalState(t *testing.T) {

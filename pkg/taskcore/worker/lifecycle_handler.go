@@ -51,6 +51,12 @@ func (h *TaskLifeCycleHandler) FinalizeAttempt(ctx context.Context, tx core.Tx, 
 	if err != nil {
 		return err
 	}
+	switch apigen.TaskStatus(status) {
+	case apigen.Completed, apigen.Failed, apigen.Cancelled:
+		if err := h.runTerminalHook(ctx, tx, task, apigen.TaskStatus(status)); err != nil {
+			return fmt.Errorf("task terminal hook: %w", err)
+		}
+	}
 	// A pause/cancel committed after execution started wins over this result.
 	if status == string(apigen.Paused) || status == string(apigen.Cancelled) {
 		return nil
@@ -69,6 +75,23 @@ func (h *TaskLifeCycleHandler) FinalizeAttempt(ctx context.Context, tx core.Tx, 
 		return h.runFailureHook(ctx, tx, task)
 	}
 	return nil
+}
+
+func (h *TaskLifeCycleHandler) runTerminalHook(ctx context.Context, tx core.Tx, task Task, status apigen.TaskStatus) (err error) {
+	hook, ok := h.taskHandler.(TaskTerminalHandler)
+	if !ok {
+		return nil
+	}
+	defer func() {
+		if value := recover(); value != nil {
+			err = fmt.Errorf("panic: %v\n%s", value, debug.Stack())
+		}
+	}()
+	err = hook.OnTaskTerminal(ctx, tx, task, status)
+	if errors.Is(err, ErrUnknownTaskType) {
+		return nil
+	}
+	return err
 }
 
 func (h *TaskLifeCycleHandler) runFailureHook(ctx context.Context, tx core.Tx, task Task) error {

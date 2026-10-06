@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 
 	core "github.com/cloudcarver/anclax/core"
+	apigen "github.com/cloudcarver/anclax/pkg/zgen/apigen"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -79,6 +80,44 @@ func (m *MockTaskHandler) RegisterTaskHandler(handler TaskHandler) {
 func (mr *MockTaskHandlerMockRecorder) RegisterTaskHandler(handler any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterTaskHandler", reflect.TypeOf((*MockTaskHandler)(nil).RegisterTaskHandler), handler)
+}
+
+// MockTaskTerminalHandler is a mock of TaskTerminalHandler interface.
+type MockTaskTerminalHandler struct {
+	ctrl     *gomock.Controller
+	recorder *MockTaskTerminalHandlerMockRecorder
+	isgomock struct{}
+}
+
+// MockTaskTerminalHandlerMockRecorder is the mock recorder for MockTaskTerminalHandler.
+type MockTaskTerminalHandlerMockRecorder struct {
+	mock *MockTaskTerminalHandler
+}
+
+// NewMockTaskTerminalHandler creates a new mock instance.
+func NewMockTaskTerminalHandler(ctrl *gomock.Controller) *MockTaskTerminalHandler {
+	mock := &MockTaskTerminalHandler{ctrl: ctrl}
+	mock.recorder = &MockTaskTerminalHandlerMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockTaskTerminalHandler) EXPECT() *MockTaskTerminalHandlerMockRecorder {
+	return m.recorder
+}
+
+// OnTaskTerminal mocks base method.
+func (m *MockTaskTerminalHandler) OnTaskTerminal(ctx context.Context, tx core.Tx, task Task, status apigen.TaskStatus) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "OnTaskTerminal", ctx, tx, task, status)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// OnTaskTerminal indicates an expected call of OnTaskTerminal.
+func (mr *MockTaskTerminalHandlerMockRecorder) OnTaskTerminal(ctx, tx, task, status any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OnTaskTerminal", reflect.TypeOf((*MockTaskTerminalHandler)(nil).OnTaskTerminal), ctx, tx, task, status)
 }
 
 // MockWorkerInterface is a mock of WorkerInterface interface.

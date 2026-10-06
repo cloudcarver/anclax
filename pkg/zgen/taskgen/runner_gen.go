@@ -1076,6 +1076,24 @@ func (f *TaskHandler) HandleTask(ctx context.Context, task worker.Task) error {
 	}
 }
 
+func (f *TaskHandler) OnTaskTerminal(ctx context.Context, tx core.Tx, task worker.Task, status apigen.TaskStatus) error {
+	for _, handler := range f.externalTaskHandler {
+		if hook, ok := handler.(worker.TaskTerminalHandler); ok {
+			if err := hook.OnTaskTerminal(ctx, tx, task, status); err != nil {
+				if errors.Is(err, worker.ErrUnknownTaskType) {
+					continue
+				}
+				return err
+			}
+			return nil
+		}
+	}
+	if hook, ok := f.executor.(worker.TaskTerminalHandler); ok {
+		return hook.OnTaskTerminal(ctx, tx, task, status)
+	}
+	return worker.ErrUnknownTaskType
+}
+
 func (f *TaskHandler) OnTaskFailed(ctx context.Context, tx core.Tx, failedTaskSpec worker.TaskSpec, taskID int32) error {
 	for _, handler := range f.externalTaskHandler {
 		if err := handler.OnTaskFailed(ctx, tx, failedTaskSpec, taskID); err != nil {
