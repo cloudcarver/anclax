@@ -46,6 +46,20 @@ func (m *MockModelInterface) EXPECT() *MockModelInterfaceMockRecorder {
 	return m.recorder
 }
 
+// CancelWorkerCommandTasksByParentTaskID mocks base method.
+func (m *MockModelInterface) CancelWorkerCommandTasksByParentTaskID(ctx context.Context, parentTaskID int32) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CancelWorkerCommandTasksByParentTaskID", ctx, parentTaskID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CancelWorkerCommandTasksByParentTaskID indicates an expected call of CancelWorkerCommandTasksByParentTaskID.
+func (mr *MockModelInterfaceMockRecorder) CancelWorkerCommandTasksByParentTaskID(ctx, parentTaskID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CancelWorkerCommandTasksByParentTaskID", reflect.TypeOf((*MockModelInterface)(nil).CancelWorkerCommandTasksByParentTaskID), ctx, parentTaskID)
+}
+
 // ClaimNormalTaskByGroup mocks base method.
 func (m *MockModelInterface) ClaimNormalTaskByGroup(ctx context.Context, arg querier.ClaimNormalTaskByGroupParams) (*querier.AnclaxTask, error) {
 	m.ctrl.T.Helper()

@@ -14,6 +14,7 @@ import (
 )
 
 type Querier interface {
+	CancelWorkerCommandTasksByParentTaskID(ctx context.Context, parentTaskID int32) error
 	ClaimNormalTaskByGroup(ctx context.Context, arg ClaimNormalTaskByGroupParams) (*AnclaxTask, error)
 	ClaimStrictTask(ctx context.Context, arg ClaimStrictTaskParams) (*AnclaxTask, error)
 	ClaimTask(ctx context.Context, arg ClaimTaskParams) (*AnclaxTask, error)

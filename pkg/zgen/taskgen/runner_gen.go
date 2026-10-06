@@ -37,6 +37,8 @@ const (
 
 	PauseTaskOnWorker = "pauseTaskOnWorker"
 
+	CleanupWorkerCommandTasks = "cleanupWorkerCommandTasks"
+
 	StressProbe = "stressProbe"
 
 	CancelObservableProbe = "cancelObservableProbe"
@@ -82,6 +84,11 @@ type TaskRunner interface {
 	RunPauseTaskOnWorker(ctx context.Context, params *PauseTaskOnWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error)
 	// Pause in-flight task execution on one specific worker
 	RunPauseTaskOnWorkerWithTx(ctx context.Context, tx core.Tx, params *PauseTaskOnWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error)
+
+	// Cancel unfinished worker commands after their parent broadcast terminates
+	RunCleanupWorkerCommandTasks(ctx context.Context, params *CleanupWorkerCommandTasksParameters, overrides ...taskcore.TaskOverride) (int32, error)
+	// Cancel unfinished worker commands after their parent broadcast terminates
+	RunCleanupWorkerCommandTasksWithTx(ctx context.Context, tx core.Tx, params *CleanupWorkerCommandTasksParameters, overrides ...taskcore.TaskOverride) (int32, error)
 
 	// No-op stress probe task for worker E2E benchmarking
 	RunStressProbe(ctx context.Context, params *StressProbeParameters, overrides ...taskcore.TaskOverride) (int32, error)
@@ -550,6 +557,61 @@ func NewPauseTaskOnWorkerTask(params *PauseTaskOnWorkerParameters, overrides ...
 	}
 	return task, nil
 }
+func (c *Client) RunCleanupWorkerCommandTasks(ctx context.Context, params *CleanupWorkerCommandTasksParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runCleanupWorkerCommandTasks(ctx, c.taskStore, nil, params, overrides...)
+}
+
+func (c *Client) RunCleanupWorkerCommandTasksWithTx(ctx context.Context, tx core.Tx, params *CleanupWorkerCommandTasksParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	return c.runCleanupWorkerCommandTasks(ctx, c.taskStore, tx, params, overrides...)
+}
+
+func (c *Client) runCleanupWorkerCommandTasks(ctx context.Context, taskstore taskcore.TaskStoreInterface, tx core.Tx, params *CleanupWorkerCommandTasksParameters, overrides ...taskcore.TaskOverride) (int32, error) {
+	task, err := NewCleanupWorkerCommandTasksTask(params, overrides...)
+	if err != nil {
+		return 0, err
+	}
+	var taskID int32
+	if tx == nil {
+		taskID, err = taskstore.PushTask(ctx, task)
+	} else {
+		taskID, err = taskstore.PushTaskWithTx(ctx, tx, task)
+	}
+	if err != nil {
+		return 0, err
+	}
+	return taskID, nil
+}
+
+func NewCleanupWorkerCommandTasksTask(params *CleanupWorkerCommandTasksParameters, overrides ...taskcore.TaskOverride) (*apigen.Task, error) {
+	payload, err := json.Marshal(params)
+	if err != nil {
+		return nil, err
+	}
+
+	spec := apigen.TaskSpec{
+		Type:    CleanupWorkerCommandTasks,
+		Payload: payload,
+	}
+	attributes := apigen.TaskAttributes{}
+	attributes.Timeout = utils.Ptr("5m")
+	attributes.RetryPolicy = &apigen.TaskRetryPolicy{
+		Interval:    "1s",
+		MaxAttempts: -1,
+	}
+
+	task := &apigen.Task{
+		Attributes: attributes,
+		Spec:       spec,
+		Status:     apigen.Pending,
+	}
+
+	for _, override := range overrides {
+		if err := override(task); err != nil {
+			return nil, errors.Wrap(err, "failed to apply task override")
+		}
+	}
+	return task, nil
+}
 func (c *Client) RunStressProbe(ctx context.Context, params *StressProbeParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 	return c.runStressProbe(ctx, c.taskStore, nil, params, overrides...)
 }
@@ -750,6 +812,11 @@ type PauseTaskOnWorkerParameters struct {
 	WorkerID uuid.UUID `json:"workerID" yaml:"workerID"`
 }
 
+type CleanupWorkerCommandTasksParameters struct {
+	// Parent broadcast whose direct worker-command children should be cleaned up
+	ParentTaskID int32 `json:"parentTaskID" yaml:"parentTaskID"`
+}
+
 type StressProbeParameters struct {
 	// Optional failure mode for chaos tests. Set to "always" to return a retryable error every run.
 	FailMode *string `json:"failMode" yaml:"failMode"`
@@ -837,6 +904,14 @@ func (r *PauseTaskOnWorkerParameters) Marshal() (json.RawMessage, error) {
 	return json.Marshal(r)
 }
 
+func (r *CleanupWorkerCommandTasksParameters) Parse(spec json.RawMessage) error {
+	return json.Unmarshal(spec, r)
+}
+
+func (r *CleanupWorkerCommandTasksParameters) Marshal() (json.RawMessage, error) {
+	return json.Marshal(r)
+}
+
 func (r *StressProbeParameters) Parse(spec json.RawMessage) error {
 	return json.Unmarshal(spec, r)
 }
@@ -880,6 +955,9 @@ type ExecutorInterface interface {
 
 	// Pause in-flight task execution on one specific worker
 	ExecutePauseTaskOnWorker(ctx context.Context, task worker.Task, params *PauseTaskOnWorkerParameters) error
+
+	// Cancel unfinished worker commands after their parent broadcast terminates
+	ExecuteCleanupWorkerCommandTasks(ctx context.Context, task worker.Task, params *CleanupWorkerCommandTasksParameters) error
 
 	// No-op stress probe task for worker E2E benchmarking
 	ExecuteStressProbe(ctx context.Context, task worker.Task, params *StressProbeParameters) error
@@ -971,6 +1049,13 @@ func (f *TaskHandler) HandleTask(ctx context.Context, task worker.Task) error {
 			return fmt.Errorf("failed to parse pauseTaskOnWorker parameters: %w", err)
 		}
 		return f.executor.ExecutePauseTaskOnWorker(ctx, task, &params)
+
+	case CleanupWorkerCommandTasks:
+		var params CleanupWorkerCommandTasksParameters
+		if err := json.Unmarshal(task.GetPayload(), &params); err != nil {
+			return fmt.Errorf("failed to parse cleanupWorkerCommandTasks parameters: %w", err)
+		}
+		return f.executor.ExecuteCleanupWorkerCommandTasks(ctx, task, &params)
 
 	case StressProbe:
 		var params StressProbeParameters

@@ -39,7 +39,7 @@ func TaskToAPI(task *querier.AnclaxTask) apigen.Task {
 // confer system privileges.
 func IsSystemTask(taskType string) bool {
 	switch taskType {
-	case "prefetchTasks", "broadcastUpdateWorkerRuntimeConfig", "applyWorkerRuntimeConfigToWorker", "broadcastCancelTask", "cancelTaskOnWorker", "broadcastPauseTask", "pauseTaskOnWorker":
+	case "prefetchTasks", "broadcastUpdateWorkerRuntimeConfig", "applyWorkerRuntimeConfigToWorker", "broadcastCancelTask", "cancelTaskOnWorker", "broadcastPauseTask", "pauseTaskOnWorker", "cleanupWorkerCommandTasks":
 		return true
 	default:
 		return false

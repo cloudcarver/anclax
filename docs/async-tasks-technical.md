@@ -267,6 +267,8 @@ Worker control-plane messages are durable tasks with reserved types, claimed thr
 - `broadcastCancelTask` fans out `cancelTaskOnWorker`.
 - `broadcastPauseTask` fans out `pauseTaskOnWorker`.
 
+Before completing successfully (including a superseded runtime configuration), each broadcast idempotently enqueues `cleanupWorkerCommandTasks`. Cleanup has no worker label or parent-task hierarchy link and runs in the separate control lane. It waits for the broadcast to reach a terminal state, then marks unfinished direct worker-command children as `cancelled`, preserving completed/failed history and business children. This also handles workers that disappear between broadcast attempts and are filtered out of the alive snapshot. An enqueue failure retries the broadcast; cleanup failures retry the cleanup task. Broadcast completion does not imply that asynchronous cleanup has finished.
+
 Broadcast tasks snapshot alive workers, enqueue one worker-targeted command task per remote worker, and wait for command tasks or DB convergence depending on the operation. Worker-targeted command tasks use `worker:<id>` labels and unique tags so each target worker claims its own command.
 
 After `InterruptTasks`, control handlers check whether the target executions have finalized. If any remain, they return `DeferTask`, persisting the next check and releasing the control slot. Broadcast acknowledgement checks use the same mechanism. Registry entries close at the end of `FinalizeTask` for the matching lease version. The control-plane caller still waits for convergence, while workers release capacity between checks. Deferred invocations reuse request IDs, configuration versions, and per-worker child unique tags.

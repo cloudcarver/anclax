@@ -254,6 +254,13 @@ SET
 WHERE id = $1 AND worker_id = $3 AND lease_version = sqlc.arg(lease_version) AND status IN ('pending', 'running')
 RETURNING id;
 
+-- name: CancelWorkerCommandTasksByParentTaskID :exec
+UPDATE anclax.tasks
+SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
+WHERE parent_task_id = sqlc.arg(parent_task_id)::int
+    AND spec->>'type' IN ('cancelTaskOnWorker', 'pauseTaskOnWorker', 'applyWorkerRuntimeConfigToWorker')
+    AND status IN ('pending', 'ready', 'running', 'paused');
+
 -- name: UpdateTask :exec
 UPDATE anclax.tasks
 SET

@@ -76,7 +76,7 @@ func (e *Executor) ExecuteBroadcastUpdateWorkerRuntimeConfig(ctx context.Context
 	}
 	if latest.Version > targetVersion {
 		metrics.RuntimeConfigSupersededTotal.Inc()
-		return nil
+		return e.enqueueWorkerCommandCleanup(ctx, task.ID)
 	}
 	laggingWorkers, err := e.model.ListLaggingAliveWorkers(ctx, querier.ListLaggingAliveWorkersParams{
 		HeartbeatCutoff: e.now().Add(-heartbeatTTL),
@@ -110,7 +110,7 @@ func (e *Executor) ExecuteBroadcastUpdateWorkerRuntimeConfig(ctx context.Context
 	metrics.RuntimeConfigLaggingWorkers.Set(float64(remaining))
 	if remaining == 0 {
 		metrics.RuntimeConfigConvergenceSeconds.Observe(e.now().Sub(created.CreatedAt).Seconds())
-		return nil
+		return e.enqueueWorkerCommandCleanup(ctx, task.ID)
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -144,7 +144,7 @@ func (e *Executor) ExecuteBroadcastCancelTask(ctx context.Context, task taskwork
 		return err
 	}
 	if len(targetWorkers) == 0 {
-		return nil
+		return e.enqueueWorkerCommandCleanup(ctx, task.ID)
 	}
 
 	localWorkerID := e.localWorkerID()
@@ -172,7 +172,7 @@ func (e *Executor) ExecuteBroadcastCancelTask(ctx context.Context, task taskwork
 		if localPending {
 			return taskcore.DeferTask(ackPollInterval)
 		}
-		return nil
+		return e.enqueueWorkerCommandCleanup(ctx, task.ID)
 	}
 
 	if err := e.waitForWorkerCommandTasks(ctx, waitTargets, ackPollInterval, func(workerID uuid.UUID) string {
@@ -183,7 +183,7 @@ func (e *Executor) ExecuteBroadcastCancelTask(ctx context.Context, task taskwork
 	if localPending {
 		return taskcore.DeferTask(ackPollInterval)
 	}
-	return nil
+	return e.enqueueWorkerCommandCleanup(ctx, task.ID)
 }
 
 func (e *Executor) ExecuteCancelTaskOnWorker(ctx context.Context, _ taskworker.Task, params *taskgen.CancelTaskOnWorkerParameters) error {
@@ -212,7 +212,7 @@ func (e *Executor) ExecuteBroadcastPauseTask(ctx context.Context, task taskworke
 		return err
 	}
 	if len(targetWorkers) == 0 {
-		return nil
+		return e.enqueueWorkerCommandCleanup(ctx, task.ID)
 	}
 
 	localWorkerID := e.localWorkerID()
@@ -240,7 +240,7 @@ func (e *Executor) ExecuteBroadcastPauseTask(ctx context.Context, task taskworke
 		if localPending {
 			return taskcore.DeferTask(ackPollInterval)
 		}
-		return nil
+		return e.enqueueWorkerCommandCleanup(ctx, task.ID)
 	}
 
 	if err := e.waitForWorkerCommandTasks(ctx, waitTargets, ackPollInterval, func(workerID uuid.UUID) string {
@@ -251,7 +251,7 @@ func (e *Executor) ExecuteBroadcastPauseTask(ctx context.Context, task taskworke
 	if localPending {
 		return taskcore.DeferTask(ackPollInterval)
 	}
-	return nil
+	return e.enqueueWorkerCommandCleanup(ctx, task.ID)
 }
 
 func (e *Executor) ExecutePauseTaskOnWorker(ctx context.Context, _ taskworker.Task, params *taskgen.PauseTaskOnWorkerParameters) error {

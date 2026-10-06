@@ -73,6 +73,7 @@ func TestExecuteBroadcastCancelTaskLocalAndRemoteWorker(t *testing.T) {
 		},
 	)
 
+	expectWorkerCommandCleanup(t, mockRunner, 777)
 	err := exec.ExecuteBroadcastCancelTask(context.Background(), worker.Task{ID: 777}, &taskgen.BroadcastCancelTaskParameters{
 		RequestID:       &requestID,
 		TaskIDs:         []int32{777, 101, 102},
@@ -165,7 +166,7 @@ func TestExecuteBroadcastPauseTaskLocalAndRemoteWorker(t *testing.T) {
 
 	mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{w1, w2}, nil).AnyTimes()
 
-	mockRunner.EXPECT().RunPauseTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+	mockRunner.EXPECT().RunPauseTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, params *taskgen.PauseTaskOnWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 			require.Equal(t, w2, params.WorkerID)
 			require.Equal(t, []int32{201}, params.TaskIDs)
@@ -188,7 +189,8 @@ func TestExecuteBroadcastPauseTaskLocalAndRemoteWorker(t *testing.T) {
 		},
 	)
 
-	err := exec.ExecuteBroadcastPauseTask(context.Background(), worker.Task{}, &taskgen.BroadcastPauseTaskParameters{
+	expectWorkerCommandCleanup(t, mockRunner, 44)
+	err := exec.ExecuteBroadcastPauseTask(context.Background(), worker.Task{ID: 44}, &taskgen.BroadcastPauseTaskParameters{
 		RequestID:       &requestID,
 		TaskIDs:         []int32{201},
 		AckPollInterval: &fanout,
@@ -242,7 +244,7 @@ func TestExecuteBroadcastUpdateWorkerRuntimeConfigLocalAndRemote(t *testing.T) {
 		mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{w1, w2}, nil),
 	)
 
-	mockRunner.EXPECT().RunApplyWorkerRuntimeConfigToWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+	mockRunner.EXPECT().RunApplyWorkerRuntimeConfigToWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, params *taskgen.ApplyWorkerRuntimeConfigToWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 			require.Equal(t, w2, params.WorkerID)
 			require.Equal(t, int64(7), params.Version)
@@ -260,14 +262,15 @@ func TestExecuteBroadcastUpdateWorkerRuntimeConfigLocalAndRemote(t *testing.T) {
 		},
 	).Times(2)
 
-	err := exec.ExecuteBroadcastUpdateWorkerRuntimeConfig(context.Background(), worker.Task{}, &taskgen.BroadcastUpdateWorkerRuntimeConfigParameters{
+	expectWorkerCommandCleanup(t, mockRunner, 55)
+	err := exec.ExecuteBroadcastUpdateWorkerRuntimeConfig(context.Background(), worker.Task{ID: 55}, &taskgen.BroadcastUpdateWorkerRuntimeConfigParameters{
 		RequestID:       &requestID,
 		AckPollInterval: &fanout,
 	})
 	var deferred *taskcore.TaskDeferred
 	require.ErrorAs(t, err, &deferred)
 	require.Equal(t, time.Millisecond, deferred.Delay)
-	err = exec.ExecuteBroadcastUpdateWorkerRuntimeConfig(context.Background(), worker.Task{}, &taskgen.BroadcastUpdateWorkerRuntimeConfigParameters{
+	err = exec.ExecuteBroadcastUpdateWorkerRuntimeConfig(context.Background(), worker.Task{ID: 55}, &taskgen.BroadcastUpdateWorkerRuntimeConfigParameters{
 		RequestID: &requestID, AckPollInterval: &fanout,
 	})
 	require.NoError(t, err)
@@ -299,7 +302,7 @@ func TestExecuteBroadcastUpdateWorkerRuntimeConfigWorkerDeadCleansUpPendingApply
 		mockModel.EXPECT().UpdateTaskStatus(gomock.Any(), querier.UpdateTaskStatusParams{ID: 3001, Status: string(apigen.Cancelled)}).Return(nil),
 	)
 
-	mockRunner.EXPECT().RunApplyWorkerRuntimeConfigToWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+	mockRunner.EXPECT().RunApplyWorkerRuntimeConfigToWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, params *taskgen.ApplyWorkerRuntimeConfigToWorkerParameters, overrides ...taskcore.TaskOverride) (int32, error) {
 			require.Equal(t, w1, params.WorkerID)
 			require.Equal(t, int64(7), params.Version)
@@ -315,7 +318,8 @@ func TestExecuteBroadcastUpdateWorkerRuntimeConfigWorkerDeadCleansUpPendingApply
 		},
 	)
 
-	err := exec.ExecuteBroadcastUpdateWorkerRuntimeConfig(context.Background(), worker.Task{}, &taskgen.BroadcastUpdateWorkerRuntimeConfigParameters{
+	expectWorkerCommandCleanup(t, mockRunner, 56)
+	err := exec.ExecuteBroadcastUpdateWorkerRuntimeConfig(context.Background(), worker.Task{ID: 56}, &taskgen.BroadcastUpdateWorkerRuntimeConfigParameters{
 		RequestID:       &requestID,
 		AckPollInterval: &fanout,
 	})
@@ -392,7 +396,8 @@ func TestExecuteBroadcastCancelTaskNoAliveWorkers(t *testing.T) {
 	mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{}, nil)
 	mockRunner.EXPECT().RunCancelTaskOnWorker(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
-	err := exec.ExecuteBroadcastCancelTask(context.Background(), worker.Task{}, &taskgen.BroadcastCancelTaskParameters{TaskIDs: []int32{1}})
+	expectWorkerCommandCleanup(t, mockRunner, 58)
+	err := exec.ExecuteBroadcastCancelTask(context.Background(), worker.Task{ID: 58}, &taskgen.BroadcastCancelTaskParameters{TaskIDs: []int32{1}})
 	require.NoError(t, err)
 }
 
@@ -416,14 +421,16 @@ func TestExecuteBroadcastUpdateWorkerRuntimeConfigSuperseded(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockModel := model.NewMockModelInterface(ctrl)
-	exec := &Executor{model: mockModel, now: time.Now, runtimeConfigHeartbeatTTL: 9 * time.Second}
+	mockRunner := taskgen.NewMockTaskRunner(ctrl)
+	exec := &Executor{model: mockModel, runner: mockRunner, now: time.Now, runtimeConfigHeartbeatTTL: 9 * time.Second}
 
 	mockModel.EXPECT().CreateWorkerRuntimeConfigForRequest(gomock.Any(), gomock.Any()).Return(&querier.AnclaxWorkerRuntimeConfig{Version: 1}, nil)
 	mockModel.EXPECT().ListOnlineWorkerIDs(gomock.Any(), gomock.Any()).Return([]uuid.UUID{}, nil)
 	mockModel.EXPECT().GetLatestWorkerRuntimeConfig(gomock.Any()).Return(&querier.AnclaxWorkerRuntimeConfig{Version: 2}, nil)
 	mockModel.EXPECT().ListLaggingAliveWorkers(gomock.Any(), gomock.Any()).Times(0)
 
-	err := exec.ExecuteBroadcastUpdateWorkerRuntimeConfig(context.Background(), worker.Task{}, &taskgen.BroadcastUpdateWorkerRuntimeConfigParameters{})
+	expectWorkerCommandCleanup(t, mockRunner, 57)
+	err := exec.ExecuteBroadcastUpdateWorkerRuntimeConfig(context.Background(), worker.Task{ID: 57}, &taskgen.BroadcastUpdateWorkerRuntimeConfigParameters{})
 	require.NoError(t, err)
 }
 
