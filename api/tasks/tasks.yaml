@@ -199,21 +199,6 @@ tasks:
       maxAttempts: -1
     timeout: 5m
 
-  - name: cleanupWorkerCommandTasks
-    description: Cancel unfinished worker commands after their parent broadcast terminates
-    parameters:
-      type: object
-      required: [parentTaskID]
-      properties:
-        parentTaskID:
-          type: integer
-          format: int32
-          description: Parent broadcast whose direct worker-command children should be cleaned up
-    retryPolicy:
-      interval: 1s
-      maxAttempts: -1
-    timeout: 5m
-
   - name: stressProbe
     description: No-op stress probe task for worker E2E benchmarking
     parameters:

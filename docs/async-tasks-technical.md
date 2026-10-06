@@ -267,9 +267,7 @@ Worker control-plane messages are durable tasks with reserved types, claimed thr
 - `broadcastCancelTask` fans out `cancelTaskOnWorker`.
 - `broadcastPauseTask` fans out `pauseTaskOnWorker`.
 
-When finalizing a broadcast attempt as `completed`, `failed`, or `cancelled`, the worker idempotently enqueues `cleanupWorkerCommandTasks` in the same transaction as the terminal state. Cleanup becomes claimable only after commit; an enqueue failure rolls back finalization. Deferred, retrying, and paused attempts do not enqueue cleanup. This uses the optional `worker.TaskTerminalHandler` hook, which generated handlers forward to participating handlers and executors. Hook errors abort the transaction, and hooks must use the supplied transaction for durable writes.
-
-Cleanup has no worker label or parent-task hierarchy link and runs in the separate control lane. It marks unfinished direct worker-command children as `cancelled`, preserving terminal history and business children. This also handles workers that disappear between broadcast attempts and are filtered out of the alive snapshot. Cleanup failures retry the cleanup task; a defensive parent-state check defers cleanup if it was submitted manually before the parent reached a terminal state. Broadcast completion does not imply that asynchronous cleanup has finished.
+Cancel and pause broadcasts directly cancel unfinished commands for offline workers before removing those workers from the request's snapshot targets. This also covers workers that disappear between broadcast attempts, before the ACK check runs. Cancellation is an atomic, conditional status update: terminal history and unrelated tasks are preserved, and database errors propagate so the parent broadcast retries. A cancelled command remains resolved if its worker comes back before the other targets acknowledge the broadcast.
 
 Broadcast tasks snapshot alive workers, enqueue one worker-targeted command task per remote worker, and wait for command tasks or DB convergence depending on the operation. Worker-targeted command tasks use `worker:<id>` labels and unique tags so each target worker claims its own command.
 

@@ -46,18 +46,18 @@ func (m *MockModelInterface) EXPECT() *MockModelInterfaceMockRecorder {
 	return m.recorder
 }
 
-// CancelWorkerCommandTasksByParentTaskID mocks base method.
-func (m *MockModelInterface) CancelWorkerCommandTasksByParentTaskID(ctx context.Context, parentTaskID int32) error {
+// CancelWorkerCommandTaskByUniqueTag mocks base method.
+func (m *MockModelInterface) CancelWorkerCommandTaskByUniqueTag(ctx context.Context, uniqueTag *string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CancelWorkerCommandTasksByParentTaskID", ctx, parentTaskID)
+	ret := m.ctrl.Call(m, "CancelWorkerCommandTaskByUniqueTag", ctx, uniqueTag)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// CancelWorkerCommandTasksByParentTaskID indicates an expected call of CancelWorkerCommandTasksByParentTaskID.
-func (mr *MockModelInterfaceMockRecorder) CancelWorkerCommandTasksByParentTaskID(ctx, parentTaskID any) *gomock.Call {
+// CancelWorkerCommandTaskByUniqueTag indicates an expected call of CancelWorkerCommandTaskByUniqueTag.
+func (mr *MockModelInterfaceMockRecorder) CancelWorkerCommandTaskByUniqueTag(ctx, uniqueTag any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CancelWorkerCommandTasksByParentTaskID", reflect.TypeOf((*MockModelInterface)(nil).CancelWorkerCommandTasksByParentTaskID), ctx, parentTaskID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CancelWorkerCommandTaskByUniqueTag", reflect.TypeOf((*MockModelInterface)(nil).CancelWorkerCommandTaskByUniqueTag), ctx, uniqueTag)
 }
 
 // ClaimNormalTaskByGroup mocks base method.

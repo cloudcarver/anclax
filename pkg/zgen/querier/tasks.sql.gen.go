@@ -14,16 +14,16 @@ import (
 	"github.com/google/uuid"
 )
 
-const cancelWorkerCommandTasksByParentTaskID = `-- name: CancelWorkerCommandTasksByParentTaskID :exec
+const cancelWorkerCommandTaskByUniqueTag = `-- name: CancelWorkerCommandTaskByUniqueTag :exec
 UPDATE anclax.tasks
 SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
-WHERE parent_task_id = $1::int
+WHERE unique_tag = $1
     AND spec->>'type' IN ('cancelTaskOnWorker', 'pauseTaskOnWorker', 'applyWorkerRuntimeConfigToWorker')
     AND status IN ('pending', 'ready', 'running', 'paused')
 `
 
-func (q *Queries) CancelWorkerCommandTasksByParentTaskID(ctx context.Context, parentTaskID int32) error {
-	_, err := q.db.Exec(ctx, cancelWorkerCommandTasksByParentTaskID, parentTaskID)
+func (q *Queries) CancelWorkerCommandTaskByUniqueTag(ctx context.Context, uniqueTag *string) error {
+	_, err := q.db.Exec(ctx, cancelWorkerCommandTaskByUniqueTag, uniqueTag)
 	return err
 }
 

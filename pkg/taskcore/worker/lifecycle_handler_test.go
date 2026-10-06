@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudcarver/anclax/core"
 	taskcore "github.com/cloudcarver/anclax/pkg/taskcore/store"
 	"github.com/cloudcarver/anclax/pkg/zcore/model"
 	"github.com/cloudcarver/anclax/pkg/zgen/apigen"
@@ -129,96 +128,4 @@ func TestFinalizeAttemptWritesCompletionEvent(t *testing.T) {
 		return &querier.AnclaxEvent{}, nil
 	})
 	require.NoError(t, NewTaskLifeCycleHandler(m, nil, uuid.New()).FinalizeAttempt(context.Background(), &fakeTx{}, Task{ID: 7}, nil))
-}
-
-type terminalTaskHandler struct {
-	TaskHandler
-	TaskTerminalHandler
-}
-
-func TestFinalizeAttemptTerminalHookUsesPersistedStatus(t *testing.T) {
-	for _, tc := range []struct {
-		name        string
-		attrs       apigen.TaskAttributes
-		execErr     error
-		status      apigen.TaskStatus
-		finalizeErr error
-		terminal    bool
-		event       bool
-		failure     bool
-	}{
-		{name: "completed", status: apigen.Completed, terminal: true, event: true},
-		{name: "failed", execErr: taskcore.ErrFatalTask, status: apigen.Failed, terminal: true, event: true, failure: true},
-		{name: "cancelled", execErr: taskcore.ErrTaskCancelled, status: apigen.Cancelled, terminal: true},
-		{name: "cancelled during execution", status: apigen.Cancelled, terminal: true},
-		{name: "paused during execution", status: apigen.Paused},
-		{name: "deferred", execErr: taskcore.DeferTask(time.Second), status: apigen.Pending},
-		{name: "retry", attrs: apigen.TaskAttributes{RetryPolicy: &apigen.TaskRetryPolicy{Interval: "1s", MaxAttempts: 3}}, execErr: errors.New("retry"), status: apigen.Pending, event: true},
-		{name: "cron occurrence", attrs: apigen.TaskAttributes{Cronjob: &apigen.TaskCronjob{CronExpression: "0 * * * * *"}}, status: apigen.Pending},
-		{name: "lost lease", finalizeErr: pgx.ErrNoRows},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			m := model.NewMockModelInterfaceWithTransaction(ctrl)
-			handler := NewMockTaskHandler(ctrl)
-			hook := NewMockTaskTerminalHandler(ctrl)
-			tx := &fakeTx{}
-			task := Task{ID: 7, LeaseVersion: 9, Attempts: 1, Attributes: tc.attrs}
-			m.EXPECT().FinalizeTaskAttempt(gomock.Any(), gomock.Any()).Return(string(tc.status), tc.finalizeErr)
-			if tc.terminal {
-				hook.EXPECT().OnTaskTerminal(gomock.Any(), tx, task, tc.status).Return(nil)
-			}
-			if tc.event {
-				m.EXPECT().InsertEvent(gomock.Any(), gomock.Any()).Return(&querier.AnclaxEvent{}, nil)
-			}
-			if tc.failure {
-				handler.EXPECT().OnTaskFailed(gomock.Any(), tx, TaskSpec{Spec: task.Spec}, task.ID).Return(nil)
-			}
-			h := NewTaskLifeCycleHandler(m, terminalTaskHandler{handler, hook}, uuid.New())
-			err := h.FinalizeAttempt(context.Background(), tx, task, tc.execErr)
-			if tc.finalizeErr != nil {
-				require.ErrorIs(t, err, taskcore.ErrTaskLockLost)
-			} else {
-				require.NoError(t, err)
-			}
-		})
-	}
-}
-
-func TestFinalizeAttemptTerminalHookErrorsAbortFinalization(t *testing.T) {
-	for _, result := range []string{"error", "panic", "unknown task"} {
-		t.Run(result, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			m := model.NewMockModelInterfaceWithTransaction(ctrl)
-			hook := NewMockTaskTerminalHandler(ctrl)
-			tx := core.NewMockTx(ctrl)
-			// A critical terminal hook must not hide errors behind a savepoint.
-			m.EXPECT().FinalizeTaskAttempt(gomock.Any(), gomock.Any()).Return("completed", nil)
-			hookErr := errors.New("enqueue failed")
-			hook.EXPECT().OnTaskTerminal(gomock.Any(), tx, gomock.Any(), apigen.Completed).DoAndReturn(
-				func(context.Context, core.Tx, Task, apigen.TaskStatus) error {
-					switch result {
-					case "panic":
-						panic("enqueue panic")
-					case "unknown task":
-						return ErrUnknownTaskType
-					default:
-						return hookErr
-					}
-				})
-			if result == "unknown task" {
-				m.EXPECT().InsertEvent(gomock.Any(), gomock.Any()).Return(&querier.AnclaxEvent{}, nil)
-			}
-			h := NewTaskLifeCycleHandler(m, terminalTaskHandler{NewMockTaskHandler(ctrl), hook}, uuid.New())
-			err := h.FinalizeAttempt(context.Background(), tx, Task{ID: 7}, nil)
-			switch result {
-			case "panic":
-				require.ErrorContains(t, err, "task terminal hook: panic: enqueue panic")
-			case "unknown task":
-				require.NoError(t, err)
-			default:
-				require.ErrorIs(t, err, hookErr)
-			}
-		})
-	}
 }

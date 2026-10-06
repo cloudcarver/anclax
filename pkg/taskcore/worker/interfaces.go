@@ -33,14 +33,6 @@ type TaskHandler interface {
 	RegisterTaskHandler(handler TaskHandler)
 }
 
-// TaskTerminalHandler is an optional transactional hook. It runs after an
-// attempt's final status has been written as completed, failed, or cancelled,
-// in the same transaction. Returning an error rolls back the finalization.
-// Return ErrUnknownTaskType to let another handler handle the task.
-type TaskTerminalHandler interface {
-	OnTaskTerminal(ctx context.Context, tx core.Tx, task Task, status apigen.TaskStatus) error
-}
-
 type WorkerInterface interface {
 	Start()
 	RunTask(ctx context.Context, taskID int32) error

@@ -283,46 +283,6 @@ func (mr *MockTaskRunnerMockRecorder) RunCancelTaskOnWorkerWithTx(ctx, tx, param
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunCancelTaskOnWorkerWithTx", reflect.TypeOf((*MockTaskRunner)(nil).RunCancelTaskOnWorkerWithTx), varargs...)
 }
 
-// RunCleanupWorkerCommandTasks mocks base method.
-func (m *MockTaskRunner) RunCleanupWorkerCommandTasks(ctx context.Context, params *CleanupWorkerCommandTasksParameters, overrides ...store.TaskOverride) (int32, error) {
-	m.ctrl.T.Helper()
-	varargs := []any{ctx, params}
-	for _, a := range overrides {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "RunCleanupWorkerCommandTasks", varargs...)
-	ret0, _ := ret[0].(int32)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// RunCleanupWorkerCommandTasks indicates an expected call of RunCleanupWorkerCommandTasks.
-func (mr *MockTaskRunnerMockRecorder) RunCleanupWorkerCommandTasks(ctx, params any, overrides ...any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx, params}, overrides...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunCleanupWorkerCommandTasks", reflect.TypeOf((*MockTaskRunner)(nil).RunCleanupWorkerCommandTasks), varargs...)
-}
-
-// RunCleanupWorkerCommandTasksWithTx mocks base method.
-func (m *MockTaskRunner) RunCleanupWorkerCommandTasksWithTx(ctx context.Context, tx core.Tx, params *CleanupWorkerCommandTasksParameters, overrides ...store.TaskOverride) (int32, error) {
-	m.ctrl.T.Helper()
-	varargs := []any{ctx, tx, params}
-	for _, a := range overrides {
-		varargs = append(varargs, a)
-	}
-	ret := m.ctrl.Call(m, "RunCleanupWorkerCommandTasksWithTx", varargs...)
-	ret0, _ := ret[0].(int32)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// RunCleanupWorkerCommandTasksWithTx indicates an expected call of RunCleanupWorkerCommandTasksWithTx.
-func (mr *MockTaskRunnerMockRecorder) RunCleanupWorkerCommandTasksWithTx(ctx, tx, params any, overrides ...any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx, tx, params}, overrides...)
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunCleanupWorkerCommandTasksWithTx", reflect.TypeOf((*MockTaskRunner)(nil).RunCleanupWorkerCommandTasksWithTx), varargs...)
-}
-
 // RunDeleteOpaqueKey mocks base method.
 func (m *MockTaskRunner) RunDeleteOpaqueKey(ctx context.Context, params *DeleteOpaqueKeyParameters, overrides ...store.TaskOverride) (int32, error) {
 	m.ctrl.T.Helper()
@@ -589,20 +549,6 @@ func (m *MockExecutorInterface) ExecuteCancelTaskOnWorker(ctx context.Context, t
 func (mr *MockExecutorInterfaceMockRecorder) ExecuteCancelTaskOnWorker(ctx, task, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteCancelTaskOnWorker", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteCancelTaskOnWorker), ctx, task, params)
-}
-
-// ExecuteCleanupWorkerCommandTasks mocks base method.
-func (m *MockExecutorInterface) ExecuteCleanupWorkerCommandTasks(ctx context.Context, task worker.Task, params *CleanupWorkerCommandTasksParameters) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ExecuteCleanupWorkerCommandTasks", ctx, task, params)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// ExecuteCleanupWorkerCommandTasks indicates an expected call of ExecuteCleanupWorkerCommandTasks.
-func (mr *MockExecutorInterfaceMockRecorder) ExecuteCleanupWorkerCommandTasks(ctx, task, params any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteCleanupWorkerCommandTasks", reflect.TypeOf((*MockExecutorInterface)(nil).ExecuteCleanupWorkerCommandTasks), ctx, task, params)
 }
 
 // ExecuteDeleteOpaqueKey mocks base method.
