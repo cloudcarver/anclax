@@ -43,6 +43,15 @@ func WithUniqueTag(uniqueTag string) TaskOverride {
 	}
 }
 
+// WithReleaseUniqueTagOnTerminal releases the unique tag when the task becomes
+// completed, failed, or cancelled. It is disabled by default.
+func WithReleaseUniqueTagOnTerminal(release bool) TaskOverride {
+	return func(task *apigen.Task) error {
+		task.Attributes.ReleaseUniqueTagOnTerminal = &release
+		return nil
+	}
+}
+
 func WithParentTaskID(parentTaskID int32) TaskOverride {
 	return func(task *apigen.Task) error {
 		task.ParentTaskId = &parentTaskID

@@ -257,6 +257,7 @@ func NewBroadcastUpdateWorkerRuntimeConfigTask(params *BroadcastUpdateWorkerRunt
 	}
 
 	attributes.Priority = utils.Ptr(int32(2147483647))
+
 	task := &apigen.Task{
 		Attributes: attributes,
 		Spec:       spec,
@@ -313,6 +314,7 @@ func NewApplyWorkerRuntimeConfigToWorkerTask(params *ApplyWorkerRuntimeConfigToW
 	}
 
 	attributes.Priority = utils.Ptr(int32(2147483647))
+
 	task := &apigen.Task{
 		Attributes: attributes,
 		Spec:       spec,
@@ -369,6 +371,7 @@ func NewBroadcastCancelTaskTask(params *BroadcastCancelTaskParameters, overrides
 	}
 
 	attributes.Priority = utils.Ptr(int32(2147483647))
+
 	task := &apigen.Task{
 		Attributes: attributes,
 		Spec:       spec,
@@ -425,6 +428,7 @@ func NewCancelTaskOnWorkerTask(params *CancelTaskOnWorkerParameters, overrides .
 	}
 
 	attributes.Priority = utils.Ptr(int32(2147483647))
+
 	task := &apigen.Task{
 		Attributes: attributes,
 		Spec:       spec,
@@ -481,6 +485,7 @@ func NewBroadcastPauseTaskTask(params *BroadcastPauseTaskParameters, overrides .
 	}
 
 	attributes.Priority = utils.Ptr(int32(2147483647))
+
 	task := &apigen.Task{
 		Attributes: attributes,
 		Spec:       spec,
@@ -537,6 +542,7 @@ func NewPauseTaskOnWorkerTask(params *PauseTaskOnWorkerParameters, overrides ...
 	}
 
 	attributes.Priority = utils.Ptr(int32(2147483647))
+
 	task := &apigen.Task{
 		Attributes: attributes,
 		Spec:       spec,

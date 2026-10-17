@@ -498,6 +498,11 @@ const finalizeTaskAttempt = `-- name: FinalizeTaskAttempt :one
 UPDATE anclax.tasks
 SET
     status = CASE WHEN status IN ('paused', 'cancelled') THEN status ELSE $1::text END,
+    unique_tag = CASE
+        WHEN attributes @> '{"releaseUniqueTagOnTerminal": true}'::jsonb
+            AND (CASE WHEN status IN ('paused', 'cancelled') THEN status ELSE $1::text END)
+                IN ('completed', 'failed', 'cancelled') THEN NULL
+        ELSE unique_tag END,
     started_at = CASE WHEN status IN ('pending', 'running') THEN $2::timestamptz ELSE started_at END,
     attempts = CASE WHEN status IN ('pending', 'running') THEN $3::int ELSE attempts END,
     locked_at = NULL,
@@ -1115,50 +1120,58 @@ func (q *Queries) UpdateTaskStartedAtByWorker(ctx context.Context, arg UpdateTas
 const updateTaskStatus = `-- name: UpdateTaskStatus :exec
 UPDATE anclax.tasks
 SET
-    status = $2,
-    lease_version = CASE WHEN $2 = 'pending' THEN lease_version + 1 ELSE lease_version END,
+    status = $1::text,
+    unique_tag = CASE
+        WHEN attributes @> '{"releaseUniqueTagOnTerminal": true}'::jsonb
+            AND $1::text IN ('completed', 'failed', 'cancelled') THEN NULL
+        ELSE unique_tag END,
+    lease_version = CASE WHEN $1 = 'pending' THEN lease_version + 1 ELSE lease_version END,
     updated_at = CURRENT_TIMESTAMP
-WHERE id = $1 AND (
-    ($2 = 'paused' AND status IN ('pending', 'ready', 'running', 'paused'))
-    OR ($2 = 'cancelled' AND status IN ('pending', 'ready', 'running', 'paused', 'cancelled'))
-    OR ($2 = 'pending' AND status = 'paused')
-    OR ($2 IN ('completed', 'failed') AND status IN ('pending', 'ready', 'running'))
+WHERE id = $2 AND (
+    ($1 = 'paused' AND status IN ('pending', 'ready', 'running', 'paused'))
+    OR ($1 = 'cancelled' AND status IN ('pending', 'ready', 'running', 'paused', 'cancelled'))
+    OR ($1 = 'pending' AND status = 'paused')
+    OR ($1 IN ('completed', 'failed') AND status IN ('pending', 'ready', 'running'))
 )
 `
 
 type UpdateTaskStatusParams struct {
-	ID     int32
 	Status string
+	ID     int32
 }
 
 func (q *Queries) UpdateTaskStatus(ctx context.Context, arg UpdateTaskStatusParams) error {
-	_, err := q.db.Exec(ctx, updateTaskStatus, arg.ID, arg.Status)
+	_, err := q.db.Exec(ctx, updateTaskStatus, arg.Status, arg.ID)
 	return err
 }
 
 const updateTaskStatusByWorker = `-- name: UpdateTaskStatusByWorker :one
 UPDATE anclax.tasks
 SET
-    status = $2,
+    status = $1::text,
+    unique_tag = CASE
+        WHEN attributes @> '{"releaseUniqueTagOnTerminal": true}'::jsonb
+            AND $1::text IN ('completed', 'failed', 'cancelled') THEN NULL
+        ELSE unique_tag END,
     locked_at = NULL,
     worker_id = NULL,
     lease_expires_at = NULL, lease_duration_ms = NULL,
     updated_at = CURRENT_TIMESTAMP
-WHERE id = $1 AND worker_id = $3 AND lease_version = $4 AND status IN ('pending', 'running')
+WHERE id = $2 AND worker_id = $3 AND lease_version = $4 AND status IN ('pending', 'running')
 RETURNING id
 `
 
 type UpdateTaskStatusByWorkerParams struct {
-	ID           int32
 	Status       string
+	ID           int32
 	WorkerID     uuid.NullUUID
 	LeaseVersion int64
 }
 
 func (q *Queries) UpdateTaskStatusByWorker(ctx context.Context, arg UpdateTaskStatusByWorkerParams) (int32, error) {
 	row := q.db.QueryRow(ctx, updateTaskStatusByWorker,
-		arg.ID,
 		arg.Status,
+		arg.ID,
 		arg.WorkerID,
 		arg.LeaseVersion,
 	)

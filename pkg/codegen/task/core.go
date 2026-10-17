@@ -126,6 +126,15 @@ func process(data map[string]any, onFunc func(f Function) error, onParam func(na
 			}
 		}
 
+		var releaseUniqueTagOnTerminal *bool
+		if raw, exists := fnData["releaseUniqueTagOnTerminal"]; exists {
+			release, ok := raw.(bool)
+			if !ok {
+				return fmt.Errorf("releaseUniqueTagOnTerminal for %s must be a boolean", fnName)
+			}
+			releaseUniqueTagOnTerminal = &release
+		}
+
 		// parse events
 		var events *Events
 		if _, ok := fnData["events"]; ok {
@@ -221,18 +230,19 @@ func process(data map[string]any, onFunc func(f Function) error, onParam func(na
 		}
 
 		if err := onFunc(Function{
-			Name:            fnName,
-			Description:     description,
-			ParameterType:   parameterInfo.Type,
-			Timeout:         timeout,
-			Cronjob:         cronjob,
-			RetryPolicy:     retryPolicy,
-			Delay:           delay,
-			Events:          events,
-			Labels:          labels,
-			Tags:            tags,
-			Priority:        priority,
-			HasLocalHelpers: parameterInfo.StructDef != "",
+			Name:                       fnName,
+			Description:                description,
+			ParameterType:              parameterInfo.Type,
+			Timeout:                    timeout,
+			Cronjob:                    cronjob,
+			RetryPolicy:                retryPolicy,
+			ReleaseUniqueTagOnTerminal: releaseUniqueTagOnTerminal,
+			Delay:                      delay,
+			Events:                     events,
+			Labels:                     labels,
+			Tags:                       tags,
+			Priority:                   priority,
+			HasLocalHelpers:            parameterInfo.StructDef != "",
 		}); err != nil {
 			return err
 		}

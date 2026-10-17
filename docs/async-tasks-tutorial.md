@@ -427,6 +427,25 @@ taskID, err := h.taskRunner.RunTaskName(ctx, params,
 )
 ```
 
+By default, a terminal task keeps its unique tag and later submissions return its ID. To allow a new task after completion, final failure, or cancellation:
+
+```go
+taskID, err := h.taskRunner.RunTaskName(ctx, params,
+    taskcore.WithUniqueTag(fmt.Sprintf("user-%d-sync", userID)),
+    taskcore.WithReleaseUniqueTagOnTerminal(true),
+)
+```
+
+Or set the default on the task definition:
+
+```yaml
+tasks:
+  - name: SyncUser
+    releaseUniqueTagOnTerminal: true
+```
+
+This sets `attributes.releaseUniqueTagOnTerminal`. Pauses, retries, deferrals, and recurring Cron runs still hold the tag. The old task remains accessible by task ID after its tag is cleared. Cancellation releases the tag before an interrupted executor necessarily finishes.
+
 ### Task Attributes
 
 Access task metadata in your executor:

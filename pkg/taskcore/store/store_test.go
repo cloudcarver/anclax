@@ -285,6 +285,42 @@ func TestPushTaskUniqueTagLookupFails(t *testing.T) {
 	require.ErrorContains(t, err, "failed to check task by unique tag before push")
 }
 
+func TestPushTaskRetriesAfterConcurrentUniqueTagRelease(t *testing.T) {
+	ctx := context.Background()
+	tag := "released-before-conflict-lookup"
+	m := model.NewMockModelInterface(gomock.NewController(t))
+	gomock.InOrder(
+		m.EXPECT().GetTaskByUniqueTag(ctx, &tag).Return(nil, pgx.ErrNoRows),
+		m.EXPECT().CreateTask(ctx, gomock.Any()).Return(nil, pgx.ErrNoRows),
+		m.EXPECT().GetTaskByUniqueTag(ctx, &tag).Return(nil, pgx.ErrNoRows),
+		m.EXPECT().CreateTask(ctx, gomock.Any()).Return(&querier.AnclaxTask{ID: 42}, nil),
+	)
+	id, err := NewTaskStore(m).PushTask(ctx, &apigen.Task{
+		Status: apigen.Pending, UniqueTag: &tag, Spec: apigen.TaskSpec{Type: "test"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, int32(42), id)
+}
+
+func TestPushTaskConcurrentUniqueTagReleaseRespectsCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	tag := "released-before-cancellation"
+	m := model.NewMockModelInterface(gomock.NewController(t))
+	gomock.InOrder(
+		m.EXPECT().GetTaskByUniqueTag(ctx, &tag).Return(nil, pgx.ErrNoRows),
+		m.EXPECT().CreateTask(ctx, gomock.Any()).Return(nil, pgx.ErrNoRows),
+		m.EXPECT().GetTaskByUniqueTag(ctx, &tag).DoAndReturn(func(context.Context, *string) (*querier.AnclaxTask, error) {
+			cancel()
+			return nil, pgx.ErrNoRows
+		}),
+	)
+	_, err := NewTaskStore(m).PushTask(ctx, &apigen.Task{
+		Status: apigen.Pending, UniqueTag: &tag, Spec: apigen.TaskSpec{Type: "test"},
+	})
+	require.ErrorIs(t, err, context.Canceled)
+}
+
 func TestGetTaskByUniqueTag(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -295,6 +331,7 @@ func TestGetTaskByUniqueTag(t *testing.T) {
 	mockModel := model.NewMockModelInterface(ctrl)
 	mockModel.EXPECT().GetTaskByUniqueTag(ctx, &uniqueTag).Return(&querier.AnclaxTask{
 		ID:         10,
+		UniqueTag:  &uniqueTag,
 		Attributes: apigen.TaskAttributes{},
 		Spec:       apigen.TaskSpec{Type: "demo"},
 		Status:     string(apigen.Pending),
@@ -304,6 +341,7 @@ func TestGetTaskByUniqueTag(t *testing.T) {
 	task, err := store.GetTaskByUniqueTag(ctx, uniqueTag)
 	require.NoError(t, err)
 	require.Equal(t, int32(10), task.ID)
+	require.Equal(t, &uniqueTag, task.UniqueTag)
 	require.Equal(t, apigen.Pending, task.Status)
 }
 

@@ -352,14 +352,14 @@ tasks:
 
 ### Unique Tasks
 
-Prevent duplicate task execution:
+Deduplicate task submissions while a unique tag is held:
 
 ```go
 // This will succeed
 taskID1, _ := taskRunner.RunSendWelcomeEmail(ctx, params,
     taskcore.WithUniqueTag("user-123-welcome"))
 
-// This will fail with ErrTaskAlreadyExists
+// Returns the same ID, including after the original task terminates by default
 taskID2, _ := taskRunner.RunSendWelcomeEmail(ctx, params,
     taskcore.WithUniqueTag("user-123-welcome"))
 ```
@@ -367,7 +367,13 @@ taskID2, _ := taskRunner.RunSendWelcomeEmail(ctx, params,
 **Uniqueness Implementation:**
 - Unique tags stored in database with unique constraint
 - Duplicate detection happens at database level
-- Failed duplicates return specific error type
+- Duplicate submissions return the existing task ID without replacing its parameters or attributes
+
+Set `taskcore.WithReleaseUniqueTagOnTerminal(true)` alongside `WithUniqueTag` to reuse the tag after termination. This persists `attributes.releaseUniqueTagOnTerminal`; it defaults to `false`. It can also be set as `releaseUniqueTagOnTerminal: true` in a task definition, with per-enqueue overrides taking precedence.
+
+The framework clears `unique_tag` in the same SQL update that transitions the task to `completed`, `failed`, or `cancelled`, including direct and cascading cancellation. Pauses, retries, deferrals, and recurring Cron runs retain the tag. Transaction rollback preserves both the previous state and tag; user failure-hook errors cannot undo the release independently.
+
+After release, submitting the same tag creates a new task ID. The original task remains accessible by ID but no longer retains its unique tag. Tag-based lookup and control target the current holder, or report not found when the tag is free. Cancellation releases the tag when the cancelled state is persisted; an interrupted executor may still be finishing, so this option does not guarantee that successive executions cannot overlap.
 
 ## Performance and Reliability
 

@@ -80,7 +80,7 @@ func (s *TaskStore) pushTask(ctx context.Context, txm model.ModelInterface, task
 	task.Attributes.Priority = utils.Ptr(priority)
 	task.Attributes.Weight = utils.Ptr(weight)
 
-	createdTask, err := txm.CreateTask(ctx, querier.CreateTaskParams{
+	params := querier.CreateTaskParams{
 		Attributes:   task.Attributes,
 		Spec:         task.Spec,
 		StartedAt:    task.StartedAt,
@@ -91,20 +91,31 @@ func (s *TaskStore) pushTask(ctx context.Context, txm model.ModelInterface, task
 		SerialID:     serialID,
 		Priority:     priority,
 		Weight:       weight,
-	})
-	if errors.Is(err, pgx.ErrNoRows) && task.UniqueTag != nil {
-		// A concurrent insertion may win after the initial lookup. A second
-		// statement sees its committed row under READ COMMITTED, including WithTx.
-		existing, lookupErr := txm.GetTaskByUniqueTag(ctx, task.UniqueTag)
-		if lookupErr != nil {
-			return 0, errors.Wrap(lookupErr, "get concurrently enqueued task")
+	}
+	for {
+		if err := ctx.Err(); err != nil {
+			return 0, errors.Wrap(err, "failed to push task")
 		}
-		return existing.ID, nil
+		createdTask, err := txm.CreateTask(ctx, params)
+		if errors.Is(err, pgx.ErrNoRows) && task.UniqueTag != nil {
+			// A concurrent insertion may win after the initial lookup. A second
+			// statement sees its committed row under READ COMMITTED, including WithTx.
+			existing, lookupErr := txm.GetTaskByUniqueTag(ctx, task.UniqueTag)
+			if errors.Is(lookupErr, pgx.ErrNoRows) {
+				// The winner may have terminated and released its tag already.
+				// Retry insertion; the unique constraint still arbitrates contenders.
+				continue
+			}
+			if lookupErr != nil {
+				return 0, errors.Wrap(lookupErr, "get concurrently enqueued task")
+			}
+			return existing.ID, nil
+		}
+		if err != nil {
+			return 0, errors.Wrap(err, "failed to push task")
+		}
+		return createdTask.ID, nil
 	}
-	if err != nil {
-		return 0, errors.Wrap(err, "failed to push task")
-	}
-	return createdTask.ID, nil
 }
 
 // UpdateCronJob updates a task's cron expression and payload, and schedules the next run time.

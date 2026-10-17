@@ -144,8 +144,10 @@ type TaskAttributes struct {
 	// Worker claim and scheduling labels. A worker must have all task labels to claim the task.
 	Labels *[]string `json:"labels,omitempty"`
 	// Strict priority of the task. Higher number runs first. Zero means normal weighted scheduling.
-	Priority    *int32           `json:"priority,omitempty"`
-	RetryPolicy *TaskRetryPolicy `json:"retryPolicy,omitempty"`
+	Priority *int32 `json:"priority,omitempty"`
+	// Clear the unique tag atomically when the task becomes completed, failed, or cancelled. Pauses, retries, deferrals, and recurring cron runs retain the tag. Defaults to false.
+	ReleaseUniqueTagOnTerminal *bool            `json:"releaseUniqueTagOnTerminal,omitempty"`
+	RetryPolicy                *TaskRetryPolicy `json:"retryPolicy,omitempty"`
 	// Optional serial order within the same serial key (lower runs first)
 	SerialID *int32 `json:"serialID,omitempty"`
 	// Serial key for forcing tasks with the same key to run one by one
