@@ -23,6 +23,7 @@ func TaskToAPI(task *querier.AnclaxTask) apigen.Task {
 	return apigen.Task{
 		ID:           task.ID,
 		ParentTaskId: task.ParentTaskID,
+		UniqueTag:    task.UniqueTag,
 		CreatedAt:    task.CreatedAt,
 		Spec:         task.Spec,
 		StartedAt:    task.StartedAt,

@@ -300,6 +300,10 @@ components:
           $ref: "#/components/schemas/TaskCronjob"
         retryPolicy:
           $ref: "#/components/schemas/TaskRetryPolicy"
+        releaseUniqueTagOnTerminal:
+          type: boolean
+          default: false
+          description: Clear the unique tag atomically when the task becomes completed, failed, or cancelled. Pauses, retries, deferrals, and recurring cron runs retain the tag. Defaults to false.
         labels:
           type: array
           items:

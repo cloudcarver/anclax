@@ -193,6 +193,7 @@ Use `taskcore.TaskOverride` helpers:
 - `taskcore.WithDelay(delay)`
 - `taskcore.WithStartedAt(time)`
 - `taskcore.WithUniqueTag(tag)`
+- `taskcore.WithReleaseUniqueTagOnTerminal(true)`
 - `taskcore.WithParentTaskID(parentID)`
 - `taskcore.WithLabels([]string{"billing", "critical"})`
 - `taskcore.WithTags([]string{"tenant:acme", "billing"})`
@@ -200,6 +201,8 @@ Use `taskcore.TaskOverride` helpers:
 - `taskcore.WithSerialID(7)`
 
 If a unique tag already exists, the existing task ID is returned instead of inserting a new task.
+
+Unique tags are retained after termination by default. Set `releaseUniqueTagOnTerminal: true` in a task definition or use `WithReleaseUniqueTagOnTerminal(true)` to persist `attributes.releaseUniqueTagOnTerminal` and clear the tag atomically on `completed`, `failed`, or `cancelled`. Direct and cascading cancellation honor each task's own setting. Pauses, retries, deferrals, and recurring Cron runs keep the tag. After release, use the old task ID for history; the same tag can identify a new task. Cancellation releases the tag when its status is persisted, before an interrupted executor necessarily finishes.
 
 Use `WithLabels` only for worker requirements. Use `WithTags` for control metadata.
 

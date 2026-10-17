@@ -316,6 +316,33 @@ func (a *taskStoreActor) EnqueueSerial(ctx context.Context, task string, serialK
 	return nil
 }
 
+func (a *taskStoreActor) EnqueueUnique(ctx context.Context, task, uniqueTag string, release *bool, retryInterval string, retryMaxAttempts int32, cronExpression string) (int32, error) {
+	payload, err := json.Marshal(map[string]string{"name": task})
+	if err != nil {
+		return 0, err
+	}
+	next := &apigen.Task{
+		Status: apigen.Pending,
+		Spec:   apigen.TaskSpec{Type: "unique-tag-e2e", Payload: payload},
+	}
+	overrides := []taskcore.TaskOverride{taskcore.WithUniqueTag(uniqueTag)}
+	if release != nil {
+		overrides = append(overrides, taskcore.WithReleaseUniqueTagOnTerminal(*release))
+	}
+	if retryInterval != "" {
+		overrides = append(overrides, taskcore.WithRetryPolicy(retryInterval, retryMaxAttempts))
+	}
+	if cronExpression != "" {
+		overrides = append(overrides, taskcore.WithCronjob(cronExpression))
+	}
+	for _, override := range overrides {
+		if err := override(next); err != nil {
+			return 0, err
+		}
+	}
+	return a.store.PushTask(ctx, next)
+}
+
 func (a *taskStoreActor) SetTaskTags(ctx context.Context, task string, tags []string) error {
 	if task == "" {
 		return fmt.Errorf("task name is required")

@@ -17,19 +17,20 @@ type ControlPlaneClient struct {
 }
 
 type SubmitStressProbeRequest struct {
-	TaskName         string   `json:"taskName"`
-	JobID            int64    `json:"jobID"`
-	SleepMs          int32    `json:"sleepMs"`
-	Group            string   `json:"group"`
-	FailMode         string   `json:"failMode,omitempty"`
-	Labels           []string `json:"labels,omitempty"`
-	Tags             []string `json:"tags,omitempty"`
-	DelayMs          int32    `json:"delayMs,omitempty"`
-	UniqueTag        string   `json:"uniqueTag,omitempty"`
-	RetryInterval    string   `json:"retryInterval,omitempty"`
-	RetryMaxAttempts *int32   `json:"retryMaxAttempts,omitempty"`
-	SignalBaseURL    string   `json:"signalBaseURL,omitempty"`
-	SignalIntervalMs int32    `json:"signalIntervalMs,omitempty"`
+	TaskName                   string   `json:"taskName"`
+	JobID                      int64    `json:"jobID"`
+	SleepMs                    int32    `json:"sleepMs"`
+	Group                      string   `json:"group"`
+	FailMode                   string   `json:"failMode,omitempty"`
+	Labels                     []string `json:"labels,omitempty"`
+	Tags                       []string `json:"tags,omitempty"`
+	DelayMs                    int32    `json:"delayMs,omitempty"`
+	UniqueTag                  string   `json:"uniqueTag,omitempty"`
+	ReleaseUniqueTagOnTerminal *bool    `json:"releaseUniqueTagOnTerminal,omitempty"`
+	RetryInterval              string   `json:"retryInterval,omitempty"`
+	RetryMaxAttempts           *int32   `json:"retryMaxAttempts,omitempty"`
+	SignalBaseURL              string   `json:"signalBaseURL,omitempty"`
+	SignalIntervalMs           int32    `json:"signalIntervalMs,omitempty"`
 }
 
 type SubmitStressProbeResponse struct {

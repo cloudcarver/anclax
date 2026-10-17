@@ -22,19 +22,20 @@ import (
 )
 
 type stressProbeRequest struct {
-	TaskName         string   `json:"taskName"`
-	JobID            int64    `json:"jobID"`
-	SleepMs          int32    `json:"sleepMs"`
-	Group            string   `json:"group"`
-	FailMode         string   `json:"failMode,omitempty"`
-	Labels           []string `json:"labels,omitempty"`
-	Tags             []string `json:"tags,omitempty"`
-	DelayMs          int32    `json:"delayMs,omitempty"`
-	UniqueTag        string   `json:"uniqueTag,omitempty"`
-	RetryInterval    string   `json:"retryInterval,omitempty"`
-	RetryMaxAttempts *int32   `json:"retryMaxAttempts,omitempty"`
-	SignalBaseURL    string   `json:"signalBaseURL,omitempty"`
-	SignalIntervalMs int32    `json:"signalIntervalMs,omitempty"`
+	TaskName                   string   `json:"taskName"`
+	JobID                      int64    `json:"jobID"`
+	SleepMs                    int32    `json:"sleepMs"`
+	Group                      string   `json:"group"`
+	FailMode                   string   `json:"failMode,omitempty"`
+	Labels                     []string `json:"labels,omitempty"`
+	Tags                       []string `json:"tags,omitempty"`
+	DelayMs                    int32    `json:"delayMs,omitempty"`
+	UniqueTag                  string   `json:"uniqueTag,omitempty"`
+	ReleaseUniqueTagOnTerminal *bool    `json:"releaseUniqueTagOnTerminal,omitempty"`
+	RetryInterval              string   `json:"retryInterval,omitempty"`
+	RetryMaxAttempts           *int32   `json:"retryMaxAttempts,omitempty"`
+	SignalBaseURL              string   `json:"signalBaseURL,omitempty"`
+	SignalIntervalMs           int32    `json:"signalIntervalMs,omitempty"`
 }
 
 type cancelObservableProbeRequest struct {
@@ -239,6 +240,9 @@ func (a *app) handleStressProbe(w http.ResponseWriter, r *http.Request) {
 		uniqueTag = req.TaskName
 	}
 	overrides := []taskcore.TaskOverride{taskcore.WithUniqueTag(uniqueTag)}
+	if req.ReleaseUniqueTagOnTerminal != nil {
+		overrides = append(overrides, taskcore.WithReleaseUniqueTagOnTerminal(*req.ReleaseUniqueTagOnTerminal))
+	}
 	if len(req.Labels) > 0 {
 		overrides = append(overrides, taskcore.WithLabels(req.Labels))
 	}

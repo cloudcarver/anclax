@@ -95,6 +95,11 @@ func TestTaskLifecycleRegressionsSmoke(t *testing.T) {
 			return p
 		}
 
+		t.Run("unique_tag_release", func(t *testing.T) {
+			reset(t)
+			runUniqueTagReleaseRegressions(t, ctx, m)
+		})
+
 		t.Run("cancel_must_survive_late_success_finalization", func(t *testing.T) {
 			reset(t)
 			id := enqueue(t, apigen.TaskAttributes{})

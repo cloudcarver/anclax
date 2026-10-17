@@ -26,18 +26,19 @@ type Events struct {
 }
 
 type Function struct {
-	Name            string       `yaml:"name"`
-	Description     string       `yaml:"description"`
-	ParameterType   string       `yaml:"parameterType"`
-	Timeout         *string      `yaml:"timeout,omitempty"`
-	Cronjob         *Cronjob     `yaml:"cronjob,omitempty"`
-	RetryPolicy     *RetryPolicy `yaml:"retryPolicy,omitempty"`
-	Delay           *string      `yaml:"delay,omitempty"`
-	Events          *Events      `yaml:"events,omitempty"`
-	Labels          []string     `yaml:"labels,omitempty"`
-	Tags            []string     `yaml:"tags,omitempty"`
-	Priority        *int32       `yaml:"priority,omitempty"`
-	HasLocalHelpers bool         `yaml:"hasLocalHelpers,omitempty"`
+	Name                       string       `yaml:"name"`
+	Description                string       `yaml:"description"`
+	ParameterType              string       `yaml:"parameterType"`
+	Timeout                    *string      `yaml:"timeout,omitempty"`
+	Cronjob                    *Cronjob     `yaml:"cronjob,omitempty"`
+	RetryPolicy                *RetryPolicy `yaml:"retryPolicy,omitempty"`
+	ReleaseUniqueTagOnTerminal *bool        `yaml:"releaseUniqueTagOnTerminal,omitempty"`
+	Delay                      *string      `yaml:"delay,omitempty"`
+	Events                     *Events      `yaml:"events,omitempty"`
+	Labels                     []string     `yaml:"labels,omitempty"`
+	Tags                       []string     `yaml:"tags,omitempty"`
+	Priority                   *int32       `yaml:"priority,omitempty"`
+	HasLocalHelpers            bool         `yaml:"hasLocalHelpers,omitempty"`
 }
 
 type CodeTemplateVars struct {

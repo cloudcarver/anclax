@@ -357,14 +357,14 @@ tasks:
 
 ### 唯一任务
 
-防止重复任务执行：
+在唯一标签被占用期间，对任务提交去重：
 
 ```go
 // 这会成功
 taskID1, _ := taskRunner.RunSendWelcomeEmail(ctx, params,
     taskcore.WithUniqueTag("user-123-welcome"))
 
-// 这会失败，返回 ErrTaskAlreadyExists
+// 返回相同的 ID；默认情况下，原任务终止后仍返回原 ID
 taskID2, _ := taskRunner.RunSendWelcomeEmail(ctx, params,
     taskcore.WithUniqueTag("user-123-welcome"))
 ```
@@ -372,7 +372,13 @@ taskID2, _ := taskRunner.RunSendWelcomeEmail(ctx, params,
 **唯一性实现：**
 - 唯一标签存储在数据库中，具有唯一约束
 - 重复检测在数据库级别发生
-- 失败的重复返回特定错误类型
+- 重复提交返回已有任务 ID，不会覆盖原任务的参数或属性
+
+将 `taskcore.WithReleaseUniqueTagOnTerminal(true)` 与 `WithUniqueTag` 一起使用，可以在任务终止后复用标签。配置持久化在 `attributes.releaseUniqueTagOnTerminal` 中，默认值为 `false`。也可以在任务定义中设置 `releaseUniqueTagOnTerminal: true`，单次入队的 override 优先于任务定义。
+
+框架在将状态更新为 `completed`、`failed` 或 `cancelled` 的同一条 SQL 中清空 `unique_tag`，包括直接取消和级联取消。暂停、重试、延期以及 Cron 单轮执行结束都会保留标签。事务回滚会同时保留原状态和标签；用户失败钩子的错误不会单独撤销标签释放。
+
+标签释放后，再次使用相同标签提交会创建新的任务 ID。原任务仍能通过 ID 查询，但不再保留原 unique tag。按 unique tag 查询和控制时会定位当前占用者；没有占用者时返回未找到。取消操作在取消状态写入时释放标签，此时被中断的执行器可能仍在收尾，因此此选项不保证前后两次执行完全不重叠。
 
 ## 性能和可靠性
 

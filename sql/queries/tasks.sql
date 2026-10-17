@@ -233,25 +233,33 @@ WHERE
 -- name: UpdateTaskStatus :exec
 UPDATE anclax.tasks
 SET
-    status = $2,
-    lease_version = CASE WHEN $2 = 'pending' THEN lease_version + 1 ELSE lease_version END,
+    status = sqlc.arg(status)::text,
+    unique_tag = CASE
+        WHEN attributes @> '{"releaseUniqueTagOnTerminal": true}'::jsonb
+            AND sqlc.arg(status)::text IN ('completed', 'failed', 'cancelled') THEN NULL
+        ELSE unique_tag END,
+    lease_version = CASE WHEN sqlc.arg(status) = 'pending' THEN lease_version + 1 ELSE lease_version END,
     updated_at = CURRENT_TIMESTAMP
-WHERE id = $1 AND (
-    ($2 = 'paused' AND status IN ('pending', 'ready', 'running', 'paused'))
-    OR ($2 = 'cancelled' AND status IN ('pending', 'ready', 'running', 'paused', 'cancelled'))
-    OR ($2 = 'pending' AND status = 'paused')
-    OR ($2 IN ('completed', 'failed') AND status IN ('pending', 'ready', 'running'))
+WHERE id = sqlc.arg(id) AND (
+    (sqlc.arg(status) = 'paused' AND status IN ('pending', 'ready', 'running', 'paused'))
+    OR (sqlc.arg(status) = 'cancelled' AND status IN ('pending', 'ready', 'running', 'paused', 'cancelled'))
+    OR (sqlc.arg(status) = 'pending' AND status = 'paused')
+    OR (sqlc.arg(status) IN ('completed', 'failed') AND status IN ('pending', 'ready', 'running'))
 );
 
 -- name: UpdateTaskStatusByWorker :one
 UPDATE anclax.tasks
 SET
-    status = $2,
+    status = sqlc.arg(status)::text,
+    unique_tag = CASE
+        WHEN attributes @> '{"releaseUniqueTagOnTerminal": true}'::jsonb
+            AND sqlc.arg(status)::text IN ('completed', 'failed', 'cancelled') THEN NULL
+        ELSE unique_tag END,
     locked_at = NULL,
     worker_id = NULL,
     lease_expires_at = NULL, lease_duration_ms = NULL,
     updated_at = CURRENT_TIMESTAMP
-WHERE id = $1 AND worker_id = $3 AND lease_version = sqlc.arg(lease_version) AND status IN ('pending', 'running')
+WHERE id = sqlc.arg(id) AND worker_id = sqlc.arg(worker_id) AND lease_version = sqlc.arg(lease_version) AND status IN ('pending', 'running')
 RETURNING id;
 
 -- name: UpdateTask :exec
@@ -435,6 +443,11 @@ WHERE
 UPDATE anclax.tasks
 SET
     status = CASE WHEN status IN ('paused', 'cancelled') THEN status ELSE sqlc.arg(status)::text END,
+    unique_tag = CASE
+        WHEN attributes @> '{"releaseUniqueTagOnTerminal": true}'::jsonb
+            AND (CASE WHEN status IN ('paused', 'cancelled') THEN status ELSE sqlc.arg(status)::text END)
+                IN ('completed', 'failed', 'cancelled') THEN NULL
+        ELSE unique_tag END,
     started_at = CASE WHEN status IN ('pending', 'running') THEN sqlc.narg(started_at)::timestamptz ELSE started_at END,
     attempts = CASE WHEN status IN ('pending', 'running') THEN sqlc.arg(attempts)::int ELSE attempts END,
     locked_at = NULL,

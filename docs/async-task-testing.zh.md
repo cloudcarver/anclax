@@ -17,6 +17,10 @@
 
 确定性故障任务使用 `TAG-*` 名称，报告包含 `assert.tag_takeover` 和 `assert.tag_wait_release` 事件。原有任务统计仍描述 `LONG-*` 批量任务及初始化探针。接管断言检查被中断任务的 ID、owner 和 lease version，初始化重试不能满足条件。审计要求全局/分组峰值确实达到 3/2，且零超限、permit/计数一致、终态映射无残留。
 
+Unique tag 释放的真实 Worker 场景定义在 `pkg/taskcore/e2e/e2e.yaml`，常规运行和三轮 stress 都会执行。用例覆盖未配置、false、true 在完成、失败、取消后的行为，以及 pending、running、paused、重试和 Cron 期间的去重、终态后的复用。生命周期回归另外验证事务回滚和过期执行结果。
+
+每次容器 chaos 都会先执行 `UNIQUE-*` 确定性用例，再运行随机负载。用例验证并发重新提交、杀死 Worker 后接管期间保持占用，以及 PostgreSQL／控制面重启后保留或释放状态的持久性。释放后通过任务 ID 跟踪记录；`assert.unique_tag_reuse`、`assert.unique_tag_takeover`、`assert.unique_tag_restart` 事件记录新旧任务 ID 和租约证据。`LONG-*` 汇总仍只统计随机负载。
+
 断联测试只关闭某个 Worker 的已有数据库连接，并拒绝新连接，执行器的阻塞信号服务仍可访问。该场景调长原 Worker 的心跳间隔，单独验证续租失败导致的租约过期；进程必须保持存活，并在网络恢复后重新连接。提交旧 owner 的结果不得释放新尝试的名额。心跳失败引发停机的路径由已有测试验证。
 
 ## 常规运行

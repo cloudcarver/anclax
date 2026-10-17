@@ -427,6 +427,25 @@ taskID, err := h.taskRunner.RunTaskName(ctx, params,
 )
 ```
 
+默认情况下，终态任务仍保留 unique tag，后续重复提交返回原任务 ID。如果希望在完成、最终失败或取消后允许新任务使用相同标签：
+
+```go
+taskID, err := h.taskRunner.RunTaskName(ctx, params,
+    taskcore.WithUniqueTag(fmt.Sprintf("user-%d-sync", userID)),
+    taskcore.WithReleaseUniqueTagOnTerminal(true),
+)
+```
+
+也可以在任务定义中设置默认值：
+
+```yaml
+tasks:
+  - name: SyncUser
+    releaseUniqueTagOnTerminal: true
+```
+
+该选项写入 `attributes.releaseUniqueTagOnTerminal`。暂停、重试、延期和 Cron 单轮执行结束仍然占用标签。清空标签后，旧任务仍能通过任务 ID 查询。取消时释放标签不代表被中断的执行器已经完成收尾。
+
 ### 任务属性
 
 在执行器中访问任务元数据：

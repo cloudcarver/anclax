@@ -100,6 +100,13 @@ func TestContainerizedTaskcoreChaosSmoke(t *testing.T) {
 
 	must(h.Start(ctx))
 	must(installTagConcurrencyAudit(ctx, h.Inspector()))
+	// These fixtures restart PostgreSQL and the control plane before the
+	// long-running workload starts, so recovery assertions target only their tasks.
+	if !t.Run("unique_tag_release_faults", func(t *testing.T) {
+		runUniqueTagReleaseFaultScenarios(t, ctx, h)
+	}) {
+		must(fmt.Errorf("deterministic unique tag release fault scenario failed"))
+	}
 	state = &chaosState{
 		rng: rand.New(rand.NewSource(cfg.Seed)),
 		workers: []*chaosWorkerSlot{
