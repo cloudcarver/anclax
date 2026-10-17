@@ -139,7 +139,9 @@ func (e *Executor) ExecuteBroadcastCancelTask(ctx context.Context, task taskwork
 		return errors.Wrap(taskcore.ErrFatalTask, err.Error())
 	}
 
-	targetWorkers, err := e.aliveSubsetOfSnapshot(ctx, params.WorkerIDs)
+	targetWorkers, err := e.aliveSubsetOfSnapshot(ctx, params.WorkerIDs, func(workerID uuid.UUID) string {
+		return cancelOnWorkerUniqueTag(requestID, workerID)
+	})
 	if err != nil {
 		return err
 	}
@@ -207,7 +209,9 @@ func (e *Executor) ExecuteBroadcastPauseTask(ctx context.Context, task taskworke
 		return errors.Wrap(taskcore.ErrFatalTask, err.Error())
 	}
 
-	targetWorkers, err := e.aliveSubsetOfSnapshot(ctx, params.WorkerIDs)
+	targetWorkers, err := e.aliveSubsetOfSnapshot(ctx, params.WorkerIDs, func(workerID uuid.UUID) string {
+		return pauseOnWorkerUniqueTag(requestID, workerID)
+	})
 	if err != nil {
 		return err
 	}
@@ -424,7 +428,7 @@ func (e *Executor) snapshotOrListAliveWorkers(ctx context.Context, workerIDs []u
 	return e.listAliveWorkers(ctx)
 }
 
-func (e *Executor) aliveSubsetOfSnapshot(ctx context.Context, workerIDs []uuid.UUID) ([]uuid.UUID, error) {
+func (e *Executor) aliveSubsetOfSnapshot(ctx context.Context, workerIDs []uuid.UUID, uniqueTagFn func(uuid.UUID) string) ([]uuid.UUID, error) {
 	snapshotIDs := normalizeWorkerIDSnapshot(workerIDs)
 	if len(snapshotIDs) == 0 {
 		return e.listAliveWorkers(ctx)
@@ -441,27 +445,20 @@ func (e *Executor) aliveSubsetOfSnapshot(ctx context.Context, workerIDs []uuid.U
 	for _, workerID := range snapshotIDs {
 		if _, ok := aliveSet[workerID]; ok {
 			out = append(out, workerID)
+			continue
+		}
+		// A worker can disappear between attempts, before the ACK check runs.
+		// Cancel its durable command before dropping it from this attempt's targets.
+		if err := e.cancelObsoleteWorkerCommandTask(ctx, uniqueTagFn(workerID)); err != nil {
+			return nil, err
 		}
 	}
 	return out, nil
 }
 
 func (e *Executor) cancelObsoleteWorkerCommandTask(ctx context.Context, uniqueTag string) error {
-	task, err := e.model.GetTaskByUniqueTag(ctx, &uniqueTag)
-	if err != nil {
-		if stdErrors.Is(err, pgx.ErrNoRows) {
-			return nil
-		}
-		return errors.Wrapf(err, "get worker command task by unique tag %s", uniqueTag)
-	}
-
-	if task.Status != string(apigen.Pending) && task.Status != string(apigen.TaskStatusRunning) {
-		return nil
-	}
-	if err := e.model.UpdateTaskStatus(ctx, querier.UpdateTaskStatusParams{ID: task.ID, Status: string(apigen.Cancelled)}); err != nil {
-		return errors.Wrapf(err, "cancel obsolete worker command task %s", uniqueTag)
-	}
-	return nil
+	// Check and update atomically so a concurrent completion keeps its history.
+	return errors.Wrapf(e.model.CancelWorkerCommandTaskByUniqueTag(ctx, &uniqueTag), "cancel obsolete worker command task %s", uniqueTag)
 }
 
 func (e *Executor) waitForWorkerCommandTasks(ctx context.Context, targetWorkers []uuid.UUID, fanoutInterval time.Duration, uniqueTagFn func(workerID uuid.UUID) string) error {
@@ -496,7 +493,9 @@ func (e *Executor) waitForWorkerCommandTasks(ctx context.Context, targetWorkers 
 			return errors.Wrapf(err, "get worker command task by unique tag %s", uniqueTag)
 		}
 		switch apigen.TaskStatus(task.Status) {
-		case apigen.Completed:
+		case apigen.Completed, apigen.Cancelled:
+			// A command cancelled after a missed heartbeat stays resolved if the
+			// worker comes back before the other targets acknowledge the broadcast.
 			continue
 		case apigen.Failed:
 			return errors.Errorf("worker command task failed (worker=%s task_id=%d unique_tag=%s)", workerID, task.ID, uniqueTag)

@@ -267,6 +267,8 @@ Worker control-plane messages are durable tasks with reserved types, claimed thr
 - `broadcastCancelTask` fans out `cancelTaskOnWorker`.
 - `broadcastPauseTask` fans out `pauseTaskOnWorker`.
 
+Cancel and pause broadcasts directly cancel unfinished commands for offline workers before removing those workers from the request's snapshot targets. This also covers workers that disappear between broadcast attempts, before the ACK check runs. Cancellation is an atomic, conditional status update: terminal history and unrelated tasks are preserved, and database errors propagate so the parent broadcast retries. A cancelled command remains resolved if its worker comes back before the other targets acknowledge the broadcast.
+
 Broadcast tasks snapshot alive workers, enqueue one worker-targeted command task per remote worker, and wait for command tasks or DB convergence depending on the operation. Worker-targeted command tasks use `worker:<id>` labels and unique tags so each target worker claims its own command.
 
 After `InterruptTasks`, control handlers check whether the target executions have finalized. If any remain, they return `DeferTask`, persisting the next check and releasing the control slot. Broadcast acknowledgement checks use the same mechanism. Registry entries close at the end of `FinalizeTask` for the matching lease version. The control-plane caller still waits for convergence, while workers release capacity between checks. Deferred invocations reuse request IDs, configuration versions, and per-worker child unique tags.

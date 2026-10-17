@@ -262,6 +262,13 @@ SET
 WHERE id = sqlc.arg(id) AND worker_id = sqlc.arg(worker_id) AND lease_version = sqlc.arg(lease_version) AND status IN ('pending', 'running')
 RETURNING id;
 
+-- name: CancelWorkerCommandTaskByUniqueTag :exec
+UPDATE anclax.tasks
+SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
+WHERE unique_tag = sqlc.arg(unique_tag)
+    AND spec->>'type' IN ('cancelTaskOnWorker', 'pauseTaskOnWorker', 'applyWorkerRuntimeConfigToWorker')
+    AND status IN ('pending', 'ready', 'running', 'paused');
+
 -- name: UpdateTask :exec
 UPDATE anclax.tasks
 SET

@@ -46,6 +46,20 @@ func (m *MockModelInterface) EXPECT() *MockModelInterfaceMockRecorder {
 	return m.recorder
 }
 
+// CancelWorkerCommandTaskByUniqueTag mocks base method.
+func (m *MockModelInterface) CancelWorkerCommandTaskByUniqueTag(ctx context.Context, uniqueTag *string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CancelWorkerCommandTaskByUniqueTag", ctx, uniqueTag)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CancelWorkerCommandTaskByUniqueTag indicates an expected call of CancelWorkerCommandTaskByUniqueTag.
+func (mr *MockModelInterfaceMockRecorder) CancelWorkerCommandTaskByUniqueTag(ctx, uniqueTag any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CancelWorkerCommandTaskByUniqueTag", reflect.TypeOf((*MockModelInterface)(nil).CancelWorkerCommandTaskByUniqueTag), ctx, uniqueTag)
+}
+
 // ClaimNormalTaskByGroup mocks base method.
 func (m *MockModelInterface) ClaimNormalTaskByGroup(ctx context.Context, arg querier.ClaimNormalTaskByGroupParams) (*querier.AnclaxTask, error) {
 	m.ctrl.T.Helper()
