@@ -17,6 +17,10 @@ The suite checks task and tag-concurrency invariants at several layers. Passing 
 
 The deterministic fault fixtures use `TAG-*` names and emit `assert.tag_takeover`/`assert.tag_wait_release` report events. The existing task summary covers `LONG-*` workload tasks, including the initialization probes. Recovery assertions target the interrupted task ID, owner and lease version; initialization retries cannot satisfy them. The audit requires global/group peaks of 3/2, no oversubscription, consistent permits/counters and no terminal membership residue.
 
+Unique-tag release has real-worker scenarios in `pkg/taskcore/e2e/e2e.yaml`, included in both the regular and three-repeat stress runs. They check absent/false/true policies for completion, failure and cancellation; deduplication while pending, running, paused, retrying or recurring; and reuse after a terminal transition. The lifecycle regressions additionally check atomic rollback and stale finalization.
+
+Every container chaos run also executes the `UNIQUE-*` fixtures before the random workload. They check concurrent resubmission, ownership through a killed worker's lease takeover, and persistence of both retained and released tags across PostgreSQL/control-plane restarts. Assertions follow task IDs after release, and `assert.unique_tag_reuse`, `assert.unique_tag_takeover` and `assert.unique_tag_restart` events record the old/new IDs and lease evidence. The `LONG-*` summary remains scoped to the random workload.
+
 The database-partition test closes existing TCP connections and rejects new ones for one worker. Its executor gate stays reachable. The owner's heartbeat interval is extended for this fixture so lease-renewal expiry is tested independently of heartbeat shutdown; the original process must remain alive and reconnect after healing. Replacement attempts must keep their permits when an old-owner result is submitted.
 
 ## Regular runs

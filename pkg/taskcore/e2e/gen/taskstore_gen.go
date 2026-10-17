@@ -57,6 +57,7 @@ type TaskStore interface {
 	Enqueue(ctx context.Context, task string, priority int32, weight int32, labels []string) error
 	EnqueueRaw(ctx context.Context, task string, taskType string, payload string, priority int32, weight int32, labels []string, retryInterval string, retryMaxAttempts int32, cronExpression string, startInSeconds int32) error
 	EnqueueSerial(ctx context.Context, task string, serialKey string, serialID int32, startInSeconds int32) error
+	EnqueueUnique(ctx context.Context, task string, uniqueTag string, release *bool, retryInterval string, retryMaxAttempts int32, cronExpression string) (int32, error)
 	SetTaskTags(ctx context.Context, task string, tags []string) error
 	SetTaskStartOffset(ctx context.Context, task string, offsetSeconds int32) error
 	SetTaskParent(ctx context.Context, task string, parent string) error
@@ -310,6 +311,15 @@ func runAllWithActors(ctx context.Context, actors Actors) error {
 	}
 	if err := RunScenarioAtLeastOnceRetryAndIdempotentSideEffectPattern(ctx, actors); err != nil {
 		return fmt.Errorf("scenario at_least_once_retry_and_idempotent_side_effect_pattern: %w", err)
+	}
+	if err := RunScenarioUniqueTagTerminalPolicy(ctx, actors); err != nil {
+		return fmt.Errorf("scenario unique_tag_terminal_policy: %w", err)
+	}
+	if err := RunScenarioUniqueTagRunningPauseResumeCancel(ctx, actors); err != nil {
+		return fmt.Errorf("scenario unique_tag_running_pause_resume_cancel: %w", err)
+	}
+	if err := RunScenarioUniqueTagRetryAndCronRetention(ctx, actors); err != nil {
+		return fmt.Errorf("scenario unique_tag_retry_and_cron_retention: %w", err)
 	}
 	return nil
 }
@@ -6884,4 +6894,266 @@ func runStepAtLeastOnceRetryAndIdempotentSideEffectPatternS4(parent context.Cont
 		}
 	}
 	return nil
+}
+
+func RunScenarioUniqueTagTerminalPolicy(ctx context.Context, actors Actors) error {
+	vars := newVarStore()
+	if err := runStepUniqueTagTerminalPolicyTerminalOutcomes(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step terminal_outcomes: %w", err)
+	}
+	return nil
+}
+
+func runStepUniqueTagTerminalPolicyTerminalOutcomes(parent context.Context, actors Actors, vars *varStore) (err error) {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	t := &scriptT{}
+	set := func(name string, value any) {
+		vars.Set(name, value)
+	}
+	get := func(name string) any {
+		val, _ := vars.Get(name)
+		return val
+	}
+	_ = t
+	_ = set
+	_ = get
+	defer func() {
+		if r := recover(); r != nil {
+			if fail, ok := r.(scriptFail); ok {
+				if fail.err != nil {
+					err = fail.err
+					return
+				}
+				err = fmt.Errorf("script failed")
+				return
+			}
+			err = fmt.Errorf("script panic: %v", r)
+			return
+		}
+		if t.failed && err == nil {
+			if t.err != nil {
+				err = t.err
+			} else {
+				err = fmt.Errorf("script failed")
+			}
+		}
+	}()
+	enabled, disabled := true, false
+	for _, policy := range []struct {
+		name    string
+		release *bool
+	}{{"default", nil}, {"disabled", &disabled}, {"enabled", &enabled}} {
+		for _, status := range []string{"completed", "failed", "cancelled"} {
+			name := "UNIQUE_" + policy.name + "_" + status
+			id, err := actors.TaskStore.EnqueueUnique(ctx, name, name, policy.release, "", 0, "")
+			require.NoError(t, err)
+			duplicate, err := actors.TaskStore.EnqueueUnique(ctx, name+"_duplicate", name, &enabled, "", 0, "")
+			require.NoError(t, err)
+			require.Equal(t, id, duplicate)
+			mode := "capture"
+			if status == "failed" {
+				mode = "failure"
+			}
+			if status == "cancelled" {
+				mode = "blocking"
+			}
+			require.NoError(t, actors.Runtime.StartWorker(ctx, name, mode, "unique-tag-e2e", []string{}, 20, 20, 200, 20, 1, 0, false, ""))
+			switch status {
+			case "completed":
+				require.NoError(t, actors.Runtime.WaitTaskCompletion(ctx, name, 5000))
+			case "failed":
+				require.NoError(t, actors.Runtime.WaitTaskFailed(ctx, name, 5000))
+			case "cancelled":
+				require.NoError(t, actors.Runtime.WaitSignal(ctx, name, "started", 5000))
+				require.NoError(t, actors.ControlPlane.CancelTask(ctx, name))
+				require.NoError(t, actors.ControlPlane.WaitForTaskCancelled(ctx, name))
+				require.NoError(t, actors.Runtime.WaitTaskUnlock(ctx, name, 5000))
+			}
+			require.NoError(t, actors.Runtime.StopWorker(ctx, name))
+			rows, err := actors.Validator.Query(ctx, "select status, unique_tag from anclax.tasks where id = $1", []any{id})
+			require.NoError(t, err)
+			var expectedTag any = name
+			released := policy.release != nil && *policy.release
+			if released {
+				expectedTag = nil
+			}
+			require.Equal(t, [][]any{{status, expectedTag}}, rows)
+			// An incoming request cannot override the current owner's policy.
+			nextPolicy := !released
+			next, err := actors.TaskStore.EnqueueUnique(ctx, name+"_next", name, &nextPolicy, "", 0, "")
+			require.NoError(t, err)
+			if released {
+				require.NotEqual(t, id, next)
+				require.NoError(t, actors.ControlPlane.CancelTask(ctx, name+"_next"))
+			} else {
+				require.Equal(t, id, next)
+			}
+		}
+	}
+	return err
+}
+
+func RunScenarioUniqueTagRunningPauseResumeCancel(ctx context.Context, actors Actors) error {
+	vars := newVarStore()
+	if err := runStepUniqueTagRunningPauseResumeCancelControlledLifecycle(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step controlled_lifecycle: %w", err)
+	}
+	return nil
+}
+
+func runStepUniqueTagRunningPauseResumeCancelControlledLifecycle(parent context.Context, actors Actors, vars *varStore) (err error) {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	t := &scriptT{}
+	set := func(name string, value any) {
+		vars.Set(name, value)
+	}
+	get := func(name string) any {
+		val, _ := vars.Get(name)
+		return val
+	}
+	_ = t
+	_ = set
+	_ = get
+	defer func() {
+		if r := recover(); r != nil {
+			if fail, ok := r.(scriptFail); ok {
+				if fail.err != nil {
+					err = fail.err
+					return
+				}
+				err = fmt.Errorf("script failed")
+				return
+			}
+			err = fmt.Errorf("script panic: %v", r)
+			return
+		}
+		if t.failed && err == nil {
+			if t.err != nil {
+				err = t.err
+			} else {
+				err = fmt.Errorf("script failed")
+			}
+		}
+	}()
+	enabled := true
+	name := "UNIQUE_PAUSE"
+	id, err := actors.TaskStore.EnqueueUnique(ctx, name, name, &enabled, "", 0, "")
+	require.NoError(t, err)
+	require.NoError(t, actors.TaskStore.SetTaskTags(ctx, name, []string{name}))
+	require.NoError(t, actors.Runtime.StartWorker(ctx, name, "blocking", "unique-tag-e2e", []string{}, 20, 20, 200, 20, 1, 0, false, ""))
+	require.NoError(t, actors.Runtime.WaitSignal(ctx, name, "started", 5000))
+	duplicate, err := actors.TaskStore.EnqueueUnique(ctx, name+"_running", name, nil, "", 0, "")
+	require.NoError(t, err)
+	require.Equal(t, id, duplicate)
+	require.NoError(t, actors.ControlPlane.PauseTask(ctx, name))
+	require.NoError(t, actors.Runtime.WaitTaskUnlock(ctx, name, 5000))
+	rows, err := actors.Validator.Query(ctx, "select status, unique_tag from anclax.tasks where id = $1", []any{id})
+	require.NoError(t, err)
+	require.Equal(t, [][]any{{"paused", name}}, rows)
+	duplicate, err = actors.TaskStore.EnqueueUnique(ctx, name+"_paused", name, nil, "", 0, "")
+	require.NoError(t, err)
+	require.Equal(t, id, duplicate)
+	require.NoError(t, actors.ControlPlane.ResumeTasksByTags(ctx, []string{name}, nil))
+	require.NoError(t, actors.Runtime.WaitTaskLock(ctx, name, 5000))
+	duplicate, err = actors.TaskStore.EnqueueUnique(ctx, name+"_resumed", name, nil, "", 0, "")
+	require.NoError(t, err)
+	require.Equal(t, id, duplicate)
+	require.NoError(t, actors.ControlPlane.CancelTask(ctx, name))
+	require.NoError(t, actors.ControlPlane.WaitForTaskCancelled(ctx, name))
+	require.NoError(t, actors.Runtime.WaitTaskUnlock(ctx, name, 5000))
+	require.NoError(t, actors.Runtime.StopWorker(ctx, name))
+	rows, err = actors.Validator.Query(ctx, "select status, unique_tag from anclax.tasks where id = $1", []any{id})
+	require.NoError(t, err)
+	require.Equal(t, [][]any{{"cancelled", nil}}, rows)
+	next, err := actors.TaskStore.EnqueueUnique(ctx, name+"_next", name, &enabled, "", 0, "")
+	require.NoError(t, err)
+	require.NotEqual(t, id, next)
+	require.NoError(t, actors.ControlPlane.CancelTask(ctx, name+"_next"))
+	return err
+}
+
+func RunScenarioUniqueTagRetryAndCronRetention(ctx context.Context, actors Actors) error {
+	vars := newVarStore()
+	if err := runStepUniqueTagRetryAndCronRetentionRecurringAttempts(ctx, actors, vars); err != nil {
+		return fmt.Errorf("step recurring_attempts: %w", err)
+	}
+	return nil
+}
+
+func runStepUniqueTagRetryAndCronRetentionRecurringAttempts(parent context.Context, actors Actors, vars *varStore) (err error) {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
+	t := &scriptT{}
+	set := func(name string, value any) {
+		vars.Set(name, value)
+	}
+	get := func(name string) any {
+		val, _ := vars.Get(name)
+		return val
+	}
+	_ = t
+	_ = set
+	_ = get
+	defer func() {
+		if r := recover(); r != nil {
+			if fail, ok := r.(scriptFail); ok {
+				if fail.err != nil {
+					err = fail.err
+					return
+				}
+				err = fmt.Errorf("script failed")
+				return
+			}
+			err = fmt.Errorf("script panic: %v", r)
+			return
+		}
+		if t.failed && err == nil {
+			if t.err != nil {
+				err = t.err
+			} else {
+				err = fmt.Errorf("script failed")
+			}
+		}
+	}()
+	enabled := true
+	for _, kind := range []string{"retry", "cron"} {
+		name := "UNIQUE_" + kind
+		mode, retryInterval, cron := "capture", "", ""
+		if kind == "retry" {
+			mode, retryInterval = "capture-fail-once:"+name, "1h"
+		} else {
+			cron = "0 0 0 1 1 *"
+		}
+		require.NoError(t, actors.Runtime.ResetCaptured(ctx))
+		id, err := actors.TaskStore.EnqueueUnique(ctx, name, name, &enabled, retryInterval, 2, cron)
+		require.NoError(t, err)
+		require.NoError(t, actors.Runtime.StartWorker(ctx, name, mode, "unique-tag-e2e", []string{}, 20, 20, 200, 20, 1, 0, false, ""))
+		require.NoError(t, actors.Runtime.WaitCapturedCount(ctx, 1, 5000))
+		require.NoError(t, actors.Runtime.WaitTaskPendingUnlocked(ctx, name, 5000))
+		rows, err := actors.Validator.Query(ctx, "select status, unique_tag, started_at > now() from anclax.tasks where id = $1", []any{id})
+		require.NoError(t, err)
+		require.Equal(t, [][]any{{"pending", name, true}}, rows)
+		duplicate, err := actors.TaskStore.EnqueueUnique(ctx, name+"_duplicate", name, &enabled, "", 0, "")
+		require.NoError(t, err)
+		require.Equal(t, id, duplicate)
+		if kind == "retry" {
+			require.NoError(t, actors.TaskStore.SetTaskStartOffset(ctx, name, -60))
+			require.NoError(t, actors.Runtime.WaitTaskCompletion(ctx, name, 5000))
+			require.NoError(t, actors.Runtime.AssertCapturedTaskCount(ctx, name, 2))
+		} else {
+			require.NoError(t, actors.ControlPlane.CancelTask(ctx, name))
+			require.NoError(t, actors.ControlPlane.WaitForTaskCancelled(ctx, name))
+		}
+		require.NoError(t, actors.Runtime.StopWorker(ctx, name))
+		rows, err = actors.Validator.Query(ctx, "select unique_tag from anclax.tasks where id = $1", []any{id})
+		require.NoError(t, err)
+		require.Equal(t, [][]any{{nil}}, rows)
+		next, err := actors.TaskStore.EnqueueUnique(ctx, name+"_next", name, &enabled, "", 0, "")
+		require.NoError(t, err)
+		require.NotEqual(t, id, next)
+		require.NoError(t, actors.ControlPlane.CancelTask(ctx, name+"_next"))
+	}
+	return err
 }

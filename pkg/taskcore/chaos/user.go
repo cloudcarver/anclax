@@ -28,18 +28,19 @@ func (u *User) SubmitStressProbe(ctx context.Context, req SubmitStressProbeReque
 	}
 	if u.Report != nil {
 		u.Report.AddEvent("user.submit_task", req.TaskName, "stress probe submitted", map[string]any{
-			"taskID":           taskID,
-			"group":            req.Group,
-			"labels":           req.Labels,
-			"tags":             req.Tags,
-			"sleepMs":          req.SleepMs,
-			"delayMs":          req.DelayMs,
-			"failMode":         req.FailMode,
-			"uniqueTag":        req.UniqueTag,
-			"retryInterval":    req.RetryInterval,
-			"retryMaxAttempts": req.RetryMaxAttempts,
-			"signalBaseURL":    req.SignalBaseURL,
-			"signalIntervalMs": req.SignalIntervalMs,
+			"taskID":                     taskID,
+			"group":                      req.Group,
+			"labels":                     req.Labels,
+			"tags":                       req.Tags,
+			"sleepMs":                    req.SleepMs,
+			"delayMs":                    req.DelayMs,
+			"failMode":                   req.FailMode,
+			"uniqueTag":                  req.UniqueTag,
+			"releaseUniqueTagOnTerminal": req.ReleaseUniqueTagOnTerminal,
+			"retryInterval":              req.RetryInterval,
+			"retryMaxAttempts":           req.RetryMaxAttempts,
+			"signalBaseURL":              req.SignalBaseURL,
+			"signalIntervalMs":           req.SignalIntervalMs,
 		})
 	}
 	return taskID, nil

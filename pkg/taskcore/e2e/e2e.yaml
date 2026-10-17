@@ -7,6 +7,7 @@ interfaces:
       - Enqueue(ctx context.Context, task string, priority int32, weight int32, labels []string) error
       - EnqueueRaw(ctx context.Context, task string, taskType string, payload string, priority int32, weight int32, labels []string, retryInterval string, retryMaxAttempts int32, cronExpression string, startInSeconds int32) error
       - EnqueueSerial(ctx context.Context, task string, serialKey string, serialID int32, startInSeconds int32) error
+      - EnqueueUnique(ctx context.Context, task string, uniqueTag string, release *bool, retryInterval string, retryMaxAttempts int32, cronExpression string) (int32, error)
       - SetTaskTags(ctx context.Context, task string, tags []string) error
       - SetTaskStartOffset(ctx context.Context, task string, offsetSeconds int32) error
       - SetTaskParent(ctx context.Context, task string, parent string) error
@@ -1335,3 +1336,139 @@ scenarios:
             - AssertIdempotentStats(ctx, "ao_idem", "AO_IDEM", 2, 1)
             - StopWorker(ctx, "ao_idem")
             - WaitNoPendingTasks(ctx, 5000)
+
+  - name: unique_tag_terminal_policy
+    description: real workers release opted-in tags on completion, failure and cancellation; default and false preserve deduplication.
+    steps:
+      - id: terminal_outcomes
+        script: |
+          enabled, disabled := true, false
+          for _, policy := range []struct {
+            name string
+            release *bool
+          }{{"default", nil}, {"disabled", &disabled}, {"enabled", &enabled}} {
+            for _, status := range []string{"completed", "failed", "cancelled"} {
+              name := "UNIQUE_" + policy.name + "_" + status
+              id, err := actors.TaskStore.EnqueueUnique(ctx, name, name, policy.release, "", 0, "")
+              require.NoError(t, err)
+              duplicate, err := actors.TaskStore.EnqueueUnique(ctx, name+"_duplicate", name, &enabled, "", 0, "")
+              require.NoError(t, err)
+              require.Equal(t, id, duplicate)
+              mode := "capture"
+              if status == "failed" { mode = "failure" }
+              if status == "cancelled" { mode = "blocking" }
+              require.NoError(t, actors.Runtime.StartWorker(ctx, name, mode, "unique-tag-e2e", []string{}, 20, 20, 200, 20, 1, 0, false, ""))
+              switch status {
+              case "completed":
+                require.NoError(t, actors.Runtime.WaitTaskCompletion(ctx, name, 5000))
+              case "failed":
+                require.NoError(t, actors.Runtime.WaitTaskFailed(ctx, name, 5000))
+              case "cancelled":
+                require.NoError(t, actors.Runtime.WaitSignal(ctx, name, "started", 5000))
+                require.NoError(t, actors.ControlPlane.CancelTask(ctx, name))
+                require.NoError(t, actors.ControlPlane.WaitForTaskCancelled(ctx, name))
+                require.NoError(t, actors.Runtime.WaitTaskUnlock(ctx, name, 5000))
+              }
+              require.NoError(t, actors.Runtime.StopWorker(ctx, name))
+              rows, err := actors.Validator.Query(ctx, "select status, unique_tag from anclax.tasks where id = $1", []any{id})
+              require.NoError(t, err)
+              var expectedTag any = name
+              released := policy.release != nil && *policy.release
+              if released { expectedTag = nil }
+              require.Equal(t, [][]any{{status, expectedTag}}, rows)
+              // An incoming request cannot override the current owner's policy.
+              nextPolicy := !released
+              next, err := actors.TaskStore.EnqueueUnique(ctx, name+"_next", name, &nextPolicy, "", 0, "")
+              require.NoError(t, err)
+              if released {
+                require.NotEqual(t, id, next)
+                require.NoError(t, actors.ControlPlane.CancelTask(ctx, name+"_next"))
+              } else {
+                require.Equal(t, id, next)
+              }
+            }
+          }
+
+  - name: unique_tag_running_pause_resume_cancel
+    description: running and paused tasks keep their tags; resume preserves ownership and cancellation makes the tag reusable.
+    steps:
+      - id: controlled_lifecycle
+        script: |
+          enabled := true
+          name := "UNIQUE_PAUSE"
+          id, err := actors.TaskStore.EnqueueUnique(ctx, name, name, &enabled, "", 0, "")
+          require.NoError(t, err)
+          require.NoError(t, actors.TaskStore.SetTaskTags(ctx, name, []string{name}))
+          require.NoError(t, actors.Runtime.StartWorker(ctx, name, "blocking", "unique-tag-e2e", []string{}, 20, 20, 200, 20, 1, 0, false, ""))
+          require.NoError(t, actors.Runtime.WaitSignal(ctx, name, "started", 5000))
+          duplicate, err := actors.TaskStore.EnqueueUnique(ctx, name+"_running", name, nil, "", 0, "")
+          require.NoError(t, err)
+          require.Equal(t, id, duplicate)
+          require.NoError(t, actors.ControlPlane.PauseTask(ctx, name))
+          require.NoError(t, actors.Runtime.WaitTaskUnlock(ctx, name, 5000))
+          rows, err := actors.Validator.Query(ctx, "select status, unique_tag from anclax.tasks where id = $1", []any{id})
+          require.NoError(t, err)
+          require.Equal(t, [][]any{{"paused", name}}, rows)
+          duplicate, err = actors.TaskStore.EnqueueUnique(ctx, name+"_paused", name, nil, "", 0, "")
+          require.NoError(t, err)
+          require.Equal(t, id, duplicate)
+          require.NoError(t, actors.ControlPlane.ResumeTasksByTags(ctx, []string{name}, nil))
+          require.NoError(t, actors.Runtime.WaitTaskLock(ctx, name, 5000))
+          duplicate, err = actors.TaskStore.EnqueueUnique(ctx, name+"_resumed", name, nil, "", 0, "")
+          require.NoError(t, err)
+          require.Equal(t, id, duplicate)
+          require.NoError(t, actors.ControlPlane.CancelTask(ctx, name))
+          require.NoError(t, actors.ControlPlane.WaitForTaskCancelled(ctx, name))
+          require.NoError(t, actors.Runtime.WaitTaskUnlock(ctx, name, 5000))
+          require.NoError(t, actors.Runtime.StopWorker(ctx, name))
+          rows, err = actors.Validator.Query(ctx, "select status, unique_tag from anclax.tasks where id = $1", []any{id})
+          require.NoError(t, err)
+          require.Equal(t, [][]any{{"cancelled", nil}}, rows)
+          next, err := actors.TaskStore.EnqueueUnique(ctx, name+"_next", name, &enabled, "", 0, "")
+          require.NoError(t, err)
+          require.NotEqual(t, id, next)
+          require.NoError(t, actors.ControlPlane.CancelTask(ctx, name+"_next"))
+
+  - name: unique_tag_retry_and_cron_retention
+    description: a completed attempt does not release a retrying or recurring task's unique tag.
+    steps:
+      - id: recurring_attempts
+        script: |
+          enabled := true
+          for _, kind := range []string{"retry", "cron"} {
+            name := "UNIQUE_" + kind
+            mode, retryInterval, cron := "capture", "", ""
+            if kind == "retry" {
+              mode, retryInterval = "capture-fail-once:"+name, "1h"
+            } else {
+              cron = "0 0 0 1 1 *"
+            }
+            require.NoError(t, actors.Runtime.ResetCaptured(ctx))
+            id, err := actors.TaskStore.EnqueueUnique(ctx, name, name, &enabled, retryInterval, 2, cron)
+            require.NoError(t, err)
+            require.NoError(t, actors.Runtime.StartWorker(ctx, name, mode, "unique-tag-e2e", []string{}, 20, 20, 200, 20, 1, 0, false, ""))
+            require.NoError(t, actors.Runtime.WaitCapturedCount(ctx, 1, 5000))
+            require.NoError(t, actors.Runtime.WaitTaskPendingUnlocked(ctx, name, 5000))
+            rows, err := actors.Validator.Query(ctx, "select status, unique_tag, started_at > now() from anclax.tasks where id = $1", []any{id})
+            require.NoError(t, err)
+            require.Equal(t, [][]any{{"pending", name, true}}, rows)
+            duplicate, err := actors.TaskStore.EnqueueUnique(ctx, name+"_duplicate", name, &enabled, "", 0, "")
+            require.NoError(t, err)
+            require.Equal(t, id, duplicate)
+            if kind == "retry" {
+              require.NoError(t, actors.TaskStore.SetTaskStartOffset(ctx, name, -60))
+              require.NoError(t, actors.Runtime.WaitTaskCompletion(ctx, name, 5000))
+              require.NoError(t, actors.Runtime.AssertCapturedTaskCount(ctx, name, 2))
+            } else {
+              require.NoError(t, actors.ControlPlane.CancelTask(ctx, name))
+              require.NoError(t, actors.ControlPlane.WaitForTaskCancelled(ctx, name))
+            }
+            require.NoError(t, actors.Runtime.StopWorker(ctx, name))
+            rows, err = actors.Validator.Query(ctx, "select unique_tag from anclax.tasks where id = $1", []any{id})
+            require.NoError(t, err)
+            require.Equal(t, [][]any{{nil}}, rows)
+            next, err := actors.TaskStore.EnqueueUnique(ctx, name+"_next", name, &enabled, "", 0, "")
+            require.NoError(t, err)
+            require.NotEqual(t, id, next)
+            require.NoError(t, actors.ControlPlane.CancelTask(ctx, name+"_next"))
+          }

@@ -161,6 +161,8 @@ go test -tags smoke ./pkg/taskcore/chaos -run TestContainerizedTaskcoreChaosSmok
 
 Images default to `postgres:15` and `alpine:3.20`. Helpers are built for Linux for use in containers, including when the test runner is on macOS. Docker and the build target must use compatible CPU architectures. Container-to-container test traffic bypasses inherited HTTP proxy settings. Progress is logged every ten iterations.
 
+The mandatory unique-tag fixtures (`unique_tag_release_faults_smoke_test.go`) run before the random workload. The stress-probe endpoint accepts optional `releaseUniqueTagOnTerminal`; tests cover omitted/false/true policies for all terminal states, eight simultaneous submissions for a released tag, killed-owner recovery, stale results, and PostgreSQL/control-plane restart. Executor gates keep each owner running until the relevant assertion finishes. Released tasks are inspected by ID, and `assert.unique_tag_*` report events include old/new task IDs and lease versions. These fixtures use `UNIQUE-*` names and are separate from the `LONG-*` workload totals.
+
 The initial tag-control probes are scheduled in the future while pause/resume/cancel and exclusion rules are asserted. The fixture then makes the remaining pending probes due, without changing their states. This keeps the test independent of broadcast latency: a completed task cannot be retroactively cancelled.
 
 ## Artifact layout
