@@ -9,3 +9,7 @@ CURRENT_TASK.md
 # Keep raw benchmark reports outside the repository; retain Markdown reports.
 docs/benchmarks/*.json
 docs/benchmarks/*.log
+
+# Generated client test artifacts
+__pycache__/
+node_modules/

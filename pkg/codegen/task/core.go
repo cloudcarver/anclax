@@ -100,9 +100,11 @@ func process(data map[string]any, onFunc func(f Function) error, onParam func(na
 			if !ok {
 				return errors.New("cronjob cannot be parsed to a map")
 			}
-			cronjob = &Cronjob{
-				CronExpression: cronjobStr["cronExpression"].(string),
+			expression, ok := cronjobStr["cronExpression"].(string)
+			if !ok {
+				return fmt.Errorf("cronExpression for %s must be a string", fnName)
 			}
+			cronjob = &Cronjob{CronExpression: expression}
 		}
 
 		// parse retry policy

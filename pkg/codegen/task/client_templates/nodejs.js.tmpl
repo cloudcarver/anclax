@@ -1,0 +1,134 @@
+"use strict";
+
+{{SQL}}
+
+const systemTasks = new Set([
+  "prefetchTasks", "broadcastUpdateWorkerRuntimeConfig", "applyWorkerRuntimeConfigToWorker",
+  "broadcastCancelTask", "cancelTaskOnWorker", "broadcastPauseTask", "pauseTaskOnWorker",
+]);
+
+function int32(value, name, minimum = -2147483648) {
+  if (!Number.isInteger(value) || value < minimum || value > 2147483647) {
+    throw new RangeError(`${name} must be an int32 >= ${minimum}`);
+  }
+  return value;
+}
+
+function strings(value, name) {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throw new TypeError(`${name} must be an array of strings`);
+  }
+}
+
+function json(value) {
+  return JSON.stringify(value, (_key, item) => {
+    if (typeof item === "function" || typeof item === "symbol") {
+      throw new TypeError("task values must be JSON serializable");
+    }
+    if (typeof item === "number" && (!Number.isFinite(item) || (Number.isInteger(item) && !Number.isSafeInteger(item)))) {
+      throw new RangeError("JSON numbers must be finite; integers must be safe JavaScript integers");
+    }
+    return item;
+  });
+}
+
+class TaskClient {
+  constructor(db) {
+    this._db = db;
+  }
+
+  async enqueue(taskType, payload, options = {}, defaults = {}) {
+    if (typeof taskType !== "string" || !taskType || taskType === "prefetchTasks") {
+      throw new TypeError("taskType must be nonempty and cannot be prefetchTasks");
+    }
+    const uniqueTag = options.uniqueTag ?? null;
+    if (uniqueTag !== null) {
+      if (typeof uniqueTag !== "string") throw new TypeError("uniqueTag must be a string");
+      if (uniqueTag.startsWith("anclax:system:")) {
+        throw new TypeError("anclax:system: unique tags are reserved for the worker runtime");
+      }
+    }
+    const attributes = { ...defaults.attributes, ...options.attributes };
+    const priority = int32(attributes.priority === undefined ? 0 : attributes.priority, "priority", 0);
+    const weight = int32(attributes.weight === undefined ? 1 : attributes.weight, "weight", 1);
+    Object.assign(attributes, { priority, weight });
+    const serialKey = attributes.serialKey ?? null;
+    const serialID = attributes.serialID ?? null;
+    if (serialKey !== null && (typeof serialKey !== "string" || !serialKey)) {
+      throw new TypeError("serialKey must be a nonempty string");
+    }
+    if (serialID !== null) {
+      int32(serialID, "serialID");
+      if (serialKey === null) throw new TypeError("serialID requires serialKey");
+    }
+    const parentTaskId = options.parentTaskId ?? null;
+    if (parentTaskId !== null) int32(parentTaskId, "parentTaskId");
+    for (const key of ["labels", "tags"]) {
+      if (attributes[key] !== undefined) strings(attributes[key], key);
+    }
+    if (attributes.releaseUniqueTagOnTerminal !== undefined && typeof attributes.releaseUniqueTagOnTerminal !== "boolean") {
+      throw new TypeError("releaseUniqueTagOnTerminal must be a boolean");
+    }
+    if (systemTasks.has(taskType) && (attributes.tags?.length || serialKey !== null || weight !== 1)) {
+      throw new TypeError("system tasks do not support tags, serial scheduling or weights");
+    }
+    let startedAt = options.startedAt ?? null;
+    const delayMs = options.delayMs ?? defaults.delayMs;
+    if (startedAt !== null && options.delayMs !== undefined) {
+      throw new TypeError("startedAt and delayMs are mutually exclusive");
+    }
+    if (startedAt === null && delayMs !== undefined) {
+      if (typeof delayMs !== "number" || !Number.isFinite(delayMs)) throw new TypeError("delayMs must be finite");
+      startedAt = new Date(Date.now() + delayMs);
+    }
+    if (startedAt !== null && (!(startedAt instanceof Date) || !Number.isFinite(startedAt.getTime()))) {
+      throw new TypeError("startedAt must be a valid Date");
+    }
+    const encodedPayload = json(payload);
+    if (encodedPayload === undefined) throw new TypeError("payload must be JSON serializable");
+    const values = [
+      json(attributes), `{"type":${json(taskType)},"payload":${encodedPayload}}`, "pending", startedAt,
+      uniqueTag, parentTaskId, serialKey, serialID, priority, weight,
+    ];
+    if (uniqueTag !== null) {
+      const existing = await this._db.query(sql.GetTaskByUniqueTag, [uniqueTag]);
+      if (existing.rows.length) return existing.rows[0].id;
+    }
+    for (;;) {
+      const result = await this._db.query(sql.CreateTask, values);
+      if (result.rows.length) return result.rows[0].id;
+      if (uniqueTag === null) throw new Error("task insert returned no row without a unique tag");
+      // A new statement sees a concurrent commit under READ COMMITTED. Retry if
+      // the winner already terminated and released its tag before this lookup.
+      const existing = await this._db.query(sql.GetTaskByUniqueTag, [uniqueTag]);
+      if (existing.rows.length) return existing.rows[0].id;
+    }
+  }
+
+  async getTaskByID(taskID) {
+    const result = await this._db.query(sql.GetTaskByID, [int32(taskID, "taskID")]);
+    return result.rows[0] ?? null;
+  }
+
+  async getTaskByUniqueTag(uniqueTag) {
+    const result = await this._db.query(sql.GetTaskByUniqueTag, [uniqueTag]);
+    return result.rows[0] ?? null;
+  }
+
+  async getLastTaskErrorEvent(taskID) {
+    const result = await this._db.query(sql.GetLastTaskErrorEvent, [int32(taskID, "taskID")]);
+    return result.rows[0] ?? null;
+  }
+
+  async updatePendingTaskPriorityByLabels(labels, priority) {
+    strings(labels, "labels");
+    const result = await this._db.query(sql.UpdatePendingTaskPriorityByLabels, [int32(priority, "priority", 0), labels.length > 0, labels]);
+    return result.rowCount;
+  }
+
+  async updatePendingTaskWeightByLabels(labels, weight) {
+    strings(labels, "labels");
+    const result = await this._db.query(sql.UpdatePendingTaskWeightByLabels, [int32(weight, "weight", 1), labels.length > 0, labels]);
+    return result.rowCount;
+  }
+}

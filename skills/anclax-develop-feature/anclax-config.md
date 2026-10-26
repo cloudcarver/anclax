@@ -10,6 +10,7 @@ Use `anclax.yaml` as the source of truth for generator inputs and outputs. Check
 - `schemas.path`/`output`: shared schema YAML directory and generated Go output root used by both OpenAPI and task generation.
 - `oapi-codegen` item `path`/`out`/`package`: OpenAPI input and generated types plus generated middleware extensions in the same file. `path` may point to a single spec file or a directory of recursively merged OpenAPI fragments.
 - `task-handler` item `path`/`out`/`package`: async task definitions and runner generation.
+- `task-client` item `path`/`out`/`language`: self-contained Python (`python`, `.py`) or Node.js (`nodejs`, `.js`/`.cjs`/`.mjs`) producer clients generated from the same task spec. Accepts a mapping or array; generated code needs no Anclax runtime package. See [client docs](../../docs/async-task-clients.md).
 - `sqlc` item `path`: database query generation config.
 - `wire` item `path`: DI graph location.
 - `clean`: generated output cleanup targets.

@@ -1,0 +1,10 @@
+{
+  "name": "anclax-task-client-sample",
+  "private": true,
+  "scripts": {
+    "enqueue": "node enqueue.mjs"
+  },
+  "dependencies": {
+    "pg": "^8.23.1"
+  }
+}

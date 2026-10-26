@@ -12,7 +12,7 @@ CHAOS_TIMEOUT ?= 60m
 ANCLAX_TASKCORE_CHAOS_ITERATIONS ?= 200
 ANCLAX_TASKCORE_CHAOS_SMOKE_ITERATIONS ?= 10
 
-.PHONY: dev test check-docker ut smoke test-deterministic chaos chaos-smoke taskcore-perf benchmark formal formal-proof verify-scheduler
+.PHONY: dev test check-docker ut smoke test-deterministic chaos chaos-smoke taskcore-perf benchmark formal formal-proof verify-scheduler test-task-clients test-task-client-integration test-sample-e2e
 
 
 ###################################################
@@ -81,6 +81,17 @@ formal-proof:
 
 verify-scheduler:
 	python3 formal/verify.py
+
+test-task-clients:
+	go test ./pkg/codegen/task ./cmd/anclax
+
+test-task-client-integration:
+	uv run --with asyncpg python pkg/codegen/task/clienttests/integration.py
+	$(MAKE) test-sample-e2e
+
+test-sample-e2e:
+	npm ci --prefix examples/sample
+	uv run --with asyncpg go test -race -tags=taskclientintegration ./examples/sample -count=1 -v -timeout 2m
 
 gen:
 	sed -i -E '/^replace github\.com\/cloudcarver\/anclax => \.\.\/\.\.\/?$$/d' examples/simple/go.mod

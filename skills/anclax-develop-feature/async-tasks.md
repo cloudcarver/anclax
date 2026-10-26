@@ -103,6 +103,10 @@ err := model.RunTransactionWithTx(ctx, func(tx core.Tx, txm model.ModelInterface
 })
 ```
 
+## Python and Node.js producers
+
+Python and Node.js producers can use `task-client` to generate self-contained source files and enqueue into the same database, including within caller-owned transactions. Applications import generated code directly and supply their database connections; no Anclax runtime package is needed. See [client usage](../../docs/async-task-clients.md) for configuration, options and lightweight SQL operations. Worker execution and control-plane operations remain in Go.
+
 ## Pause/cancel tasks (worker control plane)
 
 Use the worker control plane to pause or cancel tasks and interrupt in-flight execution.

@@ -1,0 +1,15 @@
+schemas:
+  SendEmailParameters:
+    type: object
+    required: [userID, template]
+    properties:
+      userID:
+        type: integer
+        format: int64
+      template:
+        type: string
+        enum: [welcome, reminder]
+      variables:
+        type: object
+        additionalProperties:
+          type: string

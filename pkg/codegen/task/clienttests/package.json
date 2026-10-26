@@ -1,0 +1,12 @@
+{
+  "name": "anclax-task-client-tests",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.1",
+    "typescript": "^5.9.3"
+  }
+}

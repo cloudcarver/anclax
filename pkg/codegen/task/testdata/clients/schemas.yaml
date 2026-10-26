@@ -1,0 +1,29 @@
+schemas:
+  Email:
+    type: object
+    required: [userID, template]
+    properties:
+      userID:
+        type: integer
+        format: int64
+      template:
+        type: string
+        enum: [welcome, reminder]
+      headers:
+        type: object
+        additionalProperties:
+          type: string
+      recipients:
+        type: array
+        items:
+          $ref: '#/schemas/Recipient'
+      x-key:
+        type: [string, 'null']
+  Recipient:
+    type: object
+    required: [email]
+    properties:
+      email:
+        type: string
+      enabled:
+        type: boolean

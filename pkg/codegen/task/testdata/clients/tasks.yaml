@@ -1,0 +1,33 @@
+tasks:
+  - name: sendEmail
+    description: Send a welcome email
+    parameters:
+      $ref: ./schemas.yaml#schemas/Email
+    labels: [email]
+    tags: [welcome]
+    priority: INF
+    timeout: 1m
+    delay: 250ms
+    retryPolicy:
+      interval: 5s
+      maxAttempts: 3
+    cronjob:
+      cronExpression: "0 * * * * *"
+    releaseUniqueTagOnTerminal: true
+  - name: onFailure
+  - name: noParams
+    parameters:
+      type: object
+      properties: {}
+  - name: numbers
+    parameters:
+      type: array
+      items:
+        type: integer
+  - name: nullable
+    parameters:
+      type: object
+      nullable: true
+      properties:
+        value:
+          type: string

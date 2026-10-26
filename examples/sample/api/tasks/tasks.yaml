@@ -1,0 +1,11 @@
+tasks:
+  - name: sendEmail
+    description: Send an email using the selected template
+    parameters:
+      $ref: ../schemas/email.yaml#/schemas/SendEmailParameters
+    labels: [email]
+    tags: [sample]
+    retryPolicy:
+      interval: 5s
+      maxAttempts: 3
+    timeout: 30s

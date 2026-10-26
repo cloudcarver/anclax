@@ -41,6 +41,12 @@ type TaskHandlerConfig struct {
 	Path    string `yaml:"path"`
 }
 
+type TaskClientConfig struct {
+	Language string `yaml:"language"`
+	Path     string `yaml:"path"`
+	Out      string `yaml:"out"`
+}
+
 type DSTConfig struct {
 	Path    string `yaml:"path"`
 	Out     string `yaml:"out"`
@@ -54,6 +60,8 @@ type WireConfigs []WireConfig
 type SqlcConfigs []SqlcConfig
 
 type TaskHandlerConfigs []TaskHandlerConfig
+
+type TaskClientConfigs []TaskClientConfig
 
 func decodeSingleOrSlice[T any](value *yaml.Node, out *[]T, field string) error {
 	if value.Tag == "!!null" {
@@ -98,6 +106,10 @@ func (c *TaskHandlerConfigs) UnmarshalYAML(value *yaml.Node) error {
 	return decodeSingleOrSlice(value, (*[]TaskHandlerConfig)(c), "task-handler")
 }
 
+func (c *TaskClientConfigs) UnmarshalYAML(value *yaml.Node) error {
+	return decodeSingleOrSlice(value, (*[]TaskClientConfig)(c), "task-client")
+}
+
 type Config struct {
 	Externals   map[string]string  `yaml:"externals,omitempty"`
 	Schemas     *SchemasConfig     `yaml:"schemas,omitempty"`
@@ -106,6 +118,7 @@ type Config struct {
 	Mockgen     *MockgenConfig     `yaml:"mockgen,omitempty"`
 	Sqlc        SqlcConfigs        `yaml:"sqlc,omitempty"`
 	TaskHandler TaskHandlerConfigs `yaml:"task-handler,omitempty"`
+	TaskClient  TaskClientConfigs  `yaml:"task-client,omitempty"`
 	DST         []DSTConfig        `yaml:"dst,omitempty"`
 	CleanItems  []string           `yaml:"clean,omitempty"`
 	AnclaxDef   string             `yaml:"anclaxdef,omitempty"`

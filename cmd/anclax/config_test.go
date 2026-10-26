@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestParseConfigSupportsSingleGeneratorConfig(t *testing.T) {
@@ -56,6 +58,30 @@ sqlc:
 	}
 	if got := config.Sqlc[0].Path; got != "dev/sqlc.yaml" {
 		t.Fatalf("sqlc[0].path = %q, want %q", got, "dev/sqlc.yaml")
+	}
+}
+
+func TestTaskClientGenerationWithoutGoModule(t *testing.T) {
+	for _, configYAML := range []string{
+		"task-client:\n  language: python\n  path: tasks.yaml\n  out: generated/tasks.py\n",
+		"task-client:\n  - language: python\n    path: tasks.yaml\n    out: generated/tasks.py\n  - language: nodejs\n    path: tasks.yaml\n    out: generated/tasks.mjs\n",
+	} {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "tasks.yaml"), []byte("tasks:\n  - name: hello\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		var config Config
+		if err := yaml.Unmarshal([]byte(configYAML), &config); err != nil {
+			t.Fatal(err)
+		}
+		if err := _codegen(&config, dir); err != nil {
+			t.Fatal(err)
+		}
+		for _, client := range config.TaskClient {
+			if _, err := os.Stat(filepath.Join(dir, client.Out)); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 }
 

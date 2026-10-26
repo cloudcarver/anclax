@@ -199,6 +199,10 @@ func (h *Handler) GetCounter(c *fiber.Ctx) error {
 
 ## Showcase: unique features 🧰
 
+### Python and Node.js task clients
+
+Configure `task-client` in `anclax.yaml` to generate [self-contained Python and Node.js clients](docs/async-task-clients.md) from the same task spec as Go. Applications import the generated source directly and supply their database connections, with no Anclax package to install. Clients support transactions, unique-tag deduplication, task lookups, and priority/weight updates.
+
 ### Generated Go API clients
 
 The scaffold owns outbound client policy in [`pkg/apiclient/client.go`](examples/simple/pkg/apiclient/client.go), an ordinary application source file. `apiclient.DefaultConfig()` provides a 30-second request timeout and a 10 MiB response limit. Edit those defaults or pass a different `apiclient.Config` to `apiclient.New`; `anclax gen` preserves application client code.

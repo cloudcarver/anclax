@@ -319,6 +319,12 @@ func _codegen(config *Config, workdir string) error {
 		}
 	}
 
+	for i, client := range config.TaskClient {
+		if err := task_codegen.GenerateClient(workdir, client.Language, client.Path, client.Out); err != nil {
+			return errors.Wrapf(err, "failed to generate task-client[%d]", i)
+		}
+	}
+
 	for i := range config.DST {
 		if err := genDST(workdir, &config.DST[i]); err != nil {
 			return errors.Wrapf(err, "failed to generate dst[%d]", i)

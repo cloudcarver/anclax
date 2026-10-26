@@ -191,6 +191,10 @@ func (h *Handler) GetCounter(c *fiber.Ctx) error {
 
 ## 功能展示：核心能力 🧰
 
+### Python / Node.js 任务客户端
+
+在 `anclax.yaml` 中配置 `task-client`，即可从 Go 共用的 task spec 生成[独立的 Python / Node.js 客户端](docs/async-task-clients.zh.md)。下游直接引用生成代码并传入数据库连接，无需安装 Anclax 包；支持事务、唯一标签去重、任务查询，以及优先级／权重更新。
+
 ### 自动生成的 Go API 客户端
 
 脚手架在普通应用代码 [`pkg/apiclient/client.go`](examples/simple/pkg/apiclient/client.go) 中定义客户端策略。`apiclient.DefaultConfig()` 提供 30 秒请求超时和 10 MiB 响应上限。可以直接修改默认值，也可以给 `apiclient.New` 传入自己的 `apiclient.Config`；`anclax gen` 会保留应用的客户端代码。

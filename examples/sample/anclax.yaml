@@ -1,0 +1,7 @@
+task-client:
+  - language: python
+    path: api/tasks/tasks.yaml
+    out: sdks/python/tasks.py
+  - language: nodejs
+    path: api/tasks/tasks.yaml
+    out: sdks/nodejs/tasks.mjs
