@@ -52,6 +52,18 @@ export interface TaskErrorEvent {
 }
 
 export class TaskClient {
+  /**
+   * Use an application-owned pg pool or connection.
+   * For atomic business writes and task creation, pass the same connection
+   * used by the business transaction. Passing a pool does not join a
+   * transaction on an acquired connection. The caller manages BEGIN, COMMIT,
+   * ROLLBACK and connection release; this constructor only stores the reference.
+   * @param db A pg.Pool, pg.Client or pg.PoolClient.
+   * @example
+   * // Inside a business transaction already started with conn.query("BEGIN"):
+   * const client = new Client(conn);
+   * // Business SQL on conn and task calls on client share the transaction.
+   */
   constructor(db: Database);
   /** Never starts/commits a transaction; database errors propagate unchanged. */
   enqueue(taskType: string, payload: unknown, options?: TaskOptions,
@@ -72,6 +84,12 @@ export type SendEmailParametersValue = {
 
 export type SendEmailParameters = SendEmailParametersValue;
 
+/**
+ * Typed task methods using an application-owned pool or connection.
+ * Inside a business transaction, construct new Client(conn) with the same
+ * connection used for business SQL. Business writes and new tasks then commit
+ * or roll back together. The caller manages the transaction and connection.
+ */
 export class Client extends TaskClient {
   // Send an email using the selected template
   runSendEmail(params: SendEmailParameters, options?: TaskOptions): Promise<number>;

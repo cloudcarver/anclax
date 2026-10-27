@@ -77,6 +77,18 @@ def _record(row: Mapping[str, Any] | None) -> dict[str, Any] | None:
 
 class TaskClient:
     def __init__(self, db: Database):
+        """Use an application-owned asyncpg pool or connection.
+
+        For atomic business writes and task creation, pass the same connection
+        used by the business transaction. Passing a pool does not join a
+        transaction on an acquired connection. The caller manages transactions
+        and connection release; this constructor only stores the reference.
+
+        Example:
+            async with pool.acquire() as conn, conn.transaction():
+                client = Client(conn)
+                # Business SQL on conn and task calls on client share the transaction.
+        """
         self._db = db
 
     async def enqueue(

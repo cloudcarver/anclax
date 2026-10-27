@@ -35,6 +35,18 @@ function json(value) {
 }
 
 class TaskClient {
+  /**
+   * Use an application-owned pg pool or connection.
+   * For atomic business writes and task creation, pass the same connection
+   * used by the business transaction. Passing a pool does not join a
+   * transaction on an acquired connection. The caller manages BEGIN, COMMIT,
+   * ROLLBACK and connection release; this constructor only stores the reference.
+   * @param db A pg.Pool, pg.Client or pg.PoolClient.
+   * @example
+   * // Inside a business transaction already started with conn.query("BEGIN"):
+   * const client = new Client(conn);
+   * // Business SQL on conn and task calls on client share the transaction.
+   */
   constructor(db) {
     this._db = db;
   }
@@ -135,6 +147,12 @@ class TaskClient {
   }
 }
 
+/**
+ * Typed task methods using an application-owned pool or connection.
+ * Inside a business transaction, construct new Client(conn) with the same
+ * connection used for business SQL. Business writes and new tasks then commit
+ * or roll back together. The caller manages the transaction and connection.
+ */
 class Client extends TaskClient {
   async runSendEmail(params, options) {
     return this.enqueue("sendEmail", params, options, {"attributes":{"labels":["email"],"retryPolicy":{"interval":"5s","maxAttempts":3},"tags":["sample"],"timeout":"30s"}});

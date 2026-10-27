@@ -85,6 +85,18 @@ def _record(row: Mapping[str, Any] | None) -> dict[str, Any] | None:
 
 class TaskClient:
     def __init__(self, db: Database):
+        """Use an application-owned asyncpg pool or connection.
+
+        For atomic business writes and task creation, pass the same connection
+        used by the business transaction. Passing a pool does not join a
+        transaction on an acquired connection. The caller manages transactions
+        and connection release; this constructor only stores the reference.
+
+        Example:
+            async with pool.acquire() as conn, conn.transaction():
+                client = Client(conn)
+                # Business SQL on conn and task calls on client share the transaction.
+        """
         self._db = db
 
     async def enqueue(
@@ -196,6 +208,13 @@ SendEmailParametersValue = TypedDict("SendEmailParametersValue", {
 SendEmailParameters = SendEmailParametersValue
 
 class Client(TaskClient):
+    """Typed task methods using an application-owned pool or connection.
+
+    Inside a business transaction, construct Client(conn) with the same
+    connection used for business SQL. Business writes and new tasks then commit
+    or roll back together. The caller manages the transaction and connection.
+    """
+
     async def run_send_email(self, params: SendEmailParameters, *, options: TaskOptions | None = None) -> int:
         "Send an email using the selected template"
         return await self.enqueue("sendEmail", params, options=options, attributes={"labels": ["email"], "retryPolicy": {"interval": "5s", "maxAttempts": 3}, "tags": ["sample"], "timeout": "30s"})
