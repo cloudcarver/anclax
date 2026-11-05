@@ -46,12 +46,31 @@ func (s *Service) SignInWithPassword(ctx context.Context, params apigen.SignInRe
 		}
 		return nil, errors.Wrapf(err, "failed to get user by name")
 	}
-	input, err := utils.HashPassword(params.Password, user.PasswordSalt)
+	valid, needsUpgrade, err := utils.VerifyPassword(params.Password, user.PasswordHash, user.PasswordSalt)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to hash password")
+		return nil, errors.Wrap(err, "failed to verify password")
 	}
-	if input != user.PasswordHash {
+	if !valid {
 		return nil, ErrInvalidPassword
+	}
+	if needsUpgrade {
+		salt, hash, err := s.generateSaltAndHash(params.Password)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to upgrade password hash")
+		}
+		rows, err := s.m.UpgradeUserPasswordHash(ctx, querier.UpgradeUserPasswordHashParams{
+			ID:                   user.ID,
+			PasswordHash:         hash,
+			PasswordSalt:         salt,
+			PreviousPasswordHash: user.PasswordHash,
+			PreviousPasswordSalt: user.PasswordSalt,
+		})
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to persist upgraded password hash")
+		}
+		if rows != 1 {
+			return nil, ErrInvalidPassword
+		}
 	}
 
 	return s.SignIn(ctx, user.ID)

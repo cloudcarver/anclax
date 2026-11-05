@@ -34,27 +34,6 @@ func GenerateCode() string {
 	return fmt.Sprintf("%d", (1+rand.Intn(10))*10000+rand.Intn(10000))
 }
 
-func HashPassword(password string, salt string) (string, error) {
-	preHashed := fmt.Sprintf("%s-%s", password, salt)
-	h := sha256.New()
-	_, err := h.Write([]byte(preHashed))
-	if err != nil {
-		return "", err
-	}
-	bs := h.Sum(nil)
-	hashed := fmt.Sprintf("%x", bs)
-	return hashed, nil
-}
-
-func GenerateSaltAndHash(password string) (string, string, error) {
-	salt := fmt.Sprintf("salt-%d", rand.Int31())
-	hashedPassword, err := HashPassword(password, salt)
-	if err != nil {
-		return "", "", err
-	}
-	return salt, hashedPassword, nil
-}
-
 func JSONConvert[T any, U any](v T, u *U) error {
 	raw, err := json.Marshal(v)
 	if err != nil {

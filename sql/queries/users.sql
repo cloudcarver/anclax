@@ -37,3 +37,10 @@ WHERE user_id = $1;
 
 -- name: UpdateUserPassword :exec
 UPDATE anclax.users SET password_hash = $2, password_salt = $3 WHERE id = $1;
+
+-- name: UpgradeUserPasswordHash :execrows
+UPDATE anclax.users
+SET password_hash = sqlc.arg(password_hash), password_salt = sqlc.arg(password_salt)
+WHERE id = sqlc.arg(id)
+  AND password_hash = sqlc.arg(previous_password_hash)
+  AND password_salt = sqlc.arg(previous_password_salt);
