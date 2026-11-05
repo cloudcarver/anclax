@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/cloudcarver/anclax/pkg/codegen/gotypes"
+	jsondecode_codegen "github.com/cloudcarver/anclax/pkg/codegen/jsondecode"
 	schema_codegen "github.com/cloudcarver/anclax/pkg/codegen/schemas"
 	openapi_bundle "github.com/cloudcarver/anclax/pkg/openapi/bundle"
 	"github.com/getkin/kin-openapi/openapi3"
@@ -48,6 +49,7 @@ type schemaDef struct {
 	Kind        string
 	AliasType   string
 	Fields      []fieldDef
+	JSONDecoder string
 }
 
 type fieldDef struct {
@@ -237,6 +239,16 @@ func buildDocument(spec *openapi3.T, specPath string, packageName string, schema
 			if err != nil {
 				return nil, errors.Wrapf(err, "failed to build schema %s", name)
 			}
+			model := jsondecode_codegen.Model{Name: schema.Name, Underlying: schema.AliasType}
+			for _, field := range schema.Fields {
+				model.Fields = append(model.Fields, jsondecode_codegen.Field{JSONName: field.JSONName, GoName: field.Name, Type: field.Type})
+			}
+			decoder, err := jsondecode_codegen.Method(specPath, model, spec.Components.Schemas[name], schemaManager.LookupRef, false)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to build JSON decoder for %s", name)
+			}
+			schema.JSONDecoder = decoder.Code
+			mergeImports(doc.SpecTypeImports, decoder.Imports...)
 			doc.Schemas = append(doc.Schemas, schema)
 		}
 	}
@@ -293,7 +305,8 @@ func buildSchemaDef(currentFile, name string, ref *openapi3.SchemaRef, enumMap m
 	}
 	value := ref.Value
 	schema.Description = firstNonEmpty(value.Description, schema.Name)
-	if len(value.Enum) > 0 {
+	customType, _ := customGoType(value)
+	if len(value.Enum) > 0 && customType == "" {
 		resolved, err := resolveType(currentFile, "", ref, schema.Name, enumMap, schemaManager)
 		if err != nil {
 			return schema, err
@@ -309,7 +322,11 @@ func buildSchemaDef(currentFile, name string, ref *openapi3.SchemaRef, enumMap m
 	}
 	mergeImports(imports, resolved.Imports...)
 
-	if value.Type != nil && value.Type.Is("object") || len(value.Properties) > 0 {
+	convertedMap, err := jsondecode_codegen.IsConvertedMap(currentFile, value, schemaManager.LookupRef)
+	if err != nil {
+		return schema, err
+	}
+	if customType == "" && !convertedMap && (value.Type.Is("object") || len(value.Properties) > 0) {
 		schema.Kind = "object"
 		required := requiredSet(value.Required)
 		propNames := make([]string, 0, len(value.Properties))
@@ -785,6 +802,7 @@ func renderSecurityScopes(b *strings.Builder, alternative operationSecurityAlter
 }
 
 func renderSchema(b *strings.Builder, schema schemaDef) {
+	defer func() { b.WriteString(schema.JSONDecoder) }()
 	if schema.Kind == "enum" {
 		return
 	}
@@ -1870,6 +1888,17 @@ func resolveType(currentFile, currentPackage string, ref *openapi3.SchemaRef, hi
 		}
 		return resolvedType{GoType: "[]" + item.GoType, Imports: item.Imports}, nil
 	case schema.Type.Is("object"):
+		convertedMap, err := jsondecode_codegen.IsConvertedMap(currentFile, schema, schemaManager.LookupRef)
+		if err != nil {
+			return resolvedType{}, err
+		}
+		if convertedMap {
+			item, err := resolveType(currentFile, currentPackage, schema.AdditionalProperties.Schema, hint+"Value", enumMap, schemaManager)
+			if err != nil {
+				return resolvedType{}, err
+			}
+			return resolvedType{GoType: "map[string]" + item.GoType, Imports: item.Imports}, nil
+		}
 		return resolvedType{GoType: "map[string]any"}, nil
 	default:
 		return resolvedType{GoType: "interface{}"}, nil

@@ -1,0 +1,19 @@
+schemas:
+  FoldedAny:
+    anyOf:
+      - type: string
+        minLength: 3
+        pattern: '^0[0-9]+$'
+      - type: string
+    x-go-type: int64
+  FoldedOne:
+    anyOf:
+      - type: integer
+      - type: string
+    oneOf:
+      - {}
+      - {}
+      - type: string
+        minLength: 3
+        pattern: '^0[0-9]+$'
+    x-go-type: int64

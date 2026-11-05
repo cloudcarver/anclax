@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/cloudcarver/anclax/pkg/codegen/gotypes"
+	jsondecode_codegen "github.com/cloudcarver/anclax/pkg/codegen/jsondecode"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v3"
@@ -54,11 +55,12 @@ type enumValue struct {
 }
 
 type schemaDef struct {
-	Name      string
-	Kind      string
-	AliasType string
-	Alias     bool
-	Fields    []fieldDef
+	Name        string
+	Kind        string
+	AliasType   string
+	Alias       bool
+	Fields      []fieldDef
+	JSONDecoder string
 }
 
 type fieldDef struct {
@@ -128,6 +130,34 @@ func Load(workdir string, config Config) (*Manager, error) {
 
 func (m *Manager) IsEnabled() bool {
 	return m != nil
+}
+
+// LookupRef resolves shared schemas for JSON decoder generation, retaining the
+// target file so references inside that schema resolve relative to it.
+func (m *Manager) LookupRef(currentFile string, ref *openapi3.SchemaRef) (string, *openapi3.SchemaRef, error) {
+	if ref == nil || ref.Value != nil || ref.Ref == "" {
+		return currentFile, ref, nil
+	}
+	if m == nil {
+		return currentFile, nil, errors.Errorf("shared schema reference requires schemas configuration: %s", ref.Ref)
+	}
+	parts := strings.SplitN(normalizeRefString(ref.Ref), "#", 2)
+	if len(parts) != 2 {
+		return currentFile, nil, errors.Errorf("invalid shared schema reference: %s", ref.Ref)
+	}
+	name, ok := schemaNameFromFragment(parts[1])
+	if !ok {
+		return currentFile, nil, errors.Errorf("invalid shared schema reference: %s", ref.Ref)
+	}
+	target := currentFile
+	if parts[0] != "" {
+		target = filepath.Clean(filepath.Join(filepath.Dir(currentFile), filepath.FromSlash(parts[0])))
+	}
+	file := m.files[target]
+	if file == nil || file.Schemas[name] == nil {
+		return currentFile, nil, errors.Errorf("shared schema reference not found: %s", ref.Ref)
+	}
+	return target, file.Schemas[name], nil
 }
 
 func (m *Manager) ResolveRef(currentFile, currentPackage, ref string) (string, []string, bool, error) {
@@ -212,6 +242,22 @@ func (m *Manager) renderFile(file *File) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		// Reference aliases inherit the target type's JSON methods.
+		if file.Schemas[name].Ref == "" {
+			model := jsondecode_codegen.Model{Name: def.Name, Underlying: def.AliasType}
+			for _, field := range def.Fields {
+				model.Fields = append(model.Fields, jsondecode_codegen.Field{JSONName: field.JSONName, GoName: field.Name, Type: field.Type})
+			}
+			decoder, err := jsondecode_codegen.Method(file.AbsPath, model, file.Schemas[name], m.LookupRef, false)
+			if err != nil {
+				return "", errors.Wrapf(err, "schema %s", name)
+			}
+			if decoder.Code != "" {
+				def.JSONDecoder = decoder.Code
+				def.Alias = false
+				mergeImports(imports, decoder.Imports...)
+			}
+		}
 		defs = append(defs, def)
 	}
 	enums := make([]enumDef, 0, len(enumMap))
@@ -240,6 +286,7 @@ func (m *Manager) renderFile(file *File) (string, error) {
 		b.WriteString(")\n\n")
 	}
 	for _, def := range defs {
+		b.WriteString(def.JSONDecoder)
 		if def.Kind == "alias" {
 			if def.AliasType == def.Name {
 				continue
@@ -312,7 +359,12 @@ func (m *Manager) buildSchemaDef(file *File, name string, ref *openapi3.SchemaRe
 	}
 	mergeImports(imports, resolved.Imports...)
 	value := ref.Value
-	if value != nil && ((value.Type != nil && value.Type.Is("object")) || len(value.Properties) > 0) {
+	convertedMap, err := jsondecode_codegen.IsConvertedMap(file.AbsPath, value, m.LookupRef)
+	if err != nil {
+		return def, err
+	}
+	customType, _ := customGoType(value)
+	if value != nil && customType == "" && !convertedMap && (value.Type.Is("object") || len(value.Properties) > 0) {
 		def.Kind = "object"
 		required := requiredSet(value.Required)
 		propNames := make([]string, 0, len(value.Properties))
@@ -389,6 +441,17 @@ func (m *Manager) resolveType(file *File, ref *openapi3.SchemaRef, hint string, 
 		}
 		return resolvedType{GoType: "[]" + item.GoType, Imports: item.Imports}, nil
 	case ref.Value.Type.Is("object"):
+		convertedMap, err := jsondecode_codegen.IsConvertedMap(file.AbsPath, ref.Value, m.LookupRef)
+		if err != nil {
+			return resolvedType{}, err
+		}
+		if convertedMap {
+			item, err := m.resolveType(file, ref.Value.AdditionalProperties.Schema, hint+"Value", enumMap)
+			if err != nil {
+				return resolvedType{}, err
+			}
+			return resolvedType{GoType: "map[string]" + item.GoType, Imports: item.Imports}, nil
+		}
 		return resolvedType{GoType: "map[string]any"}, nil
 	default:
 		return resolvedType{GoType: "interface{}"}, nil

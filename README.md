@@ -211,6 +211,16 @@ The scaffold's response limit applies to both parsed and raw responses and retur
 
 Generated `apigen` clients handle the API protocol; applications supply their HTTP transport and policy through `WithHTTPClient`. Parsing closes response bodies on success and failure, and returns read errors, including context cancellation.
 
+### JSON input conversion
+
+Use the input schema with `x-go-type` to generate validation and conversion to
+Go signed/unsigned integers, floats, booleans, strings, or named custom scalar
+types. An integer/string `anyOf` with `x-go-type: int64` produces an `int64`
+field (`*int64` when optional); a single `type: string` also works. Generated
+methods check the original input, preserve exact integer ranges, and support
+references, arrays, and dictionaries in OpenAPI models, shared schemas, and Go
+task parameters. See the [conversion matrix and supported scope](skills/anclax-develop-feature/openapi-spec.md#scalar-conversion-rules).
+
 ### OpenAPI-powered middleware (no DSL)
 ```yaml
 x-check-rules:

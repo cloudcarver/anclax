@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cloudcarver/anclax/pkg/codegen/gotypes"
+	jsondecode_codegen "github.com/cloudcarver/anclax/pkg/codegen/jsondecode"
 	schema_codegen "github.com/cloudcarver/anclax/pkg/codegen/schemas"
 	"github.com/cloudcarver/anclax/pkg/utils"
 	"github.com/getkin/kin-openapi/openapi3"
@@ -24,9 +25,10 @@ import (
 var globalTypeNameCounter = map[string]int{}
 
 type paramSpec struct {
-	Type      string
-	StructDef string
-	Imports   []string
+	Type            string
+	StructDef       string
+	Imports         []string
+	ValidatePayload bool
 }
 
 func resetGlobalTypeNameCounter() {
@@ -245,6 +247,7 @@ func process(data map[string]any, onFunc func(f Function) error, onParam func(na
 			Tags:                       tags,
 			Priority:                   priority,
 			HasLocalHelpers:            parameterInfo.StructDef != "",
+			ValidatePayload:            parameterInfo.ValidatePayload,
 		}); err != nil {
 			return err
 		}
@@ -406,6 +409,9 @@ func generateToolInterfaces(workdir, packageName, taskDefFile string, data map[s
 	}
 
 	buf := bytes.NewBuffer([]byte{})
+	// These imports are already present in the task file template.
+	delete(importSet, "encoding/json")
+	delete(importSet, "fmt")
 	if err := tcTemplate.Execute(buf, CodeTemplateVars{
 		PackageName: packageName,
 		StructDefs:  structDef,
@@ -435,7 +441,26 @@ func resolveParamSpec(currentFile, name string, ref *openapi3.SchemaRef, schemaM
 	if err != nil {
 		return paramSpec{}, err
 	}
-	return paramSpec{Type: goType, StructDef: structDef, Imports: sortedImportSlice(imports)}, nil
+	// Objects already own a decoder; scalar/array/map parameter roots need a defined
+	// type so encoding/json can invoke a method on the root as well.
+	if ref != nil && ref.Ref == "" && (ref.Value == nil || !ref.Value.Type.Is("object") || strings.HasPrefix(goType, "map[")) {
+		decoder, err := jsondecode_codegen.Method(currentFile, jsondecode_codegen.Model{Name: name, Underlying: goType}, ref, schemaManager.LookupRef, true)
+		if err != nil {
+			return paramSpec{}, err
+		}
+		if decoder.Code != "" {
+			structDef += fmt.Sprintf("\ntype %s %s\n%s", name, goType, decoder.Code)
+			goType = name
+			for _, imp := range decoder.Imports {
+				imports[imp] = struct{}{}
+			}
+		}
+	}
+	hasConversion, err := jsondecode_codegen.HasConversion(currentFile, ref, schemaManager.LookupRef)
+	if err != nil {
+		return paramSpec{}, err
+	}
+	return paramSpec{Type: goType, StructDef: structDef, Imports: sortedImportSlice(imports), ValidatePayload: hasConversion}, nil
 }
 
 func parseSchemaToType(currentFile, typeName string, ref *openapi3.SchemaRef, schemaManager *schema_codegen.Manager, imports map[string]struct{}) (string, string, error) {
@@ -478,6 +503,17 @@ func parseSchemaToType(currentFile, typeName string, ref *openapi3.SchemaRef, sc
 		}
 		return "[]" + itemType, itemDef, nil
 	case ref.Value.Type.Is("object"):
+		convertedMap, err := jsondecode_codegen.IsConvertedMap(currentFile, ref.Value, schemaManager.LookupRef)
+		if err != nil {
+			return "", "", err
+		}
+		if convertedMap {
+			itemType, itemDef, err := parseSchemaToType(currentFile, addGlobalType(typeName+"Value"), ref.Value.AdditionalProperties.Schema, schemaManager, imports)
+			if err != nil {
+				return "", "", err
+			}
+			return "map[string]" + itemType, itemDef, nil
+		}
 		if len(ref.Value.Properties) == 0 {
 			return "map[string]any", "", nil
 		}
@@ -520,18 +556,39 @@ func parseObjectSchema(currentFile, structName string, schema *openapi3.Schema, 
 		if propRef != nil && propRef.Value != nil {
 			description = propRef.Value.Description
 		}
+		jsonName := propName
+		if !isRequired {
+			hasConversion, err := jsondecode_codegen.HasConversion(currentFile, propRef, schemaManager.LookupRef)
+			if err != nil {
+				return "", "", err
+			}
+			if hasConversion {
+				jsonName += ",omitempty"
+			}
+		}
 		fields = append(fields, Field{
 			Name:        utils.UpperFirst(propName),
 			Type:        propType,
 			Description: descriptionToComment(description),
-			Tag:         "`json:\"" + propName + "\" yaml:\"" + propName + "\"`",
+			Tag:         "`json:\"" + jsonName + "\" yaml:\"" + propName + "\"`",
 		})
 	}
 	buf := bytes.NewBuffer(nil)
 	if err := tmpl.Execute(buf, StructTemplateVars{StructName: structName, Fields: fields}); err != nil {
 		return "", "", err
 	}
-	return structName, nestedDefs + "\n" + buf.String(), nil
+	model := jsondecode_codegen.Model{Name: structName}
+	for i, field := range fields {
+		model.Fields = append(model.Fields, jsondecode_codegen.Field{JSONName: propNames[i], GoName: field.Name, Type: field.Type})
+	}
+	decoder, err := jsondecode_codegen.Method(currentFile, model, &openapi3.SchemaRef{Value: schema}, schemaManager.LookupRef, true)
+	if err != nil {
+		return "", "", err
+	}
+	for _, imp := range decoder.Imports {
+		imports[imp] = struct{}{}
+	}
+	return structName, nestedDefs + "\n" + buf.String() + decoder.Code, nil
 }
 
 func customGoType(schema *openapi3.Schema) (string, []string) {

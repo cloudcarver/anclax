@@ -1,0 +1,404 @@
+package decodertest
+
+import (
+	"encoding/json"
+	"math"
+	"math/big"
+	"reflect"
+	"strconv"
+	"strings"
+	"sync"
+	"testing"
+
+	"example.com/decodertest/apigen"
+	"example.com/decodertest/custom"
+	shared "example.com/decodertest/shared"
+	"example.com/decodertest/taskgen"
+)
+
+func TestIntegerTargets(t *testing.T) {
+	for _, tc := range []struct {
+		bits     int
+		unsigned bool
+		models   []any
+	}{
+		{strconv.IntSize, false, []any{new(apigen.Signed), new(shared.Signed), new(taskgen.SignedParameters)}},
+		{8, false, []any{new(apigen.Signed8), new(shared.Signed8), new(taskgen.Signed8Parameters)}},
+		{16, false, []any{new(apigen.Signed16), new(shared.Signed16), new(taskgen.Signed16Parameters)}},
+		{32, false, []any{new(apigen.Signed32), new(shared.Signed32), new(taskgen.Signed32Parameters), new(apigen.Rune), new(shared.Rune), new(taskgen.RuneParameters)}},
+		{64, false, []any{new(apigen.Signed64), new(shared.Signed64), new(taskgen.Signed64Parameters)}},
+		{strconv.IntSize, true, []any{new(apigen.Unsigned), new(shared.Unsigned), new(taskgen.UnsignedParameters)}},
+		{8, true, []any{new(apigen.Unsigned8), new(shared.Unsigned8), new(taskgen.Unsigned8Parameters), new(apigen.Byte), new(shared.Byte), new(taskgen.ByteParameters)}},
+		{16, true, []any{new(apigen.Unsigned16), new(shared.Unsigned16), new(taskgen.Unsigned16Parameters)}},
+		{32, true, []any{new(apigen.Unsigned32), new(shared.Unsigned32), new(taskgen.Unsigned32Parameters)}},
+		{64, true, []any{new(apigen.Unsigned64), new(shared.Unsigned64), new(taskgen.Unsigned64Parameters)}},
+	} {
+		max := new(big.Int).Lsh(big.NewInt(1), uint(tc.bits))
+		min := big.NewInt(0)
+		if !tc.unsigned {
+			max.Rsh(max, 1)
+			min.Neg(new(big.Int).Set(max))
+		}
+		max.Sub(max, big.NewInt(1))
+		for _, model := range tc.models {
+			for _, want := range []string{min.String(), max.String(), "0", "123"} {
+				inputs := []string{want, strconv.Quote(want), want + ".0"}
+				if want != "0" {
+					inputs = append(inputs, want+"00e-2")
+				}
+				for _, input := range inputs {
+					if err := json.Unmarshal([]byte(input), model); err != nil {
+						t.Fatalf("%T %s: %v", model, input, err)
+					}
+					v := reflect.ValueOf(model).Elem()
+					got := ""
+					if tc.unsigned {
+						got = strconv.FormatUint(v.Uint(), 10)
+					} else {
+						got = strconv.FormatInt(v.Int(), 10)
+					}
+					if got != want {
+						t.Fatalf("%T %s: got %s, want %s", model, input, got, want)
+					}
+				}
+			}
+			invalid := []string{new(big.Int).Sub(min, big.NewInt(1)).String(), new(big.Int).Add(max, big.NewInt(1)).String(), `1.5`, `"1.5"`, `true`, `false`, `{}`, `[]`, `null`, `"1e2"`, `" 1 "`}
+			for _, input := range invalid {
+				if err := json.Unmarshal([]byte(input), model); err == nil {
+					t.Errorf("%T accepted %s", model, input)
+				}
+			}
+			for _, number := range invalid[:2] {
+				if err := json.Unmarshal([]byte(strconv.Quote(number)), model); err == nil {
+					t.Errorf("%T accepted quoted %s", model, number)
+				}
+			}
+		}
+	}
+}
+
+func TestFloatTargets(t *testing.T) {
+	for _, model := range []any{new(apigen.Float32), new(shared.Float32), new(taskgen.Float32Parameters), new(apigen.Float64), new(shared.Float64), new(taskgen.Float64Parameters)} {
+		for input, want := range map[string]float64{`1.25`: 1.25, `"1.25"`: 1.25, `1.25e2`: 125, `"+01.25e2"`: 125, `".5"`: .5, `1e-99999`: 0} {
+			if err := json.Unmarshal([]byte(input), model); err != nil || reflect.ValueOf(model).Elem().Float() != want {
+				t.Errorf("%T %s: %v, %v", model, input, model, err)
+			}
+		}
+		for _, input := range []string{`"NaN"`, `"Inf"`, `"Infinity"`, `"0x1p2"`, `"1_000"`, `" 1.5 "`, `1e99999`, `true`, `null`, `[]`, `{}`} {
+			if err := json.Unmarshal([]byte(input), model); err == nil {
+				t.Errorf("%T accepted %s", model, input)
+			}
+		}
+		if reflect.ValueOf(model).Elem().Kind() == reflect.Float32 {
+			if err := json.Unmarshal([]byte(`3.5e38`), model); err == nil {
+				t.Errorf("%T accepted overflow", model)
+			}
+		}
+		if err := json.Unmarshal([]byte(`-0`), model); err != nil || !math.Signbit(reflect.ValueOf(model).Elem().Float()) {
+			t.Errorf("%T lost negative zero", model)
+		}
+	}
+}
+
+func TestBoolAndStringTargets(t *testing.T) {
+	for _, model := range []any{new(apigen.Boolean), new(shared.Boolean), new(taskgen.BooleanParameters)} {
+		for input, want := range map[string]bool{`true`: true, `false`: false, `"true"`: true, `"false"`: false} {
+			if err := json.Unmarshal([]byte(input), model); err != nil || reflect.ValueOf(model).Elem().Bool() != want {
+				t.Errorf("%T %s: %v", model, input, err)
+			}
+		}
+		for _, input := range []string{`0`, `1`, `"1"`, `"TRUE"`, `"False"`, `"yes"`, `null`, `[]`, `{}`} {
+			if err := json.Unmarshal([]byte(input), model); err == nil {
+				t.Errorf("%T accepted %s", model, input)
+			}
+		}
+	}
+	for _, model := range []any{new(apigen.Text), new(shared.Text), new(taskgen.TextParameters)} {
+		for input, want := range map[string]string{`"hello"`: "hello", `""`: "", `true`: "true", `false`: "false", `123`: "123", `1.2300e+3`: "1.2300e+3", `-0`: "-0", `18446744073709551616`: "18446744073709551616", `1e99999999999999999999999`: "1e99999999999999999999999"} {
+			if err := json.Unmarshal([]byte(input), model); err != nil || reflect.ValueOf(model).Elem().String() != want {
+				t.Errorf("%T %s: %v", model, input, err)
+			}
+		}
+		for _, input := range []string{`null`, `[]`, `{}`} {
+			if err := json.Unmarshal([]byte(input), model); err == nil {
+				t.Errorf("%T accepted %s", model, input)
+			}
+		}
+	}
+}
+
+func TestOriginalNumericConstraintsBeforeConversion(t *testing.T) {
+	for _, tc := range []struct {
+		models         []any
+		valid, invalid []string
+	}{
+		{[]any{new(apigen.StringInteger), new(shared.StringInteger), new(taskgen.StringIntegerParameters)}, []string{`"123"`, `"+00123"`}, []string{`123`, `"1e2"`}},
+		{[]any{new(apigen.ExactBound), new(shared.ExactBound), new(taskgen.ExactBoundParameters)}, []string{`1`, `0.99999999999999999`}, []string{`1.00000000000000001`, `1e99999999999999999999999`}},
+		{[]any{new(apigen.ExactMultiple), new(shared.ExactMultiple), new(taskgen.ExactMultipleParameters)}, []string{`0.3`, `0.30`, `-0.3`}, []string{`0.30000000000000001`, `1e-99999999999999999999999`}},
+		{[]any{new(apigen.IntegerFloat), new(shared.IntegerFloat), new(taskgen.IntegerFloatParameters)}, []string{`9007199254740993`, `12.0`}, []string{`9007199254740993.1`, `1e-99999`}},
+		{[]any{new(apigen.FractionText), new(shared.FractionText), new(taskgen.FractionTextParameters)}, []string{`0.3`, `1e-99999999999999999999999`}, []string{`1`, `1.0`, `1e99`}},
+		{[]any{new(apigen.UnsignedBound), new(shared.UnsignedBound), new(taskgen.UnsignedBoundParameters)}, []string{`0`, `12`, `"18446744073709551615"`}, []string{`-1`, `13`}},
+		{[]any{new(apigen.BooleanEnum), new(shared.BooleanEnum), new(taskgen.BooleanEnumParameters)}, []string{`true`, `"false"`}, []string{`false`, `"true"`}},
+		{[]any{new(apigen.ExactEnum), new(shared.ExactEnum), new(taskgen.ExactEnumParameters)}, []string{`0.3`, `3e-1`}, []string{`0.30000000000000001`}},
+		{[]any{new(apigen.SignedFormat), new(shared.SignedFormat), new(taskgen.SignedFormatParameters)}, []string{`9223372036854775807`, `-9223372036854775808`}, []string{`9223372036854775808`, `-9223372036854775809`}},
+		{[]any{new(apigen.UnsignedFormat), new(shared.UnsignedFormat), new(taskgen.UnsignedFormatParameters)}, []string{`9223372036854775807`}, []string{`9223372036854775808`}},
+	} {
+		for _, model := range tc.models {
+			for _, input := range tc.valid {
+				if err := json.Unmarshal([]byte(input), model); err != nil {
+					t.Errorf("%T rejected %s: %v", model, input, err)
+				}
+			}
+			for _, input := range tc.invalid {
+				if err := json.Unmarshal([]byte(input), model); err == nil {
+					t.Errorf("%T accepted %s", model, input)
+				}
+			}
+		}
+	}
+}
+
+func TestCustomDecodersAndConverters(t *testing.T) {
+	for _, model := range []any{new(apigen.CustomKey), new(shared.CustomKey), new(taskgen.CustomKeyParameters)} {
+		if err := json.Unmarshal([]byte(`"k:123"`), model); err != nil || reflect.ValueOf(model).Elem().Int() != 123 {
+			t.Fatalf("%T: %v", model, err)
+		}
+		if err := json.Unmarshal([]byte(`"123"`), model); err == nil {
+			t.Errorf("%T bypassed input pattern", model)
+		}
+		if data, err := json.Marshal(model); err != nil || string(data) != `"k:123"` {
+			t.Errorf("%T lost custom marshaler: %s, %v", model, data, err)
+		}
+	}
+	for _, model := range []any{new(apigen.CustomText), new(shared.CustomText), new(taskgen.CustomTextParameters)} {
+		if err := json.Unmarshal([]byte(`"t:123"`), model); err != nil {
+			t.Fatalf("%T: %v", model, err)
+		}
+		if data, err := json.Marshal(model); err != nil || string(data) != `"t:123"` {
+			t.Errorf("%T lost text marshaler: %s, %v", model, data, err)
+		}
+	}
+	for _, model := range []any{new(apigen.HookKey), new(shared.HookKey), new(taskgen.HookKeyParameters)} {
+		if err := json.Unmarshal([]byte(`"h:123"`), model); err != nil || reflect.ValueOf(model).Elem().Int() != 123 {
+			t.Fatalf("%T: %v", model, err)
+		}
+		if err := json.Unmarshal([]byte(`"123"`), model); err == nil {
+			t.Errorf("%T bypassed hook input validation", model)
+		}
+	}
+	// Custom native encoders that produce accepted input representations can
+	// round-trip through generated task creation and decoding.
+	value := taskgen.CustomKeyParameters(custom.Key(123))
+	task, err := taskgen.NewCustomKeyTask(&value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded taskgen.CustomKeyParameters
+	if err := json.Unmarshal(task.Spec.Payload, &decoded); err != nil || decoded != value {
+		t.Fatalf("custom round trip: %v", err)
+	}
+}
+
+func TestConvertedDictionariesAndObjectFields(t *testing.T) {
+	for _, model := range []any{new(apigen.ConversionMap), new(shared.ConversionMap), new(taskgen.ConversionMapParameters)} {
+		if err := json.Unmarshal([]byte(`{"a":"18446744073709551615","b":123.0}`), model); err != nil {
+			t.Fatalf("%T: %v", model, err)
+		}
+		if reflect.ValueOf(model).Elem().MapIndex(reflect.ValueOf("a")).Uint() != math.MaxUint64 {
+			t.Fatal("map lost precision")
+		}
+		for _, input := range []string{`{"a":-1}`, `{"a":null}`, `{"a":"bad"}`, `{"a":1,"a":2}`, `[]`, `null`} {
+			if err := json.Unmarshal([]byte(input), model); err == nil {
+				t.Errorf("%T accepted %s", model, input)
+			}
+		}
+	}
+	for _, model := range []any{new(apigen.NestedMap), new(shared.NestedMap), new(taskgen.NestedMapParameters)} {
+		if err := json.Unmarshal([]byte(`{"a":["true",false]}`), model); err != nil {
+			t.Fatalf("%T: %v", model, err)
+		}
+		if !reflect.ValueOf(model).Elem().MapIndex(reflect.ValueOf("a")).Index(0).Bool() {
+			t.Fatal("nested map failed")
+		}
+	}
+	for _, model := range []any{new(apigen.CustomMap), new(shared.CustomMap), new(taskgen.CustomMapParameters)} {
+		if err := json.Unmarshal([]byte(`{"a":"k:123"}`), model); err != nil {
+			t.Fatalf("%T: %v", model, err)
+		}
+	}
+	for _, model := range []any{new(apigen.ConversionRequest), new(shared.ConversionRequest), new(taskgen.ConversionRequestParameters)} {
+		if err := json.Unmarshal([]byte(`{"required_bool":"false"}`), model); err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range []string{"signed", "unsigned", "float", "boolean", "text"} {
+			if !field(model, name).IsNil() {
+				t.Errorf("%T omitted %s not nil", model, name)
+			}
+		}
+		input := `{"required_bool":true,"signed":"-123","unsigned":"18446744073709551615","float":"1.25","boolean":"false","text":9007199254740993,"nullable_bool":null,"inline_map":{"a":"2.5"},"custom":"k:123"}`
+		if err := json.Unmarshal([]byte(input), model); err != nil {
+			t.Fatalf("%T: %v", model, err)
+		}
+		if field(model, "boolean").IsNil() || field(model, "boolean").Elem().Bool() {
+			t.Fatal("false presence lost")
+		}
+		if field(model, "unsigned").Elem().Uint() != math.MaxUint64 || field(model, "text").Elem().String() != "9007199254740993" {
+			t.Fatal("precision lost")
+		}
+		for _, input := range []string{`{}`, `{"required_bool":null}`, `{"required_bool":false,"boolean":null}`, `{"required_bool":true,"boolean":false,"boolean":true}`} {
+			if err := json.Unmarshal([]byte(input), model); err == nil {
+				t.Errorf("%T accepted %s", model, input)
+			}
+		}
+	}
+}
+
+func TestScalarFieldScratchValues(t *testing.T) {
+	for _, model := range []any{new(apigen.ConversionRequest), new(shared.ConversionRequest), new(taskgen.ConversionRequestParameters)} {
+		if err := json.Unmarshal([]byte(`{"required_bool":false,"signed":7,"unsigned":9,"boolean":true,"text":"keep","nullable_bool":true}`), model); err != nil {
+			t.Fatal(err)
+		}
+		before, err := json.Marshal(model)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, input := range []string{
+			`{"required_bool":true,"signed":"12","unsigned":"-1"}`,
+			`{"required_bool":true,"text":"new","nullable_bool":null,"NULLABLE_BOOL":true}`,
+			`{"required_bool":true,"boolean":false,"BOOLEAN":true}`,
+			`{"text":"new"}`,
+		} {
+			if err := json.Unmarshal([]byte(input), model); err == nil {
+				t.Fatalf("%T accepted %s", model, input)
+			}
+			after, err := json.Marshal(model)
+			if err != nil || string(after) != string(before) {
+				t.Fatalf("%T changed scalar fields after failure: %s => %s, %v", model, before, after, err)
+			}
+		}
+		oldText := field(model, "text").Interface().(*string)
+		if err := json.Unmarshal([]byte(`{"required_bool":false,"signed":"0","boolean":"false","text":"","nullable_bool":null}`), model); err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range []string{"signed", "boolean", "text"} {
+			v := field(model, name)
+			if v.IsNil() || !v.Elem().IsZero() {
+				t.Fatalf("%T lost present zero value for %s", model, name)
+			}
+		}
+		if !field(model, "nullable_bool").IsNil() || field(model, "unsigned").Elem().Uint() != 9 || *oldText != "keep" {
+			t.Fatalf("%T changed presence or reuse semantics", model)
+		}
+	}
+}
+
+func TestConvertedStringsOwnDecodedBytes(t *testing.T) {
+	for _, input := range []string{
+		`""`, `"hello"`, `"你好"`, `"\u4f60\u597d"`, `"\ud83d\ude00"`, `"\ud800"`,
+		`"\"\\\/\b\f\n\r\t"`, "\"\xff\xc0\xaf\"", `"` + strings.Repeat("x", 4096) + `你"`,
+	} {
+		var want string
+		if err := json.Unmarshal([]byte(input), &want); err != nil {
+			t.Fatal(err)
+		}
+		for _, model := range []any{new(apigen.ConversionRequest), new(shared.ConversionRequest), new(taskgen.ConversionRequestParameters)} {
+			data := []byte(`{"required_bool":false,"text":` + input + `}`)
+			if err := json.Unmarshal(data, model); err != nil {
+				t.Fatalf("%T %q: %v", model, input, err)
+			}
+			for i := range data {
+				data[i] = 'x'
+			}
+			if got := field(model, "text").Elem().String(); got != want {
+				t.Fatalf("%T: got %q, want %q", model, got, want)
+			}
+		}
+	}
+}
+
+func TestTaskCanonicalPayloadCompatibility(t *testing.T) {
+	var plain taskgen.ConversionRequestParameters
+	if err := json.Unmarshal([]byte(`{"required_bool":"false","unsigned":"18446744073709551615"}`), &plain); err != nil {
+		t.Fatal(err)
+	}
+	task, err := taskgen.NewConversionRequestTask(&plain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded taskgen.ConversionRequestParameters
+	if err := json.Unmarshal(task.Spec.Payload, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	// A valid string input need not have a valid numeric output. Fail before
+	// enqueueing instead of producing a task the worker cannot deserialize.
+	var stringOnly taskgen.StringIntegerParameters
+	if err := json.Unmarshal([]byte(`"123"`), &stringOnly); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := taskgen.NewStringIntegerTask(&stringOnly); err == nil || !strings.Contains(err.Error(), "serialized task payload") {
+		t.Fatalf("expected round-trip error: %v", err)
+	}
+	var restricted taskgen.SubmitParameters
+	if err := json.Unmarshal([]byte(`{"required_key":0,"key_ref":"012"}`), &restricted); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := taskgen.NewSubmitTask(&restricted); err == nil {
+		t.Fatal("enqueued payload that violates its original numeric branch")
+	}
+}
+
+func TestUnconstrainedInputTypes(t *testing.T) {
+	for _, model := range []any{new(apigen.AnyInteger), new(shared.AnyInteger), new(taskgen.AnyIntegerParameters)} {
+		for _, input := range []string{`123`, `"123"`} {
+			if err := json.Unmarshal([]byte(input), model); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := json.Unmarshal([]byte(`true`), model); err == nil {
+			t.Fatal("unconstrained input bypassed conversion rules")
+		}
+	}
+	for _, model := range []any{new(apigen.AnyBoolean), new(shared.AnyBoolean), new(taskgen.AnyBooleanParameters)} {
+		for _, input := range []string{`true`, `"false"`} {
+			if err := json.Unmarshal([]byte(input), model); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}
+
+func TestConcurrentExactNumericConstraints(t *testing.T) {
+	var wg sync.WaitGroup
+	for i := 0; i < 40; i++ {
+		wg.Go(func() {
+			var value apigen.ExactMultiple
+			for _, input := range []string{`0.3`, `0.30`, `0.30000000000000001`} {
+				err := json.Unmarshal([]byte(input), &value)
+				if (err == nil) != (input != `0.30000000000000001`) {
+					t.Errorf("%s: %v", input, err)
+				}
+			}
+		})
+	}
+	wg.Wait()
+}
+
+func TestByteSliceUsesNativeJSONOutput(t *testing.T) {
+	for _, model := range []any{new(apigen.ByteArray), new(shared.ByteArray), new(taskgen.ByteArrayParameters)} {
+		if err := json.Unmarshal([]byte(`["1",255]`), model); err != nil {
+			t.Fatalf("%T: %v", model, err)
+		}
+		v := reflect.ValueOf(model).Elem()
+		if v.Len() != 2 || v.Index(0).Uint() != 1 || v.Index(1).Uint() != 255 {
+			t.Fatal("incorrect byte array")
+		}
+		data, err := json.Marshal(model)
+		if err != nil || string(data) != `"Af8="` {
+			t.Errorf("%T changed native byte-slice encoding: %s, %v", model, data, err)
+		}
+	}
+	value := taskgen.ByteArrayParameters{1, 255}
+	if _, err := taskgen.NewByteArrayTask(&value); err == nil {
+		t.Fatal("enqueued base64 output for an array-only input schema")
+	}
+}

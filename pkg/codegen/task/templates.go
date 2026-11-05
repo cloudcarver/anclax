@@ -117,7 +117,11 @@ func New{{upperFirst .Name}}Task(params *{{.ParameterType}}, overrides ...taskco
 			return nil, errors.Wrap(err, "failed to apply task override")
 		}
 	}
-	return task, nil
+	{{if .ValidatePayload}}var decoded {{.ParameterType}}
+	if err := json.Unmarshal(task.Spec.Payload, &decoded); err != nil {
+		return nil, fmt.Errorf("serialized task payload does not satisfy its input schema: %w", err)
+	}
+	{{end}}return task, nil
 }{{end}}
 
 {{.StructDefs}}{{range .Functions}}{{if .HasLocalHelpers}}

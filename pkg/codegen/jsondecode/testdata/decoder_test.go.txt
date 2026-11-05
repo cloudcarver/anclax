@@ -1,0 +1,375 @@
+package decodertest
+
+import (
+	"encoding/json"
+	"fmt"
+	"math"
+	"net/http"
+	"net/http/httptest"
+	"reflect"
+	"strings"
+	"sync"
+	"testing"
+
+	"example.com/decodertest/apigen"
+	shared "example.com/decodertest/shared"
+	"example.com/decodertest/taskgen"
+	"github.com/gofiber/fiber/v3"
+)
+
+func requests() map[string]func() any {
+	return map[string]func() any{
+		"openapi": func() any { return new(apigen.Request) },
+		"shared":  func() any { return new(shared.Request) },
+		"task":    func() any { return new(taskgen.SubmitParameters) },
+	}
+}
+
+func field(value any, name string) reflect.Value {
+	v := reflect.ValueOf(value).Elem()
+	for i := 0; i < v.NumField(); i++ {
+		if strings.Split(v.Type().Field(i).Tag.Get("json"), ",")[0] == name {
+			return v.Field(i)
+		}
+	}
+	panic(name)
+}
+
+func TestNumbersAndStrings(t *testing.T) {
+	cases := []struct {
+		input string
+		want  int64
+	}{
+		{`0`, 0}, {`"0"`, 0}, {`123`, 123}, {`"123"`, 123},
+		{`-123`, -123}, {`"-123"`, -123}, {`"+00123"`, 123}, {`"\u0031\u0032\u0033"`, 123},
+		{`9007199254740993`, 9007199254740993}, {`"9007199254740993"`, 9007199254740993},
+		{`9223372036854775807`, math.MaxInt64}, {`"9223372036854775807"`, math.MaxInt64},
+		{`-9223372036854775808`, math.MinInt64}, {`"-9223372036854775808"`, math.MinInt64},
+		{`123.0`, 123}, {`1.23e2`, 123}, {`9223372036854775807.0`, math.MaxInt64},
+		{`0e99999999999999999999999999`, 0},
+	}
+	for generator, newRequest := range requests() {
+		for _, tc := range cases {
+			t.Run(generator+"/"+tc.input, func(t *testing.T) {
+				value := newRequest()
+				if err := json.Unmarshal([]byte(`{"required_key":`+tc.input+`,"device_key":`+tc.input+`}`), value); err != nil {
+					t.Fatal(err)
+				}
+				required, optional := field(value, "required_key"), field(value, "device_key")
+				if required.Type() != reflect.TypeOf(int64(0)) || optional.Type() != reflect.TypeOf((*int64)(nil)) {
+					t.Fatalf("wrong public types: %v, %v", required.Type(), optional.Type())
+				}
+				if required.Int() != tc.want || optional.IsNil() || optional.Elem().Int() != tc.want {
+					t.Fatalf("lost integer value: %+v", value)
+				}
+				encoded, err := json.Marshal(value)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var wire map[string]json.RawMessage
+				if err := json.Unmarshal(encoded, &wire); err != nil {
+					t.Fatal(err)
+				}
+				if string(wire["device_key"]) != fmt.Sprint(tc.want) {
+					t.Fatalf("expected numeric output, got %s", encoded)
+				}
+			})
+		}
+	}
+}
+
+func TestPresenceAndInvalidValues(t *testing.T) {
+	invalid := []string{
+		`"abc"`, `""`, `" 123 "`, `"1.5"`, `"1e3"`, `1.5`, `1e-1`, `true`, `{}`, `[]`, `null`,
+		`9223372036854775808`, `-9223372036854775809`, `"9223372036854775808"`,
+		`9007199254740993.1`, `1e99999999999999999`, `1e-99999999999999999`,
+	}
+	for generator, newRequest := range requests() {
+		t.Run(generator, func(t *testing.T) {
+			value := newRequest()
+			if err := json.Unmarshal([]byte(`{"required_key":0}`), value); err != nil {
+				t.Fatal(err)
+			}
+			if !field(value, "device_key").IsNil() {
+				t.Fatal("omitted optional field must be nil")
+			}
+			encoded, err := json.Marshal(value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := json.Unmarshal(encoded, newRequest()); err != nil {
+				t.Fatalf("cannot decode serialized optional fields: %s: %v", encoded, err)
+			}
+			if err := json.Unmarshal([]byte(`{"required_key":0,"nullable_key":null}`), value); err != nil {
+				t.Fatal(err)
+			}
+			if !field(value, "nullable_key").IsNil() {
+				t.Fatal("nullable field must be nil")
+			}
+			for _, input := range invalid {
+				value := newRequest()
+				if err := json.Unmarshal([]byte(`{"required_key":0,"device_key":`+input+`}`), value); err == nil || !strings.Contains(err.Error(), "device_key") {
+					t.Errorf("expected field error for %s, got %v", input, err)
+				}
+			}
+			for _, input := range []string{`{}`, `null`, `{"required_key":null}`, `{"required_key":0,"plain_int":"123"}`, `{"required_key":0,"DEVICE_KEY":true}`, `{"required_key":0,"device_key":1,"DEVICE_KEY":2}`, `{"required_key":0,"device_key":1,"device_key":2}`} {
+				if err := json.Unmarshal([]byte(input), newRequest()); err == nil {
+					t.Errorf("accepted %s", input)
+				}
+			}
+		})
+	}
+}
+
+func TestReferencesArraysAndOriginalBranchConstraints(t *testing.T) {
+	for generator, newRequest := range requests() {
+		t.Run(generator, func(t *testing.T) {
+			value := newRequest()
+			input := `{"required_key":1,"key_ref":"012","key_alias":"9223372036854775807","child":{"key":"012","next":{"key":"013"}},"keys":["9223372036854775807",1],"inline_keys":["9007199254740993",2]}`
+			if err := json.Unmarshal([]byte(input), value); err != nil {
+				t.Fatal(err)
+			}
+			if field(value, "key_ref").Elem().Int() != 12 {
+				t.Fatal("incorrect referenced conversion")
+			}
+			if field(value, "key_alias").Elem().Int() != math.MaxInt64 {
+				t.Fatal("incorrect alias conversion")
+			}
+			if reflect.Indirect(field(value, "keys")).Index(0).Int() != math.MaxInt64 {
+				t.Fatal("lost referenced array value")
+			}
+			if reflect.Indirect(field(value, "inline_keys")).Index(0).Int() != 9007199254740993 {
+				t.Fatal("lost inline array value")
+			}
+			for _, input := range []string{
+				`{"required_key":0,"key_ref":12}`,
+				`{"required_key":0,"key_ref":"12"}`,
+				`{"required_key":0,"child":{}}`,
+				`{"required_key":0,"child":{"key":"012","next":null}}`,
+				`{"required_key":0,"keys":[null]}`,
+				`{"required_key":0,"inline_keys":["bad"]}`,
+			} {
+				if err := json.Unmarshal([]byte(input), newRequest()); err == nil {
+					t.Errorf("accepted %s", input)
+				}
+			}
+		})
+	}
+	var nested taskgen.SubmitParameters
+	if err := json.Unmarshal([]byte(`{"required_key":0,"inline_child":{"key":"012"}}`), &nested); err != nil {
+		t.Fatal(err)
+	}
+	var external apigen.ExternalRequest
+	if err := json.Unmarshal([]byte(`{"request":{"required_key":"9223372036854775807"}}`), &external); err != nil {
+		t.Fatal(err)
+	}
+	if external.Request.RequiredKey != math.MaxInt64 {
+		t.Fatal("external schema lost precision")
+	}
+}
+
+func TestRootModelsAndUnchangedPlainTypes(t *testing.T) {
+	for _, dst := range []any{new(apigen.Key), new(shared.Key), new(apigen.KeyAlias), new(shared.KeyAlias), new(taskgen.ScalarParameters)} {
+		if err := json.Unmarshal([]byte(`"9223372036854775807"`), dst); err != nil {
+			t.Fatal(err)
+		}
+		if reflect.ValueOf(dst).Elem().Int() != math.MaxInt64 {
+			t.Fatal("incorrect scalar")
+		}
+	}
+	for _, dst := range []any{new(apigen.Keys), new(shared.Keys), new(taskgen.ArrayParameters)} {
+		if err := json.Unmarshal([]byte(`["9223372036854775807",1]`), dst); err != nil {
+			t.Fatal(err)
+		}
+		if reflect.ValueOf(dst).Elem().Index(0).Int() != math.MaxInt64 {
+			t.Fatal("incorrect array")
+		}
+	}
+	for _, dst := range []any{new(apigen.Plain), new(shared.Plain)} {
+		if err := json.Unmarshal([]byte(`{"key":"123"}`), dst); err == nil {
+			t.Fatal("unannotated field gained coercion")
+		}
+	}
+}
+
+func TestTaskPayloadRoundTrip(t *testing.T) {
+	var params taskgen.SubmitParameters
+	if err := json.Unmarshal([]byte(`{"required_key":"9223372036854775807"}`), &params); err != nil {
+		t.Fatal(err)
+	}
+	task, err := taskgen.NewSubmitTask(&params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded taskgen.SubmitParameters
+	if err := json.Unmarshal(task.Spec.Payload, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if field(&decoded, "required_key").Int() != math.MaxInt64 || !field(&decoded, "device_key").IsNil() {
+		t.Fatal("task round trip lost value or presence")
+	}
+}
+
+type handler struct{}
+
+func (handler) CreateDevice(c fiber.Ctx) error {
+	var request apigen.Request
+	if err := c.Bind().Body(&request); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+	return c.JSON(request)
+}
+
+func TestFiberJSONBinding(t *testing.T) {
+	app := fiber.New()
+	apigen.RegisterHandlers(app, handler{})
+	for _, tc := range []struct {
+		body   string
+		status int
+	}{
+		{`{"required_key":"9223372036854775807","device_key":"0"}`, 200},
+		{`{"required_key":0}`, 200},
+		{`{"required_key":"abc"}`, 400},
+		{`{"required_key":0,"device_key":null}`, 400},
+		{`{}`, 400},
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/devices", strings.NewReader(tc.body))
+		req.Header.Set("Content-Type", "application/json")
+		res, err := app.Test(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != tc.status {
+			t.Errorf("%s: status %d, want %d", tc.body, res.StatusCode, tc.status)
+		}
+	}
+}
+
+func TestGeneratedScalarConstraints(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		models  []any
+		valid   map[string]int64
+		invalid []string
+	}{
+		{"branch constraints", []any{new(apigen.BranchKey), new(shared.BranchKey)},
+			map[string]int64{`12`: 12, `"012"`: 12, `"010"`: 10, `"\u0030\u0031\u0032"`: 12},
+			[]string{`10`, `20`, `"12"`, `"01"`, `"000001"`}},
+		{"enum preserves original type", []any{new(apigen.EnumKey), new(shared.EnumKey)},
+			map[string]int64{`12`: 12, `12.0`: 12, `"0012"`: 12},
+			[]string{`"12"`, `13`, `"0013"`}},
+		{"large integer multipleOf", []any{new(apigen.EvenKey), new(shared.EvenKey)},
+			map[string]int64{`9007199254740994`: 9007199254740994, `"4"`: 4},
+			[]string{`9007199254740993`, `9223372036854775807`}},
+		{"fractional bounds and multiples", []any{new(apigen.FractionalKey), new(shared.FractionalKey)},
+			map[string]int64{`3`: 3, `3e0`: 3}, []string{`1`, `2`, `4`, `6`}},
+		{"composition", []any{new(apigen.ComposedKey), new(shared.ComposedKey)},
+			map[string]int64{`13`: 13, `"1"`: 1}, []string{`1`, `12`, `"12"`, `"+13"`}},
+		{"overlapping oneOf", []any{new(apigen.OneOfKey), new(shared.OneOfKey)},
+			map[string]int64{`9`: 9, `21`: 21}, []string{`10`, `12`, `20`, `"1"`}},
+		{"int32 branch", []any{new(apigen.Int32Key), new(shared.Int32Key)},
+			map[string]int64{`2147483647`: 2147483647, `-2147483648`: -2147483648, `"2147483648"`: 2147483648},
+			[]string{`2147483648`, `-2147483649`}},
+		{"byte format", []any{new(apigen.ByteKey), new(shared.ByteKey)},
+			map[string]int64{`"1234"`: 1234, `"123"`: 123}, []string{`"12="`, `1234`}},
+		{"folded anyOf", []any{new(shared.FoldedAny)},
+			map[string]int64{`"1"`: 1}, []string{`1`}},
+		{"folded oneOf", []any{new(shared.FoldedOne)}, nil, []string{`1`, `"001"`, `"1"`}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, model := range tc.models {
+				for input, want := range tc.valid {
+					if err := json.Unmarshal([]byte(input), model); err != nil || reflect.ValueOf(model).Elem().Int() != want {
+						t.Errorf("%T %s: got %v, %v; want %d", model, input, model, err, want)
+					}
+				}
+				for _, input := range tc.invalid {
+					if err := json.Unmarshal([]byte(input), model); err == nil {
+						t.Errorf("%T accepted %s", model, input)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestDirectMethodsAndReuse(t *testing.T) {
+	for _, input := range []string{`1 2`, `"1" true`, ``, `01`, `1.`, `+1`, `"abc"`, `null`, `9223372036854775808`} {
+		value := apigen.Key(42)
+		if err := value.UnmarshalJSON([]byte(input)); err == nil || value != 42 {
+			t.Errorf("%s: value=%d, err=%v", input, value, err)
+		}
+	}
+	for _, newRequest := range requests() {
+		value := newRequest()
+		if err := json.Unmarshal([]byte(`{"required_key":1,"device_key":"123","nullable_key":"456","label":"keep"}`), value); err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal([]byte(`{"required_key":2,"nullable_key":null}`), value); err != nil {
+			t.Fatal(err)
+		}
+		if field(value, "device_key").Elem().Int() != 123 || field(value, "label").Elem().String() != "keep" || !field(value, "nullable_key").IsNil() {
+			t.Fatalf("incorrect reused destination: %+v", value)
+		}
+	}
+	for _, dst := range []any{new(apigen.Matrix), new(shared.Matrix)} {
+		if err := json.Unmarshal([]byte(`[["9223372036854775807",1],[]]`), dst); err != nil {
+			t.Fatal(err)
+		}
+		if reflect.ValueOf(dst).Elem().Index(0).Index(0).Int() != math.MaxInt64 {
+			t.Fatal("incorrect nested array value")
+		}
+	}
+}
+
+func TestConcurrentGeneratedValidation(t *testing.T) {
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Go(func() {
+			var value apigen.BranchKey
+			if err := json.Unmarshal([]byte(`"012"`), &value); err != nil || value != 12 {
+				t.Errorf("concurrent decode: %d, %v", value, err)
+			}
+		})
+	}
+	wg.Wait()
+}
+
+func BenchmarkGeneratedDecode(b *testing.B) {
+	for _, tc := range []struct{ name, input string }{
+		{"number", `{"device_key":123}`},
+		{"string", `{"device_key":"123"}`},
+		{"escaped", `{"device_key":"\u0031\u0032\u0033"}`},
+		{"max_int64", `{"device_key":"9223372036854775807"}`},
+		{"payload_4k", `{"device_key":"123","payload":"` + strings.Repeat("x", 4096) + `"}`},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			data := []byte(tc.input)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				var value apigen.DeviceRequest
+				if err := json.Unmarshal(data, &value); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func TestNullableRepresentations(t *testing.T) {
+	for _, dst := range []any{new(apigen.NullableArrays), new(shared.NullableArrays)} {
+		if err := json.Unmarshal([]byte(`{"keys":["123"]}`), dst); err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal([]byte(`{"keys":null}`), dst); err != nil || !field(dst, "keys").IsNil() {
+			t.Fatalf("nullable named array was not cleared: %v, %v", dst, err)
+		}
+	}
+	for _, dst := range []any{new(apigen.RequiredNullableScalar), new(shared.RequiredNullableScalar)} {
+		if err := json.Unmarshal([]byte(`{"key":null}`), dst); err == nil {
+			t.Fatal("required int64 cannot represent null")
+		}
+	}
+}
