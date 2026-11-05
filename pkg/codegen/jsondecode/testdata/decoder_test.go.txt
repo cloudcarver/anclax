@@ -340,6 +340,7 @@ func BenchmarkGeneratedDecode(b *testing.B) {
 	for _, tc := range []struct{ name, input string }{
 		{"number", `{"device_key":123}`},
 		{"string", `{"device_key":"123"}`},
+		{"escaped", `{"device_key":"\u0031\u0032\u0033"}`},
 		{"max_int64", `{"device_key":"9223372036854775807"}`},
 		{"payload_4k", `{"device_key":"123","payload":"` + strings.Repeat("x", 4096) + `"}`},
 	} {

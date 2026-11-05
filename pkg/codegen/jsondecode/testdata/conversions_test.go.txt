@@ -253,6 +253,69 @@ func TestConvertedDictionariesAndObjectFields(t *testing.T) {
 	}
 }
 
+func TestScalarFieldScratchValues(t *testing.T) {
+	for _, model := range []any{new(apigen.ConversionRequest), new(shared.ConversionRequest), new(taskgen.ConversionRequestParameters)} {
+		if err := json.Unmarshal([]byte(`{"required_bool":false,"signed":7,"unsigned":9,"boolean":true,"text":"keep","nullable_bool":true}`), model); err != nil {
+			t.Fatal(err)
+		}
+		before, err := json.Marshal(model)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, input := range []string{
+			`{"required_bool":true,"signed":"12","unsigned":"-1"}`,
+			`{"required_bool":true,"text":"new","nullable_bool":null,"NULLABLE_BOOL":true}`,
+			`{"required_bool":true,"boolean":false,"BOOLEAN":true}`,
+			`{"text":"new"}`,
+		} {
+			if err := json.Unmarshal([]byte(input), model); err == nil {
+				t.Fatalf("%T accepted %s", model, input)
+			}
+			after, err := json.Marshal(model)
+			if err != nil || string(after) != string(before) {
+				t.Fatalf("%T changed scalar fields after failure: %s => %s, %v", model, before, after, err)
+			}
+		}
+		oldText := field(model, "text").Interface().(*string)
+		if err := json.Unmarshal([]byte(`{"required_bool":false,"signed":"0","boolean":"false","text":"","nullable_bool":null}`), model); err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range []string{"signed", "boolean", "text"} {
+			v := field(model, name)
+			if v.IsNil() || !v.Elem().IsZero() {
+				t.Fatalf("%T lost present zero value for %s", model, name)
+			}
+		}
+		if !field(model, "nullable_bool").IsNil() || field(model, "unsigned").Elem().Uint() != 9 || *oldText != "keep" {
+			t.Fatalf("%T changed presence or reuse semantics", model)
+		}
+	}
+}
+
+func TestConvertedStringsOwnDecodedBytes(t *testing.T) {
+	for _, input := range []string{
+		`""`, `"hello"`, `"你好"`, `"\u4f60\u597d"`, `"\ud83d\ude00"`, `"\ud800"`,
+		`"\"\\\/\b\f\n\r\t"`, "\"\xff\xc0\xaf\"", `"` + strings.Repeat("x", 4096) + `你"`,
+	} {
+		var want string
+		if err := json.Unmarshal([]byte(input), &want); err != nil {
+			t.Fatal(err)
+		}
+		for _, model := range []any{new(apigen.ConversionRequest), new(shared.ConversionRequest), new(taskgen.ConversionRequestParameters)} {
+			data := []byte(`{"required_bool":false,"text":` + input + `}`)
+			if err := json.Unmarshal(data, model); err != nil {
+				t.Fatalf("%T %q: %v", model, input, err)
+			}
+			for i := range data {
+				data[i] = 'x'
+			}
+			if got := field(model, "text").Elem().String(); got != want {
+				t.Fatalf("%T: got %q, want %q", model, got, want)
+			}
+		}
+	}
+}
+
 func TestTaskCanonicalPayloadCompatibility(t *testing.T) {
 	var plain taskgen.ConversionRequestParameters
 	if err := json.Unmarshal([]byte(`{"required_bool":"false","unsigned":"18446744073709551615"}`), &plain); err != nil {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -44,6 +45,48 @@ func TestRawValueRejectsDuplicates(t *testing.T) {
 		}
 		if err := json.Unmarshal([]byte(input), &value); err == nil {
 			t.Errorf("accepted %s", input)
+		}
+	}
+}
+
+func TestUnquoteStringMatchesJSON(t *testing.T) {
+	for _, input := range []string{
+		`""`, `"123"`, `"hello world"`, `"true"`, "\"\x7f\"",
+		`"你好"`, `"\u4f60\u597d"`, `"\ud83d\ude00"`, `"\ud800"`, `"\udfff"`,
+		`"\"\\\/\b\f\n\r\t"`, "\"\xff\xc0\xaf\"",
+		`"` + strings.Repeat("a", 126) + `"`, `"` + strings.Repeat("a", 127) + `"`,
+		`"` + strings.Repeat("a", 4096) + `你"`,
+		` "123" `, `null`, `123`, `true`, `[]`, `{}`, ``, `"`, `"unterminated`,
+		`"a"b"`, `"\x41"`, `"\uZZZZ"`, "\"a\nb\"", `"x" "y"`,
+	} {
+		t.Run(fmt.Sprintf("%q", input), func(t *testing.T) {
+			checkUnquoteString(t, []byte(input))
+		})
+	}
+}
+
+func FuzzUnquoteString(f *testing.F) {
+	for _, input := range []string{`""`, `"123"`, `"你好"`, `"\ud800"`, `"\"\\\n"`, "\"\xff\"", `null`, `"x" "y"`} {
+		f.Add([]byte(input))
+	}
+	f.Fuzz(func(t *testing.T, data []byte) { checkUnquoteString(t, data) })
+}
+
+func checkUnquoteString(t *testing.T, data []byte) {
+	t.Helper()
+	var want string
+	wantErr := json.Unmarshal(data, &want)
+	got, err := UnquoteString(data)
+	if got != want || (err == nil) != (wantErr == nil) {
+		t.Fatalf("%q: got %q, %v; want %q, %v", data, got, err, want, wantErr)
+	}
+	if err == nil {
+		// The decoder may reuse its input buffer after returning.
+		for i := range data {
+			data[i] = 'x'
+		}
+		if got != want {
+			t.Fatalf("result borrowed the input buffer: got %q, want %q", got, want)
 		}
 	}
 }

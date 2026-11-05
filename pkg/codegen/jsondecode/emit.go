@@ -126,14 +126,46 @@ func (e *emitter) object(out *strings.Builder, node *rule) error {
 	if len(fields) != len(node.Properties) {
 		return fmt.Errorf("%s: missing Go field bindings for JSON decoding", e.model.Name)
 	}
+	typed := make([]bool, len(fields))
 	for i, field := range fields {
-		fmt.Fprintf(out, "Field%d jsondecode.RawValue `json:%s`\n", i, strconv.Quote(field.JSONName))
+		child := node.Properties[field.JSONName].Rule
+		typed[i] = child.isScalar() && !child.Delegate && child.Target.Kind != "custom" && child.Target.Converter == ""
+		wireType := "jsondecode.RawValue"
+		if typed[i] {
+			var err error
+			wireType, err = e.scalarField(child, field)
+			if err != nil {
+				return err
+			}
+		}
+		fmt.Fprintf(out, "Field%d %s `json:%s`\n", i, wireType, strconv.Quote(field.JSONName))
 	}
 	out.WriteString("}{plain: &next}\nif err := json.Unmarshal(data, &wire); err != nil { return err }\n")
 	for i, field := range fields {
 		binding := node.Properties[field.JSONName]
 		child := binding.Rule
 		raw := fmt.Sprintf("wire.Field%d", i)
+		if typed[i] {
+			if binding.Required {
+				fmt.Fprintf(out, "if !%s.Present { return fmt.Errorf(%q) }\n", raw, field.JSONName+": required field is missing")
+			}
+			fmt.Fprintf(out, "if %s.Present {\n", raw)
+			if strings.HasPrefix(field.Type, "*") {
+				if child.Nullable {
+					fmt.Fprintf(out, "if %s.Null { next.%s = nil } else {\n", raw, field.GoName)
+				}
+				// Keep the optional value separate: pointing inside wire would
+				// retain its other fields and the embedded plain model as well.
+				fmt.Fprintf(out, "value := %s.Value\nnext.%s = &value\n", raw, field.GoName)
+				if child.Nullable {
+					out.WriteString("}\n")
+				}
+			} else {
+				fmt.Fprintf(out, "next.%s = %s.Value\n", field.GoName, raw)
+			}
+			out.WriteString("}\n")
+			continue
+		}
 		if binding.Required {
 			fmt.Fprintf(out, "if len(%s) == 0 { return fmt.Errorf(%q) }\n", raw, field.JSONName+": required field is missing")
 		}
@@ -156,6 +188,29 @@ func (e *emitter) object(out *strings.Builder, node *rule) error {
 	}
 	fmt.Fprintf(out, "*v = %s(next)\nreturn nil\n", e.model.Name)
 	return nil
+}
+
+// scalarField decodes a built-in scalar while encoding/json owns the token.
+// It retains only the typed result and presence flags, avoiding a RawValue copy.
+// References and custom converters keep their existing capture/delegation path.
+func (e *emitter) scalarField(node *rule, field Field) (string, error) {
+	name := e.symbol() + "Field"
+	valueType := strings.TrimPrefix(field.Type, "*")
+	decoder, err := e.decoder(node, valueType, valueType)
+	if err != nil {
+		return "", err
+	}
+	nullable := node.Nullable && strings.HasPrefix(field.Type, "*")
+	fmt.Fprintf(&e.helpers, "\ntype %s struct { Value %s; Present bool", name, valueType)
+	if nullable {
+		e.helpers.WriteString("; Null bool")
+	}
+	fmt.Fprintf(&e.helpers, " }\nfunc (v *%s) UnmarshalJSON(data []byte) error {\nif v.Present { return fmt.Errorf(%q) }\nv.Present = true\n", name, field.JSONName+": duplicate annotated JSON field")
+	if nullable {
+		e.helpers.WriteString("if bytes.Equal(data, []byte(\"null\")) { v.Null = true; return nil }\n")
+	}
+	fmt.Fprintf(&e.helpers, "value, err := %s(data)\nif err != nil { return fmt.Errorf(%q, err) }\nv.Value = value\nreturn nil\n}\n", decoder, field.JSONName+": %w")
+	return name, nil
 }
 
 func (e *emitter) decoder(node *rule, goType, underlying string) (string, error) {

@@ -32,7 +32,8 @@ func (e *emitter) scalarDecoder(out *strings.Builder, node *rule, goType string)
 		out.WriteString("return value, fmt.Errorf(\"string does not match input schema\")\n")
 	} else {
 		if stringCheck != "true" || t.Converter == "" && t.Kind != "custom" {
-			out.WriteString("var text string\nif err := json.Unmarshal(data, &text); err != nil { return value, err }\n")
+			e.use(runtimeImport)
+			out.WriteString("text, textErr := jsondecode.UnquoteString(data)\nif textErr != nil { return value, textErr }\n")
 		}
 		check(out, stringCheck, "string")
 		if t.Converter != "" || t.Kind == "custom" {

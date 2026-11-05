@@ -123,9 +123,13 @@ case-insensitive aliases of those fields, and repeated dictionary keys are rejec
 Generated `UnmarshalJSON` methods contain concrete Go checks and assignments.
 Type branches and constant constraints are folded during generation; regexes and
 numeric comparison constants are initialized once. There is no runtime schema
-interpreter or intermediate JSON marshaling. Shared primitives handle field
-capture, exact integer parsing, decimal float strings, and exact numeric
-comparisons. Exact comparisons store exponents without expanding powers of ten.
+interpreter or intermediate JSON marshaling. Inline built-in scalar fields decode
+into typed temporary values during JSON parsing, avoiding a copy of the raw token.
+References and custom conversions retain raw field capture. Short unescaped ASCII
+strings take a fast path; other strings use standard JSON decoding, including its
+Unicode replacement behavior. Decoded strings own their bytes. Shared primitives
+handle exact integer parsing, decimal float strings, and exact numeric comparisons.
+Exact comparisons store exponents without expanding powers of ten.
 Validation covers annotated scalar values and presence/nullability on paths to
 them; it does not enable whole-request schema validation or change YAML/query/form
 binding. Standard `json.Unmarshal` and Fiber JSON body binding invoke the methods.
