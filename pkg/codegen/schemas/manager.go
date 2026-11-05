@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/cloudcarver/anclax/pkg/codegen/gotypes"
+	jsondecode_codegen "github.com/cloudcarver/anclax/pkg/codegen/jsondecode"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v3"
@@ -54,11 +55,12 @@ type enumValue struct {
 }
 
 type schemaDef struct {
-	Name      string
-	Kind      string
-	AliasType string
-	Alias     bool
-	Fields    []fieldDef
+	Name        string
+	Kind        string
+	AliasType   string
+	Alias       bool
+	Fields      []fieldDef
+	JSONDecoder string
 }
 
 type fieldDef struct {
@@ -128,6 +130,34 @@ func Load(workdir string, config Config) (*Manager, error) {
 
 func (m *Manager) IsEnabled() bool {
 	return m != nil
+}
+
+// LookupRef resolves shared schemas for JSON decoder generation, retaining the
+// target file so references inside that schema resolve relative to it.
+func (m *Manager) LookupRef(currentFile string, ref *openapi3.SchemaRef) (string, *openapi3.SchemaRef, error) {
+	if ref == nil || ref.Value != nil || ref.Ref == "" {
+		return currentFile, ref, nil
+	}
+	if m == nil {
+		return currentFile, nil, errors.Errorf("shared schema reference requires schemas configuration: %s", ref.Ref)
+	}
+	parts := strings.SplitN(normalizeRefString(ref.Ref), "#", 2)
+	if len(parts) != 2 {
+		return currentFile, nil, errors.Errorf("invalid shared schema reference: %s", ref.Ref)
+	}
+	name, ok := schemaNameFromFragment(parts[1])
+	if !ok {
+		return currentFile, nil, errors.Errorf("invalid shared schema reference: %s", ref.Ref)
+	}
+	target := currentFile
+	if parts[0] != "" {
+		target = filepath.Clean(filepath.Join(filepath.Dir(currentFile), filepath.FromSlash(parts[0])))
+	}
+	file := m.files[target]
+	if file == nil || file.Schemas[name] == nil {
+		return currentFile, nil, errors.Errorf("shared schema reference not found: %s", ref.Ref)
+	}
+	return target, file.Schemas[name], nil
 }
 
 func (m *Manager) ResolveRef(currentFile, currentPackage, ref string) (string, []string, bool, error) {
@@ -212,6 +242,18 @@ func (m *Manager) renderFile(file *File) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		// Reference aliases inherit the target type's JSON methods.
+		if file.Schemas[name].Ref == "" {
+			decoder, err := jsondecode_codegen.Method(file.AbsPath, def.Name, file.Schemas[name], m.LookupRef, false)
+			if err != nil {
+				return "", errors.Wrapf(err, "schema %s", name)
+			}
+			if decoder != "" {
+				def.JSONDecoder = decoder
+				def.Alias = false
+				mergeImports(imports, jsondecode_codegen.Import)
+			}
+		}
 		defs = append(defs, def)
 	}
 	enums := make([]enumDef, 0, len(enumMap))
@@ -240,6 +282,7 @@ func (m *Manager) renderFile(file *File) (string, error) {
 		b.WriteString(")\n\n")
 	}
 	for _, def := range defs {
+		b.WriteString(def.JSONDecoder)
 		if def.Kind == "alias" {
 			if def.AliasType == def.Name {
 				continue

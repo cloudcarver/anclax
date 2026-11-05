@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/cloudcarver/anclax/pkg/codegen/gotypes"
+	jsondecode_codegen "github.com/cloudcarver/anclax/pkg/codegen/jsondecode"
 	schema_codegen "github.com/cloudcarver/anclax/pkg/codegen/schemas"
 	openapi_bundle "github.com/cloudcarver/anclax/pkg/openapi/bundle"
 	"github.com/getkin/kin-openapi/openapi3"
@@ -48,6 +49,7 @@ type schemaDef struct {
 	Kind        string
 	AliasType   string
 	Fields      []fieldDef
+	JSONDecoder string
 }
 
 type fieldDef struct {
@@ -293,7 +295,16 @@ func buildSchemaDef(currentFile, name string, ref *openapi3.SchemaRef, enumMap m
 	}
 	value := ref.Value
 	schema.Description = firstNonEmpty(value.Description, schema.Name)
-	if len(value.Enum) > 0 {
+	decoder, err := jsondecode_codegen.Method(currentFile, schema.Name, ref, schemaManager.LookupRef, false)
+	if err != nil {
+		return schema, err
+	}
+	schema.JSONDecoder = decoder
+	if decoder != "" {
+		mergeImports(imports, jsondecode_codegen.Import)
+	}
+	customType, _ := customGoType(value)
+	if len(value.Enum) > 0 && customType == "" {
 		resolved, err := resolveType(currentFile, "", ref, schema.Name, enumMap, schemaManager)
 		if err != nil {
 			return schema, err
@@ -785,6 +796,7 @@ func renderSecurityScopes(b *strings.Builder, alternative operationSecurityAlter
 }
 
 func renderSchema(b *strings.Builder, schema schemaDef) {
+	defer func() { b.WriteString(schema.JSONDecoder) }()
 	if schema.Kind == "enum" {
 		return
 	}

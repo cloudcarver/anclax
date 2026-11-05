@@ -33,6 +33,11 @@ Python 生成一个 `.py` 文件，包含 `TypedDict` 参数类型、`TaskOption
 
 支持对象、必填／可选字段、嵌套对象、数组、字典、标量、枚举、nullable、`oneOf` / `anyOf` 和本地 `$ref`，包括已有的 `file.yaml#schemas/Name`；引用相对于所在文件解析。递归引用和 `allOf` 会明确报生成错误。时间、UUID 等 payload 字段采用 JSON 字符串。类型用于静态检查，不做运行时 JSON Schema 验证或填充参数默认值；Go 专属类型扩展不影响客户端。省略 `parameters` 时与 Go 一致，生成含 `taskID` 的事件参数；空 payload 请显式定义 `type: object, properties: {}`。
 
+对于使用 `anyOf` 接受整数或字符串、并标记 `x-go-type: int64` 的参数，生成的 Go
+worker 类型会校验 JSON 输入并转换为 int64；Python / Node.js 客户端保留输入的联合类型。
+超过 JavaScript 安全整数范围的 int64 值应以十进制字符串发送。
+详见 [JSON 类型转换](../skills/anclax-develop-feature/openapi-spec.md#integer-or-string-inputs-with-an-int64-go-field)。
+
 假设 spec 定义了 `sendEmail`，参数为 `userID`、`template`：
 
 ```python

@@ -203,6 +203,13 @@ func (h *Handler) GetCounter(c *fiber.Ctx) error {
 
 生成的 `apigen` 客户端负责 API 协议，应用通过 `WithHTTPClient` 提供自己的 HTTP 客户端和策略。解析成功或失败都会关闭响应体，读取错误（包括 context 取消）会返回给调用方。
 
+### 同时接受整数与字符串的 JSON 字段
+
+使用 `anyOf` 配合 `x-go-type: int64`，可以接受 JSON 整数或十进制整数字符串，
+并生成 `int64` 字段；非必填字段生成 `*int64`。生成的 JSON 解码方法先校验原始输入，
+再转换并检查溢出，完整保留 int64 精度。OpenAPI 模型、共享 schema 和 Go 任务参数均支持，
+详见[转换规则与支持范围](skills/anclax-develop-feature/openapi-spec.md#integer-or-string-inputs-with-an-int64-go-field)。
+
 ### 基于 OpenAPI 的中间件（无需 DSL）
 ```yaml
 x-check-rules:

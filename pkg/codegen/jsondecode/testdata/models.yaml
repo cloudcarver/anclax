@@ -1,0 +1,81 @@
+schemas:
+  IntegerBranch:
+    type: integer
+    format: int64
+  Key:
+    anyOf:
+      - $ref: '#/schemas/IntegerBranch'
+      - type: string
+    x-go-type: int64
+  RestrictedKey:
+    anyOf:
+      - type: integer
+        minimum: 100
+      - type: string
+        pattern: '^0[0-9]+$'
+    x-go-type: int64
+  KeyAlias:
+    $ref: '#/schemas/Key'
+  Child:
+    type: object
+    required: [key]
+    properties:
+      key:
+        $ref: '#/schemas/RestrictedKey'
+      next:
+        $ref: '#/schemas/Child'
+  Keys:
+    type: array
+    items:
+      $ref: '#/schemas/Key'
+  Request:
+    type: object
+    required: [required_key]
+    properties:
+      required_key:
+        anyOf:
+          - type: integer
+            format: int64
+          - type: string
+        x-go-type: int64
+      device_key:
+        anyOf:
+          - type: integer
+            format: int64
+          - type: string
+        x-go-type: int64
+      nullable_key:
+        anyOf:
+          - type: integer
+            format: int64
+            nullable: true
+          - type: string
+        x-go-type: int64
+      key_ref:
+        $ref: '#/schemas/RestrictedKey'
+      key_alias:
+        $ref: '#/schemas/KeyAlias'
+      child:
+        $ref: '#/schemas/Child'
+      keys:
+        type: array
+        items:
+          $ref: '#/schemas/Key'
+      inline_keys:
+        type: array
+        items:
+          anyOf:
+            - type: integer
+            - type: string
+          x-go-type: int64
+      plain_int:
+        type: integer
+        format: int64
+      label:
+        type: string
+  Plain:
+    type: object
+    properties:
+      key:
+        type: integer
+        x-go-type: int64
