@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -14,7 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func TestGeneratedInt64Decoders(t *testing.T) {
+func TestGeneratedScalarDecoders(t *testing.T) {
 	workdir := t.TempDir()
 	root, err := filepath.Abs("../../..")
 	if err != nil {
@@ -27,6 +28,9 @@ func TestGeneratedInt64Decoders(t *testing.T) {
 	models := read(t, "testdata/models.yaml")
 	write(t, workdir, "api/models.yaml", models)
 	write(t, workdir, "api/folded.yaml", read(t, "testdata/folded.yaml"))
+	conversions := read(t, "testdata/conversions.yaml")
+	write(t, workdir, "api/conversions.yaml", conversions)
+	write(t, workdir, "custom/types.go", read(t, "testdata/custom.go.txt"))
 	config := &schemas.Config{Path: "api", Output: "shared"}
 	manager, err := schemas.Load(workdir, *config)
 	if err != nil {
@@ -37,7 +41,7 @@ func TestGeneratedInt64Decoders(t *testing.T) {
 	}
 
 	var modelDoc map[string]any
-	if err := yaml.Unmarshal([]byte(models), &modelDoc); err != nil {
+	if err := yaml.Unmarshal([]byte(strings.ReplaceAll(models, "#/schemas/", "./models.yaml#/schemas/")), &modelDoc); err != nil {
 		t.Fatal(err)
 	}
 	modelMap := modelDoc["schemas"].(map[string]any)
@@ -45,6 +49,13 @@ func TestGeneratedInt64Decoders(t *testing.T) {
 	var components map[string]any
 	if err := yaml.Unmarshal([]byte(oapiModels), &components); err != nil {
 		t.Fatal(err)
+	}
+	var conversionComponents map[string]any
+	if err := yaml.Unmarshal([]byte(strings.ReplaceAll(conversions, "#/schemas/", "#/components/schemas/")), &conversionComponents); err != nil {
+		t.Fatal(err)
+	}
+	for name, schema := range conversionComponents["schemas"].(map[string]any) {
+		components["schemas"].(map[string]any)[name] = schema
 	}
 	components["schemas"].(map[string]any)["ExternalRequest"] = map[string]any{
 		"type": "object", "properties": map[string]any{
@@ -73,16 +84,29 @@ func TestGeneratedInt64Decoders(t *testing.T) {
 		map[string]any{"name": "scalar", "parameters": modelMap["Key"]},
 		map[string]any{"name": "array", "parameters": modelMap["Keys"]},
 	}}
+	var conversionTasks map[string]any
+	if err := yaml.Unmarshal([]byte(strings.ReplaceAll(conversions, "#/schemas/", "./conversions.yaml#/schemas/")), &conversionTasks); err != nil {
+		t.Fatal(err)
+	}
+	var taskNames []string
+	for name := range conversionTasks["schemas"].(map[string]any) {
+		taskNames = append(taskNames, name)
+	}
+	sort.Strings(taskNames)
+	for _, name := range taskNames {
+		tasks["tasks"] = append(tasks["tasks"].([]any), map[string]any{"name": strings.ToLower(name[:1]) + name[1:], "parameters": conversionTasks["schemas"].(map[string]any)[name]})
+	}
 	data, err := yaml.Marshal(tasks)
 	if err != nil {
 		t.Fatal(err)
 	}
-	write(t, workdir, "api/tasks.yaml", strings.ReplaceAll(string(data), "#/schemas/", "./models.yaml#/schemas/"))
+	write(t, workdir, "api/tasks.yaml", string(data))
 	write(t, workdir, "taskgen/runner.go", "")
 	if err := task.Generate(workdir, "taskgen", "api/tasks.yaml", "taskgen/runner.go", config); err != nil {
 		t.Fatal(err)
 	}
 	write(t, workdir, "decoder_test.go", read(t, "testdata/decoder_test.go.txt"))
+	write(t, workdir, "conversions_test.go", read(t, "testdata/conversions_test.go.txt"))
 	args := []string{"test", "-mod=mod", "-count=1", "./..."}
 	if os.Getenv("ANCLAX_JSON_BENCHMARK") == "1" {
 		args = append(args, "-bench=BenchmarkGeneratedDecode", "-benchmem", "-benchtime=200ms", "-count=5", "-cpu=1")

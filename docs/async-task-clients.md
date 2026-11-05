@@ -33,10 +33,12 @@ Apply framework migrations through the Go application before enqueueing tasks. P
 
 Supported parameter schemas include objects, required/optional fields, nested objects, arrays, dictionaries, scalars, enums, nullable values, `oneOf`/`anyOf`, and local `$ref`s, including `file.yaml#schemas/Name`. References resolve relative to their containing file. Recursive references and `allOf` fail generation explicitly. Dates and UUIDs use JSON strings. Types provide static checks, not runtime JSON Schema validation or parameter default filling. Go-only type extensions are ignored. Omitted `parameters` preserves Go's implicit `{taskID: integer}` event payload; specify `type: object, properties: {}` for empty parameters.
 
-For integer-or-string parameters annotated with `x-go-type: int64`, the generated
-Go worker types validate and convert JSON input to int64; Python and Node.js
-clients retain the input union. Send int64 values outside JavaScript's safe
-integer range as decimal strings. See [JSON type conversion](../skills/anclax-develop-feature/openapi-spec.md#integer-or-string-inputs-with-an-int64-go-field).
+Go parameters annotated with `x-go-type` validate the original JSON input and
+convert it to the declared scalar type, including within arrays and dictionaries.
+Python/Node.js clients keep the input schema. Send large identifiers as decimal
+strings when supported by the schema. Generated Go task constructors also check
+that the serialized target values satisfy the input schema, so incompatible
+output representations fail before enqueueing. See the [conversion matrix and task round-trip rules](../skills/anclax-develop-feature/openapi-spec.md#scalar-conversion-rules).
 
 For a `sendEmail` task with `userID` and `template` parameters:
 

@@ -39,6 +39,7 @@ type Function struct {
 	Tags                       []string     `yaml:"tags,omitempty"`
 	Priority                   *int32       `yaml:"priority,omitempty"`
 	HasLocalHelpers            bool         `yaml:"hasLocalHelpers,omitempty"`
+	ValidatePayload            bool         `yaml:"validatePayload,omitempty"`
 }
 
 type CodeTemplateVars struct {

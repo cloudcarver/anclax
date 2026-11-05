@@ -17,7 +17,10 @@ func TestGenerationRejectsUnsupportedOrAmbiguousRules(t *testing.T) {
 		{"invalid pattern", `{"anyOf":[{"type":"integer"},{"type":"string","pattern":"["}],"x-go-type":"int64"}`, "regexp"},
 		{"unresolved branch", `{"anyOf":[{"$ref":"missing.yaml#/schemas/Key"}],"x-go-type":"int64"}`, "cannot resolve"},
 		{"inline map", `{"type":"object","properties":{"child":{"type":"object","properties":{"key":{"anyOf":[{"type":"integer"},{"type":"string"}],"x-go-type":"int64"}}}}}`, "named schema"},
-		{"additional properties", `{"type":"object","additionalProperties":{"anyOf":[{"type":"integer"},{"type":"string"}],"x-go-type":"int64"}}`, "additionalProperties"},
+		{"mixed additional properties", `{"type":"object","properties":{"name":{"type":"string"}},"additionalProperties":{"type":"string","x-go-type":"int64"}}`, "additionalProperties"},
+		{"invalid converter", `{"type":"string","x-go-type":"int64","x-go-converter":"func() {}"}`, "x-go-converter"},
+		{"converter without target", `{"type":"string","x-go-converter":"ParseKey"}`, "x-go-converter"},
+		{"custom type name conflict", `{"type":"string","x-go-type":"Model"}`, "different names"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var schema openapi3.Schema
@@ -33,9 +36,10 @@ func TestGenerationRejectsUnsupportedOrAmbiguousRules(t *testing.T) {
 
 func TestUnannotatedSchemasKeepExistingDecoding(t *testing.T) {
 	for _, data := range []string{
-		`{"type":"integer","x-go-type":"int64"}`,
+		`{"type":"integer"}`,
 		`{"anyOf":[{"type":"integer"},{"type":"string"}]}`,
-		`{"anyOf":[{"type":"integer"},{"type":"string"}],"x-go-type":"CustomKey"}`,
+		`{"type":"object","x-go-type":"json.RawMessage"}`,
+		`{"type":"string","x-go-type":"any"}`,
 	} {
 		var schema openapi3.Schema
 		if err := json.Unmarshal([]byte(data), &schema); err != nil {

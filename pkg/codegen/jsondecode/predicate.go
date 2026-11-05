@@ -10,21 +10,28 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
-// predicate specializes a schema for an already-decoded string or int64. Type
-// branches and unconstrained schemas fold to constants during generation.
+// predicate specializes the original input schema for a known JSON kind.
+// Signed/unsigned inputs have already been parsed exactly. Other numeric
+// targets validate the original decimal before any floating-point rounding.
 func (e *emitter) predicate(schema *openapi3.Schema, kind, value string) (string, error) {
-	if kind == "integer" {
+	numeric := kind == "signed" || kind == "unsigned" || kind == "number"
+	var constraints []string
+	if numeric {
 		if !schema.Type.Permits("integer") && !schema.Type.Permits("number") {
 			return "false", nil
+		}
+		if kind == "number" && !schema.Type.Permits("number") {
+			constraints = append(constraints, value+".IsInteger()")
 		}
 	} else if !schema.Type.Permits(kind) {
 		return "false", nil
 	}
-	var constraints []string
 	for _, composite := range []struct {
 		refs openapi3.SchemaRefs
 		kind string
-	}{{schema.AnyOf, "anyOf"}, {schema.OneOf, "oneOf"}, {schema.AllOf, "allOf"}} {
+	}{
+		{schema.AnyOf, "anyOf"}, {schema.OneOf, "oneOf"}, {schema.AllOf, "allOf"},
+	} {
 		if len(composite.refs) == 0 {
 			continue
 		}
@@ -55,12 +62,21 @@ func (e *emitter) predicate(schema *openapi3.Schema, kind, value string) (string
 	if len(schema.Enum) > 0 {
 		var values []string
 		for _, allowed := range schema.Enum {
-			if kind == "string" {
-				if s, ok := allowed.(string); ok {
-					values = append(values, value+" == "+strconv.Quote(s))
+			switch v := allowed.(type) {
+			case string:
+				if kind == "string" {
+					values = append(values, value+" == "+strconv.Quote(v))
 				}
-			} else if n, ok := allowed.(float64); ok && math.Trunc(n) == n {
-				values = append(values, fmt.Sprintf("%s == %d", value, int64(n)))
+			case bool:
+				if kind == "boolean" {
+					values = append(values, fmt.Sprintf("%s == %t", value, v))
+				}
+			case float64:
+				if kind == "number" {
+					values = append(values, value+".Cmp("+e.number(v)+") == 0")
+				} else if (kind == "signed" || kind == "unsigned") && math.Trunc(v) == v && (kind != "unsigned" || v >= 0) {
+					values = append(values, fmt.Sprintf("%s == %d", value, int64(v)))
+				}
 			}
 		}
 		constraints = append(constraints, join("||", values))
@@ -77,55 +93,100 @@ func (e *emitter) predicate(schema *openapi3.Schema, kind, value string) (string
 		if schema.Pattern != "" {
 			constraints = append(constraints, e.pattern(schema.Pattern, value))
 		}
-		// These are the string formats enabled by kin-openapi by default. Emit
-		// their fixed checks instead of consulting its runtime validator registry.
-		formats := map[string]string{
-			"byte":      openapi3.FormatOfStringByte,
-			"date":      openapi3.FormatOfStringDate,
-			"date-time": openapi3.FormatOfStringDateTime,
-		}
+		formats := map[string]string{"byte": openapi3.FormatOfStringByte, "date": openapi3.FormatOfStringDate, "date-time": openapi3.FormatOfStringDateTime}
 		if pattern := formats[schema.Format]; pattern != "" {
 			constraints = append(constraints, e.pattern(pattern, value))
 		}
-	} else {
-		if schema.Type.Is("integer") && schema.Format == "int32" {
-			constraints = append(constraints, fmt.Sprintf("%s >= -2147483648 && %s <= 2147483647", value, value))
+	} else if numeric {
+		if schema.Type.Is("integer") {
+			switch schema.Format {
+			case "int32":
+				constraints = append(constraints, e.numericBound(kind, value, -2147483648, true, false), e.numericBound(kind, value, 2147483647, false, false))
+			case "int64":
+				if kind == "unsigned" {
+					constraints = append(constraints, value+" <= 9223372036854775807")
+				}
+				if kind == "number" {
+					constraints = append(constraints, value+".Cmp("+e.numberLiteral("-9223372036854775808")+") >= 0", value+".Cmp("+e.numberLiteral("9223372036854775807")+") <= 0")
+				}
+			}
 		}
 		if schema.Min != nil {
-			bound := int64(math.Ceil(*schema.Min))
-			if schema.ExclusiveMin {
-				bound = int64(math.Floor(*schema.Min)) + 1
-			}
-			constraints = append(constraints, fmt.Sprintf("%s >= %d", value, bound))
+			constraints = append(constraints, e.numericBound(kind, value, *schema.Min, true, schema.ExclusiveMin))
 		}
 		if schema.Max != nil {
-			bound := int64(math.Floor(*schema.Max))
-			if schema.ExclusiveMax {
-				bound = int64(math.Ceil(*schema.Max)) - 1
-			}
-			constraints = append(constraints, fmt.Sprintf("%s <= %d", value, bound))
+			constraints = append(constraints, e.numericBound(kind, value, *schema.Max, false, schema.ExclusiveMax))
 		}
 		if schema.MultipleOf != nil {
-			// For integer n and a reduced rational p/q, n/(p/q) is an
-			// integer exactly when n is a multiple of p. Compute p now.
-			r, ok := new(big.Rat).SetString(strconv.FormatFloat(*schema.MultipleOf, 'g', -1, 64))
-			if !ok || r.Sign() <= 0 {
-				return "", fmt.Errorf("multipleOf must be positive")
-			}
-			p := r.Num()
-			switch {
-			case p.IsInt64():
-				if p.Int64() != 1 {
-					constraints = append(constraints, fmt.Sprintf("%s %% %s == 0", value, p.String()))
+			if kind == "number" {
+				constraints = append(constraints, value+".MultipleOf("+e.number(*schema.MultipleOf)+")")
+			} else {
+				r, ok := new(big.Rat).SetString(strconv.FormatFloat(*schema.MultipleOf, 'g', -1, 64))
+				if !ok || r.Sign() <= 0 {
+					return "", fmt.Errorf("multipleOf must be positive")
 				}
-			case p.Cmp(new(big.Int).Lsh(big.NewInt(1), 63)) == 0:
-				constraints = append(constraints, fmt.Sprintf("%s == 0 || %s == -9223372036854775808", value, value))
-			default:
-				constraints = append(constraints, value+" == 0")
+				p := r.Num()
+				switch {
+				case p.IsInt64() || kind == "unsigned" && p.IsUint64():
+					if p.Cmp(big.NewInt(1)) != 0 {
+						constraints = append(constraints, fmt.Sprintf("%s %% %s == 0", value, p.String()))
+					}
+				case kind == "signed" && p.Cmp(new(big.Int).Lsh(big.NewInt(1), 63)) == 0:
+					constraints = append(constraints, fmt.Sprintf("%s == 0 || %s == -9223372036854775808", value, value))
+				default:
+					constraints = append(constraints, value+" == 0")
+				}
 			}
 		}
 	}
 	return join("&&", constraints), nil
+}
+
+func (e *emitter) numericBound(kind, value string, bound float64, minimum, exclusive bool) string {
+	if kind == "number" {
+		op := ">="
+		if minimum && exclusive {
+			op = ">"
+		}
+		if !minimum {
+			op = "<="
+			if exclusive {
+				op = "<"
+			}
+		}
+		return value + ".Cmp(" + e.number(bound) + ") " + op + " 0"
+	}
+	var integer int64
+	op := ">="
+	if minimum {
+		integer = int64(math.Ceil(bound))
+		if exclusive {
+			integer = int64(math.Floor(bound)) + 1
+		}
+	} else {
+		op = "<="
+		integer = int64(math.Floor(bound))
+		if exclusive {
+			integer = int64(math.Ceil(bound)) - 1
+		}
+	}
+	if kind == "unsigned" && integer < 0 {
+		return strconv.FormatBool(minimum)
+	}
+	return fmt.Sprintf("%s %s %d", value, op, integer)
+}
+
+func (e *emitter) number(value float64) string {
+	return e.numberLiteral(strconv.FormatFloat(value, 'g', -1, 64))
+}
+func (e *emitter) numberLiteral(value string) string {
+	name := e.numbers[value]
+	if name == "" {
+		name = e.symbol() + "Number"
+		e.numbers[value] = name
+		e.use(runtimeImport)
+	}
+	return name
 }
 
 func (e *emitter) pattern(pattern, value string) string {

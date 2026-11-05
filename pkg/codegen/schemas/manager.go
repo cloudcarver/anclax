@@ -359,7 +359,12 @@ func (m *Manager) buildSchemaDef(file *File, name string, ref *openapi3.SchemaRe
 	}
 	mergeImports(imports, resolved.Imports...)
 	value := ref.Value
-	if value != nil && ((value.Type != nil && value.Type.Is("object")) || len(value.Properties) > 0) {
+	convertedMap, err := jsondecode_codegen.IsConvertedMap(file.AbsPath, value, m.LookupRef)
+	if err != nil {
+		return def, err
+	}
+	customType, _ := customGoType(value)
+	if value != nil && customType == "" && !convertedMap && (value.Type.Is("object") || len(value.Properties) > 0) {
 		def.Kind = "object"
 		required := requiredSet(value.Required)
 		propNames := make([]string, 0, len(value.Properties))
@@ -436,6 +441,17 @@ func (m *Manager) resolveType(file *File, ref *openapi3.SchemaRef, hint string, 
 		}
 		return resolvedType{GoType: "[]" + item.GoType, Imports: item.Imports}, nil
 	case ref.Value.Type.Is("object"):
+		convertedMap, err := jsondecode_codegen.IsConvertedMap(file.AbsPath, ref.Value, m.LookupRef)
+		if err != nil {
+			return resolvedType{}, err
+		}
+		if convertedMap {
+			item, err := m.resolveType(file, ref.Value.AdditionalProperties.Schema, hint+"Value", enumMap)
+			if err != nil {
+				return resolvedType{}, err
+			}
+			return resolvedType{GoType: "map[string]" + item.GoType, Imports: item.Imports}, nil
+		}
 		return resolvedType{GoType: "map[string]any"}, nil
 	default:
 		return resolvedType{GoType: "interface{}"}, nil

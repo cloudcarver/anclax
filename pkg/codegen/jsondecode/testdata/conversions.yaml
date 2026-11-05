@@ -1,0 +1,172 @@
+schemas:
+  Signed:
+    anyOf: [{type: integer}, {type: string}]
+    x-go-type: int
+  Signed8:
+    anyOf: [{type: integer}, {type: string}]
+    x-go-type: int8
+  Signed16:
+    anyOf: [{type: integer}, {type: string}]
+    x-go-type: int16
+  Signed32:
+    anyOf: [{type: integer}, {type: string}]
+    x-go-type: int32
+  Signed64:
+    anyOf: [{type: integer}, {type: string}]
+    x-go-type: int64
+  Rune:
+    anyOf: [{type: integer}, {type: string}]
+    x-go-type: rune
+  Unsigned:
+    anyOf: [{type: integer}, {type: string}]
+    x-go-type: uint
+  Unsigned8:
+    anyOf: [{type: integer}, {type: string}]
+    x-go-type: uint8
+  Unsigned16:
+    anyOf: [{type: integer}, {type: string}]
+    x-go-type: uint16
+  Unsigned32:
+    anyOf: [{type: integer}, {type: string}]
+    x-go-type: uint32
+  Unsigned64:
+    anyOf: [{type: integer}, {type: string}]
+    x-go-type: uint64
+  Byte:
+    anyOf: [{type: integer}, {type: string}]
+    x-go-type: byte
+  Float32:
+    anyOf: [{type: number}, {type: string}]
+    x-go-type: float32
+  Float64:
+    anyOf: [{type: number}, {type: string}]
+    x-go-type: float64
+  Boolean:
+    anyOf: [{type: boolean}, {type: string}]
+    x-go-type: bool
+  Text:
+    anyOf: [{type: string}, {type: number}, {type: boolean}]
+    x-go-type: string
+  StringInteger:
+    type: string
+    pattern: '^[+-]?[0-9]+$'
+    x-go-type: int32
+  NumberText:
+    type: number
+    x-go-type: string
+  ExactBound:
+    type: number
+    maximum: 1
+    x-go-type: float64
+  ExactMultiple:
+    type: number
+    multipleOf: 0.1
+    x-go-type: float64
+  IntegerFloat:
+    type: integer
+    x-go-type: float64
+  FractionText:
+    oneOf: [{type: integer}, {type: number}]
+    x-go-type: string
+  UnsignedBound:
+    anyOf:
+      - type: integer
+        minimum: -2
+        maximum: 12
+      - type: string
+    x-go-type: uint64
+  BooleanEnum:
+    anyOf: [{type: boolean}, {type: string}]
+    enum: [true, 'false']
+    x-go-type: bool
+  ExactEnum:
+    type: number
+    enum: [0.3]
+    x-go-type: float32
+  SignedFormat:
+    type: integer
+    format: int64
+    x-go-type: string
+  UnsignedFormat:
+    type: integer
+    format: int64
+    x-go-type: uint64
+  CustomKey:
+    type: string
+    pattern: '^k:[0-9]+$'
+    x-go-type: custom.Key
+    x-go-type-imports: [example.com/decodertest/custom]
+  CustomText:
+    type: string
+    pattern: '^t:[0-9]+$'
+    x-go-type: custom.TextKey
+    x-go-type-imports: [example.com/decodertest/custom]
+  HookKey:
+    type: string
+    pattern: '^h:[0-9]+$'
+    x-go-type: custom.HookKey
+    x-go-converter: custom.ParseHookKey
+    x-go-type-imports: [example.com/decodertest/custom]
+  ConversionMap:
+    type: object
+    additionalProperties:
+      anyOf: [{type: integer}, {type: string}]
+      x-go-type: uint64
+  NestedMap:
+    type: object
+    additionalProperties:
+      type: array
+      items:
+        $ref: '#/schemas/Boolean'
+  CustomMap:
+    type: object
+    additionalProperties:
+      $ref: '#/schemas/CustomKey'
+  ConversionRequest:
+    type: object
+    required: [required_bool]
+    properties:
+      required_bool:
+        anyOf: [{type: boolean}, {type: string}]
+        x-go-type: bool
+      signed:
+        anyOf: [{type: integer}, {type: string}]
+        x-go-type: int16
+      unsigned:
+        anyOf: [{type: integer}, {type: string}]
+        x-go-type: uint64
+      float:
+        anyOf: [{type: number}, {type: string}]
+        x-go-type: float32
+      boolean:
+        anyOf: [{type: boolean}, {type: string}]
+        x-go-type: bool
+      text:
+        anyOf: [{type: string}, {type: number}, {type: boolean}]
+        x-go-type: string
+      nullable_bool:
+        type: boolean
+        nullable: true
+        x-go-type: bool
+      values:
+        $ref: '#/schemas/ConversionMap'
+      nested:
+        $ref: '#/schemas/NestedMap'
+      inline_map:
+        type: object
+        additionalProperties:
+          anyOf: [{type: number}, {type: string}]
+          x-go-type: float64
+      custom:
+        $ref: '#/schemas/CustomKey'
+      hook:
+        $ref: '#/schemas/HookKey'
+  AnyInteger:
+    x-go-type: int64
+  AnyBoolean:
+    x-go-type: bool
+  ByteArray:
+    type: array
+    items:
+      anyOf: [{type: integer}, {type: string}]
+      x-go-type: byte

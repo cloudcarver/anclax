@@ -1,4 +1,4 @@
-// Package jsondecode generates JSON methods for schemas with explicit int64
+// Package jsondecode generates JSON methods for schemas with explicit scalar
 // conversion. It is shared by the OpenAPI, shared-schema, and task generators.
 package jsondecode
 
@@ -37,6 +37,7 @@ type rule struct {
 	Nullable   bool
 	Delegate   bool
 	Schema     *openapi3.Schema
+	Target     *target
 	Properties map[string]fieldRule
 	Items      *rule
 }
@@ -49,7 +50,7 @@ type fieldRule struct {
 // Resolver resolves references that were not already loaded by kin-openapi.
 type Resolver func(file string, ref *openapi3.SchemaRef) (string, *openapi3.SchemaRef, error)
 
-// HasConversion reports whether a model contains an annotated int64 input.
+// HasConversion reports whether a model contains an annotated scalar input.
 func HasConversion(file string, ref *openapi3.SchemaRef, resolve Resolver) (bool, error) {
 	b := builder{resolve: resolve}
 	return b.hasConversion(file, ref, map[*openapi3.Schema]bool{})
@@ -95,6 +96,9 @@ func (b *builder) build(file string, ref *openapi3.SchemaRef, root bool) (*rule,
 		return nil, err
 	}
 	schema := ref.Value
+	if err := validateConverter(schema); err != nil {
+		return nil, err
+	}
 	if b.active[schema] {
 		if delegate {
 			has, err := b.hasConversion(file, ref, map[*openapi3.Schema]bool{})
@@ -112,8 +116,9 @@ func (b *builder) build(file string, ref *openapi3.SchemaRef, root bool) (*rule,
 	node := &rule{Nullable: schema.Nullable}
 	goType, _ := schema.Extensions["x-go-type"].(string)
 	switch {
-	case goType == "int64" && len(schema.AnyOf) > 0:
-		node.Kind = "int64"
+	case conversionTarget(schema) != nil:
+		node.Kind = "scalar"
+		node.Target = conversionTarget(schema)
 		node.Schema, err = b.scalar(file, schema, map[*openapi3.Schema]bool{})
 		if err != nil {
 			return nil, err
@@ -130,7 +135,15 @@ func (b *builder) build(file string, ref *openapi3.SchemaRef, root bool) (*rule,
 		if has, err := b.hasConversion(file, schema.AdditionalProperties.Schema, map[*openapi3.Schema]bool{}); err != nil {
 			return nil, err
 		} else if has {
-			return nil, fmt.Errorf("int64 conversion in additionalProperties is not supported; use named object properties")
+			if len(schema.Properties) != 0 {
+				return nil, fmt.Errorf("conversions in mixed properties/additionalProperties are not supported; use a named dictionary property")
+			}
+			node.Kind = "map"
+			node.Items, err = b.build(file, schema.AdditionalProperties.Schema, false)
+			if err != nil {
+				return nil, err
+			}
+			break
 		}
 		for name, prop := range schema.Properties {
 			child, err := b.build(file, prop, false)
@@ -151,7 +164,7 @@ func (b *builder) build(file string, ref *openapi3.SchemaRef, root bool) (*rule,
 		}
 		if !root && !delegate {
 			if !b.inlineObjects {
-				return nil, fmt.Errorf("nested objects with int64 conversion must use a named schema via $ref")
+				return nil, fmt.Errorf("nested objects with scalar conversion must use a named schema via $ref")
 			}
 			delegate = true
 		}
@@ -167,7 +180,7 @@ func (b *builder) build(file string, ref *openapi3.SchemaRef, root bool) (*rule,
 	if delegate {
 		// The referenced model owns its conversion. Validating its converted
 		// value again would apply the wrong anyOf branch to the original input.
-		return &rule{Kind: node.Kind, Nullable: node.Nullable, Delegate: true}, nil
+		return &rule{Kind: node.Kind, Nullable: node.Nullable, Target: node.Target, Delegate: true}, nil
 	}
 	return node, nil
 }
@@ -178,9 +191,12 @@ func (b *builder) hasConversion(file string, ref *openapi3.SchemaRef, seen map[*
 		return false, err
 	}
 	schema := ref.Value
+	if err := validateConverter(schema); err != nil {
+		return false, err
+	}
 	seen[schema] = true
 	if goType, _ := schema.Extensions["x-go-type"].(string); goType != "" {
-		return goType == "int64" && len(schema.AnyOf) > 0, nil
+		return conversionTarget(schema) != nil, nil
 	}
 	for _, child := range schema.Properties {
 		if has, err := b.hasConversion(file, child, seen); err != nil || has {
@@ -195,26 +211,26 @@ func (b *builder) hasConversion(file string, ref *openapi3.SchemaRef, seen map[*
 
 func (b *builder) scalar(file string, schema *openapi3.Schema, seen map[*openapi3.Schema]bool) (*openapi3.Schema, error) {
 	if seen[schema] {
-		return nil, fmt.Errorf("recursive int64 input schema is not supported")
+		return nil, fmt.Errorf("recursive scalar input schema is not supported")
 	}
 	seen[schema] = true
 	defer delete(seen, schema)
 	copy := *schema
 	copy.Extensions = nil
 	if len(schema.Properties) > 0 || schema.Items != nil || schema.AdditionalProperties.Schema != nil {
-		return nil, fmt.Errorf("int64 conversion requires scalar anyOf branches")
+		return nil, fmt.Errorf("scalar conversion requires scalar input schemas")
 	}
 	// kin-openapi stores numeric constraints as float64. Reject values whose
 	// original integer precision cannot be recovered instead of silently
-	// validating a rounded enum or bound. Input int64 values remain unrestricted.
+	// validating a rounded enum or bound. Input numeric values remain unrestricted.
 	for _, v := range []*float64{schema.Min, schema.Max, schema.MultipleOf} {
 		if v != nil && (math.IsInf(*v, 0) || math.IsNaN(*v) || math.Abs(*v) > 1<<53-1) {
-			return nil, fmt.Errorf("int64 schema numeric constraints must be within the exact float64 integer range; use string constraints for larger values")
+			return nil, fmt.Errorf("scalar schema numeric constraints must be within the exact float64 integer range; use string constraints for larger values")
 		}
 	}
 	for _, v := range schema.Enum {
 		if n, ok := v.(float64); ok && math.Abs(n) > 1<<53-1 {
-			return nil, fmt.Errorf("int64 schema numeric enum exceeds exact float64 integer range; use string enum values")
+			return nil, fmt.Errorf("scalar schema numeric enum exceeds exact float64 integer range; use string enum values")
 		}
 	}
 	for _, pair := range []struct {
@@ -246,7 +262,7 @@ func (b *builder) scalarRef(file string, ref *openapi3.SchemaRef, seen map[*open
 		return nil, err
 	}
 	if ref == nil || ref.Value == nil {
-		return nil, fmt.Errorf("missing int64 input schema")
+		return nil, fmt.Errorf("missing scalar input schema")
 	}
 	schema, err := b.scalar(file, ref.Value, seen)
 	return &openapi3.SchemaRef{Value: schema}, err

@@ -322,7 +322,11 @@ func buildSchemaDef(currentFile, name string, ref *openapi3.SchemaRef, enumMap m
 	}
 	mergeImports(imports, resolved.Imports...)
 
-	if value.Type != nil && value.Type.Is("object") || len(value.Properties) > 0 {
+	convertedMap, err := jsondecode_codegen.IsConvertedMap(currentFile, value, schemaManager.LookupRef)
+	if err != nil {
+		return schema, err
+	}
+	if customType == "" && !convertedMap && (value.Type.Is("object") || len(value.Properties) > 0) {
 		schema.Kind = "object"
 		required := requiredSet(value.Required)
 		propNames := make([]string, 0, len(value.Properties))
@@ -1884,6 +1888,17 @@ func resolveType(currentFile, currentPackage string, ref *openapi3.SchemaRef, hi
 		}
 		return resolvedType{GoType: "[]" + item.GoType, Imports: item.Imports}, nil
 	case schema.Type.Is("object"):
+		convertedMap, err := jsondecode_codegen.IsConvertedMap(currentFile, schema, schemaManager.LookupRef)
+		if err != nil {
+			return resolvedType{}, err
+		}
+		if convertedMap {
+			item, err := resolveType(currentFile, currentPackage, schema.AdditionalProperties.Schema, hint+"Value", enumMap, schemaManager)
+			if err != nil {
+				return resolvedType{}, err
+			}
+			return resolvedType{GoType: "map[string]" + item.GoType, Imports: item.Imports}, nil
+		}
 		return resolvedType{GoType: "map[string]any"}, nil
 	default:
 		return resolvedType{GoType: "interface{}"}, nil

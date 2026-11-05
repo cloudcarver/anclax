@@ -16,11 +16,15 @@ type emitter struct {
 	imports  map[string]bool
 	helpers  strings.Builder
 	patterns map[string]string
+	numbers  map[string]string
 	next     int
 }
 
 func emit(model Model, node *rule) (Generated, error) {
-	e := &emitter{model: model, imports: map[string]bool{}, patterns: map[string]string{}}
+	if node.isScalar() && node.Target.Kind == "custom" && node.Target.Type == model.Name {
+		return Generated{}, fmt.Errorf("%s: custom type and generated model must have different names", model.Name)
+	}
+	e := &emitter{model: model, imports: map[string]bool{}, patterns: map[string]string{}, numbers: map[string]string{}}
 	e.use("bytes", "encoding/json", "fmt")
 	var method strings.Builder
 	fmt.Fprintf(&method, "\n// UnmarshalJSON validates annotated inputs and converts them to their Go types.\nfunc (v *%s) UnmarshalJSON(data []byte) error {\n", model.Name)
@@ -31,12 +35,12 @@ func emit(model Model, node *rule) (Generated, error) {
 	} else {
 		// Public methods can also be called directly, without encoding/json's
 		// syntax check. Object/array decoding performs that check itself.
-		if node.Kind == "int64" {
+		if node.isScalar() || node.Kind == "map" {
 			method.WriteString("if !json.Valid(data) { return fmt.Errorf(\"invalid JSON\") }\n")
 		}
 		resultType := model.Name
-		if node.Kind == "int64" {
-			resultType = "int64"
+		if node.isScalar() {
+			resultType = node.Target.Type
 		}
 		decoder, err := e.decoder(node, resultType, model.Underlying)
 		if err != nil {
@@ -45,6 +49,9 @@ func emit(model Model, node *rule) (Generated, error) {
 		fmt.Fprintf(&method, "value, err := %s(data)\nif err != nil { return err }\n*v = %s(value)\nreturn nil\n", decoder, model.Name)
 	}
 	method.WriteString("}\n")
+	if node.isScalar() && node.Target.Kind == "custom" {
+		fmt.Fprintf(&method, "\nfunc (v %s) MarshalJSON() ([]byte, error) { value := %s(v); return json.Marshal(&value) }\n", model.Name, node.Target.Type)
+	}
 	code := method.String() + e.helpers.String()
 	parsed, err := parser.ParseFile(token.NewFileSet(), "decoder.go", "package generated\n"+code, 0)
 	if err != nil {
@@ -52,6 +59,9 @@ func emit(model Model, node *rule) (Generated, error) {
 	}
 	used := map[string]bool{}
 	ast.Inspect(parsed, func(node ast.Node) bool {
+		if ident, ok := node.(*ast.Ident); ok {
+			used[ident.Name] = true
+		}
 		if selector, ok := node.(*ast.SelectorExpr); ok {
 			if ident, ok := selector.X.(*ast.Ident); ok {
 				used[ident.Name] = true
@@ -66,6 +76,12 @@ func emit(model Model, node *rule) (Generated, error) {
 		if used[name] {
 			globals = append(globals, fmt.Sprintf("\nvar %s = regexp.MustCompile(%q)\n", name, pattern))
 			used["regexp"] = true
+		}
+	}
+	for number, name := range e.numbers {
+		if used[name] {
+			globals = append(globals, fmt.Sprintf("\nvar %s = jsondecode.NumberFromJSON(%q)\n", name, number))
+			used["jsondecode"] = true
 		}
 	}
 	sort.Strings(globals)
@@ -123,27 +139,18 @@ func (e *emitter) object(out *strings.Builder, node *rule) error {
 		}
 		fmt.Fprintf(out, "if len(%s) != 0 {\nif bytes.Equal(%s, []byte(\"null\")) {\n", raw, raw)
 		pointer := strings.HasPrefix(field.Type, "*")
-		if !child.Nullable || child.Kind == "int64" && !pointer {
+		if !child.Nullable || child.isScalar() && child.Target.Kind != "custom" && !pointer {
 			fmt.Fprintf(out, "return fmt.Errorf(%q)\n", field.JSONName+": null is not allowed")
-		} else if pointer || child.Kind == "array" {
+		} else if pointer || child.Kind == "array" || child.Kind == "map" {
 			fmt.Fprintf(out, "next.%s = nil\n", field.GoName)
-		}
-		out.WriteString("} else {\n")
-		if child.Delegate {
-			// Referenced models validate their original input in their own method.
-			fmt.Fprintf(out, "if err := json.Unmarshal(%s, &next.%s); err != nil { return fmt.Errorf(%q, err) }\n", raw, field.GoName, field.JSONName+": %w")
 		} else {
-			valueType := strings.TrimPrefix(field.Type, "*")
-			decoder, err := e.decoder(child, valueType, valueType)
-			if err != nil {
+			if err := e.fieldConversion(out, child, field, raw); err != nil {
 				return err
 			}
-			fmt.Fprintf(out, "value, err := %s(%s)\nif err != nil { return fmt.Errorf(%q, err) }\n", decoder, raw, field.JSONName+": %w")
-			if pointer {
-				fmt.Fprintf(out, "next.%s = &value\n", field.GoName)
-			} else {
-				fmt.Fprintf(out, "next.%s = value\n", field.GoName)
-			}
+		}
+		out.WriteString("} else {\n")
+		if err := e.fieldConversion(out, child, field, raw); err != nil {
+			return err
 		}
 		out.WriteString("}\n}\n")
 	}
@@ -156,8 +163,16 @@ func (e *emitter) decoder(node *rule, goType, underlying string) (string, error)
 	var out strings.Builder
 	fmt.Fprintf(&out, "\nfunc %s(data []byte) (%s, error) {\nvar value %s\ndata = bytes.TrimSpace(data)\n", name, goType, goType)
 	out.WriteString("if len(data) == 0 { return value, fmt.Errorf(\"missing JSON value\") }\nif bytes.Equal(data, []byte(\"null\")) {\n")
-	if node.Nullable && node.Kind != "int64" {
-		out.WriteString("return value, nil\n")
+	if node.Nullable && (!node.isScalar() || node.Target.Kind == "custom") {
+		if node.isScalar() {
+			if node.Delegate {
+				out.WriteString("err := json.Unmarshal(data, &value)\nreturn value, err\n")
+			} else {
+				e.customConversion(&out, node.Target)
+			}
+		} else {
+			out.WriteString("return value, nil\n")
+		}
 	} else {
 		out.WriteString("return value, fmt.Errorf(\"null is not allowed\")\n")
 	}
@@ -165,37 +180,9 @@ func (e *emitter) decoder(node *rule, goType, underlying string) (string, error)
 	switch {
 	case node.Delegate:
 		out.WriteString("err := json.Unmarshal(data, &value)\nreturn value, err\n")
-	case node.Kind == "int64":
-		stringPredicate, err := e.predicate(node.Schema, "string", "text")
-		if err != nil {
+	case node.isScalar():
+		if err := e.scalarDecoder(&out, node, goType); err != nil {
 			return "", err
-		}
-		numberPredicate, err := e.predicate(node.Schema, "integer", "value")
-		if err != nil {
-			return "", err
-		}
-		out.WriteString("if data[0] == '\"' {\n")
-		if stringPredicate == "false" {
-			out.WriteString("return value, fmt.Errorf(\"string does not match input schema\")\n")
-		} else {
-			e.use("strconv")
-			out.WriteString("var text string\nif err := json.Unmarshal(data, &text); err != nil { return value, err }\n")
-			if stringPredicate != "true" {
-				fmt.Fprintf(&out, "if !(%s) { return value, fmt.Errorf(\"string does not match input schema\") }\n", stringPredicate)
-			}
-			out.WriteString("return strconv.ParseInt(text, 10, 64)\n")
-		}
-		out.WriteString("}\n")
-		if numberPredicate == "false" {
-			out.WriteString("return value, fmt.Errorf(\"number does not match input schema\")\n")
-		} else {
-			e.use(runtimeImport)
-			out.WriteString("if data[0] != '-' && (data[0] < '0' || data[0] > '9') { return value, fmt.Errorf(\"expected integer or string\") }\n")
-			out.WriteString("value, err := jsondecode.ParseInt64Number(string(data))\nif err != nil { return value, err }\n")
-			if numberPredicate != "true" {
-				fmt.Fprintf(&out, "if !(%s) { return value, fmt.Errorf(\"number does not match input schema\") }\n", numberPredicate)
-			}
-			out.WriteString("return value, nil\n")
 		}
 	case node.Kind == "array":
 		if !strings.HasPrefix(underlying, "[]") {
@@ -208,10 +195,41 @@ func (e *emitter) decoder(node *rule, goType, underlying string) (string, error)
 		}
 		out.WriteString("var items []json.RawMessage\nif err := json.Unmarshal(data, &items); err != nil { return value, err }\n")
 		fmt.Fprintf(&out, "value = make(%s, len(items))\nfor i, raw := range items {\nitem, err := %s(raw)\nif err != nil { return nil, fmt.Errorf(\"item %%d: %%w\", i, err) }\nvalue[i] = item\n}\nreturn value, nil\n", goType, decoder)
+	case node.Kind == "map":
+		if !strings.HasPrefix(underlying, "map[string]") {
+			return "", fmt.Errorf("%s: expected a string-keyed Go map, got %s", e.model.Name, underlying)
+		}
+		itemType := strings.TrimPrefix(underlying, "map[string]")
+		decoder, err := e.decoder(node.Items, itemType, itemType)
+		if err != nil {
+			return "", err
+		}
+		out.WriteString("if data[0] != '{' { return value, fmt.Errorf(\"expected object\") }\nreader := json.NewDecoder(bytes.NewReader(data))\nif _, err := reader.Token(); err != nil { return value, err }\n")
+		fmt.Fprintf(&out, "value = make(%s)\nfor reader.More() {\ntoken, err := reader.Token()\nif err != nil { return nil, err }\nkey := token.(string)\nif _, exists := value[key]; exists { return nil, fmt.Errorf(\"duplicate dictionary key %%q\", key) }\nvar raw json.RawMessage\nif err := reader.Decode(&raw); err != nil { return nil, err }\nitem, err := %s(raw)\nif err != nil { return nil, fmt.Errorf(\"key %%q: %%w\", key, err) }\nvalue[key] = item\n}\n_, err := reader.Token()\nreturn value, err\n", goType, decoder)
 	default:
 		return "", fmt.Errorf("unsupported decoder kind %q", node.Kind)
 	}
 	out.WriteString("}\n")
 	e.helpers.WriteString(out.String())
 	return name, nil
+}
+
+func (e *emitter) fieldConversion(out *strings.Builder, child *rule, field Field, raw string) error {
+	if child.Delegate {
+		// Referenced models validate their original input in their own method.
+		fmt.Fprintf(out, "if err := json.Unmarshal(%s, &next.%s); err != nil { return fmt.Errorf(%q, err) }\n", raw, field.GoName, field.JSONName+": %w")
+	} else {
+		valueType := strings.TrimPrefix(field.Type, "*")
+		decoder, err := e.decoder(child, valueType, valueType)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "value, err := %s(%s)\nif err != nil { return fmt.Errorf(%q, err) }\n", decoder, raw, field.JSONName+": %w")
+		if strings.HasPrefix(field.Type, "*") {
+			fmt.Fprintf(out, "next.%s = &value\n", field.GoName)
+		} else {
+			fmt.Fprintf(out, "next.%s = value\n", field.GoName)
+		}
+	}
+	return nil
 }

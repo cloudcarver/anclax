@@ -1,0 +1,45 @@
+package custom
+
+import (
+	"encoding/json"
+	"fmt"
+	"strconv"
+	"strings"
+)
+
+type Key int64
+
+func (k *Key) UnmarshalJSON(data []byte) error {
+	var text string
+	if err := json.Unmarshal(data, &text); err != nil {
+		return err
+	}
+	n, err := strconv.ParseInt(strings.TrimPrefix(text, "k:"), 10, 64)
+	if err == nil {
+		*k = Key(n)
+	}
+	return err
+}
+func (k *Key) MarshalJSON() ([]byte, error) { return json.Marshal(fmt.Sprintf("k:%d", *k)) }
+
+type TextKey struct{ Value int64 }
+
+func (k *TextKey) UnmarshalText(data []byte) error {
+	n, err := strconv.ParseInt(strings.TrimPrefix(string(data), "t:"), 10, 64)
+	if err == nil {
+		k.Value = n
+	}
+	return err
+}
+func (k TextKey) MarshalText() ([]byte, error) { return []byte(fmt.Sprintf("t:%d", k.Value)), nil }
+
+type HookKey int64
+
+func ParseHookKey(data json.RawMessage) (HookKey, error) {
+	var text string
+	if err := json.Unmarshal(data, &text); err != nil {
+		return 0, err
+	}
+	n, err := strconv.ParseInt(strings.TrimPrefix(text, "h:"), 10, 64)
+	return HookKey(n), err
+}
