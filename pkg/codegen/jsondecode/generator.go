@@ -3,15 +3,48 @@
 package jsondecode
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
 	"math"
 
-	runtime "github.com/cloudcarver/anclax/lib/jsondecode"
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
-const Import = "github.com/cloudcarver/anclax/lib/jsondecode"
+const runtimeImport = "github.com/cloudcarver/anclax/lib/jsondecode"
+
+// Model supplies the Go names and types chosen by the enclosing generator.
+type Model struct {
+	Name       string
+	Underlying string
+	Fields     []Field
+}
+
+type Field struct {
+	JSONName string
+	GoName   string
+	Type     string
+}
+
+type Generated struct {
+	Code    string
+	Imports []string
+}
+
+// Rules exist only during generation. They are lowered to Go statements and
+// expressions; generated programs do not retain or interpret schema objects.
+type rule struct {
+	Kind       string
+	Nullable   bool
+	Delegate   bool
+	Schema     *openapi3.Schema
+	Properties map[string]fieldRule
+	Items      *rule
+}
+
+type fieldRule struct {
+	Rule     *rule
+	Required bool
+}
 
 // Resolver resolves references that were not already loaded by kin-openapi.
 type Resolver func(file string, ref *openapi3.SchemaRef) (string, *openapi3.SchemaRef, error)
@@ -22,30 +55,15 @@ func HasConversion(file string, ref *openapi3.SchemaRef, resolve Resolver) (bool
 	return b.hasConversion(file, ref, map[*openapi3.Schema]bool{})
 }
 
-// Method returns an UnmarshalJSON method and its compiled rule declaration, or
-// an empty string when the model does not contain an annotated conversion.
-func Method(file, name string, ref *openapi3.SchemaRef, resolve Resolver, inlineObjects bool) (string, error) {
+// Method emits model-specific decoding and validation code. An empty result
+// means the model does not contain an annotated conversion.
+func Method(file string, model Model, ref *openapi3.SchemaRef, resolve Resolver, inlineObjects bool) (Generated, error) {
 	b := builder{resolve: resolve, active: map[*openapi3.Schema]bool{}, inlineObjects: inlineObjects}
 	rule, err := b.build(file, ref, true)
 	if err != nil || rule == nil {
-		return "", err
+		return Generated{}, err
 	}
-	data, err := json.Marshal(rule)
-	if err != nil {
-		return "", err
-	}
-	if _, err := runtime.Compile(string(data)); err != nil {
-		return "", fmt.Errorf("%s JSON decoder: %w", name, err)
-	}
-	return fmt.Sprintf(`
-var decode%sJSON = jsondecode.MustCompile(%q)
-
-// UnmarshalJSON validates annotated inputs and converts them to their Go types.
-func (v *%s) UnmarshalJSON(data []byte) error {
-    type plain %s
-    return decode%sJSON.Unmarshal(data, (*plain)(v))
-}
-`, name, string(data), name, name, name), nil
+	return emit(model, rule)
 }
 
 type builder struct {
@@ -70,7 +88,7 @@ func (b *builder) deref(file string, ref *openapi3.SchemaRef) (string, *openapi3
 	return file, ref, nil
 }
 
-func (b *builder) build(file string, ref *openapi3.SchemaRef, root bool) (*runtime.Rule, error) {
+func (b *builder) build(file string, ref *openapi3.SchemaRef, root bool) (*rule, error) {
 	delegate := !root && ref != nil && ref.Ref != ""
 	file, ref, err := b.deref(file, ref)
 	if err != nil || ref == nil || ref.Value == nil {
@@ -84,28 +102,31 @@ func (b *builder) build(file string, ref *openapi3.SchemaRef, root bool) (*runti
 				return nil, err
 			}
 			if has && schema.Type.Is("object") {
-				return &runtime.Rule{Kind: "object", Nullable: schema.Nullable, Delegate: true}, nil
+				return &rule{Kind: "object", Nullable: schema.Nullable, Delegate: true}, nil
 			}
 		}
 		return nil, nil
 	}
 	b.active[schema] = true
 	defer delete(b.active, schema)
-	rule := &runtime.Rule{Nullable: schema.Nullable}
+	node := &rule{Nullable: schema.Nullable}
 	goType, _ := schema.Extensions["x-go-type"].(string)
 	switch {
 	case goType == "int64" && len(schema.AnyOf) > 0:
-		rule.Kind = "int64"
-		rule.Schema, err = b.scalar(file, schema, map[*openapi3.Schema]bool{})
+		node.Kind = "int64"
+		node.Schema, err = b.scalar(file, schema, map[*openapi3.Schema]bool{})
 		if err != nil {
 			return nil, err
 		}
-		rule.Nullable = rule.Schema.VisitJSON(nil) == nil
+		if err := node.Schema.Validate(context.Background()); err != nil {
+			return nil, err
+		}
+		node.Nullable = node.Schema.VisitJSON(nil) == nil
 	case goType != "":
 		return nil, nil
 	case schema.Type.Is("object") || len(schema.Properties) > 0:
-		rule.Kind = "object"
-		rule.Properties = map[string]runtime.Field{}
+		node.Kind = "object"
+		node.Properties = map[string]fieldRule{}
 		if has, err := b.hasConversion(file, schema.AdditionalProperties.Schema, map[*openapi3.Schema]bool{}); err != nil {
 			return nil, err
 		} else if has {
@@ -123,9 +144,9 @@ func (b *builder) build(file string, ref *openapi3.SchemaRef, root bool) (*runti
 			for _, nameRequired := range schema.Required {
 				required = required || nameRequired == name
 			}
-			rule.Properties[name] = runtime.Field{Rule: child, Required: required}
+			node.Properties[name] = fieldRule{Rule: child, Required: required}
 		}
-		if len(rule.Properties) == 0 {
+		if len(node.Properties) == 0 {
 			return nil, nil
 		}
 		if !root && !delegate {
@@ -135,9 +156,9 @@ func (b *builder) build(file string, ref *openapi3.SchemaRef, root bool) (*runti
 			delegate = true
 		}
 	case schema.Type.Is("array"):
-		rule.Kind = "array"
-		rule.Items, err = b.build(file, schema.Items, false)
-		if err != nil || rule.Items == nil {
+		node.Kind = "array"
+		node.Items, err = b.build(file, schema.Items, false)
+		if err != nil || node.Items == nil {
 			return nil, err
 		}
 	default:
@@ -146,9 +167,9 @@ func (b *builder) build(file string, ref *openapi3.SchemaRef, root bool) (*runti
 	if delegate {
 		// The referenced model owns its conversion. Validating its converted
 		// value again would apply the wrong anyOf branch to the original input.
-		return &runtime.Rule{Kind: rule.Kind, Nullable: rule.Nullable, Delegate: true}, nil
+		return &rule{Kind: node.Kind, Nullable: node.Nullable, Delegate: true}, nil
 	}
-	return rule, nil
+	return node, nil
 }
 
 func (b *builder) hasConversion(file string, ref *openapi3.SchemaRef, seen map[*openapi3.Schema]bool) (bool, error) {

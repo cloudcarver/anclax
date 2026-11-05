@@ -407,6 +407,9 @@ func generateToolInterfaces(workdir, packageName, taskDefFile string, data map[s
 	}
 
 	buf := bytes.NewBuffer([]byte{})
+	// These imports are already present in the task file template.
+	delete(importSet, "encoding/json")
+	delete(importSet, "fmt")
 	if err := tcTemplate.Execute(buf, CodeTemplateVars{
 		PackageName: packageName,
 		StructDefs:  structDef,
@@ -439,14 +442,16 @@ func resolveParamSpec(currentFile, name string, ref *openapi3.SchemaRef, schemaM
 	// Objects already own a decoder; scalar/array parameter roots need a defined
 	// type so encoding/json can invoke a method on the root as well.
 	if ref != nil && ref.Ref == "" && (ref.Value == nil || !ref.Value.Type.Is("object")) {
-		decoder, err := jsondecode_codegen.Method(currentFile, name, ref, schemaManager.LookupRef, true)
+		decoder, err := jsondecode_codegen.Method(currentFile, jsondecode_codegen.Model{Name: name, Underlying: goType}, ref, schemaManager.LookupRef, true)
 		if err != nil {
 			return paramSpec{}, err
 		}
-		if decoder != "" {
-			structDef += fmt.Sprintf("\ntype %s %s\n%s", name, goType, decoder)
+		if decoder.Code != "" {
+			structDef += fmt.Sprintf("\ntype %s %s\n%s", name, goType, decoder.Code)
 			goType = name
-			imports[jsondecode_codegen.Import] = struct{}{}
+			for _, imp := range decoder.Imports {
+				imports[imp] = struct{}{}
+			}
 		}
 	}
 	return paramSpec{Type: goType, StructDef: structDef, Imports: sortedImportSlice(imports)}, nil
@@ -555,14 +560,18 @@ func parseObjectSchema(currentFile, structName string, schema *openapi3.Schema, 
 	if err := tmpl.Execute(buf, StructTemplateVars{StructName: structName, Fields: fields}); err != nil {
 		return "", "", err
 	}
-	decoder, err := jsondecode_codegen.Method(currentFile, structName, &openapi3.SchemaRef{Value: schema}, schemaManager.LookupRef, true)
+	model := jsondecode_codegen.Model{Name: structName}
+	for i, field := range fields {
+		model.Fields = append(model.Fields, jsondecode_codegen.Field{JSONName: propNames[i], GoName: field.Name, Type: field.Type})
+	}
+	decoder, err := jsondecode_codegen.Method(currentFile, model, &openapi3.SchemaRef{Value: schema}, schemaManager.LookupRef, true)
 	if err != nil {
 		return "", "", err
 	}
-	if decoder != "" {
-		imports[jsondecode_codegen.Import] = struct{}{}
+	for _, imp := range decoder.Imports {
+		imports[imp] = struct{}{}
 	}
-	return structName, nestedDefs + "\n" + buf.String() + decoder, nil
+	return structName, nestedDefs + "\n" + buf.String() + decoder.Code, nil
 }
 
 func customGoType(schema *openapi3.Schema) (string, []string) {

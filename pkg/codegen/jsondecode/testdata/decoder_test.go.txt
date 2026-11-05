@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"example.com/decodertest/apigen"
@@ -111,7 +112,7 @@ func TestPresenceAndInvalidValues(t *testing.T) {
 					t.Errorf("expected field error for %s, got %v", input, err)
 				}
 			}
-			for _, input := range []string{`{}`, `null`, `{"required_key":null}`, `{"required_key":0,"plain_int":"123"}`, `{"required_key":0,"DEVICE_KEY":true}`, `{"required_key":0,"device_key":1,"DEVICE_KEY":2}`} {
+			for _, input := range []string{`{}`, `null`, `{"required_key":null}`, `{"required_key":0,"plain_int":"123"}`, `{"required_key":0,"DEVICE_KEY":true}`, `{"required_key":0,"device_key":1,"DEVICE_KEY":2}`, `{"required_key":0,"device_key":1,"device_key":2}`} {
 				if err := json.Unmarshal([]byte(input), newRequest()); err == nil {
 					t.Errorf("accepted %s", input)
 				}
@@ -241,6 +242,133 @@ func TestFiberJSONBinding(t *testing.T) {
 		res.Body.Close()
 		if res.StatusCode != tc.status {
 			t.Errorf("%s: status %d, want %d", tc.body, res.StatusCode, tc.status)
+		}
+	}
+}
+
+func TestGeneratedScalarConstraints(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		models  []any
+		valid   map[string]int64
+		invalid []string
+	}{
+		{"branch constraints", []any{new(apigen.BranchKey), new(shared.BranchKey)},
+			map[string]int64{`12`: 12, `"012"`: 12, `"010"`: 10, `"\u0030\u0031\u0032"`: 12},
+			[]string{`10`, `20`, `"12"`, `"01"`, `"000001"`}},
+		{"enum preserves original type", []any{new(apigen.EnumKey), new(shared.EnumKey)},
+			map[string]int64{`12`: 12, `12.0`: 12, `"0012"`: 12},
+			[]string{`"12"`, `13`, `"0013"`}},
+		{"large integer multipleOf", []any{new(apigen.EvenKey), new(shared.EvenKey)},
+			map[string]int64{`9007199254740994`: 9007199254740994, `"4"`: 4},
+			[]string{`9007199254740993`, `9223372036854775807`}},
+		{"fractional bounds and multiples", []any{new(apigen.FractionalKey), new(shared.FractionalKey)},
+			map[string]int64{`3`: 3, `3e0`: 3}, []string{`1`, `2`, `4`, `6`}},
+		{"composition", []any{new(apigen.ComposedKey), new(shared.ComposedKey)},
+			map[string]int64{`13`: 13, `"1"`: 1}, []string{`1`, `12`, `"12"`, `"+13"`}},
+		{"overlapping oneOf", []any{new(apigen.OneOfKey), new(shared.OneOfKey)},
+			map[string]int64{`9`: 9, `21`: 21}, []string{`10`, `12`, `20`, `"1"`}},
+		{"int32 branch", []any{new(apigen.Int32Key), new(shared.Int32Key)},
+			map[string]int64{`2147483647`: 2147483647, `-2147483648`: -2147483648, `"2147483648"`: 2147483648},
+			[]string{`2147483648`, `-2147483649`}},
+		{"byte format", []any{new(apigen.ByteKey), new(shared.ByteKey)},
+			map[string]int64{`"1234"`: 1234, `"123"`: 123}, []string{`"12="`, `1234`}},
+		{"folded anyOf", []any{new(shared.FoldedAny)},
+			map[string]int64{`"1"`: 1}, []string{`1`}},
+		{"folded oneOf", []any{new(shared.FoldedOne)}, nil, []string{`1`, `"001"`, `"1"`}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, model := range tc.models {
+				for input, want := range tc.valid {
+					if err := json.Unmarshal([]byte(input), model); err != nil || reflect.ValueOf(model).Elem().Int() != want {
+						t.Errorf("%T %s: got %v, %v; want %d", model, input, model, err, want)
+					}
+				}
+				for _, input := range tc.invalid {
+					if err := json.Unmarshal([]byte(input), model); err == nil {
+						t.Errorf("%T accepted %s", model, input)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestDirectMethodsAndReuse(t *testing.T) {
+	for _, input := range []string{`1 2`, `"1" true`, ``, `01`, `1.`, `+1`, `"abc"`, `null`, `9223372036854775808`} {
+		value := apigen.Key(42)
+		if err := value.UnmarshalJSON([]byte(input)); err == nil || value != 42 {
+			t.Errorf("%s: value=%d, err=%v", input, value, err)
+		}
+	}
+	for _, newRequest := range requests() {
+		value := newRequest()
+		if err := json.Unmarshal([]byte(`{"required_key":1,"device_key":"123","nullable_key":"456","label":"keep"}`), value); err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal([]byte(`{"required_key":2,"nullable_key":null}`), value); err != nil {
+			t.Fatal(err)
+		}
+		if field(value, "device_key").Elem().Int() != 123 || field(value, "label").Elem().String() != "keep" || !field(value, "nullable_key").IsNil() {
+			t.Fatalf("incorrect reused destination: %+v", value)
+		}
+	}
+	for _, dst := range []any{new(apigen.Matrix), new(shared.Matrix)} {
+		if err := json.Unmarshal([]byte(`[["9223372036854775807",1],[]]`), dst); err != nil {
+			t.Fatal(err)
+		}
+		if reflect.ValueOf(dst).Elem().Index(0).Index(0).Int() != math.MaxInt64 {
+			t.Fatal("incorrect nested array value")
+		}
+	}
+}
+
+func TestConcurrentGeneratedValidation(t *testing.T) {
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Go(func() {
+			var value apigen.BranchKey
+			if err := json.Unmarshal([]byte(`"012"`), &value); err != nil || value != 12 {
+				t.Errorf("concurrent decode: %d, %v", value, err)
+			}
+		})
+	}
+	wg.Wait()
+}
+
+func BenchmarkGeneratedDecode(b *testing.B) {
+	for _, tc := range []struct{ name, input string }{
+		{"number", `{"device_key":123}`},
+		{"string", `{"device_key":"123"}`},
+		{"max_int64", `{"device_key":"9223372036854775807"}`},
+		{"payload_4k", `{"device_key":"123","payload":"` + strings.Repeat("x", 4096) + `"}`},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			data := []byte(tc.input)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				var value apigen.DeviceRequest
+				if err := json.Unmarshal(data, &value); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func TestNullableRepresentations(t *testing.T) {
+	for _, dst := range []any{new(apigen.NullableArrays), new(shared.NullableArrays)} {
+		if err := json.Unmarshal([]byte(`{"keys":["123"]}`), dst); err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal([]byte(`{"keys":null}`), dst); err != nil || !field(dst, "keys").IsNil() {
+			t.Fatalf("nullable named array was not cleared: %v, %v", dst, err)
+		}
+	}
+	for _, dst := range []any{new(apigen.RequiredNullableScalar), new(shared.RequiredNullableScalar)} {
+		if err := json.Unmarshal([]byte(`{"key":null}`), dst); err == nil {
+			t.Fatal("required int64 cannot represent null")
 		}
 	}
 }

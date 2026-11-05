@@ -239,6 +239,16 @@ func buildDocument(spec *openapi3.T, specPath string, packageName string, schema
 			if err != nil {
 				return nil, errors.Wrapf(err, "failed to build schema %s", name)
 			}
+			model := jsondecode_codegen.Model{Name: schema.Name, Underlying: schema.AliasType}
+			for _, field := range schema.Fields {
+				model.Fields = append(model.Fields, jsondecode_codegen.Field{JSONName: field.JSONName, GoName: field.Name, Type: field.Type})
+			}
+			decoder, err := jsondecode_codegen.Method(specPath, model, spec.Components.Schemas[name], schemaManager.LookupRef, false)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to build JSON decoder for %s", name)
+			}
+			schema.JSONDecoder = decoder.Code
+			mergeImports(doc.SpecTypeImports, decoder.Imports...)
 			doc.Schemas = append(doc.Schemas, schema)
 		}
 	}
@@ -295,14 +305,6 @@ func buildSchemaDef(currentFile, name string, ref *openapi3.SchemaRef, enumMap m
 	}
 	value := ref.Value
 	schema.Description = firstNonEmpty(value.Description, schema.Name)
-	decoder, err := jsondecode_codegen.Method(currentFile, schema.Name, ref, schemaManager.LookupRef, false)
-	if err != nil {
-		return schema, err
-	}
-	schema.JSONDecoder = decoder
-	if decoder != "" {
-		mergeImports(imports, jsondecode_codegen.Import)
-	}
 	customType, _ := customGoType(value)
 	if len(value.Enum) > 0 && customType == "" {
 		resolved, err := resolveType(currentFile, "", ref, schema.Name, enumMap, schemaManager)

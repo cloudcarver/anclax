@@ -244,14 +244,18 @@ func (m *Manager) renderFile(file *File) (string, error) {
 		}
 		// Reference aliases inherit the target type's JSON methods.
 		if file.Schemas[name].Ref == "" {
-			decoder, err := jsondecode_codegen.Method(file.AbsPath, def.Name, file.Schemas[name], m.LookupRef, false)
+			model := jsondecode_codegen.Model{Name: def.Name, Underlying: def.AliasType}
+			for _, field := range def.Fields {
+				model.Fields = append(model.Fields, jsondecode_codegen.Field{JSONName: field.JSONName, GoName: field.Name, Type: field.Type})
+			}
+			decoder, err := jsondecode_codegen.Method(file.AbsPath, model, file.Schemas[name], m.LookupRef, false)
 			if err != nil {
 				return "", errors.Wrapf(err, "schema %s", name)
 			}
-			if decoder != "" {
-				def.JSONDecoder = decoder
+			if decoder.Code != "" {
+				def.JSONDecoder = decoder.Code
 				def.Alias = false
-				mergeImports(imports, jsondecode_codegen.Import)
+				mergeImports(imports, decoder.Imports...)
 			}
 		}
 		defs = append(defs, def)

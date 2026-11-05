@@ -46,6 +46,13 @@ String patterns, lengths, enums, and numeric constraints apply to the original
 input, before conversion. Serialization uses the resulting Go value, so int64
 fields are written as JSON numbers.
 
+These methods contain schema-specific Go checks and typed assignments. The
+generator folds type branches and fixed constraints ahead of time; regular
+expressions are compiled once at package initialization. Decoding does not interpret a runtime schema or
+marshal intermediate JSON. Only small helpers for capturing annotated fields
+and parsing exact int64 numbers are shared. Repeated annotated fields, including
+case-insensitive aliases, return errors instead of overwriting an earlier value.
+
 Optional does not mean nullable. An explicit `null` requires a nullable input
 schema, for example `nullable: true` on the integer branch. A nullable optional
 field becomes `nil`. Required int64 fields and int64 array elements cannot

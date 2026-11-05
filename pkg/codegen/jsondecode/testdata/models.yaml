@@ -79,3 +79,109 @@ schemas:
       key:
         type: integer
         x-go-type: int64
+  BranchKey:
+    anyOf:
+      - type: integer
+        minimum: 10
+        maximum: 20
+        exclusiveMinimum: true
+        exclusiveMaximum: true
+      - type: string
+        pattern: '^0[0-9]+$'
+        minLength: 3
+        maxLength: 5
+    x-go-type: int64
+  EnumKey:
+    anyOf:
+      - type: integer
+      - type: string
+    enum: [12, '0012']
+    x-go-type: int64
+  EvenKey:
+    anyOf:
+      - type: integer
+        multipleOf: 2
+      - type: string
+        enum: ['4']
+    x-go-type: int64
+  FractionalKey:
+    anyOf:
+      - type: integer
+        minimum: 1.5
+        maximum: 5.5
+        multipleOf: 1.5
+    x-go-type: int64
+  ComposedKey:
+    anyOf:
+      - type: integer
+      - type: string
+    allOf:
+      - minimum: 10
+    not:
+      enum: [12, '12']
+    oneOf:
+      - type: integer
+      - type: string
+        pattern: '^[0-9]+$'
+    x-go-type: int64
+  OneOfKey:
+    anyOf:
+      - type: integer
+    oneOf:
+      - minimum: 10
+      - maximum: 20
+    x-go-type: int64
+  Int32Key:
+    anyOf:
+      - type: integer
+        format: int32
+      - type: string
+    x-go-type: int64
+  ByteKey:
+    anyOf:
+      - type: string
+        format: byte
+    x-go-type: int64
+  DeviceRequest:
+    type: object
+    properties:
+      device_key:
+        anyOf:
+          - type: integer
+            format: int64
+          - type: string
+        x-go-type: int64
+      payload:
+        type: string
+  Matrix:
+    type: array
+    items:
+      type: array
+      items:
+        anyOf:
+          - type: integer
+          - type: string
+        x-go-type: int64
+  NullableKeys:
+    type: array
+    nullable: true
+    items:
+      $ref: '#/schemas/Key'
+  NullableArrays:
+    type: object
+    required: [keys]
+    properties:
+      keys:
+        $ref: '#/schemas/NullableKeys'
+  NullableScalar:
+    anyOf:
+      - type: integer
+        nullable: true
+      - type: string
+    x-go-type: int64
+  RequiredNullableScalar:
+    type: object
+    required: [key]
+    properties:
+      key:
+        $ref: '#/schemas/NullableScalar'

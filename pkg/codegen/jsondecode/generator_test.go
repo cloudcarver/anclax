@@ -24,7 +24,7 @@ func TestGenerationRejectsUnsupportedOrAmbiguousRules(t *testing.T) {
 			if err := json.Unmarshal([]byte(tc.schema), &schema); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := Method("spec.yaml", "Model", &openapi3.SchemaRef{Value: &schema}, nil, false); err == nil || !strings.Contains(err.Error(), tc.message) {
+			if _, err := Method("spec.yaml", Model{Name: "Model", Underlying: "int64"}, &openapi3.SchemaRef{Value: &schema}, nil, false); err == nil || !strings.Contains(err.Error(), tc.message) {
 				t.Fatalf("expected %q error, got %v", tc.message, err)
 			}
 		})
@@ -41,8 +41,8 @@ func TestUnannotatedSchemasKeepExistingDecoding(t *testing.T) {
 		if err := json.Unmarshal([]byte(data), &schema); err != nil {
 			t.Fatal(err)
 		}
-		code, err := Method("spec.yaml", "Model", &openapi3.SchemaRef{Value: &schema}, nil, false)
-		if err != nil || code != "" {
+		code, err := Method("spec.yaml", Model{Name: "Model", Underlying: "int64"}, &openapi3.SchemaRef{Value: &schema}, nil, false)
+		if err != nil || code.Code != "" {
 			t.Fatalf("unannotated model generated a decoder: %q, %v", code, err)
 		}
 	}

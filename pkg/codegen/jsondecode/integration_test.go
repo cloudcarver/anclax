@@ -26,6 +26,7 @@ func TestGeneratedInt64Decoders(t *testing.T) {
 	write(t, workdir, "go.sum", read(t, filepath.Join(root, "go.sum")))
 	models := read(t, "testdata/models.yaml")
 	write(t, workdir, "api/models.yaml", models)
+	write(t, workdir, "api/folded.yaml", read(t, "testdata/folded.yaml"))
 	config := &schemas.Config{Path: "api", Output: "shared"}
 	manager, err := schemas.Load(workdir, *config)
 	if err != nil {
@@ -82,12 +83,19 @@ func TestGeneratedInt64Decoders(t *testing.T) {
 		t.Fatal(err)
 	}
 	write(t, workdir, "decoder_test.go", read(t, "testdata/decoder_test.go.txt"))
-	cmd := exec.Command("go", "test", "-mod=mod", "-count=1", "./...")
+	args := []string{"test", "-mod=mod", "-count=1", "./..."}
+	if os.Getenv("ANCLAX_JSON_BENCHMARK") == "1" {
+		args = append(args, "-bench=BenchmarkGeneratedDecode", "-benchmem", "-benchtime=200ms", "-count=5", "-cpu=1")
+	}
+	cmd := exec.Command("go", args...)
 	cmd.Dir = workdir
 	cmd.Env = append(os.Environ(), "GOWORK=off")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("generated decoder tests failed: %v\n%s", err, output)
+	}
+	if os.Getenv("ANCLAX_JSON_BENCHMARK") == "1" {
+		t.Logf("generated decoder benchmarks:\n%s", output)
 	}
 }
 
